@@ -6,13 +6,8 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 
-from src.llm.chivon_impl import get_chivon, load_chivon
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-	# Warm the agent graph so first request latency is lower in containers.
-	load_chivon()
 	yield
 
 
@@ -30,7 +25,6 @@ async def root() -> dict[str, str]:
 
 @app.get("/health")
 async def health() -> dict[str, str]:
-	get_chivon()
 	return {"status": "healthy"}
 
 
@@ -41,13 +35,11 @@ async def livez() -> dict[str, str]:
 
 @app.get("/readyz")
 async def readyz() -> dict[str, str]:
-	get_chivon()
 	return {"status": "ready"}
 
 
 @app.get("/healthz")
 async def healthz() -> dict[str, str]:
-	get_chivon()
 	return {"status": "healthy"}
 
 
