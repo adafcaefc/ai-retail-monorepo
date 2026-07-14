@@ -7,7 +7,7 @@
                     "type": "str"
                 },
                 "value": {
-                    "type": "json"
+                    "type": "float"
                 }
             }
         },
@@ -17,7 +17,7 @@
                     "type": "str"
                 },
                 "value": {
-                    "type": "json"
+                    "type": "float"
                 }
             }
         },
@@ -42,7 +42,7 @@
                     },
                     "description" : "The intended output values of the simulation, only names."
                 },
-                "calcuation_instruction" : {
+                "calculation_instructions" : {
                     "type": "str",
                     "description": "The formula of the calculation using standard arithmetic operatiors and the names of the inputs and outputs."
                 }
