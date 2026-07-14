@@ -1,0 +1,124 @@
+name: build-and-push-acr
+
+# Build the Docker image and push it to Azure Container Registry (ACR) using a
+# username + password via `docker login` (an ACR admin user, or a service
+# principal's appId/secret).
+#
+# The image tag is an Asia/Jakarta build timestamp (YYYYMMDD-HHMMSS), so every
+# push to main produces a new, unique tag and nothing is ever overwritten.
+#
+# Configure these repository secrets first
+# (Repository -> Settings -> Actions -> Secrets):
+#   ACR_DEV_LOGIN_SERVER      ACR login server, e.g. "myregistry.azurecr.io"
+#   ACR_DEV_USERNAME          ACR username (admin username or service-principal appId)
+#   ACR_DEV_PASSWORD          ACR password (admin password or service-principal secret)
+#   ACA_DEPLOY_LOGIC_APP_URL  Logic App HTTP-trigger URL that rolls out the image
+#   ACA_DEPLOY_PASSWORD       Shared secret the Logic App expects in its payload
+#   ACA_RESOURCE_GROUP        Resource group of the target Container App
+# Optional -- only sent when set; otherwise the Logic App's own defaults apply
+# (requires the Logic App to read these from the request body, see notes below):
+#   ACA_SUBSCRIPTION_ID       Azure subscription ID of the target Container Apps
+#   ACA_CONTAINERS            Container Apps to roll out -- a JSON array like
+#                             [{"name":"ai-finance-forum-backend"}] OR "name1,name2,name3"
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  # Repository/path of the image inside the registry.
+  IMAGE_NAME: ai-finance-forum-backend
+  # Used when ACA_CONTAINERS secret is not set.
+  DEFAULT_CONTAINER_NAME: ai-finance-forum-backend
+
+jobs:
+  build-and-push-to-acr:
+    # Use a label your Forgejo runner advertises. The runner must have Docker
+    # CLI and access to a Docker daemon to build and push images.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate timestamp
+        id: timestamp
+        shell: bash
+        run: echo "TIMESTAMP=$(TZ='Asia/Jakarta' date +'%Y%m%d-%H%M%S')" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Azure Container Registry
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.ACR_DEV_PASSWORD }}" \
+            | docker login "${{ secrets.ACR_DEV_LOGIN_SERVER }}" \
+                --username "${{ secrets.ACR_DEV_USERNAME }}" \
+                --password-stdin
+
+      - name: Build and push Docker image
+        shell: bash
+        run: |
+          IMAGE="${{ secrets.ACR_DEV_LOGIN_SERVER }}/${IMAGE_NAME}:${{ steps.timestamp.outputs.TIMESTAMP }}"
+          docker build -f Dockerfile \
+            --build-arg APP_VERSION="${{ steps.timestamp.outputs.TIMESTAMP }}" \
+            --build-arg ENVIRONMENT=prod \
+            -t "$IMAGE" .
+          docker push "$IMAGE"
+
+      - name: Roll out new image to Container Apps
+        env:
+          LOGIC_APP_URL: ${{ secrets.ACA_DEPLOY_LOGIC_APP_URL }}
+          DEPLOY_PASSWORD: ${{ secrets.ACA_DEPLOY_PASSWORD }}
+          ACR_LOGIN_SERVER: ${{ secrets.ACR_DEV_LOGIN_SERVER }}
+          RESOURCE_GROUP: ${{ secrets.ACA_RESOURCE_GROUP }}
+          SUBSCRIPTION_ID: ${{ secrets.ACA_SUBSCRIPTION_ID }}
+          CONTAINERS: ${{ secrets.ACA_CONTAINERS }}
+          IMAGE_TAG: ${{ steps.timestamp.outputs.TIMESTAMP }}
+        shell: bash
+        run: |
+          REGISTRY_NAME="${ACR_LOGIN_SERVER%%.*}"
+
+          # Use secret-provided container list when available, otherwise default
+          # to this app's Container App name.
+          if [ -z "${CONTAINERS:-}" ]; then
+            containers_json="[{\"name\":\"${DEFAULT_CONTAINER_NAME}\"}]"
+          elif printf '%s' "$CONTAINERS" | jq -e . >/dev/null 2>&1; then
+            containers_json="$CONTAINERS"
+          else
+            containers_json="$(printf '%s' "$CONTAINERS" \
+              | jq -R 'split(",") | map(gsub("^\\s+|\\s+$";"")) | map(select(length > 0) | {name: .})')"
+          fi
+
+          # subscriptionId is only added when provided.
+          payload="$(jq -n \
+            --arg password "$DEPLOY_PASSWORD" \
+            --arg registryName "$REGISTRY_NAME" \
+            --arg acrLoginServer "$ACR_LOGIN_SERVER" \
+            --arg imageRepository "$IMAGE_NAME" \
+            --arg imageTag "$IMAGE_TAG" \
+            --arg resourceGroup "$RESOURCE_GROUP" \
+            --arg subscriptionId "$SUBSCRIPTION_ID" \
+            --argjson containers "$containers_json" \
+            '{password:$password, registryName:$registryName, acrLoginServer:$acrLoginServer, imageRepository:$imageRepository, imageTag:$imageTag, registryIdentity:"system", resourceGroup:$resourceGroup, containers:$containers}
+             | if $subscriptionId != "" then . + {subscriptionId:$subscriptionId} else . end')"
+
+          http_code="$(curl -sS -o response.txt -w '%{http_code}' --max-time 120 \
+            -X POST "$LOGIC_APP_URL" \
+            -H "Content-Type: application/json" \
+            -d "$payload" || echo timeout)"
+
+          echo "logic app status: $http_code"
+          cat response.txt 2>/dev/null || true
+          echo
+
+          case "$http_code" in
+            # The Logic App can overrun gateway window, so 504/timeout means
+            # accepted and still processing. 4xx/5xx (except 504) fail the job.
+            2*|504|timeout) echo "rollout triggered (async)" ;;
+            *) echo "::error::Logic App rejected the request"; exit 1 ;;
+          esac
+
+      - name: Log out
+        if: always()
+        shell: bash
+        run: docker logout "${{ secrets.ACR_DEV_LOGIN_SERVER }}" || true
