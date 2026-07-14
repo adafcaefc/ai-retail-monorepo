@@ -1,0 +1,74 @@
+{
+    "version": 1,
+    "models": {
+        "SimulationField": {
+            "fields": {
+                "name": {
+                    "type": "str"
+                },
+                "value": {
+                    "type": "json"
+                }
+            }
+        },
+        "SimulationResult": {
+            "fields": {
+                "name": {
+                    "type": "str"
+                },
+                "value": {
+                    "type": "json"
+                }
+            }
+        },
+        "SimulatorInput": {
+            "fields": {
+                "sim_title" : {
+                    "type": "str",
+                    "description": "The title of the simulation."
+                },
+                "inputs" : {
+                    "type": "list",
+                    "items" : {
+                        "type": "ref",
+                        "ref": "SimulationField"
+                    },
+                    "description" : "The input values of the simulation."
+                },
+                "outputs" : {
+                    "type": "list",
+                    "items" : {
+                        "type": "str"
+                    },
+                    "description" : "The intended output values of the simulation, only names."
+                },
+                "calcuation_instruction" : {
+                    "type": "str",
+                    "description": "The formula of the calculation using standard arithmetic operatiors and the names of the inputs and outputs."
+                }
+            }
+        },
+        "SimulatorOutput": {
+            "fields": {
+                "results": {
+                    "type": "list",
+                    "items" : {
+                        "type": "ref",
+                        "ref": "SimulationResult"
+                    },
+                    "description" : "The list of results of the simulation."
+                }
+            }
+        }
+    },
+    "agents": {
+        "simulator_agent": {
+            "input_model": "SimulatorInput",
+            "output_model": "SimulatorOutput",
+            "retries": 2,
+            "system_prompt": [
+                
+            ]
+        }
+    }
+}

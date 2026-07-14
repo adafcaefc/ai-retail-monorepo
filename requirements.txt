@@ -1,0 +1,5 @@
+fastapi==0.136.0
+pydantic-ai-slim[openai,mcp]==1.84.1
+uvicorn[standard]==0.44.0
+python-dotenv==1.2.2
+psycopg[binary]==3.3.4
