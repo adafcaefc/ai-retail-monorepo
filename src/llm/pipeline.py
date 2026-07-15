@@ -9,6 +9,8 @@ from src.llm.chivon_impl import load_chivon
 from src.llm.agents.chivon import chivon
 
 
+
+
 @dataclass
 class RenderedResult:
     """
@@ -148,7 +150,7 @@ async def render_agent_response(
              Return
     """
 
-    load_chivon()
+
 
     FinanceAgentOutput = chivon.type(
         "FinanceAgentOutput"
