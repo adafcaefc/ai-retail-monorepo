@@ -18,6 +18,14 @@ app = FastAPI(
 )
 
 
+from src.llm.chivon_impl import load_chivon
+
+app = FastAPI()
+
+load_chivon()
+
+
+
 @app.get("/")
 async def root() -> dict[str, str]:
 	return {"status": "ok", "service": "ai-finance-forum-backend"}
