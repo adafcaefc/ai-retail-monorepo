@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-import psycopg
 from openpyxl import load_workbook
-from psycopg.types.json import Jsonb
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -17,7 +17,17 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 
-from src.common.env import config
+from src.db.db import get_session_factory
+from src.db.models import (
+    ApPayable,
+    ArCollection,
+    Assumption,
+    FxScenario,
+    ImportBatch,
+    OtherOutflow,
+    Recommendation,
+    WeeklyForecast,
+)
 
 
 WORKBOOK_NAME = (
@@ -39,21 +49,6 @@ EXPECTED_SHEETS = [
     "07 FX Scenarios",
     "08 Recommendation",
 ]
-
-
-def get_connection_string() -> str:
-    database_url = config.DATABASE_URL
-
-    if not database_url:
-        raise RuntimeError(
-            "DATABASE_URL is not configured in the .env file."
-        )
-
-    return database_url.replace(
-        "postgresql+psycopg://",
-        "postgresql://",
-        1,
-    )
 
 
 def as_date(value: Any) -> date | None:
@@ -123,60 +118,39 @@ def validate_workbook(workbook: Any) -> None:
 
 
 def create_import_batch(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
 ) -> int:
-    cursor.execute(
-        """
-        INSERT INTO audit.import_batches (
-            agent_name,
-            workbook_name,
-            workbook_version,
-            workbook_path,
-            import_status,
-            imported_by,
-            total_sheets,
-            total_rows,
-            metadata
-        )
-        VALUES (
-            %s,
-            %s,
-            %s,
-            %s,
-            'STARTED',
-            CURRENT_USER,
-            %s,
-            0,
-            %s
-        )
-        RETURNING id
-        """,
-        (
-            AGENT_NAME,
-            WORKBOOK_NAME,
-            WORKBOOK_VERSION,
-            str(WORKBOOK_PATH),
-            len(EXPECTED_SHEETS),
-            Jsonb(
-                {
-                    "source": "Excel Data Engine",
-                    "data_type": "illustrative_demo_data",
-                    "scope": "Cash Flow Intelligence Agent",
-                }
-            ),
-        ),
+    imported_by = session.scalar(
+        select(func.current_user())
     )
 
-    row = cursor.fetchone()
+    import_batch = ImportBatch(
+        agent_name=AGENT_NAME,
+        workbook_name=WORKBOOK_NAME,
+        workbook_version=WORKBOOK_VERSION,
+        workbook_path=str(WORKBOOK_PATH),
+        import_status="STARTED",
+        imported_by=imported_by,
+        total_sheets=len(EXPECTED_SHEETS),
+        total_rows=0,
+        metadata_json={
+            "source": "Excel Data Engine",
+            "data_type": "illustrative_demo_data",
+            "scope": "Cash Flow Intelligence Agent",
+        },
+    )
 
-    if row is None:
+    session.add(import_batch)
+    session.flush()
+
+    if import_batch.id is None:
         raise RuntimeError("Failed to create import batch.")
 
-    return int(row[0])
+    return int(import_batch.id)
 
 
 def import_assumptions(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
@@ -214,7 +188,7 @@ def import_assumptions(
         25: "IDR million",
     }
 
-    inserted_rows = 0
+    records: list[Assumption] = []
 
     for row_number, assumption_group in row_groups.items():
         assumption_name = worksheet.cell(
@@ -245,52 +219,30 @@ def import_assumptions(
         else:
             text_value = as_text(value)
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.assumptions (
-                import_batch_id,
-                assumption_group,
-                assumption_name,
-                numeric_value,
-                text_value,
-                date_value,
-                unit,
-                notes
+        records.append(
+            Assumption(
+                import_batch_id=import_batch_id,
+                assumption_group=assumption_group,
+                assumption_name=as_text(assumption_name),
+                numeric_value=numeric_value,
+                text_value=text_value,
+                date_value=date_value,
+                unit=units.get(row_number),
+                notes=as_text(notes),
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-            )
-            """,
-            (
-                import_batch_id,
-                assumption_group,
-                as_text(assumption_name),
-                numeric_value,
-                text_value,
-                date_value,
-                units.get(row_number),
-                as_text(notes),
-            ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_ar_collections(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
-    inserted_rows = 0
+    records: list[ArCollection] = []
 
     for row_number in range(5, 31):
         invoice_number = worksheet.cell(
@@ -301,61 +253,63 @@ def import_ar_collections(
         if not invoice_number:
             continue
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.ar_collections (
-                import_batch_id,
-                invoice_number,
-                customer_name,
-                customer_segment,
-                invoice_date,
-                payment_terms_days,
-                due_date,
-                original_week,
-                expected_week,
-                currency,
-                amount_idr_mn,
-                usd_amount,
-                idr_value_mn,
-                delay_flag,
-                notes
+        records.append(
+            ArCollection(
+                import_batch_id=import_batch_id,
+                invoice_number=as_text(invoice_number),
+                customer_name=as_text(
+                    worksheet.cell(row_number, 2).value
+                ),
+                customer_segment=as_text(
+                    worksheet.cell(row_number, 3).value
+                ),
+                invoice_date=as_date(
+                    worksheet.cell(row_number, 4).value
+                ),
+                payment_terms_days=as_integer(
+                    worksheet.cell(row_number, 5).value
+                ),
+                due_date=as_date(
+                    worksheet.cell(row_number, 6).value
+                ),
+                original_week=as_integer(
+                    worksheet.cell(row_number, 7).value
+                ),
+                expected_week=as_integer(
+                    worksheet.cell(row_number, 8).value
+                ),
+                currency=as_text(
+                    worksheet.cell(row_number, 9).value
+                ),
+                amount_idr_mn=as_decimal(
+                    worksheet.cell(row_number, 10).value
+                ),
+                usd_amount=as_decimal(
+                    worksheet.cell(row_number, 11).value
+                ),
+                idr_value_mn=as_decimal(
+                    worksheet.cell(row_number, 12).value
+                ),
+                delay_flag=as_text(
+                    worksheet.cell(row_number, 13).value
+                ),
+                notes=as_text(
+                    worksheet.cell(row_number, 14).value
+                ),
             )
-            VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s
-            )
-            """,
-            (
-                import_batch_id,
-                as_text(invoice_number),
-                as_text(worksheet.cell(row_number, 2).value),
-                as_text(worksheet.cell(row_number, 3).value),
-                as_date(worksheet.cell(row_number, 4).value),
-                as_integer(worksheet.cell(row_number, 5).value),
-                as_date(worksheet.cell(row_number, 6).value),
-                as_integer(worksheet.cell(row_number, 7).value),
-                as_integer(worksheet.cell(row_number, 8).value),
-                as_text(worksheet.cell(row_number, 9).value),
-                as_decimal(worksheet.cell(row_number, 10).value),
-                as_decimal(worksheet.cell(row_number, 11).value),
-                as_decimal(worksheet.cell(row_number, 12).value),
-                as_text(worksheet.cell(row_number, 13).value),
-                as_text(worksheet.cell(row_number, 14).value),
-            ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_ap_payables(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
-    inserted_rows = 0
+    records: list[ApPayable] = []
 
     for row_number in range(5, 28):
         bill_number = worksheet.cell(
@@ -375,57 +329,55 @@ def import_ap_payables(
             and deferrable_value.lower() == "yes"
         )
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.ap_payables (
-                import_batch_id,
-                bill_number,
-                vendor_name,
-                category,
-                payment_terms_days,
-                due_date,
-                payment_week,
-                currency,
-                amount_idr_mn,
-                usd_amount,
-                idr_value_mn,
-                is_deferrable,
-                notes
+        records.append(
+            ApPayable(
+                import_batch_id=import_batch_id,
+                bill_number=as_text(bill_number),
+                vendor_name=as_text(
+                    worksheet.cell(row_number, 2).value
+                ),
+                category=as_text(
+                    worksheet.cell(row_number, 3).value
+                ),
+                payment_terms_days=as_integer(
+                    worksheet.cell(row_number, 4).value
+                ),
+                due_date=as_date(
+                    worksheet.cell(row_number, 5).value
+                ),
+                payment_week=as_integer(
+                    worksheet.cell(row_number, 6).value
+                ),
+                currency=as_text(
+                    worksheet.cell(row_number, 7).value
+                ),
+                amount_idr_mn=as_decimal(
+                    worksheet.cell(row_number, 8).value
+                ),
+                usd_amount=as_decimal(
+                    worksheet.cell(row_number, 9).value
+                ),
+                idr_value_mn=as_decimal(
+                    worksheet.cell(row_number, 10).value
+                ),
+                is_deferrable=is_deferrable,
+                notes=as_text(
+                    worksheet.cell(row_number, 12).value
+                ),
             )
-            VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s, %s
-            )
-            """,
-            (
-                import_batch_id,
-                as_text(bill_number),
-                as_text(worksheet.cell(row_number, 2).value),
-                as_text(worksheet.cell(row_number, 3).value),
-                as_integer(worksheet.cell(row_number, 4).value),
-                as_date(worksheet.cell(row_number, 5).value),
-                as_integer(worksheet.cell(row_number, 6).value),
-                as_text(worksheet.cell(row_number, 7).value),
-                as_decimal(worksheet.cell(row_number, 8).value),
-                as_decimal(worksheet.cell(row_number, 9).value),
-                as_decimal(worksheet.cell(row_number, 10).value),
-                is_deferrable,
-                as_text(worksheet.cell(row_number, 12).value),
-            ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_other_outflows(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
-    inserted_rows = 0
+    records: list[OtherOutflow] = []
 
     for row_number in range(5, 10):
         category = as_text(
@@ -441,40 +393,28 @@ def import_other_outflows(
                 column=week_number + 1,
             ).value
 
-            cursor.execute(
-                """
-                INSERT INTO cashflow.other_outflows (
-                    import_batch_id,
-                    category,
-                    week_number,
-                    amount_idr_mn
+            records.append(
+                OtherOutflow(
+                    import_batch_id=import_batch_id,
+                    category=category,
+                    week_number=week_number,
+                    amount_idr_mn=(
+                        as_decimal(amount) or Decimal("0")
+                    ),
                 )
-                VALUES (
-                    %s,
-                    %s,
-                    %s,
-                    %s
-                )
-                """,
-                (
-                    import_batch_id,
-                    category,
-                    week_number,
-                    as_decimal(amount) or Decimal("0"),
-                ),
             )
 
-            inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_weekly_forecast(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
-    inserted_rows = 0
+    records: list[WeeklyForecast] = []
 
     row_mapping = {
         "week_start": 5,
@@ -499,136 +439,107 @@ def import_weekly_forecast(
     for week_number in range(1, 14):
         column_number = week_number + 1
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.weekly_forecast (
-                import_batch_id,
-                week_number,
-                week_start,
-                week_end,
-                customer_collections_idr_mn,
-                total_inflows_idr_mn,
-                vendor_payments_idr_mn,
-                vendor_payments_usd_idr_mn,
-                payroll_idr_mn,
-                rent_utilities_opex_idr_mn,
-                taxes_idr_mn,
-                loan_repayment_idr_mn,
-                total_outflows_idr_mn,
-                net_cash_flow_idr_mn,
-                opening_cash_idr_mn,
-                closing_cash_idr_mn,
-                minimum_buffer_idr_mn,
-                headroom_idr_mn,
-                status
-            )
-            VALUES (
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s,
-                %s, %s, %s, %s
-            )
-            """,
-            (
-                import_batch_id,
-                week_number,
-                as_date(
+        records.append(
+            WeeklyForecast(
+                import_batch_id=import_batch_id,
+                week_number=week_number,
+                week_start=as_date(
                     worksheet.cell(
                         row_mapping["week_start"],
                         column_number,
                     ).value
                 ),
-                as_date(
+                week_end=as_date(
                     worksheet.cell(
                         row_mapping["week_end"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                customer_collections_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["customer_collections"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                total_inflows_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["total_inflows"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                vendor_payments_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["vendor_payments_idr"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                vendor_payments_usd_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["vendor_payments_usd"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                payroll_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["payroll"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                rent_utilities_opex_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["rent_utilities_opex"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                taxes_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["taxes"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                loan_repayment_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["loan_repayment"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                total_outflows_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["total_outflows"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                net_cash_flow_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["net_cash_flow"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                opening_cash_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["opening_cash"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                closing_cash_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["closing_cash"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                minimum_buffer_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["minimum_buffer"],
                         column_number,
                     ).value
                 ),
-                as_decimal(
+                headroom_idr_mn=as_decimal(
                     worksheet.cell(
                         row_mapping["headroom"],
                         column_number,
                     ).value
                 ),
-                as_text(
+                status=as_text(
                     worksheet.cell(
                         row_mapping["status"],
                         column_number,
@@ -637,59 +548,45 @@ def import_weekly_forecast(
             ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_fx_scenarios(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
-    inserted_rows = 0
+    records: list[FxScenario] = []
 
     net_usd_exposure = as_decimal(
         worksheet.cell(7, 2).value
     )
 
     for row_number in range(12, 16):
-        cursor.execute(
-            """
-            INSERT INTO cashflow.fx_scenarios (
-                import_batch_id,
-                scenario_name,
-                usd_exposure,
-                fx_rate_idr_per_usd,
-                movement_vs_spot,
-                fx_cash_impact_idr_mn,
-                notes,
-                is_recommended
+        records.append(
+            FxScenario(
+                import_batch_id=import_batch_id,
+                scenario_name=as_text(
+                    worksheet.cell(row_number, 1).value
+                ),
+                usd_exposure=net_usd_exposure,
+                fx_rate_idr_per_usd=as_decimal(
+                    worksheet.cell(row_number, 2).value
+                ),
+                movement_vs_spot=as_decimal(
+                    worksheet.cell(row_number, 3).value
+                ),
+                fx_cash_impact_idr_mn=as_decimal(
+                    worksheet.cell(row_number, 4).value
+                ),
+                notes=as_text(
+                    worksheet.cell(row_number, 5).value
+                ),
+                is_recommended=False,
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-            )
-            """,
-            (
-                import_batch_id,
-                as_text(worksheet.cell(row_number, 1).value),
-                net_usd_exposure,
-                as_decimal(worksheet.cell(row_number, 2).value),
-                as_decimal(worksheet.cell(row_number, 3).value),
-                as_decimal(worksheet.cell(row_number, 4).value),
-                as_text(worksheet.cell(row_number, 5).value),
-                False,
-            ),
         )
-
-        inserted_rows += 1
 
     for row_number in range(29, 33):
         scenario_name = as_text(
@@ -701,51 +598,37 @@ def import_fx_scenarios(
             and "RECOMMENDED" in scenario_name.upper()
         )
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.fx_scenarios (
-                import_batch_id,
-                scenario_name,
-                action_description,
-                usd_exposure,
-                downside_avoided_idr_mn,
-                premium_idr_mn,
-                liquidity_effect,
-                confidence_label,
-                is_recommended
+        records.append(
+            FxScenario(
+                import_batch_id=import_batch_id,
+                scenario_name=scenario_name,
+                action_description=as_text(
+                    worksheet.cell(row_number, 2).value
+                ),
+                usd_exposure=net_usd_exposure,
+                downside_avoided_idr_mn=as_decimal(
+                    worksheet.cell(row_number, 3).value
+                ),
+                premium_idr_mn=as_decimal(
+                    worksheet.cell(row_number, 4).value
+                ),
+                liquidity_effect=as_text(
+                    worksheet.cell(row_number, 5).value
+                ),
+                confidence_label=as_text(
+                    worksheet.cell(row_number, 6).value
+                ),
+                is_recommended=is_recommended,
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-            )
-            """,
-            (
-                import_batch_id,
-                scenario_name,
-                as_text(worksheet.cell(row_number, 2).value),
-                net_usd_exposure,
-                as_decimal(worksheet.cell(row_number, 3).value),
-                as_decimal(worksheet.cell(row_number, 4).value),
-                as_text(worksheet.cell(row_number, 5).value),
-                as_text(worksheet.cell(row_number, 6).value),
-                is_recommended,
-            ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def import_recommendations(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     worksheet: Any,
     import_batch_id: int,
 ) -> int:
@@ -758,7 +641,7 @@ def import_recommendations(
         (21, "GOVERNANCE"),
     ]
 
-    inserted_rows = 0
+    records: list[Recommendation] = []
 
     for recommendation_order, item in enumerate(
         recommendation_rows,
@@ -784,122 +667,66 @@ def import_recommendations(
         if not action_description:
             action_description = action_title
 
-        cursor.execute(
-            """
-            INSERT INTO cashflow.recommendations (
-                import_batch_id,
-                recommendation_type,
-                recommendation_order,
-                action_title,
-                action_description,
-                expected_impact,
-                assumptions,
-                risks,
-                requires_approval,
-                approval_route
+        records.append(
+            Recommendation(
+                import_batch_id=import_batch_id,
+                recommendation_type=recommendation_type,
+                recommendation_order=recommendation_order,
+                action_title=action_title,
+                action_description=action_description,
+                expected_impact=expected_impact,
+                assumptions=[],
+                risks=[],
+                requires_approval=True,
+                approval_route="CFO + Treasury Manager",
             )
-            VALUES (
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s,
-                %s
-            )
-            """,
-            (
-                import_batch_id,
-                recommendation_type,
-                recommendation_order,
-                action_title,
-                action_description,
-                expected_impact,
-                Jsonb([]),
-                Jsonb([]),
-                True,
-                "CFO + Treasury Manager",
-            ),
         )
 
-        inserted_rows += 1
+    session.add_all(records)
 
-    return inserted_rows
+    return len(records)
 
 
 def mark_batch_completed(
-    cursor: psycopg.Cursor[Any],
+    session: Session,
     import_batch_id: int,
     total_rows: int,
 ) -> None:
-    cursor.execute(
-        """
-        UPDATE audit.import_batches
-        SET
-            import_status = 'COMPLETED',
-            completed_at = CURRENT_TIMESTAMP,
-            total_rows = %s
-        WHERE id = %s
-        """,
-        (
-            total_rows,
-            import_batch_id,
-        ),
-    )
+    import_batch = session.get(ImportBatch, import_batch_id)
+
+    if import_batch is None:
+        raise RuntimeError(
+            f"Import batch not found: {import_batch_id}"
+        )
+
+    import_batch.import_status = "COMPLETED"
+    import_batch.completed_at = datetime.now(timezone.utc)
+    import_batch.total_rows = total_rows
 
 
 def record_failed_import(error_message: str) -> None:
-    with psycopg.connect(
-        get_connection_string()
-    ) as connection:
-        with connection.cursor() as cursor:
-            cursor.execute(
-                """
-                INSERT INTO audit.import_batches (
-                    agent_name,
-                    workbook_name,
-                    workbook_version,
-                    workbook_path,
-                    import_status,
-                    imported_by,
-                    total_sheets,
-                    total_rows,
-                    error_message,
-                    metadata
-                )
-                VALUES (
-                    %s,
-                    %s,
-                    %s,
-                    %s,
-                    'FAILED',
-                    CURRENT_USER,
-                    %s,
-                    0,
-                    %s,
-                    %s
-                )
-                """,
-                (
-                    AGENT_NAME,
-                    WORKBOOK_NAME,
-                    WORKBOOK_VERSION,
-                    str(WORKBOOK_PATH),
-                    len(EXPECTED_SHEETS),
-                    error_message[:5000],
-                    Jsonb(
-                        {
-                            "source": "Excel Data Engine",
-                            "data_type": "illustrative_demo_data",
-                        }
-                    ),
-                ),
-            )
+    with get_session_factory().begin() as session:
+        imported_by = session.scalar(
+            select(func.current_user())
+        )
 
-        connection.commit()
+        session.add(
+            ImportBatch(
+                agent_name=AGENT_NAME,
+                workbook_name=WORKBOOK_NAME,
+                workbook_version=WORKBOOK_VERSION,
+                workbook_path=str(WORKBOOK_PATH),
+                import_status="FAILED",
+                imported_by=imported_by,
+                total_sheets=len(EXPECTED_SHEETS),
+                total_rows=0,
+                error_message=error_message[:5000],
+                metadata_json={
+                    "source": "Excel Data Engine",
+                    "data_type": "illustrative_demo_data",
+                },
+            )
+        )
 
 
 def main() -> None:
@@ -921,77 +748,72 @@ def main() -> None:
     row_counts: dict[str, int] = {}
 
     try:
-        with psycopg.connect(
-            get_connection_string()
-        ) as connection:
-            with connection.cursor() as cursor:
-                import_batch_id = create_import_batch(cursor)
+        with get_session_factory().begin() as session:
+            import_batch_id = create_import_batch(session)
 
-                print(
-                    f"Import batch created: {import_batch_id}"
-                )
+            print(
+                f"Import batch created: {import_batch_id}"
+            )
 
-                row_counts["assumptions"] = import_assumptions(
-                    cursor,
-                    workbook["02 Assumptions"],
+            row_counts["assumptions"] = import_assumptions(
+                session,
+                workbook["02 Assumptions"],
+                import_batch_id,
+            )
+
+            row_counts["ar_collections"] = (
+                import_ar_collections(
+                    session,
+                    workbook["03 AR Collections"],
                     import_batch_id,
                 )
+            )
 
-                row_counts["ar_collections"] = (
-                    import_ar_collections(
-                        cursor,
-                        workbook["03 AR Collections"],
-                        import_batch_id,
-                    )
-                )
+            row_counts["ap_payables"] = import_ap_payables(
+                session,
+                workbook["04 AP USD Payables"],
+                import_batch_id,
+            )
 
-                row_counts["ap_payables"] = import_ap_payables(
-                    cursor,
-                    workbook["04 AP USD Payables"],
+            row_counts["other_outflows"] = (
+                import_other_outflows(
+                    session,
+                    workbook["05 Other Outflows"],
                     import_batch_id,
                 )
+            )
 
-                row_counts["other_outflows"] = (
-                    import_other_outflows(
-                        cursor,
-                        workbook["05 Other Outflows"],
-                        import_batch_id,
-                    )
-                )
-
-                row_counts["weekly_forecast"] = (
-                    import_weekly_forecast(
-                        cursor,
-                        workbook["06 Cash Forecast 13W"],
-                        import_batch_id,
-                    )
-                )
-
-                row_counts["fx_scenarios"] = (
-                    import_fx_scenarios(
-                        cursor,
-                        workbook["07 FX Scenarios"],
-                        import_batch_id,
-                    )
-                )
-
-                row_counts["recommendations"] = (
-                    import_recommendations(
-                        cursor,
-                        workbook["08 Recommendation"],
-                        import_batch_id,
-                    )
-                )
-
-                total_rows = sum(row_counts.values())
-
-                mark_batch_completed(
-                    cursor,
+            row_counts["weekly_forecast"] = (
+                import_weekly_forecast(
+                    session,
+                    workbook["06 Cash Forecast 13W"],
                     import_batch_id,
-                    total_rows,
                 )
+            )
 
-            connection.commit()
+            row_counts["fx_scenarios"] = (
+                import_fx_scenarios(
+                    session,
+                    workbook["07 FX Scenarios"],
+                    import_batch_id,
+                )
+            )
+
+            row_counts["recommendations"] = (
+                import_recommendations(
+                    session,
+                    workbook["08 Recommendation"],
+                    import_batch_id,
+                )
+            )
+
+            total_rows = sum(row_counts.values())
+
+            mark_batch_completed(
+                session,
+                import_batch_id,
+                total_rows,
+            )
 
         print("")
         print("Cash Flow workbook import completed.")
