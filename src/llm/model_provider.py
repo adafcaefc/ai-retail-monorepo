@@ -52,8 +52,11 @@ print("DEPLOYMENT =", deployment_name)
 print("ENDPOINT =", azure_endpoint)
 
 
-model = OpenAIModel(
-    deployment_name,
+
+from pydantic_ai.models.openai import OpenAIChatModel
+
+model = OpenAIChatModel(
+    model_name=deployment_name,
     provider=OpenAIProvider(openai_client=client),
 )
 
@@ -61,3 +64,9 @@ model = OpenAIModel(
 
 print("DEPLOYMENT REPR =", repr(deployment_name))
 print("MODEL =", model)
+
+
+import inspect
+from pydantic_ai.models.openai import OpenAIChatModel
+
+print(inspect.signature(OpenAIChatModel))
