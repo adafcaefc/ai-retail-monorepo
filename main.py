@@ -6,10 +6,12 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from src.llm.chivon_impl import get_chivon, load_chivon
 from src.llm.pipeline import RenderedResult, render_agent_response
+from src.cashflow.router import router as cashflow_router
 
 
 class RenderRequest(BaseModel):
@@ -48,6 +50,34 @@ app = FastAPI(
 	lifespan=lifespan,
 )
 
+app = FastAPI(
+    title="AI Finance Forum Backend",
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+app.include_router(cashflow_router)
+
+
+@app.get("/")
+async def root() -> dict[str, str]:
+    return {
+        "status": "ok",
+        "service": "ai-finance-forum-backend",
+    }
 
 @app.get("/")
 async def root() -> dict[str, str]:
