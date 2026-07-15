@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 from openai import AsyncAzureOpenAI
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIModel
+from pydantic_ai.models.openai import  OpenAIModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from src.common.env import config
@@ -51,7 +51,13 @@ client = AsyncAzureOpenAI(
 print("DEPLOYMENT =", deployment_name)
 print("ENDPOINT =", azure_endpoint)
 
-model = OpenAIChatModel(
+
+model = OpenAIModel(
     deployment_name,
     provider=OpenAIProvider(openai_client=client),
 )
+
+
+
+print("DEPLOYMENT REPR =", repr(deployment_name))
+print("MODEL =", model)
