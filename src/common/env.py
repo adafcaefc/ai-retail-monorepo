@@ -15,5 +15,7 @@ class AppConfig:
     AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
     AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
+    DATABASE_URL: str = os.getenv("DATABASE_URL","")
+
 
 config = AppConfig()
