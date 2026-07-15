@@ -23,7 +23,10 @@ def _hlog(msg: str) -> None:
 
 
 async def _on_request(request: httpx.Request) -> None:
-    _hlog(f"-> {request.method} {request.url}")
+    print("=" * 80)
+    print("REQUEST URL:", request.url)
+    print("REQUEST METHOD:", request.method)
+    print("=" * 80)
 
 
 async def _on_response(response: httpx.Response) -> None:
@@ -44,6 +47,9 @@ client = AsyncAzureOpenAI(
     api_key=api_key,
     http_client=_http_client,
 )
+
+print("DEPLOYMENT =", deployment_name)
+print("ENDPOINT =", azure_endpoint)
 
 model = OpenAIChatModel(
     deployment_name,
