@@ -52,3 +52,25 @@ htmlcov/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environments
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Excel source data
+data/*.xlsx
+data/*.xls
+
+# Generated import files
+data/import_logs/
+data/import_preview/
