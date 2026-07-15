@@ -50,12 +50,6 @@ app = FastAPI(
 	lifespan=lifespan,
 )
 
-app = FastAPI(
-    title="AI Finance Forum Backend",
-    version="1.0.0",
-    lifespan=lifespan,
-)
-
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,13 +65,6 @@ app.add_middleware(
 
 app.include_router(cashflow_router)
 
-
-@app.get("/")
-async def root() -> dict[str, str]:
-    return {
-        "status": "ok",
-        "service": "ai-finance-forum-backend",
-    }
 
 @app.get("/")
 async def root() -> dict[str, str]:

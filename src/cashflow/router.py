@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
 
 from src.cashflow import repository, service
 from src.cashflow.models import (
@@ -8,6 +11,7 @@ from src.cashflow.models import (
     CashFlowSimulationRequest,
     CashFlowSimulationResponse,
 )
+from src.db.db import get_db_session
 
 
 router = APIRouter(
@@ -15,14 +19,21 @@ router = APIRouter(
     tags=["Cash Flow"],
 )
 
+DatabaseSession = Annotated[
+    Session,
+    Depends(get_db_session),
+]
+
 
 @router.get(
     "/baseline",
     response_model=CashFlowBaselineResponse,
 )
-async def get_cashflow_baseline() -> CashFlowBaselineResponse:
+def get_cashflow_baseline(
+    session: DatabaseSession,
+) -> CashFlowBaselineResponse:
     try:
-        return service.get_baseline()
+        return service.get_baseline(session)
 
     except repository.CashFlowDataError as error:
         raise HTTPException(
@@ -35,11 +46,12 @@ async def get_cashflow_baseline() -> CashFlowBaselineResponse:
     "/simulate",
     response_model=CashFlowSimulationResponse,
 )
-async def simulate_cashflow(
+def simulate_cashflow(
     payload: CashFlowSimulationRequest,
+    session: DatabaseSession,
 ) -> CashFlowSimulationResponse:
     try:
-        return service.simulate(payload)
+        return service.simulate(payload, session)
 
     except ValueError as error:
         raise HTTPException(

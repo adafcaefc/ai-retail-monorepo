@@ -1,71 +1,72 @@
 from __future__ import annotations
 
-from typing import Any
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
-from src.db.db import run_query
+from src.db.models import (
+    ApPayable,
+    ArCollection,
+    Assumption,
+    ImportBatch,
+    WeeklyForecast,
+)
 
 
 class CashFlowDataError(RuntimeError):
     pass
 
 
-def _get_single_row(
-    sql: str,
-    params: tuple[Any, ...] | None = None,
-) -> dict[str, Any]:
-    rows, error = run_query(sql, params)
+def _raise_database_error(error: SQLAlchemyError) -> None:
+    raise CashFlowDataError(
+        f"Database read failed: {error}"
+    ) from error
 
-    if error:
-        raise CashFlowDataError(error)
 
-    if not rows:
+def get_latest_import_batch(
+    session: Session,
+) -> ImportBatch:
+    statement = (
+        select(ImportBatch)
+        .where(
+            ImportBatch.agent_name == "cashflow_agent",
+            ImportBatch.import_status == "COMPLETED",
+        )
+        .order_by(ImportBatch.imported_at.desc())
+        .limit(1)
+    )
+
+    try:
+        import_batch = session.scalars(statement).first()
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
+
+    if import_batch is None:
         raise CashFlowDataError(
             "Required Cash Flow data was not found."
         )
 
-    return rows[0]
-
-
-def get_latest_import_batch() -> dict[str, Any]:
-    return _get_single_row(
-        """
-        SELECT
-            id,
-            workbook_name,
-            workbook_version,
-            imported_at,
-            completed_at
-        FROM audit.import_batches
-        WHERE agent_name = 'cashflow_agent'
-          AND import_status = 'COMPLETED'
-        ORDER BY imported_at DESC
-        LIMIT 1
-        """
-    )
+    return import_batch
 
 
 def get_weekly_positions(
+    session: Session,
     import_batch_id: int,
-) -> list[dict[str, Any]]:
-    rows, error = run_query(
-        """
-        SELECT
-            week_number,
-            opening_cash_idr_mn,
-            closing_cash_idr_mn,
-            minimum_buffer_idr_mn,
-            headroom_idr_mn,
-            status
-        FROM cashflow.weekly_forecast
-        WHERE import_batch_id = %s
-          AND week_number IN (5, 6, 7)
-        ORDER BY week_number
-        """,
-        (import_batch_id,),
+) -> list[WeeklyForecast]:
+    statement = (
+        select(WeeklyForecast)
+        .where(
+            WeeklyForecast.import_batch_id
+            == import_batch_id,
+            WeeklyForecast.week_number.in_((5, 6, 7)),
+        )
+        .order_by(WeeklyForecast.week_number)
     )
 
-    if error:
-        raise CashFlowDataError(error)
+    try:
+        rows = list(session.scalars(statement).all())
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
 
     if len(rows) != 3:
         raise CashFlowDataError(
@@ -76,25 +77,23 @@ def get_weekly_positions(
 
 
 def get_numeric_assumption(
+    session: Session,
     import_batch_id: int,
     assumption_name: str,
 ) -> float:
-    row = _get_single_row(
-        """
-        SELECT
-            numeric_value
-        FROM cashflow.assumptions
-        WHERE import_batch_id = %s
-          AND assumption_name = %s
-        LIMIT 1
-        """,
-        (
-            import_batch_id,
-            assumption_name,
-        ),
+    statement = (
+        select(Assumption.numeric_value)
+        .where(
+            Assumption.import_batch_id == import_batch_id,
+            Assumption.assumption_name == assumption_name,
+        )
+        .limit(1)
     )
 
-    value = row.get("numeric_value")
+    try:
+        value = session.scalar(statement)
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
 
     if value is None:
         raise CashFlowDataError(
@@ -105,77 +104,78 @@ def get_numeric_assumption(
 
 
 def get_net_usd_exposure(
+    session: Session,
     import_batch_id: int,
 ) -> float:
-    payable_row = _get_single_row(
-        """
-        SELECT
-            COALESCE(
-                SUM(COALESCE(usd_amount, 0)),
-                0
-            ) AS usd_payables
-        FROM cashflow.ap_payables
-        WHERE import_batch_id = %s
-        """,
-        (import_batch_id,),
+    payables = (
+        select(func.coalesce(func.sum(ApPayable.usd_amount), 0))
+        .where(ApPayable.import_batch_id == import_batch_id)
+        .scalar_subquery()
     )
 
-    receivable_row = _get_single_row(
-        """
-        SELECT
-            COALESCE(
-                SUM(COALESCE(usd_amount, 0)),
-                0
-            ) AS usd_receivables
-        FROM cashflow.ar_collections
-        WHERE import_batch_id = %s
-        """,
-        (import_batch_id,),
+    receivables = (
+        select(func.coalesce(func.sum(ArCollection.usd_amount), 0))
+        .where(ArCollection.import_batch_id == import_batch_id)
+        .scalar_subquery()
     )
 
-    return (
-        float(payable_row["usd_payables"])
-        - float(receivable_row["usd_receivables"])
-    )
+    try:
+        exposure = session.scalar(
+            select(payables - receivables)
+        )
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
+
+    return float(exposure or 0)
 
 
 def get_customer_delay_driver(
+    session: Session,
     import_batch_id: int,
-) -> dict[str, Any]:
-    return _get_single_row(
-        """
-        SELECT
-            invoice_number AS reference_number,
-            customer_name AS counterparty_name,
-            idr_value_mn AS amount_idr_mn,
-            original_week,
-            expected_week,
-            notes AS description
-        FROM cashflow.ar_collections
-        WHERE import_batch_id = %s
-          AND invoice_number = 'AR-012'
-        LIMIT 1
-        """,
-        (import_batch_id,),
+) -> ArCollection:
+    statement = (
+        select(ArCollection)
+        .where(
+            ArCollection.import_batch_id == import_batch_id,
+            ArCollection.invoice_number == "AR-012",
+        )
+        .limit(1)
     )
+
+    try:
+        driver = session.scalars(statement).first()
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
+
+    if driver is None:
+        raise CashFlowDataError(
+            "Required Cash Flow data was not found."
+        )
+
+    return driver
 
 
 def get_deferrable_payment_driver(
+    session: Session,
     import_batch_id: int,
-) -> dict[str, Any]:
-    return _get_single_row(
-        """
-        SELECT
-            bill_number AS reference_number,
-            vendor_name AS counterparty_name,
-            amount_idr_mn,
-            payment_week,
-            is_deferrable,
-            notes AS description
-        FROM cashflow.ap_payables
-        WHERE import_batch_id = %s
-          AND bill_number = 'AP-015'
-        LIMIT 1
-        """,
-        (import_batch_id,),
+) -> ApPayable:
+    statement = (
+        select(ApPayable)
+        .where(
+            ApPayable.import_batch_id == import_batch_id,
+            ApPayable.bill_number == "AP-015",
+        )
+        .limit(1)
     )
+
+    try:
+        driver = session.scalars(statement).first()
+    except SQLAlchemyError as error:
+        _raise_database_error(error)
+
+    if driver is None:
+        raise CashFlowDataError(
+            "Required Cash Flow data was not found."
+        )
+
+    return driver

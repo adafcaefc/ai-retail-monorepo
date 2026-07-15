@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from sqlalchemy.orm import Session
+
 from src.cashflow import repository
 from src.cashflow.models import (
     CashFlowBaselineResponse,
@@ -8,78 +10,93 @@ from src.cashflow.models import (
     CashFlowSimulationResponse,
     WeeklyCashPosition,
 )
+from src.db.db import session_scope
 
 
-def get_baseline() -> CashFlowBaselineResponse:
-    import_batch = repository.get_latest_import_batch()
-    import_batch_id = int(import_batch["id"])
+def get_baseline(
+    session: Session | None = None,
+) -> CashFlowBaselineResponse:
+    if session is None:
+        with session_scope() as managed_session:
+            return get_baseline(managed_session)
+
+    import_batch = repository.get_latest_import_batch(
+        session
+    )
+    import_batch_id = int(import_batch.id)
 
     weekly_rows = repository.get_weekly_positions(
-        import_batch_id
+        session,
+        import_batch_id,
     )
 
     weekly_positions = [
         WeeklyCashPosition(
-            week_number=int(row["week_number"]),
+            week_number=int(row.week_number),
             opening_cash_idr_mn=float(
-                row["opening_cash_idr_mn"]
+                row.opening_cash_idr_mn
             ),
             closing_cash_idr_mn=float(
-                row["closing_cash_idr_mn"]
+                row.closing_cash_idr_mn
             ),
             minimum_buffer_idr_mn=float(
-                row["minimum_buffer_idr_mn"]
+                row.minimum_buffer_idr_mn
             ),
             headroom_idr_mn=float(
-                row["headroom_idr_mn"]
+                row.headroom_idr_mn
             ),
-            status=str(row["status"]),
+            status=str(row.status),
         )
         for row in weekly_rows
     ]
 
     minimum_buffer = repository.get_numeric_assumption(
+        session,
         import_batch_id,
         "Minimum cash buffer (IDR mn)",
     )
 
     spot_rate = repository.get_numeric_assumption(
+        session,
         import_batch_id,
         "Spot USD/IDR",
     )
 
     forward_rate = repository.get_numeric_assumption(
+        session,
         import_batch_id,
         "13-week forward USD/IDR",
     )
 
     adverse_rate = repository.get_numeric_assumption(
+        session,
         import_batch_id,
         "Adverse rate  = spot x (1+adverse)",
     )
 
     net_usd_exposure = repository.get_net_usd_exposure(
-        import_batch_id
+        session,
+        import_batch_id,
     )
 
     customer_driver_row = (
         repository.get_customer_delay_driver(
-            import_batch_id
+            session,
+            import_batch_id,
         )
     )
 
     payment_driver_row = (
         repository.get_deferrable_payment_driver(
-            import_batch_id
+            session,
+            import_batch_id,
         )
     )
 
     return CashFlowBaselineResponse(
         import_batch_id=import_batch_id,
-        workbook_name=str(import_batch["workbook_name"]),
-        workbook_version=import_batch.get(
-            "workbook_version"
-        ),
+        workbook_name=str(import_batch.workbook_name),
+        workbook_version=import_batch.workbook_version,
         weekly_positions=weekly_positions,
         minimum_buffer_idr_mn=minimum_buffer,
         net_usd_exposure=net_usd_exposure,
@@ -89,43 +106,39 @@ def get_baseline() -> CashFlowBaselineResponse:
         adverse_rate_idr_per_usd=adverse_rate,
         customer_delay_driver=CashFlowDriver(
             reference_number=str(
-                customer_driver_row["reference_number"]
+                customer_driver_row.invoice_number
             ),
             counterparty_name=str(
-                customer_driver_row["counterparty_name"]
+                customer_driver_row.customer_name
             ),
             amount_idr_mn=float(
-                customer_driver_row["amount_idr_mn"]
+                customer_driver_row.idr_value_mn
             ),
             original_week=int(
-                customer_driver_row["original_week"]
+                customer_driver_row.original_week
             ),
             expected_week=int(
-                customer_driver_row["expected_week"]
+                customer_driver_row.expected_week
             ),
-            description=customer_driver_row.get(
-                "description"
-            ),
+            description=customer_driver_row.notes,
         ),
         deferrable_payment_driver=CashFlowDriver(
             reference_number=str(
-                payment_driver_row["reference_number"]
+                payment_driver_row.bill_number
             ),
             counterparty_name=str(
-                payment_driver_row["counterparty_name"]
+                payment_driver_row.vendor_name
             ),
             amount_idr_mn=float(
-                payment_driver_row["amount_idr_mn"]
+                payment_driver_row.amount_idr_mn
             ),
             payment_week=int(
-                payment_driver_row["payment_week"]
+                payment_driver_row.payment_week
             ),
             is_deferrable=bool(
-                payment_driver_row["is_deferrable"]
+                payment_driver_row.is_deferrable
             ),
-            description=payment_driver_row.get(
-                "description"
-            ),
+            description=payment_driver_row.notes,
         ),
     )
 
@@ -211,8 +224,13 @@ def build_recommendation(
 
 def simulate(
     request: CashFlowSimulationRequest,
+    session: Session | None = None,
 ) -> CashFlowSimulationResponse:
-    baseline = get_baseline()
+    if session is None:
+        with session_scope() as managed_session:
+            return simulate(request, managed_session)
+
+    baseline = get_baseline(session)
 
     week5 = get_week_position(baseline, 5)
     week6 = get_week_position(baseline, 6)
