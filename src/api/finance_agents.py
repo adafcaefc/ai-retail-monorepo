@@ -28,14 +28,13 @@ class TeamsContext(BaseModel):
 
 
 class RenderAgentRequest(BaseModel):
-    agent_name: str = Field(
-        ...,
-        examples=["collections_agent"]
-    )
+    agent_name: str
 
     context: TeamsContext | None = None
 
-    lines: list[MessageLine]
+    lines: list[MessageLine] | None = None
+
+    messages: list[dict[str, Any]] | None = None
 
 
 class RenderAgentResponse(BaseModel):
@@ -56,12 +55,39 @@ async def render_finance_agent(
     request: RenderAgentRequest,
 ) -> RenderAgentResponse:
 
-    messages_input = {
-        "lines": [
-            line.model_dump()
-            for line in request.lines
-        ]
-    }
+    if request.lines:
+        messages_input = {
+            "lines": [
+                line.model_dump()
+                for line in request.lines
+            ]
+        }
+
+    elif request.messages:
+        messages_input = {
+            "lines": [
+                {
+                    "sender": (
+                        "assistant"
+                        if msg.get("from", {})
+                            .get("application")
+                        else "user"
+                    ),
+                    "text": (
+                        msg.get("body", {})
+                        .get("content", "")
+                    ),
+                }
+                for msg in request.messages
+            ]
+        }
+
+    else:
+        return RenderAgentResponse(
+            success=False,
+            sourceAgent=request.agent_name,
+            error="No messages received.",
+        )
 
     result = await render_agent_response(
         agent_name=request.agent_name,
