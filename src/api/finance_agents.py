@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hmac
+import json
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -78,6 +79,65 @@ class RenderAgentResponse(BaseModel):
     context: TeamsContext | None = None
 
     adaptiveCard: dict[str, Any] | None = None
+
+
+_SIMULATION_ENVELOPE_KEYS = (
+    "body",
+    "data",
+    "response",
+    "adaptiveCardResponse",
+    "submitAction",
+)
+
+
+def _json_object(value: Any) -> dict[str, Any] | None:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _extract_simulation_payload(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    pending: list[tuple[dict[str, Any], dict[str, Any]]] = [
+        (payload, {})
+    ]
+    visited: set[int] = set()
+
+    while pending:
+        candidate, inherited = pending.pop(0)
+        identity = id(candidate)
+        if identity in visited:
+            continue
+        visited.add(identity)
+
+        scalar_values = {
+            key: value
+            for key, value in candidate.items()
+            if key not in _SIMULATION_ENVELOPE_KEYS
+            and isinstance(value, (str, int, float, bool))
+        }
+        merged = {**inherited, **scalar_values}
+        if candidate.get("action") and candidate.get("source_agent"):
+            return {**merged, **candidate}
+
+        for key in _SIMULATION_ENVELOPE_KEYS:
+            nested = _json_object(candidate.get(key))
+            if nested is not None:
+                pending.append((nested, merged))
+
+    raise ValueError(
+        "Simulation payload does not contain action and source_agent. "
+        "Send the Adaptive Card response data or the complete Power Automate "
+        "wait-for-response output."
+    )
 
 
 @router.post(
@@ -165,15 +225,20 @@ def recalculate_finance_simulation(
     payload: dict[str, Any],
     session: Session = Depends(get_db_session),
 ) -> RenderAgentResponse:
-    source_agent = str(payload.get("source_agent") or "")
-    action = str(payload.get("action") or "")
+    source_agent = "unknown"
 
     try:
+        simulation_payload = _extract_simulation_payload(payload)
+        source_agent = str(simulation_payload["source_agent"])
+        action = str(simulation_payload["action"])
+
         if source_agent == "Cashflow" and action in {
             "simulate_cashflow",
             "recalculate_simulation",
         }:
-            request = CashFlowSimulationRequest.model_validate(payload)
+            request = CashFlowSimulationRequest.model_validate(
+                simulation_payload
+            )
             baseline = cashflow_service.get_baseline(session)
             result = cashflow_service.simulate(request, session)
             adaptive_card = cashflow_cards.build_cashflow_simulation_card(
@@ -192,9 +257,16 @@ def recalculate_finance_simulation(
             "recalculate_simulation",
         }:
             result = calculate_collection_scenario(
-                customer_name=str(payload.get("customer_name") or "Customer A"),
-                cash_to_collect_idr_mn=float(payload["cash_to_collect_idr_mn"]),
-                discount_pct=float(payload.get("discount_pct") or 0),
+                customer_name=str(
+                    simulation_payload.get("customer_name")
+                    or "Customer A"
+                ),
+                cash_to_collect_idr_mn=float(
+                    simulation_payload["cash_to_collect_idr_mn"]
+                ),
+                discount_pct=float(
+                    simulation_payload.get("discount_pct") or 0
+                ),
             )
             return RenderAgentResponse(
                 success=True,
@@ -208,6 +280,6 @@ def recalculate_finance_simulation(
     except (KeyError, TypeError, ValueError) as error:
         return RenderAgentResponse(
             success=False,
-            sourceAgent=source_agent or "unknown",
+            sourceAgent=source_agent,
             error=str(error),
         )

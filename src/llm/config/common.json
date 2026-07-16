@@ -75,7 +75,7 @@
             "-recommendation: a prioritized list of actions that could be taken next. Each recommendation must include: 1. the action, 2. the expected impact, 3. the confidence level, 4. any key assumptions. Use only when the user asks what should be done or when a decision is required.",
             "-simulation: an interactive scenario modelling output used to explore how outcomes change when one or more inputs vary. The simulation should expose controllable parameters that can be adjusted by the user. Use when the user asks to simulate, model, optimise, test assumptions, perform what-if analysis, sensitivity analysis, forecasting, or scenario planning.",
             "-next_route: : a stakeholder or agent routing plan showing who should be consulted, informed, or engaged next. This should only be used when the current analysis is complete and another team, agent, approver, or business function must take action.",
-            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of three components."
+            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of four components. Use four only when the request genuinely needs narrative, exact detail, visual comparison, and interactive inputs together."
         ],
         "FINANCE_AGENT_OUTPUT_SCHEMAS": [
             "OUTPUT_SCHEMA: The final response must conform to FinanceAgentOutput.",
@@ -124,7 +124,7 @@
             "Reason should explain why that destination should be consulted next.",
 
             "MULTI_COMPONENT_RULE: A response may contain multiple Components.",
-            "Examples include text + chart, text + table, chart + recommendation, simulation + table + chart, and text + recommendation + next_route.",
+            "Examples include text + chart, text + table, chart + recommendation, simulation + table + chart, text + table + chart + simulation, and text + recommendation + next_route.",
             "Components should be ordered in the sequence they should be shown to the user.",
             "The first component should usually answer the user's primary question."
         ],

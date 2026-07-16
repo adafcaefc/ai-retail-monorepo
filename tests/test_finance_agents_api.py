@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -71,6 +72,48 @@ class FinanceAgentApiTest(unittest.TestCase):
             cash_to_collect_idr_mn=5000.0,
             discount_pct=1.0,
         )
+
+    @patch(
+        "src.api.finance_agents.calculate_collection_scenario",
+        return_value=COLLECTION_RESULT,
+    )
+    def test_collection_submit_accepts_power_automate_envelopes(
+        self,
+        calculate,
+    ) -> None:
+        submitted_data = {
+            "action": "calculate_collection_scenario",
+            "source_agent": "Collections",
+            "customer_name": "Customer A",
+            "cash_to_collect_idr_mn": "5000",
+            "discount_pct": "1",
+        }
+        payloads = (
+            {"data": submitted_data, "messageId": "teams-message"},
+            {
+                "body": {
+                    "data": submitted_data,
+                    "responder": {"displayName": "CFO"},
+                },
+                "statusCode": 200,
+            },
+            {
+                "body": json.dumps(
+                    {"data": submitted_data},
+                ),
+            },
+        )
+
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                response = self.client.post(
+                    "/api/finance-agents/simulations/recalculate",
+                    json=payload,
+                )
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.json()["success"])
+
+        self.assertEqual(calculate.call_count, len(payloads))
 
     @patch("src.api.finance_agents.cashflow_cards.build_cashflow_simulation_card")
     @patch("src.api.finance_agents.cashflow_service.simulate")
