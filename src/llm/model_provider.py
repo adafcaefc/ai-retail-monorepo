@@ -59,12 +59,16 @@ print("DEPLOYMENT =", deployment_name, flush=True)
 print("ENDPOINT =", azure_endpoint, flush=True)
 print("API VERSION =", api_version, flush=True)
 
-model = OpenAIChatModel(
-    model_name=deployment_name,
+
+from pydantic_ai.models.openai import OpenAIResponsesModel
+
+model = OpenAIResponsesModel(
+    deployment_name,
     provider=OpenAIProvider(
         openai_client=client,
     ),
 )
+
 
 print("MODEL =", model, flush=True)
 print("MODEL VARS =", vars(model), flush=True)
