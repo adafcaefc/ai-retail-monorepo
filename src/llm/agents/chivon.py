@@ -5,9 +5,9 @@ import re
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, ForwardRef, Literal, Optional
+from typing import Annotated, Any, ForwardRef, Literal, Optional
 
-from pydantic import BaseModel, Field, create_model
+from pydantic import AfterValidator, BaseModel, Field, create_model
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
@@ -40,6 +40,16 @@ def _field_default(value: Any) -> Any:
 class _SpecError(ValueError):
     pass
 
+
+def _validate_json_object_string(value: str) -> str:
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as error:
+        raise ValueError("value must contain valid JSON") from error
+    if not isinstance(parsed, dict):
+        raise ValueError("value must contain a JSON object")
+    return value
+
 def _resolve_type(
     spec: dict[str, Any],
     model_types: dict[str, type[BaseModel]],
@@ -47,6 +57,11 @@ def _resolve_type(
     t = spec.get("type")
     if t == "str":
         py = str
+    elif t == "json_object_str":
+        py = Annotated[
+            str,
+            AfterValidator(_validate_json_object_string),
+        ]
     elif t == "bool":
         py = bool
     elif t == "int":
@@ -78,7 +93,10 @@ def _resolve_type(
         py = ForwardRef(ref)
     # 'any' is no longer supported. Only JSON-compatible types are allowed.
     else:
-        raise _SpecError(f"unsupported field type: {t!r}. Only str, bool, int, float, literal, list, ref, json allowed.")
+        raise _SpecError(
+            f"unsupported field type: {t!r}. Only str, json_object_str, "
+            "bool, int, float, literal, list, ref, json allowed."
+        )
 
     if spec.get("optional", False):
         return Optional[py]

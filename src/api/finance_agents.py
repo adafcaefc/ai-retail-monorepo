@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hmac
 import json
+from html.parser import HTMLParser
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -81,6 +82,170 @@ class RenderAgentResponse(BaseModel):
     adaptiveCard: dict[str, Any] | None = None
 
 
+class _TeamsHTMLTextExtractor(HTMLParser):
+    _BREAK_TAGS = {
+        "br",
+        "div",
+        "li",
+        "ol",
+        "p",
+        "table",
+        "tr",
+        "ul",
+    }
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        if tag.lower() in self._BREAK_TAGS:
+            self.parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag.lower() in self._BREAK_TAGS:
+            self.parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        self.parts.append(data)
+
+    def text(self) -> str:
+        return " ".join("".join(self.parts).split())
+
+
+def _plain_teams_body(body: Any) -> str:
+    if not isinstance(body, dict):
+        return ""
+    content = body.get("content")
+    if not isinstance(content, str):
+        return ""
+    if str(body.get("contentType") or "").lower() != "html":
+        return content.strip()
+
+    parser = _TeamsHTMLTextExtractor()
+    parser.feed(content)
+    parser.close()
+    return parser.text()
+
+
+def _adaptive_card_text(value: Any) -> list[str]:
+    texts: list[str] = []
+    if isinstance(value, dict):
+        if value.get("type") == "TextBlock" and isinstance(
+            value.get("text"),
+            str,
+        ):
+            texts.append(value["text"])
+        for child in value.values():
+            texts.extend(_adaptive_card_text(child))
+    elif isinstance(value, list):
+        for child in value:
+            texts.extend(_adaptive_card_text(child))
+    return texts
+
+
+def _teams_attachment_text(attachments: Any) -> str:
+    if not isinstance(attachments, list):
+        return ""
+    texts: list[str] = []
+    for attachment in attachments:
+        if not isinstance(attachment, dict) or attachment.get(
+            "contentType"
+        ) != "application/vnd.microsoft.card.adaptive":
+            continue
+        content = attachment.get("content")
+        if isinstance(content, str):
+            try:
+                content = json.loads(content)
+            except json.JSONDecodeError:
+                continue
+        texts.extend(_adaptive_card_text(content))
+    return " ".join(" ".join(texts).split())
+
+
+def _teams_message_text(message: dict[str, Any]) -> str:
+    body_text = _plain_teams_body(message.get("body"))
+    if body_text:
+        return body_text
+    return _teams_attachment_text(message.get("attachments"))
+
+
+def _select_teams_thread(
+    messages: list[dict[str, Any]],
+    context: TeamsContext | None,
+) -> list[dict[str, Any]]:
+    message_rows = [
+        message
+        for message in messages
+        if isinstance(message, dict)
+        and message.get("messageType") == "message"
+    ]
+
+    if context is not None and context.messageId:
+        current_message = next(
+            (
+                message
+                for message in message_rows
+                if str(message.get("id") or "") == context.messageId
+            ),
+            None,
+        )
+        current_reply_to = (
+            str(current_message.get("replyToId") or "")
+            if current_message is not None
+            else ""
+        )
+        root_message_id = (
+            context.parentMessageId
+            or context.replyToId
+            or current_reply_to
+            or context.messageId
+        )
+        thread_rows = [
+            message
+            for message in message_rows
+            if str(message.get("id") or "")
+            in {context.messageId, root_message_id}
+            or str(message.get("replyToId") or "") == root_message_id
+        ]
+        if thread_rows:
+            message_rows = thread_rows
+
+    return sorted(
+        message_rows,
+        key=lambda message: (
+            str(message.get("createdDateTime") or ""),
+            str(message.get("id") or ""),
+        ),
+    )
+
+
+def _build_teams_lines(
+    messages: list[dict[str, Any]],
+    context: TeamsContext | None,
+) -> list[dict[str, str]]:
+    lines: list[dict[str, str]] = []
+    for message in _select_teams_thread(messages, context):
+        text = _teams_message_text(message)
+        if not text:
+            continue
+        lines.append(
+            {
+                "sender": (
+                    "chatbot"
+                    if (message.get("from") or {}).get("application")
+                    else "user"
+                ),
+                "text": text,
+            }
+        )
+    return lines
+
+
 _SIMULATION_ENVELOPE_KEYS = (
     "body",
     "data",
@@ -158,21 +323,10 @@ async def render_finance_agent(
 
     elif request.messages:
         messages_input = {
-            "lines": [
-                {
-                    "sender": (
-                        "chatbot"
-                        if (msg.get("from") or {}).get("application")
-                        else "user"
-                    ),
-                    "text": (
-                        msg.get("body", {})
-                        .get("content", "")
-                    ),
-                }
-                for msg in request.messages
-                if msg.get("messageType") == "message"
-            ]
+            "lines": _build_teams_lines(
+                request.messages,
+                request.context,
+            )
         }
     else:
         return RenderAgentResponse(

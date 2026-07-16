@@ -43,7 +43,7 @@
                     "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to teams adaptive card."
                 },
                 "content": {
-                "type": "str",
+                "type": "json_object_str",
                     "description": "The json formatted string that indicates what the agent wishes to output for this componenent. Fields depend on format."
                 }
             }

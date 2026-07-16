@@ -3,11 +3,15 @@ from __future__ import annotations
 import json
 import unittest
 
+from pydantic import ValidationError
+
+from src.common.constants import AppPaths
 from src.llm.adaptive_cards import (
     AdaptiveCardError,
     render_finance_agent_output,
     validate_adaptive_card,
 )
+from src.llm.agents.chivon import Chivon
 
 
 def component(component_format: str, content: dict) -> dict[str, str]:
@@ -144,6 +148,20 @@ class AdaptiveCardRendererTest(unittest.TestCase):
                         }
                     ],
                 }
+            )
+
+    def test_component_model_rejects_malformed_json_content(self) -> None:
+        component_model = Chivon.build_types_from_file(
+            AppPaths.AGENTS_CONFIG_FILES
+        )["Component"]
+
+        with self.assertRaises(ValidationError):
+            component_model(
+                format="text",
+                content=(
+                    '{"title":"Collections",'
+                    '"content":"unescaped\nnewline"}'
+                ),
             )
 
 
