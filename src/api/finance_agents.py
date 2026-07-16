@@ -69,8 +69,7 @@ async def render_finance_agent(
                 {
                     "sender": (
                         "assistant"
-                        if msg.get("from", {})
-                            .get("application")
+                        if (msg.get("from") or {}).get("application")
                         else "user"
                     ),
                     "text": (
@@ -79,9 +78,9 @@ async def render_finance_agent(
                     ),
                 }
                 for msg in request.messages
+                if msg.get("messageType") == "message"
             ]
         }
-
     else:
         return RenderAgentResponse(
             success=False,
