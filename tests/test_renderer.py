@@ -129,6 +129,8 @@ class AdaptiveCardRendererTest(unittest.TestCase):
 
         action = card["body"][1]["items"][-1]["actions"][0]
         self.assertEqual(action["type"], "Action.Submit")
+        self.assertEqual(action["id"], "calculate_collection_scenario")
+        self.assertEqual(action["associatedInputs"], "auto")
         self.assertEqual(action["data"]["action"], "calculate_collection_scenario")
         self.assertEqual(action["data"]["customer_name"], "Customer A")
         self.assertEqual(action["data"]["expected_outputs"], ["Discount"])

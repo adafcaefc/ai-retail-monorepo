@@ -473,7 +473,12 @@ def _render_simulation(
             "actions": [
                 {
                     "type": "Action.Submit",
+                    "id": str(
+                        content.get("action")
+                        or "recalculate_simulation"
+                    ),
                     "title": "Recalculate",
+                    "associatedInputs": "auto",
                     "data": action_data,
                 }
             ],
