@@ -13,7 +13,7 @@ from src.common.env import config
 azure_endpoint = config.AZURE_OPENAI_ENDPOINT or config.AZURE_OPENAI_API_BASE
 api_version = config.AZURE_OPENAI_API_VERSION
 api_key = config.AZURE_OPENAI_API_KEY
-deployment_name = config.AZURE_OPENAI_API_DEPLOYMENT
+deployment_name = config.AZURE_OPENAI_DEPLOYMENT
 
 
 def _hlog(msg: str) -> None:
