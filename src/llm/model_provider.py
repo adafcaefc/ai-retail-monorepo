@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import httpx
-from openai import AsyncAzureOpenAI
+from openai import AsyncOpenAI
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -40,6 +40,26 @@ async def _on_response(response: httpx.Response) -> None:
     )
 
 
+if not azure_endpoint:
+    raise RuntimeError("Missing AZURE_OPENAI_ENDPOINT or AZURE_OPENAI_API_BASE.")
+
+if not api_version:
+    raise RuntimeError("Missing AZURE_OPENAI_API_VERSION.")
+
+if not api_key:
+    raise RuntimeError("Missing AZURE_OPENAI_API_KEY.")
+
+if not deployment_name:
+    raise RuntimeError("Missing AZURE_OPENAI_DEPLOYMENT.")
+
+
+normalized_endpoint = azure_endpoint.rstrip("/")
+
+azure_chat_base_url = (
+    f"{normalized_endpoint}/openai/deployments/{deployment_name}"
+)
+
+
 _http_client = httpx.AsyncClient(
     event_hooks={
         "request": [_on_request],
@@ -47,23 +67,28 @@ _http_client = httpx.AsyncClient(
     }
 )
 
-client = AsyncAzureOpenAI(
-    azure_endpoint=azure_endpoint,
-    azure_deployment=deployment_name,
-    api_version=api_version,
-    api_key=api_key,
+
+client = AsyncOpenAI(
+    api_key="unused",
+    base_url=azure_chat_base_url,
+    default_headers={
+        "api-key": api_key,
+    },
+    default_query={
+        "api-version": api_version,
+    },
     http_client=_http_client,
 )
 
-print("DEPLOYMENT =", deployment_name, flush=True)
-print("ENDPOINT =", azure_endpoint, flush=True)
-print("API VERSION =", api_version, flush=True)
+
+print("AZURE ENDPOINT =", normalized_endpoint, flush=True)
+print("AZURE DEPLOYMENT =", deployment_name, flush=True)
+print("AZURE API VERSION =", api_version, flush=True)
+print("AZURE CHAT BASE URL =", azure_chat_base_url, flush=True)
 
 
-from pydantic_ai.models.openai import OpenAIResponsesModel
-
-model = OpenAIResponsesModel(
-    deployment_name,
+model = OpenAIChatModel(
+    model_name=deployment_name,
     provider=OpenAIProvider(
         openai_client=client,
     ),
