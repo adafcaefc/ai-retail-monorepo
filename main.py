@@ -39,8 +39,6 @@ app.include_router(cashflow_router)
 
 from src.llm.chivon_impl import load_chivon
 
-app = FastAPI()
-
 load_chivon()
 
 

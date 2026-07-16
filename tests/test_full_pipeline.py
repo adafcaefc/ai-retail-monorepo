@@ -100,7 +100,6 @@ async def main():
         messages_input={
             "lines": message_history
         },
-        send_to_teams=True,
     )
 
     print(result)

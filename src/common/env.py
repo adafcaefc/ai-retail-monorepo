@@ -16,6 +16,7 @@ class AppConfig:
     AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL","")
+    TEAMS_WEBHOOK_SECRET: str = os.getenv("TEAMS_WEBHOOK_SECRET", "")
 
 
 config = AppConfig()

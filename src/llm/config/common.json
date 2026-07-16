@@ -39,7 +39,7 @@
             "fields": {
                 "format": {
                     "type": "literal",
-                    "choices": ["text","table","chart","reccomendation","simulation","next_route"],
+                    "choices": ["text","table","chart","recommendation","reccomendation","simulation","next_route"],
                     "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to teams adaptive card."
                 },
                 "content": {
@@ -95,9 +95,12 @@
             "TABLE_CONTENT_SCHEMA.rows contains the table data.",
             "Each row must contain values matching the column order.",
 
-            "CHART_CONTENT_SCHEMA: { title: string, chart_type: string, data: object[] }",
+            "CHART_CONTENT_SCHEMA: { title: string, chart_type: string, x_axis_title?: string, y_axis_title?: string, data: object[] }",
             "CHART_CONTENT_SCHEMA.title is a short heading.",
-            "CHART_CONTENT_SCHEMA.chart_type may be line, bar, waterfall, pie, area, scatter, heatmap, or another suitable chart type.",
+            "CHART_CONTENT_SCHEMA.chart_type should be line, bar, column, waterfall, pie, or donut. Unsupported chart types are rendered using the closest supported visual.",
+            "For a single-series bar, column, waterfall, pie, or donut chart, data must contain { label: string, value: number } objects.",
+            "For a line chart, data may use single-series { label: string, value: number } objects or multiple { legend: string, values: { label: string, value: number }[] } series objects.",
+            "Use multiple line series when a threshold or baseline must be compared with actual or scenario values.",
             "CHART_CONTENT_SCHEMA.data contains only the business data required to render the chart.",
             "Do not describe chart colours, sizes, styling, or layouts.",
 
@@ -106,11 +109,13 @@
             "Recommendations must be ordered from most recommended to least recommended.",
             "Every recommendation must contain an action, expected impact, assumptions, and risks.",
 
-            "SIMULATION_CONTENT_SCHEMA: { title: string, inputs: SimulationInput[], outputs: SimulationOutput[] }",
+            "SIMULATION_CONTENT_SCHEMA: { title: string, simulation_id: string, action: string, calculation_instructions: string, submit_data?: object, inputs: SimulationInput[], outputs: SimulationOutput[] }",
             "SimulationInput: { id: string, label: string, min: number, max: number, step: number, default: number, unit: string }",
-            "SimulationOutput: { label: string, unit: string }",
+            "SimulationOutput: { label: string, unit: string, value?: number }",
             "Inputs describe user-adjustable business parameters.",
             "Outputs describe the business metrics that should change when the simulation is recalculated.",
+            "action identifies the deterministic backend calculation to invoke when the card is submitted.",
+            "submit_data contains fixed scalar context such as a selected customer name; never put credentials or unverified financial values in submit_data.",
             "Do not perform rendering or define visual controls beyond describing the input parameters.",
 
             "NEXT_ROUTE_CONTENT_SCHEMA: { title: string, routes: Route[] }",

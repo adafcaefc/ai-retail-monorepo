@@ -5,8 +5,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from src.llm.chivon_impl import load_chivon
 from src.llm.agents.chivon import chivon
+from src.llm.adaptive_cards import (
+    render_finance_agent_output,
+    validate_adaptive_card,
+)
 
 
 
@@ -105,31 +108,7 @@ def _parse_card_output(
 def _validate_adaptive_card(
     adaptive_card: dict[str, Any],
 ) -> None:
-
-    if adaptive_card.get("type") != "AdaptiveCard":
-        raise ValueError(
-            "adaptive_card['type'] must be 'AdaptiveCard'."
-        )
-
-    if "body" not in adaptive_card:
-        raise ValueError(
-            "Adaptive Card must contain a body."
-        )
-
-    if not isinstance(adaptive_card["body"], list):
-        raise ValueError(
-            "Adaptive Card body must be a list."
-        )
-
-    adaptive_card.setdefault(
-        "$schema",
-        "http://adaptivecards.io/schemas/adaptive-card.json",
-    )
-
-    adaptive_card.setdefault(
-        "version",
-        "1.5",
-    )
+    validate_adaptive_card(adaptive_card)
 
 
 async def render_agent_response(
@@ -143,7 +122,7 @@ async def render_agent_response(
                 ↓
         FinanceAgentOutput
                 ↓
-         Renderer Agent
+        Deterministic Renderer
                 ↓
           Adaptive Card
                 ↓
@@ -154,10 +133,6 @@ async def render_agent_response(
 
     FinanceAgentOutput = chivon.type(
         "FinanceAgentOutput"
-    )
-
-    RendererOutput = chivon.type(
-        "RendererOutput"
     )
 
     # --------------------------------------------------
@@ -206,38 +181,32 @@ async def render_agent_response(
 
     # --------------------------------------------------
     # Step 2
-    # Render adaptive card
+    # Render and validate adaptive card deterministically
     # --------------------------------------------------
 
     try:
-        renderer_result = _output(
-            await chivon.run_async(
-                "renderer_agent",
-                agent_result,
-            )
+        adaptive_card = render_finance_agent_output(
+            agent_result
         )
-
+        _validate_adaptive_card(
+            adaptive_card
+        )
+        card_output = json.dumps(
+            adaptive_card,
+            ensure_ascii=False,
+        )
     except Exception as exc:
-        _log(f"renderer failed: {exc}")
-
-        return RenderedResult(
-            card_output="",
-            source_agent=agent_name,
-            success=False,
-            error=f"renderer failed: {exc}",
+        _log(
+            f"adaptive card rendering failed: {exc}"
         )
 
-    if not isinstance(
-        renderer_result,
-        RendererOutput,
-    ):
         return RenderedResult(
             card_output="",
             source_agent=agent_name,
             success=False,
             error=(
-                "renderer returned invalid output: "
-                f"{type(renderer_result)}"
+                "adaptive card rendering failed: "
+                f"{exc}"
             ),
         )
 
@@ -245,40 +214,11 @@ async def render_agent_response(
 
     # --------------------------------------------------
     # Step 3
-    # Parse card
-    # --------------------------------------------------
-
-    try:
-        adaptive_card = _parse_card_output(
-            renderer_result.card_output
-        )
-
-        _validate_adaptive_card(
-            adaptive_card
-        )
-
-    except Exception as exc:
-        _log(
-            f"adaptive card validation failed: {exc}"
-        )
-
-        return RenderedResult(
-            card_output=renderer_result.card_output,
-            source_agent=agent_name,
-            success=False,
-            error=(
-                "adaptive card validation failed: "
-                f"{exc}"
-            ),
-        )
-
-    # --------------------------------------------------
-    # Step 4
     # Return card
     # --------------------------------------------------
 
     return RenderedResult(
-        card_output=renderer_result.card_output,
+        card_output=card_output,
         source_agent=agent_name,
         success=True,
         adaptive_card=adaptive_card,

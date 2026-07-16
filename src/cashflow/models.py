@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
@@ -114,3 +116,9 @@ class CashFlowSimulationResponse(BaseModel):
 
     assumptions: list[str]
     warnings: list[str]
+
+
+class CashFlowAdaptiveCardResponse(BaseModel):
+    success: bool = True
+    adaptiveCard: dict[str, Any]
+    data: CashFlowBaselineResponse | CashFlowSimulationResponse

@@ -188,6 +188,7 @@ class Chivon:
         self._loaded = False
         self._agents: dict[str, ChivonAgent] = {}
         self._types: dict[str, type[BaseModel]] = {}
+        self._local_tools: dict[str, Any] = {}
         self._mcp_servers: dict[str, Any] = {}
         self._mcp_stack: AsyncExitStack | None = None
 
@@ -213,24 +214,48 @@ class Chivon:
             raise RuntimeError("Chivon is already loaded. Create a new instance to load a different config.")
 
     # --------- Loaders accept a single path/config OR a list of them ---------
-    def load_from_file(self, path, model, default_model=None, mcp_servers=None):
+    def load_from_file(
+        self,
+        path,
+        model,
+        default_model=None,
+        mcp_servers=None,
+        local_tools=None,
+    ):
         self._ensure_not_loaded()
         raw = self._read_and_merge(path)
         self._mcp_servers = mcp_servers or {}
+        self._local_tools = local_tools or {}
         self._load_from_raw(raw, model, default_model)  # <- now mcp_servers is ready
 
-    def load_from_string(self, raw_json, model, default_model=None, mcp_servers=None):
+    def load_from_string(
+        self,
+        raw_json,
+        model,
+        default_model=None,
+        mcp_servers=None,
+        local_tools=None,
+    ):
         self._ensure_not_loaded()
         strings = raw_json if isinstance(raw_json, (list, tuple)) else [raw_json]
         raw = _merge_raw_configs([json.loads(s) for s in strings])
         self._mcp_servers = mcp_servers or {}
+        self._local_tools = local_tools or {}
         self._load_from_raw(raw, model, default_model)
 
-    def load_from_json(self, raw, model, default_model=None, mcp_servers=None):
+    def load_from_json(
+        self,
+        raw,
+        model,
+        default_model=None,
+        mcp_servers=None,
+        local_tools=None,
+    ):
         self._ensure_not_loaded()
         raws = list(raw) if isinstance(raw, (list, tuple)) else [raw]
         merged = _merge_raw_configs(raws)
         self._mcp_servers = mcp_servers or {}
+        self._local_tools = local_tools or {}
         self._load_from_raw(merged, model, default_model)
 
     def _load_from_raw(self, raw: Any, model, default_model=None):
@@ -307,12 +332,25 @@ class Chivon:
                     toolsets = servers
             else:
                 toolsets = []
+
+            local_tool_names = spec.get("tools", [])
+            if not isinstance(local_tool_names, list):
+                raise _SpecError(f"agent {agent_name} tools must be a list")
+            tools = []
+            for tool_name in local_tool_names:
+                if not isinstance(tool_name, str) or tool_name not in self._local_tools:
+                    raise _SpecError(
+                        f"agent {agent_name} references unknown local tool {tool_name!r}"
+                    )
+                tools.append(self._local_tools[tool_name])
+
             agent_obj = Agent(
                 model=model,
                 output_type=output_type,
                 system_prompt=rendered_prompt,
                 retries=retries,
                 model_settings=_model_settings,
+                tools=tools,
                 toolsets=toolsets,
             )
 

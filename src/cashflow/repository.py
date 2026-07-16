@@ -58,7 +58,6 @@ def get_weekly_positions(
         .where(
             WeeklyForecast.import_batch_id
             == import_batch_id,
-            WeeklyForecast.week_number.in_((5, 6, 7)),
         )
         .order_by(WeeklyForecast.week_number)
     )
@@ -68,7 +67,11 @@ def get_weekly_positions(
     except SQLAlchemyError as error:
         _raise_database_error(error)
 
-    if len(rows) != 3:
+    available_weeks = {
+        int(row.week_number)
+        for row in rows
+    }
+    if not {5, 6, 7}.issubset(available_weeks):
         raise CashFlowDataError(
             "Week 5, Week 6, and Week 7 data must be available."
         )

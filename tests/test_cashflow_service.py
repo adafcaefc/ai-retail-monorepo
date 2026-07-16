@@ -320,6 +320,42 @@ class CashFlowRouterTest(CashFlowDatabaseTestCase):
             "SAFE",
         )
 
+    def test_cashflow_adaptive_card_endpoints(self) -> None:
+        baseline_response = self.client.get(
+            "/api/cashflow/adaptive-card"
+        )
+        simulation_response = self.client.post(
+            "/api/cashflow/adaptive-card/simulate",
+            json={
+                "accelerate_collection_idr_mn": 2000,
+                "hedge_usd": 2000000,
+            },
+        )
+
+        self.assertEqual(baseline_response.status_code, 200)
+        baseline_card = baseline_response.json()["adaptiveCard"]
+        self.assertEqual(baseline_card["type"], "AdaptiveCard")
+        self.assertEqual(baseline_card["version"], "1.5")
+        self.assertEqual(baseline_card["body"][2]["type"], "Chart.Line")
+        self.assertEqual(
+            len(baseline_card["body"][2]["data"][0]["values"]),
+            3,
+        )
+        baseline_action = (
+            baseline_card["body"][3]["items"][-1]["actions"][0]
+        )
+        self.assertEqual(
+            baseline_action["data"]["action"],
+            "simulate_cashflow",
+        )
+
+        self.assertEqual(simulation_response.status_code, 200)
+        simulation_payload = simulation_response.json()
+        self.assertEqual(simulation_payload["data"]["status"], "SAFE")
+        simulation_chart = simulation_payload["adaptiveCard"]["body"][1]
+        self.assertEqual(simulation_chart["type"], "Chart.Line")
+        self.assertEqual(len(simulation_chart["data"]), 3)
+
 
 class CashFlowSimulationTest(CashFlowDatabaseTestCase):
     def test_base_case_remains_in_shortage(self) -> None:

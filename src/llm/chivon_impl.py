@@ -1,16 +1,12 @@
 from __future__ import annotations
 
-import os
-import sys
-
 from src.common.constants import AppPaths
 from src.common.env import config  # noqa: F401  (ensures .env is loaded into os.environ)
 from src.llm.agents.chivon import Chivon, chivon
+from src.llm.tools import LOCAL_FINANCE_TOOLS
 
 
 def load_chivon():
-    from pydantic_ai.mcp import MCPServerStdio
-
     from src.llm.model_provider import model
     """
     mcp_path = AppPaths.BACKEND_ROOT / "mcpx" / "main.py"
@@ -31,6 +27,7 @@ def load_chivon():
         model,
         types["TextInput"],
         #mcp_servers={"frasers_tools": tools_server},
+        local_tools=LOCAL_FINANCE_TOOLS,
     )
 
 
