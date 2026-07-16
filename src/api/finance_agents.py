@@ -67,8 +67,8 @@ async def render_finance_agent(
         messages_input = {
             "lines": [
                 {
-                    "sender": (
-                        "assistant"
+                    "user": (
+                        "chatbot"
                         if (msg.get("from") or {}).get("application")
                         else "user"
                     ),
