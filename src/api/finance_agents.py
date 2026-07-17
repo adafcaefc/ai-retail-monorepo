@@ -63,7 +63,7 @@ class TeamsContext(BaseModel):
 
 
 class RenderAgentRequest(BaseModel):
-    agent_name: str
+    agent_name: str | None = None
 
     context: TeamsContext | None = None
 
