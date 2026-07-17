@@ -305,6 +305,16 @@ def _extract_simulation_payload(
     )
 
 
+
+CHANNEL_AGENT_MAP = {
+    config.FINANCE_CHANNEL_ID: "finance_agent",
+    config.TREASURY_CHANNEL_ID: "cashflow_agent",
+    config.COLLECTIONS_CHANNEL_ID: "collection_agent",
+    config.LEAKAGE_CHANNEL_ID: "leakage_agent",
+}
+
+
+
 @router.post(
     "/render",
     response_model=RenderAgentResponse,
@@ -334,9 +344,21 @@ async def render_finance_agent(
             sourceAgent=request.agent_name,
             error="No messages received.",
         )
+        
+        
+    channel_id = request.context.channelId
+
+    agent_name = CHANNEL_AGENT_MAP.get(channel_id)
+
+    if not agent_name:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported channel {channel_id}",
+        )
+
 
     result = await render_agent_response(
-        agent_name=request.agent_name,
+        agent_name=agent_name,
         messages_input=messages_input,
     )
 
