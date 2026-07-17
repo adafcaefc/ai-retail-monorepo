@@ -18,6 +18,7 @@ from src.collections.cards import (
 )
 from src.common.env import config
 from src.db.db import get_db_session
+from src.llm.adaptive_cards import render_finance_agent_output
 from src.llm.pipeline import render_agent_response
 from src.llm.tools.finance_data import (
     calculate_collection_scenario,
@@ -405,9 +406,11 @@ def recalculate_finance_simulation(
 
     try:
         simulation_payload = _extract_simulation_payload(payload)
+
         source_agent = str(simulation_payload["source_agent"])
         action = str(simulation_payload["action"])
 
+        # Cashflow
         if source_agent == "Cashflow" and action in {
             "simulate_cashflow",
             "recalculate_simulation",
@@ -415,19 +418,29 @@ def recalculate_finance_simulation(
             request = CashFlowSimulationRequest.model_validate(
                 simulation_payload
             )
+
             baseline = cashflow_service.get_baseline(session)
-            result = cashflow_service.simulate(request, session)
-            adaptive_card = cashflow_cards.build_cashflow_simulation_card(
-                baseline,
+
+            result = cashflow_service.simulate(
                 request,
-                result,
+                session,
             )
+
+            adaptive_card = (
+                cashflow_cards.build_cashflow_simulation_card(
+                    baseline,
+                    request,
+                    result,
+                )
+            )
+
             return RenderAgentResponse(
                 success=True,
                 sourceAgent="cashflow_agent",
                 adaptiveCard=adaptive_card,
             )
 
+        # Collections Simulation
         if source_agent == "Collections" and action in {
             "calculate_collection_scenario",
             "recalculate_simulation",
@@ -444,15 +457,75 @@ def recalculate_finance_simulation(
                     simulation_payload.get("discount_pct") or 0
                 ),
             )
+
             return RenderAgentResponse(
                 success=True,
                 sourceAgent="collection_agent",
                 adaptiveCard=build_collection_scenario_card(result),
             )
 
+        # Collections Approve
+        if (
+            source_agent == "Collections"
+            and action == "approve_collection"
+        ):
+            return RenderAgentResponse(
+                success=True,
+                sourceAgent="collection_agent",
+                adaptiveCard=render_finance_agent_output(
+                    {
+                        "agent": "Collections",
+                        "components": [
+                            {
+                                "format": "text",
+                                "content": json.dumps(
+                                    {
+                                        "title": "Approved",
+                                        "content": (
+                                            "Recommendation approved. "
+                                            "Execution workflow will continue."
+                                        ),
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ),
+            )
+
+        # Collections Reject
+        if (
+            source_agent == "Collections"
+            and action == "reject_collection"
+        ):
+            return RenderAgentResponse(
+                success=True,
+                sourceAgent="collection_agent",
+                adaptiveCard=render_finance_agent_output(
+                    {
+                        "agent": "Collections",
+                        "components": [
+                            {
+                                "format": "text",
+                                "content": json.dumps(
+                                    {
+                                        "title": "Rejected",
+                                        "content": (
+                                            "Recommendation rejected."
+                                        ),
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ),
+            )
+
         raise ValueError(
-            f"Unsupported simulation action {action!r} for {source_agent!r}."
+            f"Unsupported simulation action {action!r} "
+            f"for {source_agent!r}."
         )
+
     except (KeyError, TypeError, ValueError) as error:
         return RenderAgentResponse(
             success=False,
