@@ -502,7 +502,43 @@ def _render_next_routes(content: dict[str, Any]) -> dict[str, Any]:
         items.extend([_text(destination, weight="Bolder"), _text(reason, subtle=True)])
     return {"type": "Container", "items": items}
 
+def _render_decision(
+    content: dict[str, Any],
+) -> dict[str, Any]:
+    title = str(content.get("title") or "Decision Required")
 
+    items = [
+        _text(title, weight="Bolder", size="Medium"),
+        _text(
+            "Review the recommendation before continuing."
+        ),
+        {
+            "type": "ActionSet",
+            "actions": [
+                {
+                    "type": "Action.Submit",
+                    "title": "Approve",
+                    "data": {
+                        "action": "approve_collection",
+                        "source_agent": "Collections",
+                    },
+                },
+                {
+                    "type": "Action.Submit",
+                    "title": "Reject",
+                    "data": {
+                        "action": "reject_collection",
+                        "source_agent": "Collections",
+                    },
+                },
+            ],
+        },
+    ]
+
+    return {
+        "type": "Container",
+        "items": items,
+    }
 def _render_text(content: dict[str, Any]) -> dict[str, Any]:
     title = str(content.get("title") or "Analysis")
     body = content.get("content") or content.get("text") or ""
@@ -543,6 +579,8 @@ def render_finance_agent_output(agent_output: Any) -> dict[str, Any]:
                 rendered = _render_simulation(content, source_agent)
             elif component_format == "next_route":
                 rendered = _render_next_routes(content)
+            elif component_format == "decision":
+                rendered = _render_decision(content)
             else:
                 rendered = _render_text(
                     {

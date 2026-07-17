@@ -6,12 +6,10 @@ from datetime import datetime
 from typing import Any
 
 from src.llm.agents.chivon import chivon
-from src.llm.adaptive_cards import (
-    render_finance_agent_output,
-    validate_adaptive_card,
-)
 
 
+LIVE_SIMULATOR_ACTION_TITLE = "Open Live Simulator"
+COLLECTIONS_SIMULATOR_PATH = "/collections/live-simulator"
 
 
 @dataclass
@@ -27,13 +25,13 @@ class RenderedResult:
     source_agent: str
     success: bool = True
     error: str = ""
-
     adaptive_card: dict[str, Any] | None = None
 
 
 def _log(msg: str) -> None:
     print(
-        f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] [finance-pipeline] {msg}",
+        f"[{datetime.now().strftime('%H:%M:%S.%f')[:-3]}] "
+        f"[finance-pipeline] {msg}",
         flush=True,
     )
 
@@ -108,7 +106,122 @@ def _parse_card_output(
 def _validate_adaptive_card(
     adaptive_card: dict[str, Any],
 ) -> None:
-    validate_adaptive_card(adaptive_card)
+    if adaptive_card.get("type") != "AdaptiveCard":
+        raise ValueError(
+            "adaptive_card['type'] must be 'AdaptiveCard'."
+        )
+
+    if "body" not in adaptive_card:
+        raise ValueError(
+            "Adaptive Card must contain a body."
+        )
+
+    if not isinstance(adaptive_card["body"], list):
+        raise ValueError(
+            "Adaptive Card body must be a list."
+        )
+
+    adaptive_card.setdefault(
+        "$schema",
+        "http://adaptivecards.io/schemas/adaptive-card.json",
+    )
+
+    adaptive_card.setdefault(
+        "version",
+        "1.5",
+    )
+
+
+def _has_collection_decision_actions(
+    adaptive_card: dict[str, Any],
+) -> bool:
+    body = adaptive_card.get("body")
+
+    if not isinstance(body, list):
+        return False
+
+    def walk(value: Any) -> bool:
+        if isinstance(value, dict):
+            data = value.get("data")
+
+            if (
+                isinstance(data, dict)
+                and data.get("action")
+                in {
+                    "approve_collection",
+                    "reject_collection",
+                }
+            ):
+                return True
+
+            return any(walk(child) for child in value.values())
+
+        if isinstance(value, list):
+            return any(walk(child) for child in value)
+
+        return False
+
+    return walk(body)
+
+
+def _append_collections_decision_actions(
+    adaptive_card: dict[str, Any],
+) -> None:
+    if _has_collection_decision_actions(adaptive_card):
+        return
+
+    body = adaptive_card.setdefault("body", [])
+
+    if not isinstance(body, list):
+        raise ValueError("Adaptive Card body must be a list.")
+
+    body.append(
+        {
+            "type": "Container",
+            "separator": True,
+            "items": [
+                {
+                    "type": "TextBlock",
+                    "text": "CFO Decision Required",
+                    "weight": "Bolder",
+                    "size": "Medium",
+                    "wrap": True,
+                },
+                {
+                    "type": "TextBlock",
+                    "text": (
+                        "Please approve or reject the collections "
+                        "recommendation before execution continues."
+                    ),
+                    "wrap": True,
+                    "isSubtle": True,
+                },
+                {
+                    "type": "ActionSet",
+                    "actions": [
+                        {
+                            "type": "Action.Submit",
+                            "title": "Approve",
+                            "associatedInputs": "none",
+                            "data": {
+                                "source_agent": "Collections",
+                                "action": "approve_collection",
+                            },
+                        },
+                        {
+                            "type": "Action.Submit",
+                            "title": "Reject",
+                            "associatedInputs": "none",
+                            "data": {
+                                "source_agent": "Collections",
+                                "action": "reject_collection",
+                            },
+                        },
+                    ],
+                },
+            ],
+        }
+    )
 
 
 async def render_agent_response(
@@ -122,17 +235,19 @@ async def render_agent_response(
                 ↓
         FinanceAgentOutput
                 ↓
-        Deterministic Renderer
+         Renderer Agent
                 ↓
           Adaptive Card
                 ↓
              Return
     """
 
-
-
     FinanceAgentOutput = chivon.type(
         "FinanceAgentOutput"
+    )
+
+    RendererOutput = chivon.type(
+        "RendererOutput"
     )
 
     # --------------------------------------------------
@@ -181,32 +296,38 @@ async def render_agent_response(
 
     # --------------------------------------------------
     # Step 2
-    # Render and validate adaptive card deterministically
+    # Render adaptive card
     # --------------------------------------------------
 
     try:
-        adaptive_card = render_finance_agent_output(
-            agent_result
+        renderer_result = _output(
+            await chivon.run_async(
+                "renderer_agent",
+                agent_result,
+            )
         )
-        _validate_adaptive_card(
-            adaptive_card
-        )
-        card_output = json.dumps(
-            adaptive_card,
-            ensure_ascii=False,
-        )
+
     except Exception as exc:
-        _log(
-            f"adaptive card rendering failed: {exc}"
-        )
+        _log(f"renderer failed: {exc}")
 
         return RenderedResult(
             card_output="",
             source_agent=agent_name,
             success=False,
+            error=f"renderer failed: {exc}",
+        )
+
+    if not isinstance(
+        renderer_result,
+        RendererOutput,
+    ):
+        return RenderedResult(
+            card_output="",
+            source_agent=agent_name,
+            success=False,
             error=(
-                "adaptive card rendering failed: "
-                f"{exc}"
+                "renderer returned invalid output: "
+                f"{type(renderer_result)}"
             ),
         )
 
@@ -214,8 +335,47 @@ async def render_agent_response(
 
     # --------------------------------------------------
     # Step 3
+    # Parse card and append decision actions
+    # --------------------------------------------------
+
+    try:
+        adaptive_card = _parse_card_output(
+            renderer_result.card_output
+        )
+
+        if "collection" in agent_name.lower():
+            _append_collections_decision_actions(
+                adaptive_card
+            )
+
+        _validate_adaptive_card(
+            adaptive_card
+        )
+
+    except Exception as exc:
+        _log(
+            f"adaptive card validation failed: {exc}"
+        )
+
+        return RenderedResult(
+            card_output=renderer_result.card_output,
+            source_agent=agent_name,
+            success=False,
+            error=(
+                "adaptive card validation failed: "
+                f"{exc}"
+            ),
+        )
+
+    # --------------------------------------------------
+    # Step 4
     # Return card
     # --------------------------------------------------
+
+    card_output = json.dumps(
+        adaptive_card,
+        ensure_ascii=False,
+    )
 
     return RenderedResult(
         card_output=card_output,

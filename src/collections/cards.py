@@ -230,6 +230,12 @@ def build_collection_scenario_card(
                     result,
                 ),
             ),
+            _component(
+                "decision",
+                {
+                    "title": "CFO Decision Required",
+                },
+            ),
         ],
     }
     return render_finance_agent_output(agent_output)
