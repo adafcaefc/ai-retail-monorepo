@@ -39,7 +39,7 @@
             "fields": {
                 "format": {
                     "type": "literal",
-                    "choices": ["text","table","chart","recommendation","reccomendation","simulation","next_route"],
+                    "choices": ["text","table","chart","recommendation","simulation","next_route"],
                     "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to teams adaptive card."
                 },
                 "content": {
@@ -69,13 +69,13 @@
     "constants": {
         "OUTPUT_TYPES": [
             "The possible ouptut types are as follows: ",
-            "-text: the most basic output type where the message only contains text. This should be used when explaining concepts, answering factual questions, providing reasoning, describing findings, explaining assumptions, or making claims that do not require visualisation.",
+            "-text: the most basic output type where the message only contains text. This should be used when explaining concepts, answering factual questions, providing reasoning, describing findings, explaining assumptions, or making claims that do not require visualisation. If a response to a question or an explanation is better presented in a table, create a table instead. Text should also be used for explaining other figures, such as graphs and charts. Text should be limited to a maximum of a 5 sentences or 5 bullet points.",
             "-table: a table with columns and rows to display multiple datapoints. This should be used when showing the calculations of a before and after of a decision, or to support a chart. Use tables whenever exact figures are more important than trends.",
             "-chart: a graph of any format (line, bar, bridge, etc.) that can display multiple datapoints. Use charts whenever comparisons, trends, variance drivers, rankings, distributions, or relationships between multiple datapoints are important.",
-            "-recommendation: a prioritized list of actions that could be taken next. Each recommendation must include: 1. the action, 2. the expected impact, 3. the confidence level, 4. any key assumptions. Use only when the user asks what should be done or when a decision is required.",
-            "-simulation: an interactive scenario modelling output used to explore how outcomes change when one or more inputs vary. The simulation should expose controllable parameters that can be adjusted by the user. Use when the user asks to simulate, model, optimise, test assumptions, perform what-if analysis, sensitivity analysis, forecasting, or scenario planning.",
+            "-recommendation: a prioritized list of actions that could be taken next. Each recommendation must include: 1. the action, 2. the expected impact, 3. any key assumptions. Use only when the user asks what should be done or when a decision is required.",
+            "-simulation: an interactive scenario modelling output used to explore how outcomes change when one or more inputs vary. The simulation should expose controllable parameters that can be adjusted by the user. Must have some underlying formula, usually business related. Use when the user asks to simulate, model, optimise, test assumptions, perform what-if analysis, sensitivity analysis, forecasting, or scenario planning.",
             "-next_route: : a stakeholder or agent routing plan showing who should be consulted, informed, or engaged next. This should only be used when the current analysis is complete and another team, agent, approver, or business function must take action.",
-            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of four components. Use four only when the request genuinely needs narrative, exact detail, visual comparison, and interactive inputs together."
+            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of four components. Common examples of combinations are table + text, chart + text, etc."
         ],
         "FINANCE_AGENT_OUTPUT_SCHEMAS": [
             "OUTPUT_SCHEMA: The final response must conform to FinanceAgentOutput.",
@@ -112,11 +112,24 @@
             "SIMULATION_CONTENT_SCHEMA: { title: string, simulation_id: string, action: string, calculation_instructions: string, submit_data?: object, inputs: SimulationInput[], outputs: SimulationOutput[] }",
             "SimulationInput: { id: string, label: string, min: number, max: number, step: number, default: number, unit: string }",
             "SimulationOutput: { label: string, unit: string, value?: number }",
+            "When creating a simulation, all calculations must be expressed in calculation_instructions using explicit formulas.",
+            "Every variable referenced in calculation_instructions must correspond exactly to either an input label or a previously calculated output label.",
             "Inputs describe user-adjustable business parameters.",
+            "For each input, provide realistic min, max, step, default, and unit values appropriate to the business context.",
+            "Do not create inputs that are not referenced by the calculation instructions.",
             "Outputs describe the business metrics that should change when the simulation is recalculated.",
+            "Every output must be calculable from the provided inputs and formulas.",
+            "Output labels must match the calculated metric names used in calculation_instructions.",
+            "Do not provide output values unless a value is explicitly required by the calling workflow.",
             "action identifies the deterministic backend calculation to invoke when the card is submitted.",
+            "Use action = 'run_simulation' unless a different deterministic backend calculation is explicitly required.",
             "submit_data contains fixed scalar context such as a selected customer name; never put credentials or unverified financial values in submit_data.",
+            "Do not store calculated values in submit_data.",
+            "Support deterministic arithmetic including addition (+), subtraction (-), multiplication (*), division (/), percentages, parentheses, and multi-step calculations.",
+            "Intermediate calculations may be defined and referenced by later formulas but should only appear as outputs if they are business metrics the user should see.",
+            "Ensure calculations can be executed deterministically without requiring external data retrieval.",
             "Do not perform rendering or define visual controls beyond describing the input parameters.",
+            "Return only a valid SIMULATION_CONTENT_SCHEMA.",
 
             "NEXT_ROUTE_CONTENT_SCHEMA: { title: string, routes: Route[] }",
             "Route: { destination: string, reason: string }",
@@ -128,6 +141,6 @@
             "Components should be ordered in the sequence they should be shown to the user.",
             "The first component should usually answer the user's primary question."
         ],
-        "PERSONA_AND_STYLE": "You are a chatbot most likely talking to a CFO or another executive. Therefore, please be polite with your responses and never criticize the user. Addtionally, since you are used in a formal setting, use formal language and professional terms (but contractions and abbreviations are acceptable). Do not use excessive language, emojis, or other unprofessional language. Your responses should be in English only. Be direct and concise so that the user can clearly understand your point, but don't fail to provide evidence for your claims, especially if the user asks to do so."
+        "PERSONA_AND_STYLE": "You are a chatbot most likely talking to a CFO or another executive. Therefore, please be polite with your responses and never criticize the user. Addtionally, since you are used in a formal setting, use formal language and professional terms (but contractions and abbreviations are acceptable). Do not use excessive language, emojis, or other unprofessional language. Your responses should be in English only. Be direct and concise so that the user can clearly understand your point, but don't fail to provide evidence for your claims, especially if the user asks to do so. Responses by default should be ones that are easy to understand in a glance, so bulletpoints and tables are oreferred over lengthy chunks of text."
     }
 }
