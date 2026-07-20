@@ -1,7 +1,7 @@
 #same as finance_agents.py, but suited for the new architecture in html
 
 #Models
-
+from fastapi import APIRouter
 from pydantic import BaseModel
 from src.chatflow.repository import (
     create_conversation,
@@ -9,6 +9,10 @@ from src.chatflow.repository import (
     get_messages,
 )
 
+router = APIRouter(
+    prefix="/api/html",
+    tags=["HTML Chat"],
+)
 # TODO:
 # integrate conversation persistence
 # 1. create conversation if missing
@@ -79,7 +83,6 @@ async def run_chat_agent(
     result = await render_agent_response(
         agent_name=agent_name,
         messages_input=messages_input,
-        event_callback=emitter,
     )
 
 
@@ -87,27 +90,21 @@ async def run_chat_agent(
 
 async def run_chat_stream(
     request: ChatRequest,
-):
-    yield sse(
-    "assistant_response",
-        {
-            "blocks": [
-                block.model_dump()
-                for block in result.blocks
-            ]
-        }
-    )
-
+):  
+    
     result = await run_chat_agent(
         agent=request.agent,
         message=request.message,
         emitter=None,
     )
-
+    
     yield sse(
         "assistant_response",
         {
-            "text": result.response_text,
+            "blocks": [
+                block.model_dump()
+                for block in result.blocks
+            ]
         }
     )
 
