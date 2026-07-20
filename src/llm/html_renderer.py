@@ -1,243 +1,269 @@
-import json
+from __future__ import annotations
+
 import html
+import json
+from typing import Any, Literal
+
+from pydantic import BaseModel
 
 
-def render_component(component):
-    format_type = component.format
-    content = json.loads(component.content)
+class UiBlock(BaseModel):
+    type: Literal[
+        "html",
+        "chart",
+        "simulation",
+        "next_route",
+    ]
 
-    if format_type == "text":
-        return render_text(content)
+    data: dict[str, Any]
 
-    if format_type == "table":
-        return render_table(content)
 
-    if format_type == "chart":
-        return render_chart(content)
+def render_ui_blocks(
+    components,
+) -> list[UiBlock]:
+    """
+    Accepts:
+        agent_result.components
 
-    if format_type == "recommendation":
-        return render_recommendation(content)
-
-    if format_type == "simulation":
-        return render_simulation(content)
-
-    if format_type == "next_route":
-        return render_next_route(content)
-
-    return f"""
-    <section class="unknown">
-        <h3>Unknown Component</h3>
-        <pre>{html.escape(component.content)}</pre>
-    </section>
+    Each component must expose:
+        component.format
+        component.content
     """
 
-def render_text(content):
+    blocks : list[UiBlock] = []
+
+    for component in components:
+
+        try:
+            content = json.loads(
+                component.content
+            )
+        except Exception:
+            content = {}
+
+        match component.format:
+
+            case "text":
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data={
+                            "html": render_text(
+                                content
+                            )
+                        },
+                    )
+                )
+
+            case "table":
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data={
+                            "html": render_table(
+                                content
+                            )
+                        },
+                    )
+                )
+
+            case "recommendation":
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data={
+                            "html": render_recommendation(
+                                content
+                            )
+                        },
+                    )
+                )
+
+            case "chart":
+                blocks.append(
+                    UiBlock(
+                        type="chart",
+                        data=content,
+                    )
+                )
+
+            case "simulation":
+                blocks.append(
+                    UiBlock(
+                        type="simulation",
+                        data=content,
+                    )
+                )
+
+            case "next_route":
+                blocks.append(
+                    UiBlock(
+                        type="next_route",
+                        data=content,
+                    )
+                )
+
+            case _:
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data={
+                            "html": render_unknown(
+                                component.content
+                            )
+                        },
+                    )
+                )
+
+    return blocks
+
+
+def render_text(
+    content: dict,
+) -> str:
+
     return f"""
     <section class="text-block">
-        <h2>{html.escape(content['title'])}</h2>
-        <p>{html.escape(content['content'])}</p>
+        <h2>{html.escape(content.get("title", ""))}</h2>
+        <p>{html.escape(content.get("content", ""))}</p>
     </section>
     """
 
-def render_table(content):
+def render_table(
+    content: dict,
+) -> str:
+
     headers = "".join(
-        f"<th>{html.escape(str(c))}</th>"
-        for c in content["columns"]
+        f"<th>{html.escape(str(col))}</th>"
+        for col in content.get(
+            "columns",
+            [],
+        )
     )
 
     rows = []
 
-    for row in content["rows"]:
+    for row in content.get(
+        "rows",
+        [],
+    ):
+
         rows.append(
-            "<tr>" +
-            "".join(
+            "<tr>"
+            + "".join(
                 f"<td>{html.escape(str(v))}</td>"
                 for v in row
-            ) +
-            "</tr>"
+            )
+            + "</tr>"
         )
 
     return f"""
     <section class="table-block">
-      <h2>{html.escape(content['title'])}</h2>
-      <table>
-        <thead>
-          <tr>{headers}</tr>
-        </thead>
-        <tbody>
-          {''.join(rows)}
-        </tbody>
-      </table>
+
+        <h2>
+            {html.escape(content.get("title", ""))}
+        </h2>
+
+        <table>
+
+            <thead>
+                <tr>{headers}</tr>
+            </thead>
+
+            <tbody>
+                {''.join(rows)}
+            </tbody>
+
+        </table>
+
     </section>
     """
 
-def render_chart(content):
+def render_recommendation(
+    content: dict,
+) -> str:
 
-    data = html.escape(
-        json.dumps(content["data"])
-    )
+    recommendations = []
 
-    return f"""
-    <section class="chart-block">
-      <h2>{html.escape(content['title'])}</h2>
+    for rec in content.get(
+        "recommendations",
+        [],
+    ):
 
-      <div
-          class="chart-placeholder"
-          data-chart-type="{content['chart_type']}"
-          data-chart='{data}'
-      ></div>
-    </section>
-    """
-
-def render_recommendation(content):
-
-    sections = []
-
-    for rec in content["recommendations"]:
-
-        sections.append(f"""
-        <div class="recommendation">
-            <h3>{html.escape(rec["action"])}</h3>
-
-            <p>
-                <strong>Impact:</strong>
-                {html.escape(rec["expected_impact"])}
-            </p>
-
-            <ul>
-                {
-                    "".join(
-                        f"<li>{html.escape(x)}</li>"
-                        for x in rec["assumptions"]
-                    )
-                }
-            </ul>
-        </div>
-        """)
-
-    return f"""
-    <section>
-      <h2>{html.escape(content["title"])}</h2>
-      {''.join(sections)}
-    </section>
-    """
-
-
-def render_simulation(content: dict) -> str:
-
-    inputs_html = []
-
-    for inp in content["inputs"]:
-
-        inputs_html.append(
-            f"""
-            <div class="simulation-input">
-                <label>
-                    <strong>{html.escape(inp["label"])}</strong>
-                </label>
-
-                <input
-                    type="range"
-                    min="{inp['min']}"
-                    max="{inp['max']}"
-                    step="{inp['step']}"
-                    value="{inp['default']}"
-                    data-input-id="{inp['id']}"
-                />
-
-                <span>
-                    Default: {inp["default"]} {html.escape(inp["unit"])}
-                </span>
-            </div>
-            """
+        assumptions = "".join(
+            f"<li>{html.escape(x)}</li>"
+            for x in rec.get(
+                "assumptions",
+                [],
+            )
         )
 
-    outputs_html = []
-
-    for output in content["outputs"]:
-
-        outputs_html.append(
-            f"""
-            <div
-                class="simulation-output"
-                data-output-label="{html.escape(output['label'])}"
-            >
-                <strong>{html.escape(output['label'])}</strong>
-                <span>Pending calculation</span>
-                <small>{html.escape(output['unit'])}</small>
-            </div>
-            """
+        risks = "".join(
+            f"<li>{html.escape(x)}</li>"
+            for x in rec.get(
+                "risks",
+                [],
+            )
         )
 
-    return f"""
-    <section
-        class="simulation-card"
-        data-simulation-id="{content['simulation_id']}"
-        data-action="{content['action']}"
-    >
-
-        <h2>{html.escape(content['title'])}</h2>
-
-        <div class="simulation-inputs">
-            {''.join(inputs_html)}
-        </div>
-
-        <div class="simulation-outputs">
-            {''.join(outputs_html)}
-        </div>
-
-        <button
-            class="simulation-run"
-            data-action="{content['action']}"
-        >
-            Recalculate
-        </button>
-
-    </section>
-    """
-
-def render_next_route(content: dict) -> str:
-
-    cards = []
-
-    for route in content["routes"]:
-
-        cards.append(
+        recommendations.append(
             f"""
-            <div
-                class="route-card"
-                data-destination="{html.escape(route['destination'])}"
-            >
+            <div class="recommendation">
 
                 <h3>
-                    {html.escape(route['destination'])}
+                    {html.escape(rec.get("action", ""))}
                 </h3>
 
                 <p>
-                    {html.escape(route['reason'])}
+                    <strong>
+                        Expected Impact:
+                    </strong>
+
+                    {html.escape(rec.get("expected_impact", ""))}
                 </p>
 
-                <button
-                    class="open-agent"
-                    data-agent="{route['destination'].lower()}"
-                >
-                    Open Agent
-                </button>
+                <h4>Assumptions</h4>
+
+                <ul>
+                    {assumptions}
+                </ul>
+
+                <h4>Risks</h4>
+
+                <ul>
+                    {risks}
+                </ul>
 
             </div>
             """
         )
 
     return f"""
-    <section class="next-route-card">
+    <section class="recommendation-block">
 
         <h2>
-            {html.escape(content['title'])}
+            {html.escape(content.get("title", ""))}
         </h2>
 
-        <div class="route-list">
-            {''.join(cards)}
-        </div>
+        {''.join(recommendations)}
+
+    </section>
+    """
+
+def render_unknown(
+    raw_content: str,
+) -> str:
+
+    return f"""
+    <section class="unknown-component">
+
+        <h3>
+            Unknown Component
+        </h3>
+
+        <pre>
+            {html.escape(raw_content)}
+        </pre>
 
     </section>
     """
