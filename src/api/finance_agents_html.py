@@ -3,7 +3,19 @@
 #Models
 
 from pydantic import BaseModel
+from src.chatflow.repository import (
+    create_conversation,
+    save_message,
+    get_messages,
+)
 
+# TODO:
+# integrate conversation persistence
+# 1. create conversation if missing
+# 2. save user message
+# 3. load conversation history
+# 4. pass history into render_agent_response()
+# 5. save assistant response
 
 class ChatRequest(BaseModel):
     agent: str
