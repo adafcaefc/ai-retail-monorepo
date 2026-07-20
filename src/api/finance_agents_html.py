@@ -89,10 +89,13 @@ async def run_chat_stream(
     request: ChatRequest,
 ):
     yield sse(
-    "status",
-    {
-        "message": "Analyzing request"
-    }
+    "assistant_response",
+        {
+            "blocks": [
+                block.model_dump()
+                for block in result.blocks
+            ]
+        }
     )
 
     result = await run_chat_agent(

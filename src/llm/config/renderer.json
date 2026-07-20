@@ -125,8 +125,6 @@
                 "Before returning, verify that the generated HTML is syntactically valid.",
                 "Before returning, verify that RendererOutput is valid.",
                 "Return only the RendererOutput object."
-
-
             ]
         }
     }

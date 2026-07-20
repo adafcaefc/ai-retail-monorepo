@@ -8,18 +8,21 @@ from typing import Any
 from src.llm.agents.chivon import chivon
 
 
+from src.llm.html_renderer import UiBlock, render_ui_blocks
 
 
 @dataclass
 class StructuredResult:
     """
-    Result returned back to FastAPI 
+    Result returned back to FastAPI.
     """
 
-    response_text: str
+    blocks: list[UiBlock]
+
     source_agent: str
     success: bool = True
     error: str = ""
+
 
 
 
@@ -74,7 +77,7 @@ def _build_messages_input(
 async def render_agent_response(
     agent_name: str,
     messages_input: dict[str, Any],
-    ) -> StructuredResult:
+) -> StructuredResult:
 
     FinanceAgentOutput = chivon.type(
         "FinanceAgentOutput"
@@ -91,9 +94,11 @@ async def render_agent_response(
         )
 
     except Exception as exc:
+
         _log(f"{agent_name} failed: {exc}")
 
         return StructuredResult(
+            blocks=[],
             source_agent=agent_name,
             success=False,
             error=f"{agent_name} failed: {exc}",
@@ -104,6 +109,7 @@ async def render_agent_response(
         FinanceAgentOutput,
     ):
         return StructuredResult(
+            blocks=[],
             source_agent=agent_name,
             success=False,
             error=(
@@ -112,8 +118,17 @@ async def render_agent_response(
             ),
         )
 
+    _log(
+        f"{agent_name} produced "
+        f"{len(agent_result.components)} components"
+    )
+
+    blocks = render_ui_blocks(
+        agent_result.components
+    )
+
     return StructuredResult(
-        success=True,
+        blocks=blocks,
         source_agent=agent_name,
-        response_text=agent_result.html_output
+        success=True,
     )
