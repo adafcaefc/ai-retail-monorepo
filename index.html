@@ -723,14 +723,40 @@
 
       const body = document.createElement("div");
       body.className = "message-body";
-      const bubble = document.createElement("div");
-      bubble.className = "bubble";
-      bubble.textContent = message.text || "";
+
+      // Optional text bubble
+      if (message.text) {
+          const bubble = document.createElement("div");
+          bubble.className = "bubble";
+          bubble.textContent = message.text;
+          body.append(bubble);
+      }
+
+      // Render UI blocks
+      if (message.blocks?.length) {
+          for (const block of message.blocks) {
+
+              if (block.type === "html") {
+                  const wrapper = document.createElement("div");
+
+                  // Backend already generates HTML
+                  wrapper.innerHTML = block.data.html;
+
+                  body.append(wrapper);
+              }
+          }
+      }
+
       const meta = document.createElement("div");
       meta.className = "message-meta";
-      meta.textContent = message.role === "user" ? `You · ${message.time}` : `${agents[activeAgent].name} · ${message.time}`;
-      body.append(bubble, meta);
+      meta.textContent =
+          message.role === "user"
+              ? `You · ${message.time}`
+              : `${agents[activeAgent].name} · ${message.time}`;
+
+      body.append(meta);
       item.append(body);
+
       return item;
     }
 
@@ -812,7 +838,8 @@
         showLoading("Combining tool results");
       } else if (event.name === "assistant_response") {
         removeLoading();
-        chat.messages.push({ id: data.id, role: "assistant", text: data.text, time: formatTime() });
+        chat.messages.push({ id: data.id, role: "chatbot", text: "", blocks: data.blocks || [], time: formatTime() });
+        console.log(chat.messages.at(-1));
       } else if (event.name === "done") {
         removeLoading();
       } else if (event.name === "error") {

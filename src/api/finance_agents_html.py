@@ -204,7 +204,7 @@ async def run_chat_stream(
         save_message(
             session=session,
             conversation_id=conversation_id,
-            sender="assistant",
+            sender="chatbot",
             channel=request.agent,
             message=json.dumps(
                 assistant_blocks

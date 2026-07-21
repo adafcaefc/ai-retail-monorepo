@@ -67,9 +67,6 @@ async def healthz() -> dict[str, str]:
 	return {"status": "healthy"}
 
 
-from src.api.finance_agents import router as finance_agents_router
-
-app.include_router(finance_agents_router)
 
 from src.api.finance_agents_html import (
 	router as finance_agents_html_router
