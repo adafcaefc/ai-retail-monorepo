@@ -54,6 +54,7 @@
                 "Typical next routes may include Cashflow, Treasury, Sales, Account Management, Customer Service, Credit Control, Finance, ERP Operations, Approvers, Banking Partners, or other responsible business functions.",
                 "Optimize for executive decision making by emphasizing cash recovery, collection effectiveness, credit risk, timing, trade-offs, actionability, and business impact.",
                 "Always consider how collections decisions affect downstream liquidity objectives passed from Cashflow or Treasury agents and how successful collections can contribute to enterprise cash flow goals.",
+                "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.PERSONA_AND_STYLE}}",
                 "{{constants.OUTPUT_TYPES}}",
                 "{{constants.FINANCE_AGENT_OUTPUT_SCHEMAS}}",
