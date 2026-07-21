@@ -2,8 +2,10 @@
 
 #Models
 from fastapi import APIRouter
-
 from pydantic import BaseModel
+import json
+import asyncio
+
 from src.chatflow.repository import (
     create_conversation,
     save_message,
@@ -13,6 +15,10 @@ from src.chatflow.repository import (
 )
 
 from src.db.db import session_scope
+from src.llm.tool_events import (
+    set_tool_event_queue,
+    reset_tool_event_queue,
+)
 
 router = APIRouter(
     prefix="/api/html",
@@ -118,24 +124,90 @@ async def run_chat_stream(
             history
         )
 
-    result = await run_chat_agent(
-        agent=request.agent,
-        history_lines=history_lines,
-        emitter=None,
+    event_queue = asyncio.Queue()
+
+    token = set_tool_event_queue(
+        event_queue
     )
 
-    with session_scope() as session:
+    yield sse(
+        "status",
+        {
+            "conversation_id": conversation_id,
+            "message": "Analyzing request",
+        },
+    )
 
+    agent_task = asyncio.create_task(
+        run_chat_agent(
+            agent=request.agent,
+            history_lines=history_lines,
+            emitter=None,
+        )
+    )
+
+    try:
+        while not agent_task.done():
+
+            try:
+                event_name, event_data = await asyncio.wait_for(
+                    event_queue.get(),
+                    timeout=0.1,
+                )
+
+                event_data["conversation_id"] = conversation_id
+
+                yield sse(
+                    event_name,
+                    event_data,
+                )
+
+            except asyncio.TimeoutError:
+                pass
+
+        result = await agent_task
+
+        while not event_queue.empty():
+
+            event_name, event_data = event_queue.get_nowait()
+
+            event_data["conversation_id"] = conversation_id
+
+            yield sse(
+                event_name,
+                event_data,
+            )
+
+    except Exception as exc:
+
+        yield sse(
+            "error",
+            {
+                "conversation_id": conversation_id,
+                "message": str(exc),
+            },
+        )
+
+        return
+
+    finally:
+        reset_tool_event_queue(
+            token
+        )
+
+    assistant_blocks = [
+        block.model_dump()
+        for block in result.blocks
+    ]
+
+    with session_scope() as session:
         save_message(
             session=session,
             conversation_id=conversation_id,
             sender="assistant",
             channel=request.agent,
             message=json.dumps(
-                [
-                    block.model_dump()
-                    for block in result.blocks
-                ]
+                assistant_blocks
             ),
         )
 
@@ -143,16 +215,15 @@ async def run_chat_stream(
         "assistant_response",
         {
             "conversation_id": conversation_id,
-            "blocks": [
-                block.model_dump()
-                for block in result.blocks
-            ]
-        }
+            "blocks": assistant_blocks,
+        },
     )
 
     yield sse(
         "done",
-        {}
+        {
+            "conversation_id": conversation_id,
+        },
     )
 
 from fastapi.responses import StreamingResponse
