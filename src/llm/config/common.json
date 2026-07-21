@@ -39,7 +39,7 @@
             "fields": {
                 "format": {
                     "type": "literal",
-                    "choices": ["text","table","chart","recommendation","simulation","next_route"],
+                    "choices": ["text","bullet_list","table","chart","recommendation","simulation","next_route"],
                     "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to teams adaptive card."
                 },
                 "content": {
@@ -69,13 +69,15 @@
     "constants": {
         "OUTPUT_TYPES": [
             "The possible ouptut types are as follows: ",
-            "-text: the most basic output type where the message only contains text. This should be used when explaining concepts, answering factual questions, providing reasoning, describing findings, explaining assumptions, or making claims that do not require visualisation. If a response to a question or an explanation is better presented in a table, create a table instead. Text should also be used for explaining other figures, such as graphs and charts. Text should be limited to a maximum of a 5 sentences or 5 bullet points.",
+            "-text: the most basic output type where the message only contains text. This should be used when explaining concepts, answering factual questions, providing reasoning, describing findings, explaining assumptions, or making claims that do not require visualisation. If a response to a question or an explanation is better presented in a table, create a table instead. Text should also be used for explaining other figures, such as graphs and charts. Text should be limited to a maximum of a 5 sentences.",
+            "-bullet_list: a bullet-point list of concise statements. Each bullet should contain one idea and be no more than two sentences. Use this when presenting summaries, findings, risks, recommendations, action items, key takeaways, pros and cons, assumptions, notable observations, investigation results, or any response that naturally breaks into multiple distinct points. Prefer bullet_list over text whenever the response contains 3 or more separate points. Do not combine multiple bullets into a single paragraph. Each bullet must be returned as a separate list item, not as text prefixed with symbols such as '-', '*', or '•'.",
             "-table: a table with columns and rows to display multiple datapoints. This should be used when showing the calculations of a before and after of a decision, or to support a chart. Use tables whenever exact figures are more important than trends.",
-            "-chart: a graph of any format (line, bar, bridge, etc.) that can display multiple datapoints. Use charts whenever comparisons, trends, variance drivers, rankings, distributions, or relationships between multiple datapoints are important.",
+            "-chart: a graph of any format (line, bar, waterfall, pie, etc.) that can display multiple datapoints. Use charts whenever comparisons, trends, variance drivers, rankings, distributions, or relationships between multiple datapoints are important.",
             "-recommendation: a prioritized list of actions that could be taken next. Each recommendation must include: 1. the action, 2. the expected impact, 3. any key assumptions. Use only when the user asks what should be done or when a decision is required.",
             "-simulation: an interactive scenario modelling output used to explore how outcomes change when one or more inputs vary. The simulation should expose controllable parameters that can be adjusted by the user. Must have some underlying formula, usually business related. Use when the user asks to simulate, model, optimise, test assumptions, perform what-if analysis, sensitivity analysis, forecasting, or scenario planning.",
             "-next_route: : a stakeholder or agent routing plan showing who should be consulted, informed, or engaged next. This should only be used when the current analysis is complete and another team, agent, approver, or business function must take action.",
-            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of four components. Common examples of combinations are table + text, chart + text, etc."
+            "You are allowed to include multiple types in one output so that the card has multiple components, but limit it to a maximum of four components. Common examples of combinations are table + text, chart + text, etc.",
+            "If a user requests for a specific type, you must inlcude it."
         ],
         "FINANCE_AGENT_OUTPUT_SCHEMAS": [
             "OUTPUT_SCHEMA: The final response must conform to FinanceAgentOutput.",
@@ -88,6 +90,10 @@
             "TEXT_CONTENT_SCHEMA: { title: string, content: string }",
             "TEXT_CONTENT_SCHEMA.title is a short heading.",
             "TEXT_CONTENT_SCHEMA.content contains the explanatory text, findings, assumptions, conclusions, or answer.",
+
+            "BULLET_CONTENT_SCHEMA: { title: string, bullets: string[]}",
+            "BULLET_CONTENT_SCHEMA.title is a short heading.",
+            "BULLET_CONTENT_SCHEMA.bullets is a list of strings, where each item is one singular statement.",
 
             "TABLE_CONTENT_SCHEMA: { title: string, columns: string[], rows: (string|number)[][] }",
             "TABLE_CONTENT_SCHEMA.title is a short heading.",
