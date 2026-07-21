@@ -8,7 +8,10 @@ from src.chatflow.repository import (
     create_conversation,
     save_message,
     get_messages,
+    list_conversations,
+    get_conversation_messages,
 )
+
 from src.db.db import session_scope
 
 router = APIRouter(
@@ -179,3 +182,35 @@ def build_history_lines(
         }
         for msg in messages
     ]
+
+@router.get("/conversations")
+async def get_conversations():
+
+    with session_scope() as session:
+
+        conversations = list_conversations(
+            session=session
+        )
+
+    return {
+        "items": conversations
+    }
+
+@router.get(
+    "/conversations/{conversation_id}"
+)
+async def get_conversation(
+    conversation_id: str,
+):
+
+    with session_scope() as session:
+
+        messages = get_conversation_messages(
+            session=session,
+            conversation_id=conversation_id,
+        )
+
+    return {
+        "conversation_id": conversation_id,
+        "messages": messages,
+    }
