@@ -2,12 +2,14 @@
 
 #Models
 from fastapi import APIRouter
+
 from pydantic import BaseModel
 from src.chatflow.repository import (
     create_conversation,
     save_message,
     get_messages,
 )
+from src.db.db import session_scope
 
 router = APIRouter(
     prefix="/api/html",
@@ -66,18 +68,13 @@ from src.llm.pipeline import render_agent_response
 
 async def run_chat_agent(
     agent: str,
-    message: str,
+    history_lines: list,
     emitter,
 ):
     agent_name = CHAT_AGENT_MAP[agent]
 
     messages_input = {
-        "lines": [
-            {
-                "sender": "user",
-                "text": message,
-            }
-        ]
+        "lines": history_lines
     }
 
     result = await render_agent_response(
@@ -90,17 +87,59 @@ async def run_chat_agent(
 
 async def run_chat_stream(
     request: ChatRequest,
-):  
-    
+):
+    with session_scope() as session:
+
+        if request.conversation_id is None:
+            conversation_id = create_conversation(
+                session=session,
+                title=request.message[:50],
+            )
+        else:
+            conversation_id = request.conversation_id
+
+        save_message(
+            session=session,
+            conversation_id=conversation_id,
+            sender="user",
+            channel=request.agent,
+            message=request.message,
+        )
+
+        history = get_messages(
+            session=session,
+            conversation_id=conversation_id,
+        )
+
+        history_lines = build_history_lines(
+            history
+        )
+
     result = await run_chat_agent(
         agent=request.agent,
-        message=request.message,
+        history_lines=history_lines,
         emitter=None,
     )
-    
+
+    with session_scope() as session:
+
+        save_message(
+            session=session,
+            conversation_id=conversation_id,
+            sender="assistant",
+            channel=request.agent,
+            message=json.dumps(
+                [
+                    block.model_dump()
+                    for block in result.blocks
+                ]
+            ),
+        )
+
     yield sse(
         "assistant_response",
         {
+            "conversation_id": conversation_id,
             "blocks": [
                 block.model_dump()
                 for block in result.blocks
@@ -129,3 +168,14 @@ async def chat(request: ChatRequest):
         stream(),
         media_type="text/event-stream",
     )
+
+def build_history_lines(
+    messages,
+):
+    return [
+        {
+            "sender": msg["sender"],
+            "text": msg["message"],
+        }
+        for msg in messages
+    ]

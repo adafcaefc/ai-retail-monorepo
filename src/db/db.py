@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.common.env import config
 
+print("DATABASE_URL =", config.DATABASE_URL)
 
 def _database_url() -> str:
     url = config.DATABASE_URL
