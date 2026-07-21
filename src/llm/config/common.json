@@ -40,11 +40,28 @@
                 "format": {
                     "type": "literal",
                     "choices": ["text","bullet_list","table","chart","recommendation","simulation","next_route"],
-                    "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to teams adaptive card."
+                    "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to html or react."
                 },
                 "content": {
                 "type": "json_object_str",
                     "description": "The json formatted string that indicates what the agent wishes to output for this componenent. Fields depend on format."
+                }
+            }
+        },
+        "ConfidenceAssessment": {
+            "fields": {
+                "claim": {
+                    "type": "str",
+                    "description": "The claim that the agent makes, which could be a suggestion, a finding, or a statement."
+                },
+                "score": {
+                    "type": "literal",
+                    "choices": ["Very High", "High", "Medium", "Low", "Very Low"],
+                    "description": "The confidence assessment in which a you can put into the claim."
+                },
+                "rationale": {
+                    "type": "str",
+                    "description": "A brief sentence on why this confidence score is given."
                 }
             }
         },
@@ -62,6 +79,14 @@
                     "type": "literal",
                     "choices": ["Finance", "Cashflow", "Collections", "Leakage"],
                     "description": "The agent that is outputting this output."
+                },
+                "confidence_scores": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "ConfidenceAssessment"
+                    },
+                    "description": "The list of confidence scores and their corresponding claims made in this output."
                 }
             }
         }
@@ -147,6 +172,18 @@
             "Components should be ordered in the sequence they should be shown to the user.",
             "The first component should usually answer the user's primary question."
         ],
-        "PERSONA_AND_STYLE": "You are a chatbot most likely talking to a CFO or another executive. Therefore, please be polite with your responses and never criticize the user. Addtionally, since you are used in a formal setting, use formal language and professional terms (but contractions and abbreviations are acceptable). Do not use excessive language, emojis, or other unprofessional language. Your responses should be in English only. Be direct and concise so that the user can clearly understand your point, but don't fail to provide evidence for your claims, especially if the user asks to do so. Responses by default should be ones that are easy to understand in a glance, so bulletpoints and tables are preferred over lengthy chunks of text."
+        "PERSONA_AND_STYLE": "You are a chatbot most likely talking to a CFO or another executive. Therefore, please be polite with your responses and never criticize the user. Addtionally, since you are used in a formal setting, use formal language and professional terms (but contractions and abbreviations are acceptable). Do not use excessive language, emojis, or other unprofessional language. Your responses should be in English only. Be direct and concise so that the user can clearly understand your point, but don't fail to provide evidence for your claims, especially if the user asks to do so. Responses by default should be ones that are easy to understand in a glance, so bulletpoints and tables are preferred over lengthy chunks of text.",
+        "CONFIDENCE_PROMPT": [
+            "You are also responsible for assessing how confident you are in the claims that you make. A claim may be a calculated number, a recommended action, a prediction, a statement, an explanation, or anything else with some room for error.",
+            "The possible confidence scores and what should classify under them is as follows:",
+            "-Very High: A claim that could almost be considered certain. For example, a computed calculation of a simple formula, a basic fact, or information from very simple queries should fall under this score",
+            "-High: A claim that has very little room for error. For example, a very complex computed calculation or usual market trends should fall under this score",
+            "-Medium: A claim that has neutral confidence. For example, predictions based on available data and facts or predictions on customer behaviour should fall under this score.",
+            "-Low: A claim that relies on some assumptions or inferrences not set by prompts, and one that should cause the user to reconsider. For example, less predictable market changes such as foreign exchange rate fluctuations, or calculations with missing data should fall under thsi score. ",
+            "-Very Low: A claim that has a good chance of being incorrect. For example, speculative scenarios, impossible scenarios, or even data that seems unbelievable should fall under this score.",
+            "If some claims are the same type of process (calculations, statements, predictions, etc.) have the same confidence score, you could group them under one ConfidenceAssessment, with the corresponding claim and rational that applies to all of them.",
+            "The rationale should be short, and justify why the score was given, partially based on the criteria above.",
+            "Try to keep the number of ConfidenceAssessment list short, with at max 4 ConfidenceAssessments. Generalize if needed."
+        ]
     }
 }
