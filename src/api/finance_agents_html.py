@@ -1,12 +1,26 @@
 #same as finance_agents.py, but suited for the new architecture in html
 
 #Models
-from fastapi import APIRouter
-from pydantic import BaseModel
-import json
 import asyncio
+import inspect
+import json
+from typing import Any
 
-from src.chatflow.repository import (
+from fastapi import (
+    APIRouter,
+    HTTPException,
+)
+
+from fastapi.responses import (
+    StreamingResponse,
+)
+
+from pydantic import (
+    BaseModel,
+    Field,
+)
+
+from src.chatflow.repository import(
     create_conversation,
     save_message,
     get_messages,
@@ -15,9 +29,18 @@ from src.chatflow.repository import (
 )
 
 from src.db.db import session_scope
+
 from src.llm.tool_events import (
     set_tool_event_queue,
     reset_tool_event_queue,
+)
+
+from src.llm.pipeline import (
+    render_agent_response,
+)
+
+from src.llm.tools.finance_data import (
+    calculate_collection_scenario
 )
 
 router = APIRouter(
@@ -37,6 +60,26 @@ class ChatRequest(BaseModel):
     message: str
     conversation_id: str | None = None
 
+class CollectionSimulationRequest(
+    BaseModel
+):
+    customer_name: str = Field(
+        default=(
+            "PT Anugerah Prima "
+            "(Customer A)"
+        ),
+        min_length=1,
+    )
+
+    cash_to_collect_idr_mn: float = Field(
+        ge=0,
+    )
+
+    discount_pct: float = Field(
+        default=0,
+        ge=0,
+        le=100,
+    )
 
 class ToolCallEvent(BaseModel):
     id: str
@@ -267,6 +310,79 @@ async def get_conversations():
         "items": conversations
     }
 
+@router.post(
+    "/simulations/collections/recalculate"
+)
+async def recalculate_collection_simulation(
+    payload: CollectionSimulationRequest,
+) -> dict[str, Any]:
+    try:
+        result = calculate_collection_scenario(
+            customer_name=
+                payload.customer_name,
+
+            cash_to_collect_idr_mn=
+                payload.cash_to_collect_idr_mn,
+
+            discount_pct=
+                payload.discount_pct,
+        )
+
+        if hasattr(
+            result,
+            "model_dump",
+        ):
+            result_data = (
+                result.model_dump()
+            )
+
+        elif isinstance(
+            result,
+            dict,
+        ):
+            result_data = result
+
+        elif hasattr(
+            result,
+            "__dict__",
+        ):
+            result_data = {
+                key: value
+                for key, value
+                in vars(result).items()
+                if not key.startswith("_")
+            }
+
+        else:
+            raise ValueError(
+                "Unsupported collection "
+                "simulation result."
+            )
+
+        return {
+            "success": True,
+            "result": result_data,
+        }
+
+    except (
+        ValueError,
+        TypeError,
+        KeyError,
+    ) as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Collection simulation "
+                f"failed: {error}"
+            ),
+        ) from error
+    
 @router.get(
     "/conversations/{conversation_id}"
 )
