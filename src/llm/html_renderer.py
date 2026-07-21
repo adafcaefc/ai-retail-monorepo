@@ -55,6 +55,18 @@ def render_ui_blocks(
                     )
                 )
 
+            case "bullet_list":
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data= {
+                            "html": render_bullet_list(
+                                content
+                            )
+                        }
+                    )
+                )
+
             case "table":
                 blocks.append(
                     UiBlock(
@@ -128,6 +140,40 @@ def render_text(
         <p>{html.escape(content.get("content", ""))}</p>
     </section>
     """
+
+
+
+def render_bullet_list(
+    content: dict,
+) -> str:
+
+    title = html.escape(
+        content.get(
+            "title",
+            "",
+        )
+    )
+
+    bullets = "".join(
+        f"<li>{html.escape(str(item))}</li>"
+        for item in content.get(
+            "bullets",
+            [],
+        )
+    )
+
+    return f"""
+    <section class="bullet-list-block">
+
+        {f"<h2>{title}</h2>" if title else ""}
+
+        <ul class="report-bullet-list">
+            {bullets}
+        </ul>
+
+    </section>
+    """
+
 
 def render_table(
     content: dict,
