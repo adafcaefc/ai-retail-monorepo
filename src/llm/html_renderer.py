@@ -115,6 +115,18 @@ def render_ui_blocks(
                     )
                 )
 
+            case "confidence":
+                blocks.append(
+                    UiBlock(
+                        type="html",
+                        data= {
+                            "html": render_confidence(
+                                content
+                            )
+                        }
+                    )
+                )
+
             case _:
                 blocks.append(
                     UiBlock(
@@ -296,6 +308,93 @@ def render_recommendation(
     </section>
     """
 
+
+def render_confidence(
+    content: dict,
+) -> str:
+
+    title = html.escape(
+        content.get(
+            "title",
+            "Confidence Assessment",
+        )
+    )
+
+    assessments_html = []
+
+    for assessment in content.get(
+        "assessments",
+        [],
+    ):
+
+        score = str(
+            assessment.get(
+                "score",
+                "Medium",
+            )
+        )
+
+        score_key = (
+            score
+            .lower()
+            .replace(" ", "_")
+        )
+
+        colour = {
+            "very_high": "confidence-high",
+            "high": "confidence-high",
+            "medium": "confidence-medium",
+            "low": "confidence-low",
+            "very_low": "confidence-low",
+        }.get(
+            score_key,
+            "confidence-medium",
+        )
+
+        claim = html.escape(
+            assessment.get(
+                "claim",
+                "",
+            )
+        )
+
+        rationale = html.escape(
+            assessment.get(
+                "rationale",
+                "",
+            )
+        )
+
+        assessments_html.append(
+            f"""
+            <div class="confidence-item">
+
+                <div class="{colour}">
+                    {html.escape(score)}
+                </div>
+
+                <div class="confidence-claim">
+                    {claim}
+                </div>
+
+                <div class="confidence-rationale">
+                    {rationale}
+                </div>
+
+            </div>
+            """
+        )
+
+    return f"""
+    <section class="confidence-block">
+
+        <h2>{title}</h2>
+
+        {''.join(assessments_html)}
+
+    </section>
+    """
+
 def render_unknown(
     raw_content: str,
 ) -> str:
@@ -313,3 +412,4 @@ def render_unknown(
 
     </section>
     """
+

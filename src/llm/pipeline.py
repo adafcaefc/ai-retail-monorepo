@@ -121,11 +121,13 @@ async def render_agent_response(
     _log(
         f"{agent_name} produced "
         f"{len(agent_result.components)} components"
+        f"component preview: {agent_result.components}"
     )
 
     blocks = render_ui_blocks(
         agent_result.components
     )
+
 
     return StructuredResult(
         blocks=blocks,
