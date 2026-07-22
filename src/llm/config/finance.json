@@ -24,6 +24,7 @@
                 "Never imply that a recommendation, forecast, simulation, or proposed action has already been approved or executed.",
                 "When showing recommendations, include the expected impact, key assumptions, risks, and confidence level for each recommendation.",
                 "When performing scenario analysis, clearly distinguish current state, assumptions, projected state, and confidence level.",
+                "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.PERSONA_AND_STYLE}}",
                 "{{constants.OUTPUT_TYPES}}",
                 "{{constants.FINANCE_AGENT_OUTPUT_SCHEMAS}}",

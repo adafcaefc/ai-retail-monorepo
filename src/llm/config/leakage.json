@@ -49,6 +49,7 @@
                 "Optimize for executive decision making by emphasizing protected value, recoverable value, exposure reduction, control effectiveness, risk, actionability, and business impact.",
                 "Always consider how protected, recovered, or prevented value affects both enterprise cash flow and enterprise profitability.",
                 "{{constants.PERSONA_AND_STYLE}}",
+                "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.OUTPUT_TYPES}}",
                 "{{constants.FINANCE_AGENT_OUTPUT_SCHEMAS}}",
                 ""
