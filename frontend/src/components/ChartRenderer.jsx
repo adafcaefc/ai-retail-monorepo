@@ -169,7 +169,11 @@ function BarChartView({
     rows.length <= 6;
 
   const chartHeight =
-    isCompact ? 285 : 360;
+    hasLongLabels
+      ?235
+      : isCompact
+        ? 220
+        :300;
 
   return (
     <ResponsiveContainer
@@ -180,13 +184,13 @@ function BarChartView({
         data={rows}
 
         margin={{
-          top: 38,
-          right: 24,
+          top: 28,
+          right: 18,
           bottom:
             hasLongLabels
-              ? 82
-              : 35,
-          left: 12
+              ? 58
+              : 24,
+          left: 4
         }}
 
         barCategoryGap="24%"
@@ -208,7 +212,7 @@ function BarChartView({
 
           angle={
             hasLongLabels
-              ? -22
+              ? -16
               : 0
           }
 
@@ -220,12 +224,12 @@ function BarChartView({
 
           height={
             hasLongLabels
-              ? 90
-              : 40
+              ? 62
+              : 34
           }
 
           tick={{
-            fontSize: 10,
+            fontSize: 9,
             fill: "#62708a"
           }}
         />
@@ -313,7 +317,7 @@ function BarChartView({
                 seriesDefinition.name
               }
 
-              maxBarSize={66}
+              maxBarSize={52}
 
               radius={[
                 4,
@@ -439,16 +443,26 @@ function WaterfallChartView({
         <YAxis
           axisLine={false}
           tickLine={false}
-          width={64}
+          width={56}
+          
+          domain={[
+            0,
+            (dataMax) =>
+              Math.ceil(
+                dataMax*1.15
+              )
+          ]}
+
+          tick={{
+            fontSize: 9,
+            fill: "8a8f9c"
+          }}
+
           tickFormatter={
             formatAxisNumber
           }
-          tick={{
-            fontSize: 10,
-            fill: "#8a8f9c"
-          }}
         />
-
+        
         <ReferenceLine
           y={0}
           stroke="#98a2b3"
