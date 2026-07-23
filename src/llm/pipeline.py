@@ -9,6 +9,9 @@ from src.llm.agents.chivon import chivon
 
 
 from src.llm.html_renderer import UiBlock, render_ui_blocks
+from src.llm.suggested_response_context import (
+    extract_current_assistant_text,
+)
 
 
 @dataclass
@@ -16,10 +19,9 @@ class StructuredResult:
     """
     Result returned back to FastAPI.
     """
-
     blocks: list[UiBlock]
-
     source_agent: str
+    assistant_text: str = ""
     success: bool = True
     error: str = ""
 
@@ -124,13 +126,17 @@ async def render_agent_response(
         f"component preview: {agent_result.components}"
     )
 
+    assistant_text = extract_current_assistant_text(
+        agent_result.components
+    )
+
     blocks = render_ui_blocks(
         agent_result.components
     )
 
-
     return StructuredResult(
         blocks=blocks,
         source_agent=agent_name,
+        assistant_text=assistant_text,
         success=True,
     )
