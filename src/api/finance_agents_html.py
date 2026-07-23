@@ -4,6 +4,7 @@
 import asyncio
 import inspect
 import json
+import logging
 from typing import Any
 
 from fastapi import (
@@ -43,6 +44,14 @@ from src.llm.tools.finance_data import (
     calculate_collection_scenario
 )
 
+from src.llm.suggested_response import (
+    generate_suggested_responses,
+)
+from src.llm.suggested_response_context import (
+    build_suggested_response_context,
+)
+
+logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/html",
     tags=["HTML Chat"],
@@ -93,10 +102,6 @@ class ToolResultEvent(BaseModel):
     result: dict
 
 #SSE helpers
-
-import json
-
-
 def sse(
     event: str,
     data: dict,
@@ -238,36 +243,126 @@ async def run_chat_stream(
             token
         )
 
-    assistant_blocks = [
-        block.model_dump()
-        for block in result.blocks
-    ]
+    suggestion_task: asyncio.Task[list[str]] | None = None
+    # Start the optional suggestion process after the primary
+    # chatbot has successfully produced a readable answer.
+    logger.info(
+        "Suggestion eligibility: success=%s assistant_text_length=%d",
+        result.success,
+        len(result.assistant_text),
+    )
 
-    with session_scope() as session:
-        save_message(
-            session=session,
-            conversation_id=conversation_id,
-            sender="chatbot",
-            channel=request.agent,
-            message=json.dumps(
-                assistant_blocks
-            ),
+    if (
+        result.success
+        and result.assistant_text.strip()
+    ):
+        try:
+            suggestion_context = (
+                build_suggested_response_context(
+                    history=history,
+                    channel=request.agent,
+                    agent_type=CHAT_AGENT_MAP[
+                        request.agent
+                    ],
+                    latest_user_question=(
+                        request.message
+                    ),
+                    latest_assistant_answer=(
+                        result.assistant_text
+                    ),
+                )
+            )
+
+            logger.info(
+                "Suggestion context built: history_lines=%d",
+                len(suggestion_context.recent_history),
+            )
+
+            suggestion_task = asyncio.create_task(
+                generate_suggested_responses(
+                    suggestion_context
+                )
+            )
+
+        except Exception:
+            # Suggestions are optional. Failure to construct their
+            # context must not affect the primary chatbot response.
+            logger.exception(
+                "Failed to build suggested-response context."
+            )
+            suggestion_task = None
+
+    try:
+        assistant_blocks = [
+            block.model_dump()
+            for block in result.blocks
+        ]
+
+        with session_scope() as session:
+            save_message(
+                session=session,
+                conversation_id=conversation_id,
+                sender="chatbot",
+                channel=request.agent,
+                message=json.dumps(
+                    assistant_blocks
+                ),
+            )
+
+        # Send the primary answer without waiting for suggestions.
+        yield sse(
+            "assistant_response",
+            {
+                "conversation_id": (
+                    conversation_id
+                ),
+                "blocks": assistant_blocks,
+            },
         )
 
-    yield sse(
-        "assistant_response",
-        {
-            "conversation_id": conversation_id,
-            "blocks": assistant_blocks,
-        },
-    )
+        suggestions: list[str] = []
 
-    yield sse(
-        "done",
-        {
-            "conversation_id": conversation_id,
-        },
-    )
+        if suggestion_task is not None:
+            try:
+                suggestions = await suggestion_task
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                # Extra protection around the optional task.
+                suggestions = []
+
+        yield sse(
+            "suggestions",
+            {
+                "conversation_id": (
+                    conversation_id
+                ),
+                "suggestions": suggestions,
+            },
+        )
+
+        yield sse(
+            "done",
+            {
+                "conversation_id": (
+                    conversation_id
+                ),
+            },
+        )
+
+    finally:
+        # Stop the optional Azure request if the browser disconnects
+        # or the stream closes before it finishes.
+        if (
+            suggestion_task is not None
+            and not suggestion_task.done()
+        ):
+            suggestion_task.cancel()
+
+            try:
+                await suggestion_task
+            except asyncio.CancelledError:
+                pass
 
 from fastapi.responses import StreamingResponse
 
