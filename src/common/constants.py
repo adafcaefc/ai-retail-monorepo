@@ -13,6 +13,7 @@ class AppPaths:
     COLLECTION_CONFIG_FILE = CONFIG_DIR / "collection.json"
     LEAKAGE_CONFIG_FILE = CONFIG_DIR / "leakage.json"
     SIMULATOR_CONFIG_FILE = CONFIG_DIR / "simulator.json"
+    SUBAGENT_CONFIC_FILE = CONFIG_DIR / "subagents.json"
 
     AGENTS_CONFIG_FILES = [
         COMMON_CONFIG_FILE,
@@ -20,5 +21,6 @@ class AppPaths:
         CASHFLOW_CONFIG_FILE,
         COLLECTION_CONFIG_FILE,
         LEAKAGE_CONFIG_FILE,
-        SIMULATOR_CONFIG_FILE
+        SIMULATOR_CONFIG_FILE,
+        SUBAGENT_CONFIC_FILE
     ]

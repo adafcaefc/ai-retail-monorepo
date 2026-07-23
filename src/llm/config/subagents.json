@@ -1,0 +1,165 @@
+{
+    "version": 1,
+    "models": {
+        "Action" : {
+            "fields": {
+                "name": {
+                    "type": "str",
+                    "description": "The name of the action, which should summarize whate the action is"
+                },
+                "routes": {
+                    "type": "list",
+                    "items": {
+                        "type": "str"
+                    },
+                    "description": "The routes to where the action will be sent to. Can contain multiple routes."
+                },
+                "agent": {
+                    "type": "literal",
+                    "choices": ["collection, finance, leakage, cashflow"],
+                    "description": "The corresponding main agent that should deal with this action."
+                }
+            }
+        },
+        "ActionsOutput": {
+            "fields": {
+                "actions": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "Action"
+                    },
+                    "description": "The list of Actions that will be outputted by the agent."
+                }
+            }
+        },
+        "MonitoringInput":{
+            "fields":{
+                "subagent_name": {
+                    "type": "str",
+                    "description": "The assigned name of this subagent."
+                },
+                "allowed_data":{
+                    "type": "json",
+                    "items": {
+                        "type": "str"
+                    },
+                    "description": "The info of tables that you are allowed to search."
+                },
+                "instructions": {
+                    "type": "str",
+                    "description": "The more specific instructions detailing what you should search for. "
+                }
+            }
+        },
+        "Alert": {
+            "fields": {
+                "name": {
+                    "type": "str",
+                    "description": "The name of the alert, which should summarize the current problem."
+                },
+                "issue": {
+                    "type": "str",
+                    "description": "The actual issue of the alert, should be general enough to understand, but detailed enough to understand severity."
+                },
+                "subagent": {
+                    "type": "literal",
+                    "description": "The name of the corresponding subagent that found this alert."
+                }
+            }
+        },
+        "MonitoringOutput": {
+            "fields": {
+                "alerts": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "Alert"
+                    }
+                }
+            }
+        }
+    },
+    "agents": {
+        "action_agent": {
+            "input_model": "",
+            "output_model": "ActionsOutput",
+            "retries": 2,
+            "tools": [
+
+            ],
+            "system_prompt": [
+
+            ]
+        },
+        "monitoring_agent": {
+            "input_model": "MonitoringInput",
+            "output_model": "MonitoringOutput",
+            "retries": 2,
+            "tools": [
+                "custom_query","value_compare_query"
+            ],
+            "system_prompt": [
+                "You are a helpful monitoring agent whose purpose is to search a certain database for any potential alerts of a specific type.",
+                "You should actively investigate the database before deciding whether alerts exist.",
+                "Use the available tools to gather evidence.",
+                "Do not assume no alerts exist without first querying the database.",
+
+                "You will be given a name, a json string contianting information about the tables you are allowed to search, and a string that details what you are specifically monitoring.",
+
+                "The name you are given is mostly used if you are to output an alert, since the output requires that your name be mentioned.",
+                "You may use your name to help conclude what your task is, but rely more on the instructions for that.",
+
+                "The table data will be a json string that details which tables in the database you are allowed to access, as well as the corresponding columns in each table that you can access.",
+                "These values will help you select which tables and columns you can query through with the use of the tools given to you.",
+                
+                "The instructions that you will outline what you are actually looking for in the database. It is usually about finding potential alerts that a CFO might worry about, such as figures not meeting targets, values that don't match up, or figures that indicate an unhealthy financial standing.",
+
+                "You are able to use the tools provided to you to query the database, provided you only search from the tables provided and only access the columns given.",
+                "DO NOT SEARCH FOR TABLES OR COLUMNS THAT IS NOT STATED TO YOU, AND DO NOT MAKE ANY TABLES OR COLUMNS",
+
+                "You are given the following tools:",
+
+                "custom_query(str query): a tool that lets you execute a query in the database. You are responsible for creating your own SQL query for this tool. ",
+                "The parameter query is the SQL that will be executed. The query must be read-only, and must only consist of the tables and columns that you are allowed to access as outlined by allowed_data.",
+                "custom_query will return a dictionary of the result of the query, as well as the number of rows that fulfill the query.",
+
+                
+                "value_compare_query(str table_name, str[] fields, str[] operators, any[] values): a tool that returns rows whose values satisfy one or more threshold conditions.",
+                "The parameter table_name is the table to search.",
+                "The parameter fields is a list of column names to evaluate.",
+                "The parameter operators is a list of comparison operators corresponding to each field.",
+                "Supported operators are: >, <, >=, <=, =, !=.",
+                "The parameter values is a list of threshold values corresponding to each field.",
+                "fields, operators, and values must have the same length.",
+                "Each condition is evaluated as field operator value.",
+                "Multiple conditions are combined using AND logic.",
+                "The tool returns a dictionary containing:",
+                "- count: the number of matching rows.",
+                "- rows: all rows that satisfy every condition.",
+                "Use this tool when looking for records that exceed or fall below specific thresholds.",
+                "Examples:",
+                "Find customers with overdue_days > 90:",
+                "table_name='ar_aging', fields=['overdue_days'], operators=['>'], values=[90]",
+                "Find unpaid invoices with amount > 100000000:",
+                "table_name='ap_invoices', fields=['amount', 'status'], operators=['>', '='], values=[100000000, 'UNPAID']",
+                "Find projected cash below 1000000:",
+                "table_name='cash_forecast', fields=['projected_cash'], operators=['<'], values=[1000000]",
+
+                "OUTPUT RULES",
+                "Your output is in the form MonitoringOutput, which is a list of Alert objects.",
+                "Each alert is an individual alert that has a name, an issue, and a subagent name.",
+                "Do not create one alert per row.",
+                "Group similar findings into a single alert whenever possible.",
+                "One alert should represent one business issue.",
+
+                "The name of the alert should be a concise phrase that summarizes the issue.",
+                "The issue is a more in-depth description of the alert. Include numbers and specific fields so that the user can better understand the issue. The issue should still only be a short sentence long.",
+                "The subagent name should be your name given to you.",
+
+                "If there are no alerts, return this exact Alert:",
+                "{[Alert(name='none', issue='no alert detected', subagent=name]} where name is your name."
+            ]
+        }
+    }
+}
