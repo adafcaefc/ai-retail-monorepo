@@ -1,11 +1,29 @@
 {
     "version": 1,
     "models": {
+        "ActionsInput":{
+            "fields": {
+                "alerts": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "Alert"
+                    },
+                    "description": "The list of alerts that the generated actions will try to resolve."
+                },
+                "parent_agent": {
+                    "type": "literal",
+                    "choices": ["collection, finance, leakage, cashflow"],
+                    "description": "The main agent that deals with this type of alert."
+                    
+                }
+            }
+        },
         "Action" : {
             "fields": {
                 "name": {
                     "type": "str",
-                    "description": "The name of the action, which should summarize whate the action is"
+                    "description": "The name of the action, which should summarize whate the action is."
                 },
                 "routes": {
                     "type": "list",
@@ -75,14 +93,15 @@
                     "items": {
                         "type": "ref",
                         "ref": "Alert"
-                    }
+                    },
+                    "description": "The list of alerts that this monitoring agent brings attention to."
                 }
             }
         }
     },
     "agents": {
         "action_agent": {
-            "input_model": "",
+            "input_model": "ActionsInput",
             "output_model": "ActionsOutput",
             "retries": 2,
             "tools": [
