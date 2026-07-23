@@ -44,6 +44,7 @@
                 "Typical next routes may include Collections, Treasury, Banking Partners, Procurement, Finance, ERP Operations, Approvers, or other responsible business functions.",
                 "Optimize for executive decision making by emphasizing liquidity impact, timing, trade-offs, actionability, and business risk.",
                 "{{constants.PERSONA_AND_STYLE}}",
+                "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.OUTPUT_TYPES}}",
                 "{{constants.FINANCE_AGENT_OUTPUT_SCHEMAS}}",
                 ""

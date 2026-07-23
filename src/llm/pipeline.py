@@ -6,29 +6,24 @@ from datetime import datetime
 from typing import Any
 
 from src.llm.agents.chivon import chivon
-from src.llm.adaptive_cards import (
-    render_finance_agent_output,
-    validate_adaptive_card,
-)
 
 
+from src.llm.html_renderer import UiBlock, render_ui_blocks
 
 
 @dataclass
-class RenderedResult:
+class StructuredResult:
     """
-    Result returned back to FastAPI / Logic Apps.
-
-    Logic Apps are responsible for posting
-    Adaptive Cards to Teams.
+    Result returned back to FastAPI.
     """
 
-    card_output: str
+    blocks: list[UiBlock]
+
     source_agent: str
     success: bool = True
     error: str = ""
 
-    adaptive_card: dict[str, Any] | None = None
+
 
 
 def _log(msg: str) -> None:
@@ -44,7 +39,7 @@ def _output(result: Any) -> Any:
 
 def _build_messages_input(
     user_request: dict[str, Any],
-) -> dict[str, Any]:
+    ) -> dict[str, Any]:
     """
     Supports:
 
@@ -77,68 +72,16 @@ def _build_messages_input(
     )
 
 
-def _parse_card_output(
-    card_output: str,
-) -> dict[str, Any]:
-    """
-    RendererOutput.card_output may be:
-
-    1. JSON string
-    2. Double encoded JSON string
-
-    Converts to dict.
-    """
-
-    parsed: Any = card_output
-
-    if isinstance(parsed, str):
-        parsed = json.loads(parsed)
-
-    if isinstance(parsed, str):
-        parsed = json.loads(parsed)
-
-    if not isinstance(parsed, dict):
-        raise ValueError(
-            f"Parsed adaptive card must be dict, got {type(parsed)}"
-        )
-
-    return parsed
-
-
-def _validate_adaptive_card(
-    adaptive_card: dict[str, Any],
-) -> None:
-    validate_adaptive_card(adaptive_card)
 
 
 async def render_agent_response(
     agent_name: str,
     messages_input: dict[str, Any],
-) -> RenderedResult:
-    """
-    Pipeline:
-
-        Specialist Agent
-                ↓
-        FinanceAgentOutput
-                ↓
-        Deterministic Renderer
-                ↓
-          Adaptive Card
-                ↓
-             Return
-    """
-
-
+) -> StructuredResult:
 
     FinanceAgentOutput = chivon.type(
         "FinanceAgentOutput"
     )
-
-    # --------------------------------------------------
-    # Step 1
-    # Run selected specialist agent
-    # --------------------------------------------------
 
     try:
         _log(f"running {agent_name}")
@@ -151,10 +94,11 @@ async def render_agent_response(
         )
 
     except Exception as exc:
+
         _log(f"{agent_name} failed: {exc}")
 
-        return RenderedResult(
-            card_output="",
+        return StructuredResult(
+            blocks=[],
             source_agent=agent_name,
             success=False,
             error=f"{agent_name} failed: {exc}",
@@ -164,8 +108,8 @@ async def render_agent_response(
         agent_result,
         FinanceAgentOutput,
     ):
-        return RenderedResult(
-            card_output="",
+        return StructuredResult(
+            blocks=[],
             source_agent=agent_name,
             success=False,
             error=(
@@ -177,49 +121,16 @@ async def render_agent_response(
     _log(
         f"{agent_name} produced "
         f"{len(agent_result.components)} components"
+        f"component preview: {agent_result.components}"
     )
 
-    # --------------------------------------------------
-    # Step 2
-    # Render and validate adaptive card deterministically
-    # --------------------------------------------------
+    blocks = render_ui_blocks(
+        agent_result.components
+    )
 
-    try:
-        adaptive_card = render_finance_agent_output(
-            agent_result
-        )
-        _validate_adaptive_card(
-            adaptive_card
-        )
-        card_output = json.dumps(
-            adaptive_card,
-            ensure_ascii=False,
-        )
-    except Exception as exc:
-        _log(
-            f"adaptive card rendering failed: {exc}"
-        )
 
-        return RenderedResult(
-            card_output="",
-            source_agent=agent_name,
-            success=False,
-            error=(
-                "adaptive card rendering failed: "
-                f"{exc}"
-            ),
-        )
-
-    _log("render successful")
-
-    # --------------------------------------------------
-    # Step 3
-    # Return card
-    # --------------------------------------------------
-
-    return RenderedResult(
-        card_output=card_output,
+    return StructuredResult(
+        blocks=blocks,
         source_agent=agent_name,
         success=True,
-        adaptive_card=adaptive_card,
     )

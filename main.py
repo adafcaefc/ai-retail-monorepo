@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.responses import FileResponse
 from src.cashflow.router import router as cashflow_router
 
 
@@ -45,8 +45,7 @@ load_chivon()
 
 @app.get("/")
 async def root() -> dict[str, str]:
-	return {"status": "ok", "service": "ai-finance-forum-backend"}
-
+	return FileResponse("index.html")
 
 @app.get("/health")
 async def health() -> dict[str, str]:
@@ -68,10 +67,12 @@ async def healthz() -> dict[str, str]:
 	return {"status": "healthy"}
 
 
-from src.api.finance_agents import router as finance_agents_router
 
-app.include_router(finance_agents_router)
+from src.api.finance_agents_html import (
+	router as finance_agents_html_router
+)
 
+app.include_router(finance_agents_html_router)
 
 if __name__ == "__main__":
 	port = int(os.getenv("PORT", "8000"))
