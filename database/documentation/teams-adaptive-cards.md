@@ -34,3 +34,73 @@ Set `TEAMS_WEBHOOK_SECRET` in the backend and send the same value in the `X-Team
 Cards use Teams Adaptive Card version 1.5 with `Chart.Line`, `Chart.VerticalBar`, `Chart.Pie`, and `Chart.Donut`. Each chart includes a text/fact fallback. Unsupported source chart requests such as area or scatter are mapped to the closest supported chart. Tables use the native `Table` element.
 
 The specialist LLM selects and structures components, but Python constructs and validates the final card JSON. Financial calculations remain in database-backed service tools rather than in the renderer.
+
+### Agent output schema
+
+Agents emit chart components with this JSON shape inside `Component.content`:
+
+```json
+{
+  "title": "string",
+  "chart_type": "line | bar | column | waterfall | pie | donut",
+  "x_axis_title": "string (optional)",
+  "y_axis_title": "string (optional)",
+  "data": []
+}
+```
+
+### Single-series data
+
+For bar, column, pie, and donut charts:
+
+```json
+"data": [
+  { "label": "Option A", "value": 5000 },
+  { "label": "Option B", "value": 3200 }
+]
+```
+
+Adaptive Card mapping:
+
+| `chart_type` | Card element | Point shape |
+|---|---|---|
+| `bar`, `column` | `Chart.VerticalBar` | `{ "x": "<label>", "y": <number> }` |
+| `pie` | `Chart.Pie` | `{ "legend": "<label>", "value": <number> }` |
+| `donut` | `Chart.Donut` | `{ "legend": "<label>", "value": <number> }` |
+
+All `y` / `value` fields must be numeric. String values are rejected by validation.
+
+### Multi-series line data
+
+For trend and comparison charts:
+
+```json
+"data": [
+  {
+    "legend": "Closing cash",
+    "values": [
+      { "label": "W1", "value": 24000 },
+      { "label": "W2", "value": 26000 }
+    ]
+  },
+  {
+    "legend": "Minimum buffer",
+    "values": [
+      { "label": "W1", "value": 8000 },
+      { "label": "W2", "value": 8000 }
+    ]
+  }
+]
+```
+
+Adaptive Card mapping: `Chart.Line` with `{ "legend": "<series>", "values": [{ "x": "<label>", "y": <number> }] }`.
+
+### Unsupported types
+
+| Requested type | Fallback |
+|---|---|
+| `area` | `Chart.Line` |
+| `scatter` | `Chart.VerticalBar` |
+| `waterfall`, `bridge` | `Chart.VerticalBar` (web UI renders a dedicated waterfall) |
+
+See [AGENTS.md](../../AGENTS.md) for the full chart contract including web UI rendering, field aliases, and reconciliation rules with tables.
