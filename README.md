@@ -25,11 +25,30 @@ Agents can also be consumed via Microsoft Teams (Adaptive Cards) through `/api/f
 - **Frontend (production):** Self-contained `index.html` at the repo root
 - **Deploy:** Docker, Azure Container Registry, Azure Container Apps
 
+## UI mockup (initial design)
+
+The original product vision is captured in a self-contained HTML prototype at the repo root:
+
+**[`03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html`](./03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html)** — *CFO Finance AI Suite mockup v9.2 (21 Jul 2026)*
+
+Open it directly in a browser (no backend required). It is **illustrative only**: static ERP-style figures, canned chat replies, and client-side what-if math. It is not wired to the API or PostgreSQL.
+
+The mockup defines the target **Ledgerline Finance suite** experience:
+
+- Sidebar with four agents — Finance, Treasury, Collections, Leakage — using the same frontend IDs as the backend (`finance`, `treasury`, `collections`, `leakage`)
+- Per-agent dashboard: KPI tiles, focus charts, side panels, what-if simulator, and suggested next actions
+- Right-hand chat panel with chips, tables, charts, and confidence badges
+- Cross-agent **agentic action** flows (approval routing, history, notifications) — design reference only; not implemented in the backend yet
+
+The live app (`index.html`, `frontend/`) implements the chat + structured agent responses against real data. The mockup remains the north-star layout for the full dashboard experience.
+
 ## Project layout
 
 ```
 main.py                     FastAPI entry point
-index.html                  Production chat UI (vanilla HTML/JS)
+03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html
+                            Initial UI mockup (static prototype; open in browser)
+index.html                  Production chat UI (vanilla HTML/JS, API-connected)
 frontend/                   React + Vite app (local development)
 src/
   api/                      REST endpoints (HTML chat, Teams webhooks)
@@ -69,13 +88,15 @@ Vite runs on `http://127.0.0.1:5173` and proxies `/api/*` to the backend on port
 
 ## How the frontend is served today
 
-There are two parallel frontends:
+There are three UI artifacts, in order of origin:
 
-1. **Production / Docker** — FastAPI serves root `index.html` at `GET /` via `FileResponse`. The file contains inline HTML, CSS, and JavaScript. No build step is required; the Docker image copies the file as-is.
+1. **Initial mockup** — `03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html` is the original CFO suite prototype (dashboard + chat + simulators, static data). Use it as the design reference; it does not call the backend.
 
-2. **Development** — The React app in `frontend/` runs as a separate Vite dev server. It calls the same backend API (`/api/html/*`) through a Vite proxy.
+2. **Production / Docker** — FastAPI serves root `index.html` at `GET /` via `FileResponse`. The file contains inline HTML, CSS, and JavaScript connected to `/api/html/*`. No build step is required; the Docker image copies the file as-is.
 
-The React app is the intended long-term UI. The root `index.html` is a standalone fallback that mirrors the same API contract.
+3. **Development** — The React app in `frontend/` runs as a separate Vite dev server. It calls the same backend API through a Vite proxy.
+
+The React app is the intended long-term UI. The root `index.html` is the current API-connected fallback. Both should converge toward the mockup’s full-dashboard layout over time.
 
 ## Future plan: single HTML file from Vite
 
@@ -127,5 +148,6 @@ pytest
 
 ## Further reading
 
+- [03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html](./03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html) — Initial UI mockup (static prototype)
 - [AGENTS.md](./AGENTS.md) — Agent system architecture, tools, output schemas, and configuration
 - [CLAUDE.md](./CLAUDE.md) — Pointer for Claude Code sessions

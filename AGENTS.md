@@ -24,11 +24,28 @@ User message
     → SSE stream to client
 ```
 
+## UI mockup (initial design)
+
+The original CFO suite UX is defined in **`03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html`** at the repo root (v9.2, 21 Jul 2026). Open it in a browser with no backend — it is a static prototype with illustrative figures and canned interactions.
+
+The mockup is the design reference for how agents should feel in the product:
+
+| Mockup sidebar | Frontend ID | Backend config | Mockup subtitle |
+|---|---|---|---|
+| Finance | `finance` | `finance_agent` | Performance |
+| Treasury | `treasury` | `cashflow_agent` | Cash & FX |
+| Collections | `collections` | `collection_agent` | Receivables |
+| Leakage | `leakage` | `leakage_agent` | Payment integrity |
+
+Each mockup agent includes a dashboard (KPI tiles, charts, what-if levers), a chat panel (prompt chips, tables, inline charts, confidence badges), and cross-agent **agentic action** flows (approval routing, action history, status notifications). Those action-plan modals are aspirational — the backend today exposes chat, tools, and structured `FinanceAgentOutput` components only.
+
+When extending agents or renderers, treat the mockup as the target presentation layer. Agent output schemas (`text`, `table`, `chart`, `simulation`, `recommendation`, `confidence`, `next_route`) map directly to patterns shown in the mockup chat and dashboard panels.
+
 ## Agent registry
 
 ### User-facing agents
 
-These four agents appear in the chat UI. The frontend uses short IDs; the backend maps them to config agent names in `CHAT_AGENT_MAP` (`src/api/finance_agents_html.py`).
+These four agents appear in the chat UI. The frontend uses short IDs; the backend maps them to config agent names in `CHAT_AGENT_MAP` (`src/api/finance_agents_html.py`). IDs and display names match the initial mockup sidebar.
 
 | Frontend ID | Config name | Display name | Config file |
 |---|---|---|---|
@@ -418,6 +435,7 @@ All agents share a common persona defined in `common.json`:
 
 | File | Role |
 |---|---|
+| `03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html` | Initial UI mockup — static CFO suite prototype (design reference) |
 | `src/llm/agents/chivon.py` | Agent framework (config parsing, model building, execution) |
 | `src/llm/chivon_impl.py` | Startup loader |
 | `src/llm/pipeline.py` | `render_agent_response()` orchestration |
