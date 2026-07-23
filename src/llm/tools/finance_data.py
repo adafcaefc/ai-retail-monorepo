@@ -125,6 +125,7 @@ def get_collections_snapshot() -> dict[str, Any]:
                    payment_terms, days_beyond_terms, payment_trend,
                    has_dispute, on_time_percentage, total_ar_idr_mn,
                    overdue_idr_mn, overdue_percentage,
+                   current_idr_mn,
                    overdue_1_30_idr_mn, overdue_31_60_idr_mn,
                    overdue_61_90_idr_mn, overdue_90_plus_idr_mn,
                    credit_limit_idr_mn, credit_utilization

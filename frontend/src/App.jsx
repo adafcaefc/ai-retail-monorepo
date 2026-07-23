@@ -10,6 +10,7 @@ import {
 } from "./api/chatStream.js";
 
 import ChatMessage from "./components/ChatMessage.jsx";
+import Workboard from "./components/Workboard.jsx";
 
 const AGENTS = {
   collections: {
@@ -77,7 +78,7 @@ export default function App() {
   const [
     activeAgent,
     setActiveAgent
-  ] = useState("collections");
+  ] = useState("finance");
 
   const [
     chats,
@@ -697,13 +698,18 @@ export default function App() {
         </footer>
       </aside>
 
+      <Workboard
+        agentId={activeAgent}
+        agentName={currentAgent.name}
+      />
+
       <section className="chat-panel">
         <header className="chat-header">
           <div>
             <span className="header-kicker">
               {currentAgent.name}
               {" "}
-              agent
+              chat
 
               {currentChat.busy
                 ? " · working"
@@ -712,7 +718,7 @@ export default function App() {
 
             <h1>
               {currentChat.title ||
-                `${currentAgent.name} workspace`}
+                `Ask ${currentAgent.name}`}
             </h1>
           </div>
 

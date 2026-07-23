@@ -39,8 +39,15 @@ from src.llm.pipeline import (
     render_agent_response,
 )
 
+from src.cashflow.models import CashFlowSimulationRequest
+from src.llm.dashboard_payload import (
+    build_dashboard,
+    simulate_finance_scenario,
+    simulate_leakage_scenario,
+)
 from src.llm.tools.finance_data import (
-    calculate_collection_scenario
+    calculate_collection_scenario,
+    simulate_cashflow,
 )
 
 router = APIRouter(
@@ -80,6 +87,25 @@ class CollectionSimulationRequest(
         ge=0,
         le=100,
     )
+
+
+class FinanceSimulationRequest(BaseModel):
+    price: float = 0
+    cost: float = 0
+    vol: float = 0
+    fx: float = 0
+    opex: float = 0
+    scope: str = "all"
+
+
+class LeakageSimulationRequest(BaseModel):
+    hold: float = Field(ge=0)
+    dupRec: float = Field(default=95, ge=0, le=100)
+    ovRec: float = Field(default=90, ge=0, le=100)
+    duplicates_amount: float = Field(default=3050, ge=0)
+    overbill_amount: float = Field(default=400, ge=0)
+    other_blocked: float = Field(default=500, ge=0)
+    at_risk: float = Field(default=7845, ge=0)
 
 class ToolCallEvent(BaseModel):
     id: str
@@ -310,6 +336,28 @@ async def get_conversations():
         "items": conversations
     }
 
+
+@router.get("/dashboard/{agent}")
+async def get_agent_dashboard(agent: str) -> dict[str, Any]:
+    if agent not in CHAT_AGENT_MAP:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown agent: {agent}",
+        )
+    try:
+        return build_dashboard(agent)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Dashboard data unavailable: {error}",
+        ) from error
+
+
 @router.post(
     "/simulations/collections/recalculate"
 )
@@ -382,7 +430,60 @@ async def recalculate_collection_simulation(
                 f"failed: {error}"
             ),
         ) from error
-    
+
+
+@router.post("/simulations/cashflow/recalculate")
+async def recalculate_cashflow_simulation(
+    payload: CashFlowSimulationRequest,
+) -> dict[str, Any]:
+    try:
+        result = simulate_cashflow(
+            accelerate_collection_idr_mn=payload.accelerate_collection_idr_mn,
+            defer_payment_idr_mn=payload.defer_payment_idr_mn,
+            credit_line_draw_idr_mn=payload.credit_line_draw_idr_mn,
+            hedge_usd=payload.hedge_usd,
+        )
+        return {"success": True, "result": result}
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cashflow simulation failed: {error}",
+        ) from error
+
+
+@router.post("/simulations/finance/recalculate")
+async def recalculate_finance_simulation(
+    payload: FinanceSimulationRequest,
+) -> dict[str, Any]:
+    result = simulate_finance_scenario(
+        price=payload.price,
+        cost=payload.cost,
+        vol=payload.vol,
+        fx=payload.fx,
+        opex=payload.opex,
+        scope=payload.scope,
+    )
+    return result
+
+
+@router.post("/simulations/leakage/recalculate")
+async def recalculate_leakage_simulation(
+    payload: LeakageSimulationRequest,
+) -> dict[str, Any]:
+    result = simulate_leakage_scenario(
+        hold=payload.hold,
+        dup_rec=payload.dupRec,
+        ov_rec=payload.ovRec,
+        duplicates_amount=payload.duplicates_amount,
+        overbill_amount=payload.overbill_amount,
+        other_blocked=payload.other_blocked,
+        at_risk=payload.at_risk,
+    )
+    return result
+
+
 @router.get(
     "/conversations/{conversation_id}"
 )
