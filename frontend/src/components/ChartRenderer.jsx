@@ -130,6 +130,13 @@ function ChartByType({
         />
       );
 
+    case "waterfall":
+      return (
+        <WaterfallChartView
+          payload={payload}
+        />
+      );
+
     case "bar":
     default:
       return (
@@ -162,7 +169,11 @@ function BarChartView({
     rows.length <= 6;
 
   const chartHeight =
-    isCompact ? 285 : 360;
+    hasLongLabels
+      ?235
+      : isCompact
+        ? 220
+        :300;
 
   return (
     <ResponsiveContainer
@@ -173,13 +184,13 @@ function BarChartView({
         data={rows}
 
         margin={{
-          top: 38,
-          right: 24,
+          top: 28,
+          right: 18,
           bottom:
             hasLongLabels
-              ? 82
-              : 35,
-          left: 12
+              ? 58
+              : 24,
+          left: 4
         }}
 
         barCategoryGap="24%"
@@ -201,7 +212,7 @@ function BarChartView({
 
           angle={
             hasLongLabels
-              ? -22
+              ? -16
               : 0
           }
 
@@ -213,12 +224,12 @@ function BarChartView({
 
           height={
             hasLongLabels
-              ? 90
-              : 40
+              ? 62
+              : 34
           }
 
           tick={{
-            fontSize: 10,
+            fontSize: 9,
             fill: "#62708a"
           }}
         />
@@ -306,7 +317,7 @@ function BarChartView({
                 seriesDefinition.name
               }
 
-              maxBarSize={66}
+              maxBarSize={52}
 
               radius={[
                 4,
@@ -358,6 +369,350 @@ function BarChartView({
   );
 }
 
+function WaterfallChartView({
+  payload
+}) {
+  const {
+    unit
+  } = payload;
+
+  const waterfallRows =
+    buildWaterfallRows(
+      payload.rows
+    );
+
+  const hasLongLabels =
+    waterfallRows.some(
+      (row) =>
+        String(
+          row.name
+        ).length > 14
+    );
+
+  return (
+    <ResponsiveContainer
+      width="100%"
+      height={340}
+    >
+      <BarChart
+        data={waterfallRows}
+        margin={{
+          top: 38,
+          right: 24,
+          bottom:
+            hasLongLabels
+              ? 82
+              : 42,
+          left: 12
+        }}
+        barCategoryGap="24%"
+      >
+        <CartesianGrid
+          vertical={false}
+          stroke="#edf0f5"
+        />
+
+        <XAxis
+          dataKey="name"
+          axisLine={{
+            stroke: "#d7dee9"
+          }}
+          tickLine={false}
+          interval={0}
+          angle={
+            hasLongLabels
+              ? -22
+              : 0
+          }
+          textAnchor={
+            hasLongLabels
+              ? "end"
+              : "middle"
+          }
+          height={
+            hasLongLabels
+              ? 90
+              : 44
+          }
+          tick={{
+            fontSize: 10,
+            fill: "#62708a"
+          }}
+        />
+
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          width={56}
+          
+          domain={[
+            0,
+            (dataMax) =>
+              Math.ceil(
+                dataMax*1.15
+              )
+          ]}
+
+          tick={{
+            fontSize: 9,
+            fill: "8a8f9c"
+          }}
+
+          tickFormatter={
+            formatAxisNumber
+          }
+        />
+        
+        <ReferenceLine
+          y={0}
+          stroke="#98a2b3"
+          strokeWidth={1}
+        />
+
+        <Tooltip
+          cursor={{
+            fill:
+              "rgba(23, 92, 211, 0.06)"
+          }}
+          content={
+            <WaterfallTooltip
+              unit={unit}
+            />
+          }
+        />
+
+        <Bar
+          dataKey="base"
+          stackId="waterfall"
+          fill="transparent"
+          isAnimationActive={false}
+        />
+
+        <Bar
+          dataKey="change"
+          stackId="waterfall"
+          maxBarSize={66}
+          radius={[4, 4, 0, 0]}
+          isAnimationActive
+          animationDuration={450}
+        >
+          {waterfallRows.map(
+            (row, index) => (
+              <Cell
+                key={
+                  `${row.name}-${index}`
+                }
+                fill={row.color}
+              />
+            )
+          )}
+
+          {payload.showValues && (
+            <LabelList
+              dataKey="displayValue"
+              position="top"
+              formatter={
+                (value) =>
+                  formatChartValue(value)
+              }
+              fill="#344054"
+              fontSize={10}
+              fontWeight={700}
+            />
+          )}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+
+function buildWaterfallRows(
+  rows
+) {
+  let runningTotal = 0;
+
+  return rows.map(
+    (row, index) => {
+      const numericValue =
+        Number(row.value);
+
+      const isFirst =
+        index === 0;
+
+      const isLast =
+        index ===
+        rows.length - 1;
+
+      if (
+        !Number.isFinite(
+          numericValue
+        )
+      ) {
+        return {
+          name: row.name,
+          base: 0,
+          change: 0,
+          displayValue: 0,
+          color: "#98a2b3",
+          kind: "empty"
+        };
+      }
+
+      if (isFirst) {
+        runningTotal =
+          numericValue;
+
+        return {
+          name: row.name,
+          base: 0,
+          change: numericValue,
+          displayValue:
+            numericValue,
+          color: "#7a52b3",
+          kind: "opening"
+        };
+      }
+
+      if (isLast) {
+        return {
+          name: row.name,
+          base: 0,
+          change: numericValue,
+          displayValue:
+            numericValue,
+          color: "#3aaed8",
+          kind: "closing"
+        };
+      }
+
+      const previousTotal =
+        runningTotal;
+
+      const nextTotal =
+        runningTotal +
+        numericValue;
+
+      const base =
+        Math.min(
+          previousTotal,
+          nextTotal
+        );
+
+      const change =
+        Math.abs(
+          numericValue
+        );
+
+      runningTotal =
+        nextTotal;
+
+      return {
+        name: row.name,
+        base,
+        change,
+        displayValue:
+          numericValue,
+
+        color:
+          numericValue >= 0
+            ? "#2e8b57"
+            : "#c4314b",
+
+        kind:
+          numericValue >= 0
+            ? "positive"
+            : "negative"
+      };
+    }
+  );
+}
+
+
+function WaterfallTooltip({
+  active,
+  payload,
+  label,
+  unit
+}) {
+  if (
+    !active ||
+    !Array.isArray(payload) ||
+    !payload.length
+  ) {
+    return null;
+  }
+
+  const row =
+    payload.find(
+      (item) =>
+        item.dataKey ===
+        "change"
+    )?.payload ||
+    payload[0]?.payload;
+
+  if (!row) {
+    return null;
+  }
+
+  return (
+    <div className="chart-tooltip">
+      <strong>
+        {label}
+      </strong>
+
+      <div className="chart-tooltip-row">
+        <span
+          className="chart-tooltip-dot"
+          style={{
+            background:
+              row.color ||
+              "#7a52b3"
+          }}
+        />
+
+        <span>
+          {getWaterfallTooltipLabel(
+            row.kind
+          )}
+        </span>
+
+        <b>
+          {formatFullNumber(
+            row.displayValue
+          )}
+
+          {unit
+            ? ` ${unit}`
+            : ""}
+        </b>
+      </div>
+    </div>
+  );
+}
+
+function getWaterfallTooltipLabel(
+  kind
+) {
+  if (kind === "opening") {
+    return "Opening value";
+  }
+
+  if (kind === "closing") {
+    return "Closing value";
+  }
+
+  if (kind === "positive") {
+    return "Positive driver";
+  }
+
+  if (kind === "negative") {
+    return "Negative driver";
+  }
+
+  return "Value";
+}
+
 
 function LineChartView({
   payload
@@ -379,10 +734,10 @@ function LineChartView({
         data={rows}
 
         margin={{
-          top: 30,
+          top: 20,
           right: 24,
-          bottom: 35,
-          left: 12
+          bottom: 40,
+          left: 16
         }}
       >
         <CartesianGrid
@@ -852,11 +1207,18 @@ function normalizeChartPayload(
   const payload =
     rawPayload || {};
 
-  const chartType =
+    let chartType =
     normalizeChartType(
       payload.chart_type ||
       payload.type
     );
+
+  if (
+    chartType === "bar" &&
+    isBridgePayload(payload)
+  ) {
+    chartType = "waterfall";
+  }
 
   const rawData =
     Array.isArray(payload.data)
@@ -936,6 +1298,36 @@ function normalizeChartPayload(
   };
 }
 
+function isBridgePayload(
+  payload
+) {
+  const searchableText = [
+    payload?.title,
+    payload?.subtitle,
+    payload?.description,
+    payload?.tag,
+    payload?.chart_type,
+    payload?.type
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return (
+    searchableText.includes(
+      "ebitda bridge"
+    ) ||
+    searchableText.includes(
+      "variance bridge"
+    ) ||
+    searchableText.includes(
+      "waterfall"
+    ) ||
+    searchableText.includes(
+      "bridge"
+    )
+  );
+}
 
 function normalizeSingleSeries(
   rawData,
@@ -1293,13 +1685,17 @@ function getPointValue(point) {
 }
 
 
-function normalizeChartType(type) {
+function normalizeChartType(
+  type
+) {
   const normalized =
-    String(
-      type || "bar"
-    )
+    String(type || "bar")
       .trim()
-      .toLowerCase();
+      .toLowerCase()
+      .replace(
+        /[\s-]+/g,
+        "_"
+      );
 
   if (
     normalized === "line"
@@ -1324,6 +1720,19 @@ function normalizeChartType(type) {
     normalized === "doughnut"
   ) {
     return "donut";
+  }
+
+  if (
+    normalized ===
+      "waterfall" ||
+    normalized ===
+      "bridge" ||
+    normalized ===
+      "variance_bridge" ||
+    normalized ===
+      "ebitda_bridge"
+  ) {
+    return "waterfall";
   }
 
   return "bar";
