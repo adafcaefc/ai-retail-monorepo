@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Iterable, Sequence
+from contextvars import ContextVar, Token
 from datetime import date, datetime
 from decimal import Decimal
+from functools import lru_cache
 from typing import Any, Literal
 
 import sqlglot
@@ -71,6 +74,20 @@ LEAKAGE_ALLOWED_TABLES = (
     "payment_leakage.summary",
     "payment_leakage.action_worklist",
     "payment_leakage.recommendations",
+)
+
+DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
+    "finance": FINANCE_ALLOWED_TABLES,
+    "cashflow": CASHFLOW_ALLOWED_TABLES,
+    "collection": COLLECTIONS_ALLOWED_TABLES,
+    "leakage": LEAKAGE_ALLOWED_TABLES,
+}
+
+# Domain whose agent is currently running. Simulation/execution tools read
+# this instead of trusting a model-supplied allow-list.
+_simulation_domain: ContextVar[str | None] = ContextVar(
+    "simulation_domain",
+    default=None,
 )
 
 DOMAIN_QUERY_MAX_ROWS = 100
@@ -473,7 +490,67 @@ def query_payment_leakage(
     )
 
 
+def _short_type(row: dict[str, Any]) -> str:
+    """Collapse information_schema type columns into one short token."""
+    data_type = str(row["data_type"])
+    if data_type == "character varying":
+        length = row["character_maximum_length"]
+        return f"varchar({length})" if length else "varchar"
+    if data_type == "timestamp with time zone":
+        return "timestamptz"
+    if data_type == "timestamp without time zone":
+        return "timestamp"
+    if data_type == "double precision":
+        return "float8"
+    if data_type == "USER-DEFINED":
+        return str(row["udt_name"])
+    return data_type
+
+
 def describe_tables(
+    *,
+    allowed_tables: Sequence[str],
+    tables: Sequence[str] | None = None,
+    engine: Engine | None = None,
+) -> dict[str, Any]:
+    """
+    Return live PostgreSQL column metadata and CHECK constraints.
+
+    Results are cached per (allow-list, requested tables): every monitoring
+    pass asks for the same schema, and each miss costs several remote round
+    trips. Call clear_schema_cache() after a migration. An explicit engine
+    (tests) bypasses the cache.
+    """
+    if engine is not None:
+        return _describe_tables_uncached(
+            allowed_tables=allowed_tables,
+            tables=tables,
+            engine=engine,
+        )
+    cached = _describe_tables_cached(
+        tuple(allowed_tables),
+        tuple(tables) if tables is not None else None,
+    )
+    return copy.deepcopy(cached)
+
+
+@lru_cache(maxsize=32)
+def _describe_tables_cached(
+    allowed_tables: tuple[str, ...],
+    tables: tuple[str, ...] | None,
+) -> dict[str, Any]:
+    return _describe_tables_uncached(
+        allowed_tables=allowed_tables,
+        tables=tables,
+    )
+
+
+def clear_schema_cache() -> None:
+    """Drop cached describe_tables results (call after a schema migration)."""
+    _describe_tables_cached.cache_clear()
+
+
+def _describe_tables_uncached(
     *,
     allowed_tables: Sequence[str],
     tables: Sequence[str] | None = None,
@@ -597,17 +674,15 @@ def describe_tables(
         )
         if qualified not in by_table:
             continue
-        by_table[qualified].append(
-            {
-                "column": row["column_name"],
-                "data_type": row["data_type"],
-                "udt_name": row["udt_name"],
-                "nullable": row["is_nullable"] == "YES",
-                "max_length": row["character_maximum_length"],
-            }
-        )
+        # Compact "name type" strings rather than one object per column. The
+        # agents only ever need the name and the type; the verbose form tripled
+        # the token cost of a payload that is re-sent on every turn.
+        column = f"{row['column_name']} {_short_type(row)}"
+        if row["is_nullable"] != "YES":
+            column += " NOT NULL"
+        by_table[qualified].append(column)
 
-    check_by_table: dict[str, list[dict[str, str]]] = {
+    check_by_table: dict[str, list[str]] = {
         table: [] for table in target_tables
     }
     for row in checks:
@@ -616,12 +691,7 @@ def describe_tables(
         )
         if qualified not in check_by_table:
             continue
-        check_by_table[qualified].append(
-            {
-                "name": str(row["constraint_name"]),
-                "definition": str(row["definition"]),
-            }
-        )
+        check_by_table[qualified].append(str(row["definition"]))
 
     payload: dict[str, Any] = {
         "allowed_tables": sorted(allowed),
@@ -637,6 +707,89 @@ def describe_tables(
             f"{ignored_tables}. Use only allowed_tables."
         )
     return payload
+
+
+def set_simulation_domain(domain: str) -> Token:
+    """Scope simulation/execution tools to one domain's tables."""
+    return _simulation_domain.set(domain)
+
+
+def reset_simulation_domain(token: Token) -> None:
+    _simulation_domain.reset(token)
+
+
+def current_simulation_domain() -> str | None:
+    return _simulation_domain.get()
+
+
+def domain_for_table(table_name: str) -> str | None:
+    """Return the domain owning a table, ignoring shared audit tables."""
+    normalized = _normalize_table_name(table_name)
+    for domain, tables in DOMAIN_ALLOWED_TABLES.items():
+        for table in tables:
+            if table.startswith("audit."):
+                continue
+            if table == normalized:
+                return domain
+    return None
+
+
+def _split_column_entry(entry: Any) -> tuple[str, str]:
+    """
+    Split a describe_tables column entry into (name, type).
+
+    describe_tables emits compact "name type [NOT NULL]" strings; older callers
+    passed dicts, so both shapes are accepted.
+    """
+    if isinstance(entry, dict):
+        return (
+            str(entry.get("column") or ""),
+            str(entry.get("data_type") or "unknown"),
+        )
+    parts = str(entry).split(" ", 1)
+    if len(parts) == 1:
+        return parts[0], "unknown"
+    return parts[0], parts[1].removesuffix(" NOT NULL").strip() or "unknown"
+
+
+@lru_cache(maxsize=8)
+def _allowed_data_for_tables(
+    allowed_tables: tuple[str, ...],
+) -> dict[str, Any]:
+    schema = describe_tables(allowed_tables=allowed_tables)
+    allowed: dict[str, Any] = {}
+    for table, columns in (schema.get("tables") or {}).items():
+        allowed[table] = {
+            "columns": dict(
+                _split_column_entry(column) for column in columns
+            ),
+            "check_constraints": (
+                (schema.get("check_constraints") or {}).get(table) or []
+            ),
+        }
+    return allowed
+
+
+def allowed_data_for_domain(domain: str) -> dict[str, Any]:
+    """
+    Return the allow-list of tables/columns/CHECK constraints for a domain.
+
+    Reads live column names from information_schema so invented columns fail
+    validation before any SQL runs. Cached per process; the result is a copy
+    so callers cannot poison the cache.
+    """
+    tables = DOMAIN_ALLOWED_TABLES.get(domain)
+    if tables is None:
+        raise ValueError(
+            f"Unknown domain {domain!r}. "
+            f"Allowed: {', '.join(sorted(DOMAIN_ALLOWED_TABLES))}."
+        )
+    return copy.deepcopy(_allowed_data_for_tables(tables))
+
+
+def clear_allowed_data_cache() -> None:
+    """Drop cached schema, for use after a migration."""
+    _allowed_data_for_tables.cache_clear()
 
 
 def describe_financial_performance_tables(
@@ -719,6 +872,7 @@ __all__ = [
     "FINANCE_ALLOWED_TABLES",
     "LEAKAGE_ALLOWED_TABLES",
     "LOCAL_FREEFORM_QUERY_TOOLS",
+    "clear_schema_cache",
     "describe_cashflow_tables",
     "describe_collections_tables",
     "describe_financial_performance_tables",

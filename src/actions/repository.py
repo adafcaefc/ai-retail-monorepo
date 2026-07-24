@@ -120,7 +120,15 @@ def save_alert(
     subagent: str,
     agent: str,
     issue: str,
+    commit: bool = True,
 ) -> str:
+    """
+    Insert one alert and return its id.
+
+    Callers that write many rows in a row should pass commit=False and commit
+    once at the end. Each commit is a network round trip; against a remote
+    Postgres that dominates the cost of persisting a monitoring run.
+    """
     alert_id = str(uuid4())
     session.execute(
         text(
@@ -151,49 +159,62 @@ def save_alert(
             "issue": issue,
         },
     )
-    session.commit()
+    if commit:
+        session.commit()
     return alert_id
 
 
 def save_alerts(
     session: Session,
     alerts: list[dict[str, Any]],
+    *,
+    commit: bool = True,
 ) -> list[str]:
-    ids: list[str] = []
-    for alert in alerts:
-        alert_id = str(uuid4())
-        session.execute(
-            text(
-                """
-                INSERT INTO chat.alerts (
-                    id,
-                    name,
-                    subagent,
-                    agent,
-                    issue,
-                    date_created
-                )
-                VALUES (
-                    :id,
-                    :name,
-                    :subagent,
-                    :agent,
-                    :issue,
-                    NOW()
-                )
-                """
-            ),
-            {
-                "id": alert_id,
-                "name": alert["name"],
-                "subagent": alert["subagent"],
-                "agent": alert["agent"],
-                "issue": alert["issue"],
-            },
-        )
-        ids.append(alert_id)
-    session.commit()
-    return ids
+    """
+    Insert many alerts in one executemany round trip and return their ids.
+
+    Ids are generated here, so callers can attach actions to them before the
+    rows are flushed. Pass commit=False to fold this into a larger transaction.
+    """
+    if not alerts:
+        return []
+
+    rows = [
+        {
+            "id": str(uuid4()),
+            "name": alert["name"],
+            "subagent": alert["subagent"],
+            "agent": alert["agent"],
+            "issue": alert["issue"],
+        }
+        for alert in alerts
+    ]
+    session.execute(
+        text(
+            """
+            INSERT INTO chat.alerts (
+                id,
+                name,
+                subagent,
+                agent,
+                issue,
+                date_created
+            )
+            VALUES (
+                :id,
+                :name,
+                :subagent,
+                :agent,
+                :issue,
+                NOW()
+            )
+            """
+        ),
+        rows,
+    )
+    if commit:
+        session.commit()
+    return [row["id"] for row in rows]
 
 
 def delete_alert(
@@ -305,7 +326,13 @@ def save_action(
     spec: str | None = None,
     impact: str | None = None,
     status: str = ACTION_STATUS_PLANNED,
+    commit: bool = True,
 ) -> str:
+    """
+    Insert one action and return its id.
+
+    Pass commit=False when writing a batch; see save_alert for why.
+    """
     action_id = str(uuid4())
     session.execute(
         text(
@@ -345,60 +372,72 @@ def save_action(
             "impact": impact,
         },
     )
-    session.commit()
+    if commit:
+        session.commit()
     return action_id
 
 
 def save_actions(
     session: Session,
     actions: list[dict[str, Any]],
+    *,
+    commit: bool = True,
 ) -> list[str]:
-    ids: list[str] = []
-    for item in actions:
-        action_id = str(uuid4())
-        session.execute(
-            text(
-                """
-                INSERT INTO chat.actions (
-                    id,
-                    action,
-                    agent,
-                    routes,
-                    alert_id,
-                    status,
-                    spec,
-                    impact,
-                    created_at
-                )
-                VALUES (
-                    :id,
-                    :action,
-                    :agent,
-                    :routes,
-                    :alert_id,
-                    :status,
-                    :spec,
-                    :impact,
-                    NOW()
-                )
-                """
+    """
+    Insert many actions in one executemany round trip and return their ids.
+
+    Any alert_id referenced must already be inserted in this transaction.
+    """
+    if not actions:
+        return []
+
+    rows = [
+        {
+            "id": str(uuid4()),
+            "action": item["action"],
+            "agent": item["agent"],
+            "routes": item.get("routes") or [],
+            "alert_id": item.get("alert_id"),
+            "status": _normalize_status(
+                item.get("status", ACTION_STATUS_PLANNED)
             ),
-            {
-                "id": action_id,
-                "action": item["action"],
-                "agent": item["agent"],
-                "routes": item.get("routes") or [],
-                "alert_id": item.get("alert_id"),
-                "status": _normalize_status(
-                    item.get("status", ACTION_STATUS_PLANNED)
-                ),
-                "spec": item.get("spec"),
-                "impact": item.get("impact"),
-            },
-        )
-        ids.append(action_id)
-    session.commit()
-    return ids
+            "spec": item.get("spec"),
+            "impact": item.get("impact"),
+        }
+        for item in actions
+    ]
+    session.execute(
+        text(
+            """
+            INSERT INTO chat.actions (
+                id,
+                action,
+                agent,
+                routes,
+                alert_id,
+                status,
+                spec,
+                impact,
+                created_at
+            )
+            VALUES (
+                :id,
+                :action,
+                :agent,
+                :routes,
+                :alert_id,
+                :status,
+                :spec,
+                :impact,
+                NOW()
+            )
+            """
+        ),
+        rows,
+    )
+    if commit:
+        session.commit()
+    return [row["id"] for row in rows]
 
 
 def update_action_status(

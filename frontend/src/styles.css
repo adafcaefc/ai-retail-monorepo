@@ -2413,6 +2413,30 @@ summary:focus-visible {
   line-height: 1.4;
 }
 
+.sim-blocks {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.sim-blocks table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.sim-blocks th,
+.sim-blocks td {
+  border: 1px solid #e6ebf4;
+  padding: 4px 8px;
+  text-align: left;
+}
+
+.sim-blocks h2 {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+}
+
 .rec-action-meta {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

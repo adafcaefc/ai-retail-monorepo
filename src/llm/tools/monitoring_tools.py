@@ -592,15 +592,42 @@ def _value_compare_query(
     )
 
 
+def _resolve_allowed_data(table_name: str) -> dict:
+    """
+    Look up the allow-list for a table instead of taking it from the model.
+
+    Uses the domain scope set by the caller when available, otherwise the
+    domain that owns the table.
+    """
+    from src.llm.tools.freeform_query import (
+        allowed_data_for_domain,
+        current_simulation_domain,
+        domain_for_table,
+    )
+
+    domain = current_simulation_domain() or domain_for_table(table_name)
+
+    if domain is None:
+        raise ValueError(
+            f"Table '{table_name}' is not owned by any domain allow-list."
+        )
+
+    return allowed_data_for_domain(domain)
+
+
 def _simulate_impact(
     table_name: str,
     where_clause: str,
     update_expression: str,
     metric_expressions: list[str],
-    allowed_data: str | dict,
 ) -> dict:
     """Agent-facing wrapper that injects the shared SQLAlchemy engine."""
     from src.db.db import get_engine
+
+    try:
+        allowed_data = _resolve_allowed_data(table_name)
+    except Exception as error:  # noqa: BLE001
+        return _simulation_error(error)
 
     return simulate_impact(
         get_engine(),
@@ -617,10 +644,11 @@ def _execute_impact(
     where_clause: str,
     update_expression: str,
     metric_expressions: list[str],
-    allowed_data: str | dict,
 ) -> dict:
     """Agent-facing wrapper that permanently applies an approved action."""
     from src.db.db import get_engine
+
+    allowed_data = _resolve_allowed_data(table_name)
 
     return execute_impact(
         get_engine(),

@@ -8,12 +8,30 @@ import {
   simulateAction
 } from "../api/alerts.js";
 import { useMonitoring } from "../monitoring/MonitoringProvider.jsx";
+import BlockRenderer from "./BlockRenderer.jsx";
 
 const STEPS = [
   { id: "recommendations", label: "Recommendations" },
   { id: "analysis", label: "Analysis" },
   { id: "approval", label: "Approval" }
 ];
+
+// How many simulations may be in flight at once. Each one is a multi-turn
+// agent run, so this trades wall time against the Azure request budget.
+const SIMULATE_CONCURRENCY = 3;
+
+async function runPool(items, limit, worker) {
+  const queue = [...items];
+  const workerCount = Math.min(limit, queue.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (queue.length > 0) {
+        await worker(queue.shift());
+      }
+    })
+  );
+}
 
 export default function AlertsPanel({
   agentId,
@@ -179,18 +197,33 @@ export default function AlertsPanel({
 
     setActionBusyId("batch-simulate");
     setError("");
-    const nextResults = { ...simResults };
+
+    // Each action is an independent agent run, so they overlap. The pool is
+    // bounded to stay inside the Azure OpenAI request limit.
+    const nextResults = {};
+    const failed = [];
+
+    await runPool(selectedItems, SIMULATE_CONCURRENCY, async (item) => {
+      try {
+        nextResults[item.action.id] = await simulateAction(item.action.id);
+      } catch (simulateError) {
+        failed.push(item.action.action || item.action.id);
+        console.error("Simulation failed", item.action.id, simulateError);
+      }
+    });
 
     try {
-      for (const item of selectedItems) {
-        const result = await simulateAction(item.action.id);
-        nextResults[item.action.id] = result;
-      }
-      setSimResults(nextResults);
+      setSimResults((prev) => ({ ...prev, ...nextResults }));
       await reloadAlerts();
       setStep(1);
-    } catch (simulateError) {
-      setError(simulateError.message || "Simulation failed.");
+      if (failed.length > 0) {
+        setError(
+          `Simulation failed for ${failed.length} of ` +
+            `${selectedItems.length} actions: ${failed.join(", ")}`
+        );
+      }
+    } catch (reloadError) {
+      setError(reloadError.message || "Simulation failed.");
     } finally {
       setActionBusyId("");
     }
@@ -728,11 +761,15 @@ function AnalysisStep({
       <ul className="rec-action-list">
         {items.map(({ alert, action }) => {
           const sim = simResults[action.id];
+          const simulation =
+            sim?.simulation || action.simulation_summary || null;
           const summary =
-            sim?.simulation?.summary ||
-            action.simulation_summary?.summary ||
+            simulation?.summary ||
             action.impact ||
             "No simulation summary yet.";
+          const blocks = Array.isArray(simulation?.blocks)
+            ? simulation.blocks
+            : [];
           return (
             <li key={action.id} className="rec-action-card static">
               <div className="rec-action-body">
@@ -741,6 +778,16 @@ function AnalysisStep({
                   <span className="alert-subagent">{alert.name}</span>
                 </div>
                 <p>{summary}</p>
+                {blocks.length > 0 ? (
+                  <div className="sim-blocks">
+                    {blocks.map((block, index) => (
+                      <BlockRenderer
+                        key={`${action.id}-block-${index}`}
+                        block={block}
+                      />
+                    ))}
+                  </div>
+                ) : null}
                 <div className="alert-action-btns">
                   <button
                     type="button"

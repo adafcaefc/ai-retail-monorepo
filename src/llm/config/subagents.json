@@ -25,7 +25,7 @@
                 },
                 "spec": {
                     "type": "str",
-                    "description": "Natural-language action specification describing what should change, which records, and how success is measured. Not executable SQL."
+                    "description": "At most 50 words: target records, intended change, success metric. No preamble or restated context. Not executable SQL."
                 }
             }
         },
@@ -37,7 +37,7 @@
                 },
                 "issue": {
                     "type": "str",
-                    "description": "Short sentence describing the alert with key numbers."
+                    "description": "One sentence, at most 35 words, describing the alert with its key numbers."
                 },
                 "subagent": {
                     "type": "str",
@@ -96,6 +96,16 @@
                     },
                     "default": [],
                     "description": "Alerts already found by earlier monitoring agents or already stored for this domain. Do not duplicate these."
+                },
+                "domain_snapshot": {
+                    "type": "json",
+                    "default": null,
+                    "description": "Pre-fetched domain snapshot for this run: the exact same data get_*_snapshot would return. Already current; do not re-fetch it."
+                },
+                "table_schema": {
+                    "type": "json",
+                    "default": null,
+                    "description": "Pre-fetched live columns and CHECK constraints for allowed_tables: the same data describe_*_tables would return. Already current; do not re-fetch it."
                 }
             }
         },
@@ -139,9 +149,21 @@
                     },
                     "description": "Exact schema-qualified tables that may be used. Never invent table names outside this list."
                 },
-                "allowed_data": {
+                "domain_snapshot": {
                     "type": "json",
-                    "description": "JSON allow-list of tables and columns the simulation may touch."
+                    "default": null,
+                    "description": "Pre-fetched domain snapshot for the latest batch: the exact same data get_*_snapshot would return, including the per-record rows a spec refers to. Already current; resolve target records from it instead of querying."
+                },
+                "table_schema": {
+                    "type": "json",
+                    "default": null,
+                    "description": "Pre-fetched live columns and CHECK constraints for allowed_tables: the same data describe_*_tables would return. Already current; do not re-fetch it."
+                },
+                "import_batch_id": {
+                    "type": "int",
+                    "optional": true,
+                    "default": null,
+                    "description": "Latest completed import batch for this domain. Scope every query and where_clause with it; do not query audit.import_batches to find it."
                 },
                 "previous_error": {
                     "type": "str",
@@ -155,7 +177,16 @@
             "fields": {
                 "summary": {
                     "type": "str",
-                    "description": "Human-readable simulation summary of estimated impact."
+                    "description": "One plain sentence stating the estimated impact, with the headline before/after figures. No preamble, no caveat paragraph."
+                },
+                "components": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "Component"
+                    },
+                    "default": [],
+                    "description": "One or two rendered components (table and/or chart) showing the simulated before/after figures. Never more than two."
                 },
                 "rows_affected": {
                     "type": "int",
@@ -195,10 +226,6 @@
                         "type": "str"
                     },
                     "description": "Exact schema-qualified tables that may be used. Never invent table names outside this list."
-                },
-                "allowed_data": {
-                    "type": "json",
-                    "description": "JSON allow-list of tables and columns the execution may touch."
                 }
             }
         },
@@ -231,16 +258,17 @@
             "You receive previous_alerts: alerts already raised by earlier specialized monitoring agents in this run, plus any existing stored alerts for this domain.",
             "Read previous_alerts carefully before creating new alerts.",
             "Do not duplicate an issue that is already covered by previous_alerts, even if wording differs.",
-            "Be enthusiastic and proactive: hunt for multiple distinct issues in your specialty. Prefer raising several sharp alerts over returning none.",
+            "Be proactive: hunt for the sharpest distinct issues in your specialty rather than returning none.",
             "If evidence is borderline but CFO-relevant, raise an alert and state uncertainty in the issue text.",
             "Only return the none alert when you truly cannot find any distinct specialty issue after tool investigation.",
             "OUTPUT RULES",
             "Your output is MonitoringOutput: a list of Alert objects.",
-            "Aim for 2-5 alerts when evidence supports it. Each alert must still be a distinct business issue.",
+            "Return at most 3 alerts. Fewer is better than padded. Each alert must be a distinct business issue.",
+            "BE BRIEF. Every extra word costs the CFO time. issue: one sentence, at most 35 words, carrying the key numbers.",
             "Do not create one alert per raw row. Group similar rows into one issue, but do not over-collapse unrelated themes.",
-            "For every real alert, include one or more ActionSpec objects in actions.",
+            "For every real alert, include exactly one ActionSpec. Add a second only when it is a genuinely separate decision by a different owner.",
             "ActionSpec fields: name, routes, agent, impact, spec.",
-            "spec must be a clear natural-language plan describing target records, intended change, and success metrics. Do not write executable SQL in spec.",
+            "spec must be a plan of at most 50 words naming the target records, the intended change, and the success metric. No preamble, no restating the alert, no executable SQL.",
             "Actions are plans only with status planned when persisted. Never imply an action was approved or executed.",
             "Routes must be chosen from: ['ERP', 'Finance Agent', 'Treasury Agent', 'Collections Agent', 'Leakage Agent', 'Audit Log', 'Vendor Master', 'A/P', 'A/R', 'Controller', 'Treasury Manager', 'Commercial Lead', 'Procurement', 'Bank', 'Credit Manager', 'Collections']",
             "impact should be concise (at most 10 words), using '{metric}: {before} {+/- change} -> {after}' when numerical.",
@@ -248,36 +276,55 @@
             "If there are no new distinct alerts, return exactly one Alert: name='none', issue='no alert detected', subagent=your name, actions=[]."
         ],
         "SCHEMA_TOOLS_PROMPT": [
+            "PRE-FETCHED CONTEXT",
+            "Your input already carries domain_snapshot and table_schema for this run. Both are freshly read from the live database.",
+            "Read them first. Do NOT call get_*_snapshot or describe_*_tables to re-fetch what is already there; that only costs time.",
+            "domain_snapshot holds the standard portfolio view. table_schema holds columns and check_constraints for every allowed table.",
+            "Aim to answer from the pre-fetched context alone: one model turn, no tool calls. Every tool call adds a full round trip.",
+            "Call the query_* tool only when a specific number you must cite is genuinely absent from both. One such call at most.",
             "SCHEMA DISCOVERY",
             "You are given allowed_tables (exact schema-qualified names). Never invent table names outside that list.",
-            "Call describe_*_tables() with NO tables argument to load columns and CHECK constraints for every allowed table.",
-            "If you pass tables to describe_*_tables, use only names from allowed_tables. Unknown names are ignored.",
-            "describe_*_tables also returns check_constraints (for example status IN (...)). Obey those definitions.",
-            "Use only column names returned by describe_*_tables. Never invent columns such as status when the real column is import_status.",
+            "Use only column names present in table_schema. Never invent columns such as status when the real column is import_status.",
+            "table_schema.check_constraints (for example status IN (...)) is binding. Obey those definitions.",
             "For audit.import_batches, the status column is import_status."
         ],
         "SIMULATION_TOOLS_PROMPT": [
+            "PRE-FETCHED CONTEXT",
+            "Your input already carries domain_snapshot (the current per-record rows for this domain), table_schema (columns and check_constraints for every allowed table), and import_batch_id (the latest completed batch). All three are freshly read from the live database.",
+            "Read them FIRST. Resolve which records the spec targets from domain_snapshot: it already lists the customers, accounts, transactions, or line items with their current values, ranked where ranking matters.",
+            "Do NOT call describe_*_tables, do NOT query audit.import_batches, and do NOT re-query rows that are already in domain_snapshot. That only costs time.",
+            "Scope every where_clause with import_batch_id when the table has that column.",
             "TOOLS",
             "INPUT includes allowed_tables: the exact tables you may touch. Never invent other table names.",
-            "If previous_error is present, treat it as mandatory feedback from the last failed attempt. Re-call describe_*_tables, fix only the named problem (missing column, illegal value, bad table), and retry simulate_impact. Never invent substitute column names.",
-            "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints for the chosen table.",
-            "2) Before any UPDATE that sets categorical/status fields, use the domain query_* tool to discover legal values. Pick the real column name from describe_*_tables (for example payment_status, not a guessed status). Example:",
+            "If previous_error is present, treat it as mandatory feedback from the last failed attempt. Fix only the named problem (missing column, illegal value, bad table) using table_schema, and retry simulate_impact. Never invent substitute column names.",
+            "1) Read table_schema for the table you intend to update, and domain_snapshot for the records it targets.",
+            "2) Call query_* ONLY when you need something neither of them covers, such as the legal values of a categorical column you are about to set. Pick the real column name from table_schema (for example payment_status, not a guessed status). Batch every such SELECT into ONE query_* call. Example:",
             "SELECT DISTINCT payment_status FROM payment_leakage.ap_transactions WHERE payment_status IS NOT NULL LIMIT 50",
             "Only use values that appear in DISTINCT results and/or check_constraints definitions.",
-            "3) Then call simulate_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data).",
+            "3) Then call simulate_impact(table_name, where_clause, update_expression, metric_expressions). The allow-list is resolved server-side from table_name, so never pass schema or column lists as arguments.",
             "simulate_impact temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back.",
-            "If simulate_impact returns ok=false, read error, correct columns/values using describe_* and query_*, then call simulate_impact again in the same turn.",
+            "If simulate_impact returns ok=false, read error, correct columns/values using table_schema and query_*, then call simulate_impact again in the same turn.",
+            "Aim to finish in two model turns: one simulate_impact call, one final answer. Spend a query_* turn only when the pre-fetched context genuinely lacks what you need.",
             "Convert the natural-language action spec into table_name, where_clause (no WHERE keyword), update_expression (no SET keyword), and metric_expressions.",
             "metric_expressions must be bare aggregates like COUNT(*) or SUM(amount_idr_mn) without AS aliases.",
-            "Every column in where_clause, update_expression, and metric_expressions must exist on table_name per describe_*_tables. Do not borrow columns from other tables.",
+            "Every column in where_clause, update_expression, and metric_expressions must exist on table_name per table_schema. Do not borrow columns from other tables.",
             "table_name must be one of allowed_tables.",
             "Use the most specific where_clause possible.",
             "Treat results as estimated impact, not guaranteed outcomes."
         ],
         "SIMULATION_OUTPUT_PROMPT": [
             "OUTPUT",
-            "Return SimulationOutput with summary, optional rows_affected, and optional metrics_json.",
-            "summary must explain estimated impact clearly for a CFO.",
+            "Return SimulationOutput with summary, components, optional rows_affected, and optional metrics_json.",
+            "summary is ONE sentence, at most 30 words, stating the estimated impact with the headline before -> after figures. No preamble, no restating the action, no caveat paragraph. The figures carry the message; the components carry the detail.",
+            "components is one or two Component objects built from the simulate_impact metrics. Prefer a table of before/after/delta, plus a chart when the comparison is visual. Never return more than two, and never return zero when metrics exist.",
+            "Component.format must be 'table' or 'chart'. Component.content must be a valid JSON-formatted string.",
+            "TABLE_CONTENT_SCHEMA: { title: string, columns: string[], rows: (string|number)[][] }. Use columns like ['Metric', 'Before', 'After', 'Delta'], one row per metric returned by simulate_impact.",
+            "CHART_CONTENT_SCHEMA: { title: string, chart_type: string, x_axis_title?: string, y_axis_title?: string, data: object[] }. chart_type must be one of: line, bar, column, waterfall, pie, donut.",
+            "Chart data is a flat array of objects, each with BOTH keys spelled out: \"label\" and \"value\". Never write a bare number as an object member. Copy this shape exactly: {\"title\":\"Overdue AR (IDR mn)\",\"chart_type\":\"column\",\"x_axis_title\":\"Scenario\",\"y_axis_title\":\"IDR mn\",\"data\":[{\"label\":\"Before\",\"value\":16500},{\"label\":\"After\",\"value\":0}]}",
+            "All values must be numbers, never strings. Use bar or column for before/after comparisons and waterfall for driver bridges.",
+            "Component.content must parse as JSON on the first attempt. A malformed component costs a full retry round trip.",
+            "Do not include markdown, HTML, colours, styling, or rendering instructions in content.",
+            "Table and chart must use identical labels and figures, taken exactly from the simulate_impact metrics without re-rounding.",
             "metrics_json must be a JSON object string when simulate_impact returned metrics."
         ],
         "EXECUTE_TOOLS_PROMPT": [
@@ -286,7 +333,7 @@
             "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints.",
             "2) Before any UPDATE that sets categorical/status fields, use the domain query_* tool to SELECT DISTINCT legal values.",
             "Only use values present in DISTINCT results and/or check_constraints.",
-            "3) Then call execute_impact(...).",
+            "3) Then call execute_impact(table_name, where_clause, update_expression, metric_expressions). The allow-list is resolved server-side from table_name, so never pass schema or column lists as arguments.",
             "execute_impact permanently applies an UPDATE and returns before/after metrics.",
             "Convert the natural-language action spec into table_name, where_clause, update_expression, and metric_expressions.",
             "table_name must be one of allowed_tables.",

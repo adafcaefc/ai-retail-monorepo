@@ -36,9 +36,15 @@ def _database_url() -> str:
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
+    # pool_pre_ping costs an extra round trip on every checkout, which is
+    # expensive against a remote Postgres. pool_recycle drops connections that
+    # are old enough for the server to have closed them, without the per-use
+    # probe.
     return create_engine(
         _database_url(),
-        pool_pre_ping=True,
+        pool_recycle=900,
+        pool_size=10,
+        max_overflow=10,
         connect_args={
             "connect_timeout": 15,
         },

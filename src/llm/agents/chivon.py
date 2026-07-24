@@ -10,6 +10,7 @@ from typing import Annotated, Any, ForwardRef, Literal, Optional
 from pydantic import AfterValidator, BaseModel, Field, create_model
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import UsageLimits
 
 @dataclass
 class ChivonAgent:
@@ -17,6 +18,7 @@ class ChivonAgent:
     agent: Agent
     input_model: type[BaseModel]
     output_model: type[BaseModel]
+    usage_limits: Any = None
 
 _TEMPLATE_PATTERN = re.compile(r"\{\{\s*([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\}\}")
 
@@ -372,11 +374,22 @@ class Chivon:
                 toolsets=toolsets,
             )
 
+            # request_limit caps how many model round trips one run may make.
+            # Without it a chatty agent can loop through many tool calls and
+            # dominate the wall time of a whole batch.
+            _request_limit = spec.get("request_limit")
+            _usage_limits = (
+                UsageLimits(request_limit=_request_limit)
+                if isinstance(_request_limit, int) and _request_limit > 0
+                else None
+            )
+
             self._agents[str(agent_name)] = ChivonAgent(
                 name=str(agent_name),
                 agent=agent_obj,
                 input_model=input_type,
                 output_model=output_type,
+                usage_limits=_usage_limits,
             )
 
         self._loaded = True
@@ -444,10 +457,14 @@ class Chivon:
         """
         self._ensure_loaded()
         prompt = self._normalize_input_text(name, input_data)
-        agent_obj = self._agents[name].agent
+        bundle = self._agents[name]
+        agent_obj = bundle.agent
+        run_kwargs: dict[str, Any] = {}
+        if bundle.usage_limits is not None:
+            run_kwargs["usage_limits"] = bundle.usage_limits
         if message_history:
-            return agent_obj.run_sync(prompt, message_history=message_history)
-        return agent_obj.run_sync(prompt)
+            run_kwargs["message_history"] = message_history
+        return agent_obj.run_sync(prompt, **run_kwargs)
 
     async def run_async(self, name: str, input_data: Any, *, message_history: list | None = None) -> Any:
         """
@@ -456,10 +473,14 @@ class Chivon:
         """
         self._ensure_loaded()
         prompt = self._normalize_input_text(name, input_data)
-        agent_obj = self._agents[name].agent
+        bundle = self._agents[name]
+        agent_obj = bundle.agent
+        run_kwargs: dict[str, Any] = {}
+        if bundle.usage_limits is not None:
+            run_kwargs["usage_limits"] = bundle.usage_limits
         if message_history:
-            return await agent_obj.run(prompt, message_history=message_history)
-        return await agent_obj.run(prompt)
+            run_kwargs["message_history"] = message_history
+        return await agent_obj.run(prompt, **run_kwargs)
 
     async def run_async_multimodal(
         self,

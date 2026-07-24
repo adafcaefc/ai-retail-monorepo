@@ -70,6 +70,13 @@ def _latest_batch_id(
     return int(import_batch_id)
 
 
+def latest_import_batch_id(agent_name: str) -> int:
+    """Return the newest completed import batch id for an importer agent."""
+
+    with _read_connection() as connection:
+        return _latest_batch_id(connection, agent_name)
+
+
 @contextmanager
 def _read_connection() -> Iterator[Connection]:
     with get_engine().connect() as connection:
@@ -173,6 +180,164 @@ def get_collections_snapshot() -> dict[str, Any]:
             "risk_tiers": risk_tiers,
             "worklist": worklist,
         }
+
+
+_AGING_BUCKETS = (
+    ("current", "current_idr_mn"),
+    ("overdue_1_30", "overdue_1_30_idr_mn"),
+    ("overdue_31_60", "overdue_31_60_idr_mn"),
+    ("overdue_61_90", "overdue_61_90_idr_mn"),
+    ("overdue_90_plus", "overdue_90_plus_idr_mn"),
+)
+
+
+def _number(value: Any) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _share(part: float, whole: float) -> float:
+    return round(part / whole * 100, 2) if whole else 0.0
+
+
+def _collections_derived(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """
+    Precompute the aggregates the monitoring passes used to query for.
+
+    Every value here comes from rows already in the snapshot, so this costs no
+    extra database round trips. Each pass that reads these instead of calling a
+    tool saves a full model round trip.
+    """
+    customers = snapshot.get("customers") or []
+    worklist = snapshot.get("worklist") or []
+    summary = snapshot.get("summary") or {}
+
+    total_overdue = sum(
+        _number(row.get("overdue_idr_mn")) for row in customers
+    )
+    ranked = sorted(
+        customers,
+        key=lambda row: _number(row.get("overdue_idr_mn")),
+        reverse=True,
+    )
+
+    concentration: list[dict[str, Any]] = []
+    running = 0.0
+    for rank, row in enumerate(ranked, start=1):
+        overdue = _number(row.get("overdue_idr_mn"))
+        if overdue <= 0:
+            continue
+        running += overdue
+        concentration.append(
+            {
+                "rank": rank,
+                "customer_name": row.get("customer_name"),
+                "overdue_idr_mn": round(overdue, 2),
+                "share_pct": _share(overdue, total_overdue),
+                "cumulative_share_pct": _share(running, total_overdue),
+                "payment_trend": row.get("payment_trend"),
+                "has_dispute": row.get("has_dispute"),
+            }
+        )
+
+    def _top_share(count: int) -> float:
+        return _share(
+            sum(
+                _number(row.get("overdue_idr_mn"))
+                for row in ranked[:count]
+            ),
+            total_overdue,
+        )
+
+    aging_totals = {
+        label: round(
+            sum(_number(row.get(column)) for row in customers), 2
+        )
+        for label, column in _AGING_BUCKETS
+    }
+    aging_totals["overdue_61_plus"] = round(
+        aging_totals["overdue_61_90"] + aging_totals["overdue_90_plus"], 2
+    )
+
+    utilization = sorted(
+        (
+            {
+                "customer_name": row.get("customer_name"),
+                "credit_limit_idr_mn": round(
+                    _number(row.get("credit_limit_idr_mn")), 2
+                ),
+                "total_ar_idr_mn": round(
+                    _number(row.get("total_ar_idr_mn")), 2
+                ),
+                "credit_utilization": row.get("credit_utilization"),
+                "headroom_idr_mn": round(
+                    _number(row.get("credit_limit_idr_mn"))
+                    - _number(row.get("total_ar_idr_mn")),
+                    2,
+                ),
+                "payment_trend": row.get("payment_trend"),
+            }
+            for row in customers
+            if _number(row.get("credit_limit_idr_mn")) > 0
+        ),
+        key=lambda row: _number(row.get("credit_utilization")),
+        reverse=True,
+    )
+
+    # Same arithmetic as calculate_collection_scenario, precomputed for the
+    # largest overdue balances at 0% and 1% so a pass can cite an outcome
+    # without spending a tool call.
+    total_ar = _number(summary.get("total_ar_idr_mn"))
+    daily_sales = _number(summary.get("daily_credit_sales_idr_mn"))
+    dso_before = _number(summary.get("current_dso_days"))
+    scenarios: list[dict[str, Any]] = []
+    for row in ranked[:5]:
+        overdue = _number(row.get("overdue_idr_mn"))
+        if overdue <= 0 or daily_sales <= 0:
+            continue
+        dso_after = (total_ar - overdue) / daily_sales
+        scenarios.append(
+            {
+                "customer_name": row.get("customer_name"),
+                "cash_collected_idr_mn": round(overdue, 2),
+                "discount_cost_at_1pct_idr_mn": round(overdue * 0.01, 2),
+                "dso_before_days": round(dso_before, 2),
+                "dso_after_days": round(dso_after, 2),
+                "dso_change_days": round(dso_after - dso_before, 2),
+            }
+        )
+
+    return {
+        "note": (
+            "Precomputed from the snapshot rows below. Full-balance collection "
+            "assumed for each scenario; customer acceptance is unverified."
+        ),
+        "total_overdue_idr_mn": round(total_overdue, 2),
+        "top_1_overdue_share_pct": _top_share(1),
+        "top_2_overdue_share_pct": _top_share(2),
+        "top_3_overdue_share_pct": _top_share(3),
+        "top_5_overdue_share_pct": _top_share(5),
+        "overdue_by_customer": concentration,
+        "portfolio_aging_idr_mn": aging_totals,
+        "credit_utilization_ranked": utilization,
+        "settlement_scenarios": scenarios,
+        "expected_recovery_total_idr_mn": round(
+            sum(
+                _number(row.get("expected_recovery_idr_mn"))
+                for row in worklist
+            ),
+            2,
+        ),
+    }
+
+
+def get_collections_monitoring_context() -> dict[str, Any]:
+    """Return the collections snapshot plus precomputed monitoring aggregates."""
+
+    snapshot = get_collections_snapshot()
+    return {**snapshot, "derived": _collections_derived(snapshot)}
 
 
 def calculate_collection_scenario(
@@ -587,6 +752,7 @@ LOCAL_FINANCE_TOOLS = {
     "simulate_action_impact": simulate_action_impact,
     "get_cashflow_baseline": get_cashflow_baseline,
     "get_collections_snapshot": get_collections_snapshot,
+    "get_collections_monitoring_context": get_collections_monitoring_context,
     "get_financial_performance_snapshot": get_financial_performance_snapshot,
     "get_payment_leakage_snapshot": get_payment_leakage_snapshot,
     "simulate_cashflow": simulate_cashflow,
@@ -598,6 +764,7 @@ __all__ = [
     "calculate_collection_scenario",
     "get_alert_action_plan",
     "get_cashflow_baseline",
+    "get_collections_monitoring_context",
     "get_collections_snapshot",
     "get_financial_performance_snapshot",
     "get_payment_leakage_snapshot",
