@@ -401,7 +401,7 @@ Unique key: (`import_batch_id`, `recommendation_order`).
 | `chat.conversations` | `id`, `title`, `created_at`, `updated_at` |
 | `chat.messages` | `id`, `conversation_id`, `sender`, `channel`, `message`, `created_at` |
 | `chat.alerts` | `id`, `name`, `subagent`, `agent`, `issue`, `date_created` |
-| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `created_at` |
+| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `spec`, `impact`, `simulation_summary`, `created_at` |
 | `financial_performance.assumptions` | `id`, `import_batch_id`, `assumption_group`, `assumption_name`, `numeric_value`, `text_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.kpis` | `id`, `import_batch_id`, `metric_name`, `metric_order`, `budget_value`, `actual_value`, `change_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.operating_expenses` | `id`, `import_batch_id`, `cost_line`, `cost_line_order`, `budget_amount_idr_mn`, `actual_amount_idr_mn`, `variance_idr_mn`, `source_sheet`, `created_at` |
@@ -445,9 +445,37 @@ The live chat history is stored in PostgreSQL, not only in frontend state. The b
 | `message` | `TEXT` | No | User text or serialized assistant blocks |
 | `created_at` | `TIMESTAMPTZ` | No | `now()` |
 
-### `chat.alerts` and `chat.actions`
+### `chat.alerts`
 
-These tables support agent alerts and routed actions. `chat.actions.routes` is a PostgreSQL array, and `chat.actions.alert_id` associates an action with an alert when present.
+One row is one issue raised by a monitoring agent. Verified from the live catalog on 24 July 2026.
+
+| Column | Type | Null | Notes |
+|---|---|---:|---|
+| `id` | `UUID` | No | Primary key |
+| `name` | `VARCHAR` | Yes | Short alert title |
+| `subagent` | `VARCHAR` | Yes | Raising subagent, such as `finance_margin_monitoring_agent` |
+| `agent` | `VARCHAR` | Yes | Owning agent, such as `finance`, `cashflow`, or `collection` |
+| `issue` | `TEXT` | Yes | Quantified description of the issue |
+| `date_created` | `TIMESTAMPTZ` | Yes | |
+
+### `chat.actions`
+
+One row is one proposed action. `routes` is a PostgreSQL array of owner names, and `alert_id` associates the action with an alert when present.
+
+| Column | Type | Null | Notes |
+|---|---|---:|---|
+| `id` | `UUID` | No | Primary key |
+| `action` | `VARCHAR` | No | Action title |
+| `agent` | `VARCHAR` | No | Agent that proposed the action |
+| `routes` | `ARRAY` | No | Approval and execution owners |
+| `alert_id` | `UUID` | Yes | Alert the action addresses |
+| `status` | `VARCHAR` | Yes | Stored lifecycle state, such as `planned` |
+| `spec` | `TEXT` | Yes | Execution detail and success metrics |
+| `impact` | `TEXT` | Yes | Expected impact statement |
+| `simulation_summary` | `JSONB` | Yes | Supporting simulation values when present |
+| `created_at` | `TIMESTAMPTZ` | Yes | |
+
+`src/llm/tools/finance_data.py:get_alert_action_plan` reads both tables and groups actions under their alert.
 
 ## Live Table Count
 
