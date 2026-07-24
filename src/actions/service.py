@@ -70,11 +70,14 @@ def allowed_data_for_agent(agent: str) -> dict[str, Any]:
     schema = describe_tables(allowed_tables=_DOMAIN_TABLES[domain])
     allowed: dict[str, Any] = {}
     for table, columns in (schema.get("tables") or {}).items():
+        column_map = {
+            str(column["column"]): str(column.get("data_type") or "unknown")
+            for column in columns
+        }
+        checks = (schema.get("check_constraints") or {}).get(table) or []
         allowed[table] = {
-            "columns": {
-                str(column["column"]): str(column.get("data_type") or "unknown")
-                for column in columns
-            }
+            "columns": column_map,
+            "check_constraints": checks,
         }
     return allowed
 
@@ -278,6 +281,7 @@ async def populate_alerts(
         payload = {
             "subagent_name": monitoring_pass.agent_name,
             "instructions": monitoring_pass.instructions,
+            "allowed_tables": list(_DOMAIN_TABLES[domain]),
             "previous_alerts": list(previous_alerts),
         }
         try:
@@ -349,12 +353,14 @@ async def simulate_action(
     domain = _normalize_agent(str(action["agent"]))
     agent_name = _SIMULATION_AGENT_BY_DOMAIN[domain]
     chivon = get_chivon()
+    allowed_data = allowed_data_for_agent(domain)
     payload = {
         "action_name": str(action["action"]),
         "spec": spec,
         "agent": domain,
         "impact": action.get("impact") or None,
-        "allowed_data": allowed_data_for_agent(domain),
+        "allowed_tables": sorted(allowed_data.keys()),
+        "allowed_data": allowed_data,
     }
 
     result = await chivon.run_async(agent_name, payload)

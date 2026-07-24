@@ -18,7 +18,7 @@
                 "Quantify shortfall size and timing. Prefer accelerating collections before new borrowing in action specs.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_cashflow_baseline() returns forecast, assumptions, AR/AP drivers, and FX context. Call first.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -45,7 +45,7 @@
                 "Compare cash impact, cost, risk, and timing in action specs.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_cashflow_baseline() returns forecast, assumptions, AR/AP drivers, and FX context. Call first.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -72,7 +72,7 @@
                 "Highlight whether an action permanently improves cash or only shifts timing.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_cashflow_baseline() returns forecast, assumptions, AR/AP drivers, and FX context. Call first.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -99,7 +99,7 @@
                 "Distinguish exposure management from pure liquidity management.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_cashflow_baseline() returns forecast, assumptions, AR/AP drivers, and FX context. Call first.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -115,13 +115,15 @@
             "retries": 2,
             "tools": [
                 "describe_cashflow_tables",
+                "query_cashflow",
                 "simulate_impact"
             ],
             "system_prompt": [
                 "You are the treasury/cashflow simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is cashflow. Only simulate liquidity/treasury remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"
             ]
@@ -132,6 +134,7 @@
             "retries": 2,
             "tools": [
                 "describe_cashflow_tables",
+                "query_cashflow",
                 "execute_impact"
             ],
             "system_prompt": [
@@ -140,6 +143,7 @@
                 "Turn an approved action spec into a permanent database update.",
                 "Parent domain is cashflow.",
                 "Never execute planned actions. Never invent approval.",
+                "INPUTS include allowed_tables and allowed_data. Use only those tables.",
                 "{{constants.EXECUTE_TOOLS_PROMPT}}",
                 "{{constants.EXECUTE_OUTPUT_PROMPT}}"
             ]

@@ -480,28 +480,41 @@ def describe_tables(
     engine: Engine | None = None,
 ) -> dict[str, Any]:
     """
-    Return live PostgreSQL column metadata for allowed schema-qualified tables.
+    Return live PostgreSQL column metadata and CHECK constraints.
 
     Use this before writing SQL so column names match the real database.
+    Unknown requested tables are ignored with a warning; only allow-listed
+    tables are described.
     """
     allowed = _normalize_allowed_tables(allowed_tables)
+    ignored_tables: list[str] = []
     if tables:
         requested = {
             _normalize_table_name(table)
             for table in tables
         }
-        unknown = sorted(requested - allowed)
-        if unknown:
-            raise ValueError(
-                "Requested tables are outside the allow-list: "
-                f"{unknown}. Allowed tables: {sorted(allowed)}."
-            )
-        target_tables = sorted(requested)
+        ignored_tables = sorted(requested - allowed)
+        target_tables = sorted(requested & allowed)
+        # Soft-fail: never raise on invented names. Always return
+        # allowed_tables so the model can retry with real names.
+        if not target_tables:
+            return {
+                "allowed_tables": sorted(allowed),
+                "tables": {},
+                "check_constraints": {},
+                "table_count": 0,
+                "column_count": 0,
+                "ignored_tables": ignored_tables,
+                "warning": (
+                    "None of the requested tables are allowed. "
+                    f"Requested={sorted(requested)}. "
+                    "Call describe_*_tables() with no tables argument, or "
+                    "only pass names from allowed_tables."
+                ),
+            }
     else:
         target_tables = sorted(allowed)
 
-    schemas: set[str] = set()
-    bare_names: set[str] = set()
     where_parts: list[str] = []
     params: dict[str, Any] = {}
     for index, table in enumerate(target_tables):
@@ -511,8 +524,6 @@ def describe_tables(
                 "(example: payment_leakage.summary)."
             )
         schema, name = table.split(".", 1)
-        schemas.add(schema)
-        bare_names.add(name)
         where_parts.append(
             f"(table_schema = :schema_{index} AND table_name = :table_{index})"
         )
@@ -520,7 +531,8 @@ def describe_tables(
         params[f"table_{index}"] = name
 
     db = engine or get_engine()
-    rows = []
+    rows: list[dict[str, Any]] = []
+    checks: list[dict[str, Any]] = []
     with db.connect() as connection:
         result = connection.execute(
             text(
@@ -545,6 +557,37 @@ def describe_tables(
         )
         rows = [dict(row) for row in result.mappings().all()]
 
+        check_where = []
+        check_params: dict[str, Any] = {}
+        for index, table in enumerate(target_tables):
+            schema, name = table.split(".", 1)
+            check_where.append(
+                f"(n.nspname = :cs_{index} AND c.relname = :ct_{index})"
+            )
+            check_params[f"cs_{index}"] = schema
+            check_params[f"ct_{index}"] = name
+        check_result = connection.execute(
+            text(
+                f"""
+                SELECT
+                    n.nspname AS table_schema,
+                    c.relname AS table_name,
+                    con.conname AS constraint_name,
+                    pg_get_constraintdef(con.oid) AS definition
+                FROM pg_constraint con
+                JOIN pg_class c
+                  ON c.oid = con.conrelid
+                JOIN pg_namespace n
+                  ON n.oid = c.relnamespace
+                WHERE con.contype = 'c'
+                  AND ({" OR ".join(check_where)})
+                ORDER BY n.nspname, c.relname, con.conname
+                """
+            ),
+            check_params,
+        )
+        checks = [dict(row) for row in check_result.mappings().all()]
+
     by_table: dict[str, list[dict[str, Any]]] = {
         table: [] for table in target_tables
     }
@@ -564,11 +607,36 @@ def describe_tables(
             }
         )
 
-    return {
+    check_by_table: dict[str, list[dict[str, str]]] = {
+        table: [] for table in target_tables
+    }
+    for row in checks:
+        qualified = (
+            f"{row['table_schema']}.{row['table_name']}".lower()
+        )
+        if qualified not in check_by_table:
+            continue
+        check_by_table[qualified].append(
+            {
+                "name": str(row["constraint_name"]),
+                "definition": str(row["definition"]),
+            }
+        )
+
+    payload: dict[str, Any] = {
+        "allowed_tables": sorted(allowed),
         "tables": by_table,
+        "check_constraints": check_by_table,
         "table_count": len(by_table),
         "column_count": sum(len(cols) for cols in by_table.values()),
     }
+    if ignored_tables:
+        payload["ignored_tables"] = ignored_tables
+        payload["warning"] = (
+            "Ignored tables outside the allow-list: "
+            f"{ignored_tables}. Use only allowed_tables."
+        )
+    return payload
 
 
 def describe_financial_performance_tables(

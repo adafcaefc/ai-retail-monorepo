@@ -80,6 +80,14 @@
                     "type": "str",
                     "description": "What this specialized monitoring pass should look for."
                 },
+                "allowed_tables": {
+                    "type": "list",
+                    "items": {
+                        "type": "str"
+                    },
+                    "default": [],
+                    "description": "Exact schema-qualified tables that may be queried or described. Never invent table names outside this list."
+                },
                 "previous_alerts": {
                     "type": "list",
                     "items": {
@@ -122,6 +130,13 @@
                     "type": "str",
                     "optional": true,
                     "description": "Expected impact hint from monitoring."
+                },
+                "allowed_tables": {
+                    "type": "list",
+                    "items": {
+                        "type": "str"
+                    },
+                    "description": "Exact schema-qualified tables that may be used. Never invent table names outside this list."
                 },
                 "allowed_data": {
                     "type": "json",
@@ -166,6 +181,13 @@
                     "type": "literal",
                     "choices": ["approved"],
                     "description": "Must be approved. This agent never executes planned actions."
+                },
+                "allowed_tables": {
+                    "type": "list",
+                    "items": {
+                        "type": "str"
+                    },
+                    "description": "Exact schema-qualified tables that may be used. Never invent table names outside this list."
                 },
                 "allowed_data": {
                     "type": "json",
@@ -220,18 +242,25 @@
         ],
         "SCHEMA_TOOLS_PROMPT": [
             "SCHEMA DISCOVERY",
-            "Before writing any free-form SQL or impact simulation SQL, call the domain describe_*_tables tool.",
-            "Use only column names returned by that tool. Never invent columns such as status when the real column is import_status.",
-            "For audit.import_batches, the status column is import_status.",
-            "You may pass an optional tables list to describe only the tables you need."
+            "You are given allowed_tables (exact schema-qualified names). Never invent table names outside that list.",
+            "Call describe_*_tables() with NO tables argument to load columns and CHECK constraints for every allowed table.",
+            "If you pass tables to describe_*_tables, use only names from allowed_tables. Unknown names are ignored.",
+            "describe_*_tables also returns check_constraints (for example status IN (...)). Obey those definitions.",
+            "Use only column names returned by describe_*_tables. Never invent columns such as status when the real column is import_status.",
+            "For audit.import_batches, the status column is import_status."
         ],
         "SIMULATION_TOOLS_PROMPT": [
             "TOOLS",
-            "First call the domain describe_*_tables tool and inspect real columns.",
-            "simulate_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data) temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back. No permanent changes.",
+            "INPUT includes allowed_tables: the exact tables you may touch. Never invent other table names.",
+            "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints.",
+            "2) Before any UPDATE that sets categorical/status fields, use the domain query_* tool to discover legal values. Pick the real column name from describe_*_tables (for example payment_status, not a guessed status). Example:",
+            "SELECT DISTINCT payment_status FROM payment_leakage.ap_transactions WHERE payment_status IS NOT NULL LIMIT 50",
+            "Only use values that appear in DISTINCT results and/or check_constraints definitions.",
+            "3) Then call simulate_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data).",
+            "simulate_impact temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back.",
             "Convert the natural-language action spec into table_name, where_clause (no WHERE keyword), update_expression (no SET keyword), and metric_expressions.",
             "metric_expressions must be bare aggregates like COUNT(*) or SUM(amount_idr_mn) without AS aliases.",
-            "Only reference tables/columns confirmed by describe_*_tables and present in allowed_data.",
+            "table_name must be one of allowed_tables.",
             "Use the most specific where_clause possible.",
             "Treat results as estimated impact, not guaranteed outcomes."
         ],
@@ -243,10 +272,14 @@
         ],
         "EXECUTE_TOOLS_PROMPT": [
             "TOOLS",
-            "First call the domain describe_*_tables tool and inspect real columns.",
-            "execute_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data) permanently applies an UPDATE and returns before/after metrics.",
+            "INPUT includes allowed_tables: the exact tables you may touch. Never invent other table names.",
+            "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints.",
+            "2) Before any UPDATE that sets categorical/status fields, use the domain query_* tool to SELECT DISTINCT legal values.",
+            "Only use values present in DISTINCT results and/or check_constraints.",
+            "3) Then call execute_impact(...).",
+            "execute_impact permanently applies an UPDATE and returns before/after metrics.",
             "Convert the natural-language action spec into table_name, where_clause, update_expression, and metric_expressions.",
-            "Only reference tables/columns confirmed by describe_*_tables and present in allowed_data.",
+            "table_name must be one of allowed_tables.",
             "Call execute_impact only when input status is exactly 'approved'."
         ],
         "EXECUTE_OUTPUT_PROMPT": [

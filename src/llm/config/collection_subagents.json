@@ -18,7 +18,7 @@
                 "Prioritize highest-value overdue accounts in action specs.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_collections_snapshot() returns DSO, customer aging, risk tiers, and worklist. Call first.",
                 "calculate_collection_scenario(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -45,7 +45,7 @@
                 "Stop exposure growth before recovery actions when risk is rising.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_collections_snapshot() returns DSO, customer aging, risk tiers, and worklist. Call first.",
                 "calculate_collection_scenario(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -72,7 +72,7 @@
                 "Compare cash recovered against incentive cost or margin sacrificed.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_collections_snapshot() returns DSO, customer aging, risk tiers, and worklist. Call first.",
                 "calculate_collection_scenario(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -99,7 +99,7 @@
                 "Quantify top-N share of overdue AR when evidence supports it.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_collections_snapshot() returns DSO, customer aging, risk tiers, and worklist. Call first.",
                 "calculate_collection_scenario(...) may be used when scenario evidence helps form an alert or action spec.",
@@ -115,13 +115,15 @@
             "retries": 2,
             "tools": [
                 "describe_collections_tables",
+                "query_collections",
                 "simulate_impact"
             ],
             "system_prompt": [
                 "You are the collections simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is collection. Only simulate collections/credit remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"
             ]
@@ -132,6 +134,7 @@
             "retries": 2,
             "tools": [
                 "describe_collections_tables",
+                "query_collections",
                 "execute_impact"
             ],
             "system_prompt": [
@@ -140,6 +143,7 @@
                 "Turn an approved action spec into a permanent database update.",
                 "Parent domain is collection.",
                 "Never execute planned actions. Never invent approval.",
+                "INPUTS include allowed_tables and allowed_data. Use only those tables.",
                 "{{constants.EXECUTE_TOOLS_PROMPT}}",
                 "{{constants.EXECUTE_OUTPUT_PROMPT}}"
             ]

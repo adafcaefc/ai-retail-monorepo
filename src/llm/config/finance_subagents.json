@@ -17,7 +17,7 @@
                 "Separate volume, price, mix, and cost effects when evidence allows.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_financial_performance_snapshot() returns KPIs, profit summary, variance drivers, and simulator levers. Call first.",
                 "query_financial_performance(queries) runs read-only SELECTs against financial_performance tables (max 100 rows).",
@@ -42,7 +42,7 @@
                 "Prefer pricing recovery actions before broad cost cuts.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_financial_performance_snapshot() returns KPIs, profit summary, variance drivers, and simulator levers. Call first.",
                 "query_financial_performance(queries) runs read-only SELECTs against financial_performance tables (max 100 rows).",
@@ -67,7 +67,7 @@
                 "Attack the largest cost driver first in action specs.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_financial_performance_snapshot() returns KPIs, profit summary, variance drivers, and simulator levers. Call first.",
                 "query_financial_performance(queries) runs read-only SELECTs against financial_performance tables (max 100 rows).",
@@ -92,7 +92,7 @@
                 "Prefer actions that shift sales toward higher-margin mix.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_financial_performance_snapshot() returns KPIs, profit summary, variance drivers, and simulator levers. Call first.",
                 "query_financial_performance(queries) runs read-only SELECTs against financial_performance tables (max 100 rows).",
@@ -107,13 +107,15 @@
             "retries": 2,
             "tools": [
                 "describe_financial_performance_tables",
+                "query_financial_performance",
                 "simulate_impact"
             ],
             "system_prompt": [
                 "You are the finance simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is finance. Only simulate finance-performance remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"
             ]
@@ -124,6 +126,7 @@
             "retries": 2,
             "tools": [
                 "describe_financial_performance_tables",
+                "query_financial_performance",
                 "execute_impact"
             ],
             "system_prompt": [
@@ -132,6 +135,7 @@
                 "Turn an approved action spec into a permanent database update.",
                 "Parent domain is finance.",
                 "Never execute planned actions. Never invent approval.",
+                "INPUTS include allowed_tables and allowed_data. Use only those tables.",
                 "{{constants.EXECUTE_TOOLS_PROMPT}}",
                 "{{constants.EXECUTE_OUTPUT_PROMPT}}"
             ]

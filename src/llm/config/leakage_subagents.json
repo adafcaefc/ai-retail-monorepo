@@ -17,7 +17,7 @@
                 "Distinguish suspected fraud from confirmed fraud. Never label something confirmed without definitive evidence.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_payment_leakage_snapshot() returns leakage summary, category breakdowns, anomalies, and action worklist. Call first.",
                 "query_payment_leakage(queries) runs read-only SELECTs against payment_leakage tables (max 100 rows).",
@@ -45,7 +45,7 @@
                 "Explain evidence that payments are duplicates rather than legitimate separate transactions.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_payment_leakage_snapshot() returns leakage summary, category breakdowns, anomalies, and action worklist. Call first.",
                 "query_payment_leakage(queries) runs read-only SELECTs against payment_leakage tables (max 100 rows).",
@@ -73,7 +73,7 @@
                 "Separate gross recoverable value from net recoverable value when possible.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_payment_leakage_snapshot() returns leakage summary, category breakdowns, anomalies, and action worklist. Call first.",
                 "query_payment_leakage(queries) runs read-only SELECTs against payment_leakage tables (max 100 rows).",
@@ -101,7 +101,7 @@
                 "Prefer PREVENT-style action specs that close the control gap at source.",
                 "Propose action specs only; never execute or approve actions.",
                 "Always investigate with tools before concluding there are no alerts.",
-                "INPUTS: subagent_name, instructions, previous_alerts.",
+                "INPUTS: subagent_name, instructions, allowed_tables, previous_alerts.",
                 "TOOLS:",
                 "get_payment_leakage_snapshot() returns leakage summary, category breakdowns, anomalies, and action worklist. Call first.",
                 "query_payment_leakage(queries) runs read-only SELECTs against payment_leakage tables (max 100 rows).",
@@ -119,13 +119,15 @@
             "retries": 2,
             "tools": [
                 "describe_payment_leakage_tables",
+                "query_payment_leakage",
                 "simulate_impact"
             ],
             "system_prompt": [
                 "You are the payment leakage simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is leakage. Only simulate leakage/fraud remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"
             ]
@@ -136,6 +138,7 @@
             "retries": 2,
             "tools": [
                 "describe_payment_leakage_tables",
+                "query_payment_leakage",
                 "execute_impact"
             ],
             "system_prompt": [
@@ -144,6 +147,7 @@
                 "Turn an approved action spec into a permanent database update.",
                 "Parent domain is leakage.",
                 "Never execute planned actions. Never invent approval.",
+                "INPUTS include allowed_tables and allowed_data. Use only those tables.",
                 "{{constants.EXECUTE_TOOLS_PROMPT}}",
                 "{{constants.EXECUTE_OUTPUT_PROMPT}}"
             ]

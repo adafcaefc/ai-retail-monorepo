@@ -207,17 +207,45 @@ def parse_allowed_data(allowed_data):
 
 def extract_columns(expression: str) -> set[str]:
     """
-    Extract column names from a SQL fragment.
+    Extract likely column names from a SQL fragment.
 
-    department = 'Sales'
-    salary = salary * 1.1
-ary)
-
-    -> {"department", "salary"}
+    Ignores string literals, SQL keywords, and function names such as
+    COUNT / LEAST / FILTER so validators do not treat functions as columns.
     """
+    import sqlglot
+    from sqlglot import exp
+    from sqlglot.errors import ParseError
 
-    expression = re.sub(r"'[^']*'", "", expression)
+    text_expr = str(expression or "").strip()
+    if not text_expr:
+        return set()
 
+    parse_candidates = (
+        f"SELECT {text_expr}",
+        f"SELECT 1 FROM _t WHERE {text_expr}",
+        f"UPDATE _t SET {text_expr}",
+    )
+    for candidate in parse_candidates:
+        try:
+            tree = sqlglot.parse_one(candidate, read="postgres")
+        except (ParseError, ValueError):
+            continue
+        columns = {
+            column.name
+            for column in tree.find_all(exp.Column)
+            if column.name
+        }
+        if columns or "select 1 from" in candidate.lower():
+            return columns
+
+    # Fallback for odd fragments sqlglot cannot parse.
+    cleaned = re.sub(r"'[^']*'", "", text_expr)
+    # Drop function names: identifier immediately followed by '('.
+    cleaned = re.sub(
+        r"\b[a-zA-Z_][a-zA-Z0-9_]*\s*\(",
+        "(",
+        cleaned,
+    )
     keywords = {
         "sum", "avg", "count", "min", "max",
         "and", "or", "in", "like", "between",
@@ -232,10 +260,11 @@ ary)
         "completed", "started", "failed", "cancelled",
         "least", "greatest", "filter", "within",
         "array", "values", "with", "recursive",
+        "lateral", "cross", "natural", "using",
+        "interval", "current", "date", "time",
+        "timestamp", "extract", "nullif", "greatest",
     }
-
-    tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", expression)
-
+    tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", cleaned)
     return {
         token
         for token in tokens
