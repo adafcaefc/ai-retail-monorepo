@@ -98,8 +98,8 @@ Tools are Python functions registered in `LOCAL_FINANCE_TOOLS` (`src/llm/tools/f
 | `simulate_cashflow` | Treasury | Deterministic cashflow scenario with levers (collection acceleration, payment deferral, credit draw, hedging) |
 | `get_payment_leakage_snapshot` | Leakage | Payment anomalies, duplicate payments, fraud signals, recovery worklist |
 | `get_alert_action_plan` | Finance | Stored alerts from `chat.alerts` with their routed actions from `chat.actions` (spec, expected impact, owners, status) |
-| `simulate_action_impact` | Finance | Detection stub for impact / what-if intent, and the mandatory gate before approval. Prints to the console and returns `SIMULATION_REQUESTED`; the simulation engine itself is not implemented, so expected impact comes from the stored `impact` and `simulation_summary` values |
-| `request_action_approval` | Finance | Detection stub for approval intent. Prints the request to the console and returns `APPROVAL_REQUESTED`; it grants no approval, executes nothing, and writes nothing to the database |
+| `simulate_action_impact` | Finance | Resolves a stored action and runs `actions.service.simulate_action` (domain simulation agent); persists `simulation_summary` and returns metrics. Mandatory gate before approval |
+| `request_action_approval` | Finance | Resolves a stored action and marks it approved via `actions.service.approve_action`. Does not execute the remediation |
 
 Tool calls are wrapped with event emitters (`src/llm/tool_events.py`) so the SSE chat stream can show live tool-call progress to the user.
 

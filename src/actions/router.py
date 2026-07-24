@@ -113,6 +113,26 @@ async def populate_alerts(
         ) from error
 
 
+@router.get("/actions")
+def get_actions(
+    session: DatabaseSession,
+    agent: str | None = Query(
+        default=None,
+        description="Optional domain filter: finance, cashflow, collection, leakage",
+    ),
+    status: str | None = Query(
+        default=None,
+        description="Optional status filter: planned, approved (pending maps to planned)",
+    ),
+) -> dict[str, Any]:
+    """List all stored actions (history) with their current status."""
+    try:
+        items = service.list_actions(session, agent=agent, status=status)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"items": items, "count": len(items)}
+
+
 @router.get("/alerts/{alert_id}/actions")
 def get_actions_for_alert(
     alert_id: str,

@@ -185,22 +185,40 @@ from sqlalchemy import text
 
 def parse_allowed_data(allowed_data):
     """
-    Returns:
-    {
-        "employees": {
-            "employee_id",
-            "department",
-            "salary"
-        }
-    }
+    Normalize allow-list JSON into ``{table: set(column_names)}``.
+
+    Accepts the shapes produced by ``allowed_data_for_agent`` and common
+    LLM variants (column dicts, column lists, or bare table→columns maps).
     """
     if isinstance(allowed_data, str):
         allowed_data = json.loads(allowed_data)
 
+    if not isinstance(allowed_data, dict):
+        raise ValueError(
+            "allowed_data must be a JSON object mapping tables to columns."
+        )
+
     result = {}
 
     for table_name, table_info in allowed_data.items():
-        result[table_name] = set(table_info["columns"].keys())
+        if isinstance(table_info, dict):
+            columns = table_info.get("columns", table_info)
+            if isinstance(columns, dict):
+                result[table_name] = set(columns.keys())
+            elif isinstance(columns, (list, set, tuple)):
+                result[table_name] = {str(column) for column in columns}
+            else:
+                raise ValueError(
+                    f"allowed_data[{table_name!r}].columns must be an "
+                    "object or list of column names."
+                )
+        elif isinstance(table_info, (list, set, tuple)):
+            result[table_name] = {str(column) for column in table_info}
+        else:
+            raise ValueError(
+                f"allowed_data[{table_name!r}] must be a column map or "
+                "list of column names."
+            )
 
     return result
 
@@ -290,17 +308,15 @@ def validate_columns(
     if "*" in target_columns:
         return
 
-    # Accept columns from any table in the domain allow-list so subqueries
-    # that touch related tables (for example audit.import_batches) validate.
-    allowed_columns = set()
-    for table, columns in allowed_tables.items():
-        allowed_columns.update(columns)
-        if "." in table:
-            schema, bare = table.split(".", 1)
-            allowed_columns.add(schema)
-            allowed_columns.add(bare)
-        else:
-            allowed_columns.add(table)
+    # Only columns on the UPDATE target table are legal. Borrowing names
+    # from other domain tables caused UndefinedColumn at runtime.
+    allowed_columns = set(target_columns)
+    if "." in table_name:
+        schema, bare = table_name.split(".", 1)
+        allowed_columns.add(schema)
+        allowed_columns.add(bare)
+    else:
+        allowed_columns.add(table_name)
 
     used_columns = set()
 
@@ -313,7 +329,9 @@ def validate_columns(
 
     if invalid_columns:
         raise ValueError(
-            f"Invalid columns: {sorted(invalid_columns)}"
+            f"Invalid columns for {table_name}: "
+            f"{sorted(invalid_columns)}. "
+            f"Allowed columns: {sorted(target_columns)}."
         )
 
 
@@ -352,6 +370,16 @@ def run_metrics(
 
     return results
 
+def _simulation_error(error: BaseException) -> dict[str, Any]:
+    """Return a soft failure so the agent can correct and retry."""
+    return {
+        "ok": False,
+        "error": str(error),
+        "rows_affected": 0,
+        "metrics": {},
+    }
+
+
 def simulate_impact(
     engine,
     table_name,
@@ -360,25 +388,28 @@ def simulate_impact(
     metric_expressions,
     allowed_data,
 ):
-    allowed_tables = parse_allowed_data(
-        allowed_data
-    )
+    try:
+        allowed_tables = parse_allowed_data(
+            allowed_data
+        )
 
-    validate_table(
-        table_name,
-        allowed_tables,
-    )
+        validate_table(
+            table_name,
+            allowed_tables,
+        )
 
-    expressions = [
-        where_clause,
-        update_expression,
-        *metric_expressions,
-    ]
-    validate_columns(
-        table_name,
-        expressions,
-        allowed_tables,
-    )
+        expressions = [
+            where_clause,
+            update_expression,
+            *metric_expressions,
+        ]
+        validate_columns(
+            table_name,
+            expressions,
+            allowed_tables,
+        )
+    except Exception as error:  # noqa: BLE001
+        return _simulation_error(error)
 
     update_sql = f"""
     UPDATE {table_name}
@@ -428,13 +459,14 @@ def simulate_impact(
                 }
 
             return {
+                "ok": True,
                 "rows_affected": result.rowcount,
                 "metrics": metrics,
             }
 
-        except Exception:
+        except Exception as error:  # noqa: BLE001
             tx.rollback()
-            raise
+            return _simulation_error(error)
 
 
 def execute_impact(

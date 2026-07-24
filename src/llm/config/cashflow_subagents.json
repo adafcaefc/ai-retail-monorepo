@@ -112,7 +112,7 @@
         "cashflow_simulation_agent": {
             "input_model": "SimulationInput",
             "output_model": "SimulationOutput",
-            "retries": 2,
+            "retries": 3,
             "tools": [
                 "describe_cashflow_tables",
                 "query_cashflow",
@@ -122,7 +122,7 @@
                 "You are the treasury/cashflow simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is cashflow. Only simulate liquidity/treasury remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data, optional previous_error.",
                 "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"

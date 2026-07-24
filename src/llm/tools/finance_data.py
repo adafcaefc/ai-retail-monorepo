@@ -419,7 +419,63 @@ def get_alert_action_plan(
     }
 
 
-def simulate_action_impact(
+def _resolve_action(
+    session: Any,
+    *,
+    action_id: str = "",
+    action: str = "",
+) -> dict[str, Any]:
+    """Resolve a stored action by id, falling back to title match."""
+
+    from src.actions import repository
+
+    action_id = (action_id or "").strip()
+    action_title = (action or "").strip()
+
+    if action_id:
+        found = repository.get_action(session, action_id)
+        if found is None:
+            raise LookupError(f"Action {action_id!r} was not found.")
+        return found
+
+    if not action_title:
+        raise ValueError(
+            "Provide action_id or action title so the action can be resolved."
+        )
+
+    candidates = repository.get_actions(session)
+    exact = [
+        item
+        for item in candidates
+        if str(item.get("action") or "").strip().lower()
+        == action_title.lower()
+    ]
+    if len(exact) == 1:
+        return exact[0]
+    if len(exact) > 1:
+        ids = ", ".join(str(item["id"]) for item in exact[:5])
+        raise ValueError(
+            f"Multiple actions titled {action_title!r}. "
+            f"Pass action_id. Candidates: {ids}"
+        )
+
+    partial = [
+        item
+        for item in candidates
+        if action_title.lower() in str(item.get("action") or "").lower()
+    ]
+    if len(partial) == 1:
+        return partial[0]
+    if len(partial) > 1:
+        ids = ", ".join(str(item["id"]) for item in partial[:5])
+        raise ValueError(
+            f"Multiple actions match {action_title!r}. "
+            f"Pass action_id. Candidates: {ids}"
+        )
+    raise LookupError(f"No stored action matches {action_title!r}.")
+
+
+async def simulate_action_impact(
     action_id: str = "",
     action: str = "",
     question: str = "",
@@ -439,24 +495,37 @@ def simulate_action_impact(
         question: What the user wants to understand about the impact.
     """
 
-    print(
-        "[simulation-request] "
-        f"action_id={action_id!r} action={action!r} question={question!r}",
-        flush=True,
-    )
+    from src.actions import service as actions_service
+    from src.db.db import session_scope
+
+    with session_scope() as session:
+        resolved = _resolve_action(
+            session,
+            action_id=action_id,
+            action=action,
+        )
+        result = await actions_service.simulate_action(
+            session,
+            str(resolved["id"]),
+        )
+
+    simulation = result.get("simulation") or {}
+    updated = result.get("action") or {}
     return {
         "received": True,
-        "action_id": action_id,
-        "action": action,
+        "action_id": str(updated.get("id") or resolved["id"]),
+        "action": updated.get("action") or resolved.get("action"),
         "question": question,
-        "status": "SIMULATION_REQUESTED",
+        "status": "SIMULATED",
+        "action_status": updated.get("status") or resolved.get("status"),
+        "impact": updated.get("impact") or resolved.get("impact"),
+        "simulation": simulation,
+        "simulation_summary": updated.get("simulation_summary"),
         "note_to_agent": (
-            "The simulation engine is not implemented yet, so this call "
-            "returns no computed figures. Present the stored impact and "
-            "simulation_summary values from get_alert_action_plan as the "
-            "expected impact, state that they are the action owner's "
-            "estimate rather than a fresh calculation, and ask the user "
-            "to confirm before any approval is recorded."
+            "Present the simulation summary and metrics as the simulated "
+            "impact for this action. Distinguish the owner's stored impact "
+            "estimate from the freshly simulated figures. Ask the user to "
+            "confirm before calling request_action_approval."
         ),
     }
 
@@ -466,12 +535,12 @@ def request_action_approval(
     action: str = "",
     note: str = "",
 ) -> dict[str, Any]:
-    """Record that the user approved an action, or asked to execute one.
+    """Mark a stored action as approved after the user confirms.
 
-    Call this whenever the user approves, authorizes, signs off, accepts,
-    or asks to proceed with, execute, or go ahead with an action. The
-    request is only recorded for the action owner. Nothing is approved,
-    executed, or changed in the database.
+    Call this whenever the user confirms approval after a simulation was
+    already presented for the same action. The action status is set to
+    approved in the database. Nothing is executed; execution remains with
+    the domain execution agent after approval.
 
     Args:
         action_id: Identifier of the approved action, when known.
@@ -479,21 +548,34 @@ def request_action_approval(
         note: Any condition or instruction the user attached.
     """
 
-    print(
-        "[approval-request] "
-        f"action_id={action_id!r} action={action!r} note={note!r}",
-        flush=True,
-    )
+    from src.actions import service as actions_service
+    from src.db.db import session_scope
+
+    with session_scope() as session:
+        resolved = _resolve_action(
+            session,
+            action_id=action_id,
+            action=action,
+        )
+        updated = actions_service.approve_action(
+            session,
+            str(resolved["id"]),
+        )
+
     return {
         "received": True,
-        "action_id": action_id,
-        "action": action,
+        "action_id": str(updated["id"]),
+        "action": updated.get("action"),
         "note": note,
-        "status": "APPROVAL_REQUESTED",
+        "status": "APPROVED",
+        "action_status": updated.get("status"),
+        "routes": list(updated.get("routes") or []),
+        "impact": updated.get("impact"),
+        "simulation_summary": updated.get("simulation_summary"),
         "note_to_agent": (
-            "The approval request was recorded to the console only. No "
-            "approval was granted, no action was executed, and no stored "
-            "action status was changed."
+            "The action status is now approved in storage. Do not imply "
+            "the remediation was executed. Report the approved status and "
+            "routing owners; execution still requires the execution agent."
         ),
     }
 

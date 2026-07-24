@@ -129,6 +129,7 @@
                 "impact": {
                     "type": "str",
                     "optional": true,
+                    "default": null,
                     "description": "Expected impact hint from monitoring."
                 },
                 "allowed_tables": {
@@ -141,6 +142,12 @@
                 "allowed_data": {
                     "type": "json",
                     "description": "JSON allow-list of tables and columns the simulation may touch."
+                },
+                "previous_error": {
+                    "type": "str",
+                    "optional": true,
+                    "default": null,
+                    "description": "Error from a prior simulate attempt (undefined column, check constraint, invalid table, etc.). Fix the SQL using only real describe_* columns and query_* values; do not invent names."
                 }
             }
         },
@@ -252,14 +259,17 @@
         "SIMULATION_TOOLS_PROMPT": [
             "TOOLS",
             "INPUT includes allowed_tables: the exact tables you may touch. Never invent other table names.",
-            "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints.",
+            "If previous_error is present, treat it as mandatory feedback from the last failed attempt. Re-call describe_*_tables, fix only the named problem (missing column, illegal value, bad table), and retry simulate_impact. Never invent substitute column names.",
+            "1) Call describe_*_tables() with no tables argument. Read columns and check_constraints for the chosen table.",
             "2) Before any UPDATE that sets categorical/status fields, use the domain query_* tool to discover legal values. Pick the real column name from describe_*_tables (for example payment_status, not a guessed status). Example:",
             "SELECT DISTINCT payment_status FROM payment_leakage.ap_transactions WHERE payment_status IS NOT NULL LIMIT 50",
             "Only use values that appear in DISTINCT results and/or check_constraints definitions.",
             "3) Then call simulate_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data).",
             "simulate_impact temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back.",
+            "If simulate_impact returns ok=false, read error, correct columns/values using describe_* and query_*, then call simulate_impact again in the same turn.",
             "Convert the natural-language action spec into table_name, where_clause (no WHERE keyword), update_expression (no SET keyword), and metric_expressions.",
             "metric_expressions must be bare aggregates like COUNT(*) or SUM(amount_idr_mn) without AS aliases.",
+            "Every column in where_clause, update_expression, and metric_expressions must exist on table_name per describe_*_tables. Do not borrow columns from other tables.",
             "table_name must be one of allowed_tables.",
             "Use the most specific where_clause possible.",
             "Treat results as estimated impact, not guaranteed outcomes."

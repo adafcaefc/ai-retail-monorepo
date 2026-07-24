@@ -5,6 +5,7 @@ import {
 } from "react";
 
 import ChartRenderer from "./ChartRenderer.jsx";
+import AlertsPanel from "./AlertsPanel.jsx";
 import {
   fetchDashboard,
   recalculateDashboardSimulation
@@ -153,40 +154,6 @@ export default function Workboard({
     }
   }
 
-  if (loading) {
-    return (
-      <section
-        className="workboard workboard-loading"
-        data-testid="workboard"
-      >
-        <div
-          className="workboard-loader"
-          role="status"
-          aria-live="polite"
-        >
-          <span
-            className="workboard-spinner"
-            aria-hidden="true"
-          />
-          <span>Loading {agentName} dashboard…</span>
-        </div>
-      </section>
-    );
-  }
-
-  if (error || !dashboard) {
-    return (
-      <section
-        className="workboard workboard-loading"
-        data-testid="workboard"
-      >
-        <div className="workboard-status error" role="alert">
-          {error || "Dashboard unavailable."}
-        </div>
-      </section>
-    );
-  }
-
   return (
     <section className="workboard" data-testid="workboard">
       <header className="workboard-header">
@@ -198,63 +165,97 @@ export default function Workboard({
         </div>
       </header>
 
-      <div className="kpi-row" data-testid="kpi-row">
-        {(dashboard.kpis || []).map((kpi) => (
-          <button
-            key={kpi.id}
-            type="button"
-            className={
-              "kpi-tile" +
-              (kpi.alert ? " alert" : "") +
-              (view === kpi.view ? " on" : "")
-            }
-            data-testid={`kpi-${kpi.id}`}
-            onClick={() => setView(kpi.view)}
-          >
-            <span className="kpi-open">OPEN</span>
-            <span className="kpi-label">{kpi.label}</span>
-            <strong className="kpi-value" data-testid={`kpi-${kpi.id}-value`}>
-              {kpi.value}
-              {kpi.unit ? (
-                <span className="kpi-unit"> {kpi.unit}</span>
-              ) : null}
-            </strong>
-            <span className="kpi-delta">{kpi.delta}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="workboard-mid">
-        <article className="focus-card" data-testid="focus-panel">
-          <FocusBody view={activeView} />
-        </article>
-
-        <div className="side-col" data-testid="side-panels">
-          <article className="side-card">
-            <FocusBody view={dashboard.side?.top} compact />
-          </article>
-          <article className="side-card">
-            <FocusBody view={dashboard.side?.bottom} compact />
-          </article>
-        </div>
-      </div>
-
-      <WhatIfBar
-        simulator={dashboard.simulator}
-        values={values}
-        scope={scope}
-        setScope={setScope}
-        onChange={(id, value) =>
-          setValues((current) => ({
-            ...current,
-            [id]: value
-          }))
-        }
-        onCalculate={runSimulation}
-        busy={simBusy}
-        error={simError}
-        result={simResult}
+      <AlertsPanel
+        agentId={agentId}
+        agentName={agentName}
       />
+
+      {loading ? (
+        <div
+          className="workboard-loader"
+          role="status"
+          aria-live="polite"
+        >
+          <span
+            className="workboard-spinner"
+            aria-hidden="true"
+          />
+          <span>Loading {agentName} dashboard…</span>
+        </div>
+      ) : error || !dashboard ? (
+        <div className="workboard-status error" role="alert">
+          {error || "Dashboard unavailable."}
+        </div>
+      ) : (
+        <>
+          <div className="kpi-row" data-testid="kpi-row">
+            {(dashboard.kpis || []).map((kpi) => (
+              <button
+                key={kpi.id}
+                type="button"
+                className={
+                  "kpi-tile" +
+                  (kpi.alert ? " alert" : "") +
+                  (view === kpi.view ? " on" : "")
+                }
+                data-testid={`kpi-${kpi.id}`}
+                onClick={() => setView(kpi.view)}
+              >
+                <span className="kpi-open">OPEN</span>
+                <span className="kpi-label">{kpi.label}</span>
+                <strong
+                  className="kpi-value"
+                  data-testid={`kpi-${kpi.id}-value`}
+                >
+                  {kpi.value}
+                  {kpi.unit ? (
+                    <span className="kpi-unit"> {kpi.unit}</span>
+                  ) : null}
+                </strong>
+                <span className="kpi-delta">{kpi.delta}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="workboard-mid">
+            <article
+              className="focus-card"
+              data-testid="focus-panel"
+            >
+              <FocusBody view={activeView} />
+            </article>
+
+            <div className="side-col" data-testid="side-panels">
+              <article className="side-card">
+                <FocusBody view={dashboard.side?.top} compact />
+              </article>
+              <article className="side-card">
+                <FocusBody
+                  view={dashboard.side?.bottom}
+                  compact
+                />
+              </article>
+            </div>
+          </div>
+
+          <WhatIfBar
+            simulator={dashboard.simulator}
+            values={values}
+            scope={scope}
+            setScope={setScope}
+            onChange={(id, value) =>
+              setValues((current) => ({
+                ...current,
+                [id]: value
+              }))
+            }
+            onCalculate={runSimulation}
+            busy={simBusy}
+            error={simError}
+            result={simResult}
+          />
+        </>
+      )}
     </section>
   );
 }

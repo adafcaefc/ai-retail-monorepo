@@ -41,6 +41,10 @@ _SIMULATION_AGENT_BY_DOMAIN = {
     "leakage": "leakage_simulation_agent",
 }
 
+# Outer retries when the simulation agent run fails hard. Soft tool errors
+# are recovered inside the agent; previous_error is fed on each outer retry.
+SIMULATE_MAX_ATTEMPTS = 3
+
 
 def _normalize_agent(agent: str) -> str:
     value = agent.strip().lower()
@@ -140,6 +144,21 @@ def clear_alerts(
         "agent": normalized,
         **deleted,
     }
+
+
+def list_actions(
+    session: Session,
+    *,
+    agent: str | None = None,
+    status: str | None = None,
+) -> list[dict[str, Any]]:
+    """List stored actions (history), optionally filtered by domain or status."""
+    normalized = _normalize_agent(agent) if agent else None
+    return repository.get_actions(
+        session,
+        agent=normalized,
+        status=status,
+    )
 
 
 def list_actions_for_alert(
@@ -354,7 +373,7 @@ async def simulate_action(
     agent_name = _SIMULATION_AGENT_BY_DOMAIN[domain]
     chivon = get_chivon()
     allowed_data = allowed_data_for_agent(domain)
-    payload = {
+    base_payload = {
         "action_name": str(action["action"]),
         "spec": spec,
         "agent": domain,
@@ -363,8 +382,38 @@ async def simulate_action(
         "allowed_data": allowed_data,
     }
 
-    result = await chivon.run_async(agent_name, payload)
-    summary_payload = _dump_output(result.output)
+    previous_error: str | None = None
+    summary_payload: dict[str, Any] | None = None
+    attempts: list[dict[str, Any]] = []
+
+    for attempt in range(1, SIMULATE_MAX_ATTEMPTS + 1):
+        payload = dict(base_payload)
+        if previous_error:
+            payload["previous_error"] = previous_error
+        try:
+            result = await chivon.run_async(agent_name, payload)
+            summary_payload = _dump_output(result.output)
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "ok": True,
+                    "previous_error": previous_error,
+                }
+            )
+            break
+        except Exception as error:  # noqa: BLE001
+            previous_error = str(error)
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "ok": False,
+                    "error": previous_error,
+                }
+            )
+            if attempt >= SIMULATE_MAX_ATTEMPTS:
+                raise
+
+    assert summary_payload is not None
 
     metrics_json = summary_payload.get("metrics_json")
     if isinstance(metrics_json, str) and metrics_json.strip():
@@ -372,6 +421,8 @@ async def simulate_action(
             summary_payload["metrics"] = json.loads(metrics_json)
         except json.JSONDecodeError:
             summary_payload["metrics"] = metrics_json
+
+    summary_payload["simulate_attempts"] = attempts
 
     updated = repository.update_action_simulation_summary(
         session,
@@ -392,6 +443,7 @@ __all__ = [
     "allowed_data_for_agent",
     "approve_action",
     "clear_alerts",
+    "list_actions",
     "list_actions_for_alert",
     "list_alerts",
     "list_monitoring_agents",

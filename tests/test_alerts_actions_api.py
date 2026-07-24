@@ -73,6 +73,14 @@ class AlertActionApiTest(unittest.TestCase):
             self.assertEqual(alerts.status_code, 200)
             self.assertEqual(alerts.json()["count"], 1)
 
+            history = client.get("/api/actions?agent=finance")
+            self.assertEqual(history.status_code, 200)
+            self.assertEqual(history.json()["count"], 1)
+            self.assertEqual(
+                history.json()["items"][0]["status"],
+                "planned",
+            )
+
             actions = client.get(
                 f"/api/alerts/{self.alert['id']}/actions"
             )

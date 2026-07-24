@@ -104,7 +104,7 @@
         "finance_simulation_agent": {
             "input_model": "SimulationInput",
             "output_model": "SimulationOutput",
-            "retries": 2,
+            "retries": 3,
             "tools": [
                 "describe_financial_performance_tables",
                 "query_financial_performance",
@@ -114,7 +114,7 @@
                 "You are the finance simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",
                 "Parent domain is finance. Only simulate finance-performance remediation actions.",
-                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data.",
+                "INPUTS: action_name, spec, agent, optional impact, allowed_tables, allowed_data, optional previous_error.",
                 "Use only tables listed in allowed_tables.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"
