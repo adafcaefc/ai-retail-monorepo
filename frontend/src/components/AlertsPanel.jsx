@@ -28,7 +28,7 @@ export default function AlertsPanel({
   const [error, setError] = useState("");
   const [notifDismissed, setNotifDismissed] = useState(false);
 
-  const [statusOpen, setStatusOpen] = useState(false);
+  const [subagentsOpen, setSubagentsOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -46,7 +46,7 @@ export default function AlertsPanel({
     let cancelled = false;
 
     async function loadAlerts() {
-      setStatusOpen(false);
+      setSubagentsOpen(false);
       setActionOpen(false);
       setHistoryOpen(false);
       setStep(0);
@@ -163,8 +163,8 @@ export default function AlertsPanel({
     setError("");
   }
 
-  function openStatusModal() {
-    setStatusOpen(true);
+  function openSubagentsModal() {
+    setSubagentsOpen(true);
     setError("");
   }
 
@@ -286,13 +286,14 @@ export default function AlertsPanel({
 
             <button
               type="button"
-              className={"alerts-btn" + (statusOpen ? " on" : "")}
-              onClick={openStatusModal}
+              className={"alerts-btn" + (subagentsOpen ? " on" : "")}
+              onClick={openSubagentsModal}
             >
-              <span aria-hidden="true">🔔</span>
-              Agent Status
-              {alerts.length > 0 ? (
-                <span className="alerts-badge">{alerts.length}</span>
+              Subagents
+              {monitorStatusRows.length > 0 ? (
+                <span className="alerts-badge">
+                  {monitorStatusRows.length}
+                </span>
               ) : null}
             </button>
 
@@ -309,90 +310,93 @@ export default function AlertsPanel({
 
       {showNotifBar ? (
         <div
-          className="notif-header"
+          className={
+            "notif-header" +
+            (!monitoringBusy && !loading && alerts.length > 0
+              ? " notif-header-expanded"
+              : "")
+          }
           role="status"
           data-testid="notif-header"
         >
-          {monitoringBusy ? (
-            <span
-              className="workboard-spinner notif-header-spinner"
-              aria-hidden="true"
-            />
-          ) : (
-            <div className="notif-header-bell" aria-hidden="true">
-              <svg viewBox="0 0 24 24" width="17" height="17">
-                <path
-                  d="M12 3a5 5 0 00-5 5v3l-2 3h14l-2-3V8a5 5 0 00-5-5zm0 18a2.5 2.5 0 002.4-2h-4.8A2.5 2.5 0 0012 21z"
-                  fill="#c4314b"
-                />
-              </svg>
-            </div>
-          )}
-          <div className="notif-header-text">
+          <div className="notif-header-top">
             {monitoringBusy ? (
-              <>
-                <b>Monitoring</b>
-                {" — "}
-                Running monitoring agents…
-              </>
-            ) : loading ? (
-              <>
-                <b>Alerts</b>
-                {" — "}
-                Loading alerts…
-              </>
-            ) : displayError ? (
-              <>
-                <b>Monitoring error</b>
-                {" — "}
-                {displayError}
-              </>
-            ) : topAlert ? (
-              <>
-                <b>{topAlert.name || "Alert"}</b>
-                {" — "}
-                {topAlert.issue}
-                {alerts.length > 1 ? (
-                  <span className="notif-header-more">
-                    {" "}
-                    (+{alerts.length - 1} more)
-                  </span>
-                ) : null}
-              </>
+              <span
+                className="workboard-spinner notif-header-spinner"
+                aria-hidden="true"
+              />
             ) : (
-              <>
-                <b>Monitoring</b>
-                {" — "}
-                {displayNote || "No alerts detected."}
-              </>
+              <div className="notif-header-bell" aria-hidden="true">
+                <svg viewBox="0 0 24 24" width="17" height="17">
+                  <path
+                    d="M12 3a5 5 0 00-5 5v3l-2 3h14l-2-3V8a5 5 0 00-5-5zm0 18a2.5 2.5 0 002.4-2h-4.8A2.5 2.5 0 0012 21z"
+                    fill="#c4314b"
+                  />
+                </svg>
+              </div>
             )}
-          </div>
-          {!monitoringBusy && !loading && topAlert ? (
+            <div className="notif-header-text">
+              {monitoringBusy ? (
+                <>
+                  <b>Monitoring</b>
+                  {" — "}
+                  Running monitoring agents…
+                </>
+              ) : loading ? (
+                <>
+                  <b>Alerts</b>
+                  {" — "}
+                  Loading alerts…
+                </>
+              ) : displayError ? (
+                <>
+                  <b>Monitoring error</b>
+                  {" — "}
+                  {displayError}
+                </>
+              ) : topAlert ? (
+                <>
+                  <b>
+                    {alerts.length} alert
+                    {alerts.length === 1 ? "" : "s"}
+                  </b>
+                  {" — "}
+                  Tap an alert to see suggested action names.
+                </>
+              ) : (
+                <>
+                  <b>Monitoring</b>
+                  {" — "}
+                  {displayNote || "No alerts detected."}
+                </>
+              )}
+            </div>
             <button
               type="button"
-              className="notif-header-btn"
-              onClick={openStatusModal}
+              className="notif-header-close"
+              aria-label="Dismiss notification"
+              onClick={() => setNotifDismissed(true)}
             >
-              View alerts
+              ×
             </button>
+          </div>
+
+          {!monitoringBusy && !loading && alerts.length > 0 ? (
+            <ul className="status-alert-list notif-alert-list">
+              {alerts.map((alert) => (
+                <StatusAlertCard key={alert.id} alert={alert} />
+              ))}
+            </ul>
           ) : null}
-          <button
-            type="button"
-            className="notif-header-close"
-            aria-label="Dismiss notification"
-            onClick={() => setNotifDismissed(true)}
-          >
-            ×
-          </button>
         </div>
       ) : null}
 
-      {statusOpen ? (
+      {subagentsOpen ? (
         <Modal
-          title={`${agentName} Agent Status`}
-          icon="🔔"
+          title={`${agentName} Subagents`}
+          icon="🤖"
           subtitle="Monitoring subagents and how many actions each suggested."
-          onClose={() => setStatusOpen(false)}
+          onClose={() => setSubagentsOpen(false)}
           wide={false}
         >
           {displayNote ? (
@@ -409,7 +413,7 @@ export default function AlertsPanel({
               <span>
                 {monitoringBusy
                   ? "Running monitoring agents…"
-                  : "Loading status…"}
+                  : "Loading subagents…"}
               </span>
             </div>
           ) : monitorStatusRows.length === 0 ? (
@@ -874,6 +878,55 @@ function ApprovalStep({
         </div>
       </div>
     </div>
+  );
+}
+
+function StatusAlertCard({ alert }) {
+  const [open, setOpen] = useState(false);
+  const actions = alert.actions || [];
+  const actionCount = actions.length;
+
+  return (
+    <li className="status-alert-card">
+      <div className="status-alert-icon" aria-hidden="true">
+        !
+      </div>
+      <div className="status-alert-body">
+        <div className="status-alert-top">
+          <strong>{alert.name || "Alert"}</strong>
+          <span className="priority-pill high">High</span>
+        </div>
+        <p>{alert.issue}</p>
+        <div className="status-alert-meta">
+          <span>{formatWhen(alert.date_created)}</span>
+          <span className="alert-subagent">{alert.subagent}</span>
+        </div>
+
+        <button
+          type="button"
+          className={"status-actions-toggle" + (open ? " on" : "")}
+          aria-expanded={open}
+          onClick={() => setOpen((value) => !value)}
+        >
+          <span>
+            {actionCount} action{actionCount === 1 ? "" : "s"}
+          </span>
+          <span aria-hidden="true">{open ? "▴" : "▾"}</span>
+        </button>
+
+        {open ? (
+          actionCount === 0 ? (
+            <p className="status-actions-empty">No actions suggested.</p>
+          ) : (
+            <ul className="status-actions-dropdown">
+              {actions.map((action) => (
+                <li key={action.id}>{action.action}</li>
+              ))}
+            </ul>
+          )
+        ) : null}
+      </div>
+    </li>
   );
 }
 
