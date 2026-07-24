@@ -202,7 +202,7 @@ class PopulateAlertsTest(unittest.TestCase):
             self.assertEqual(body["actions_deleted"], 5)
             clear.assert_called_once()
 
-    def test_populate_runs_passes_sequentially_with_previous_alerts(self) -> None:
+    def test_populate_runs_passes_concurrently_with_previous_alerts(self) -> None:
         first_output = MagicMock()
         first_output.model_dump.return_value = {
             "alerts": [
@@ -308,16 +308,11 @@ class PopulateAlertsTest(unittest.TestCase):
             self.assertEqual(body["created_count"], 2)
             self.assertEqual(fake_chivon.run_async.await_count, 4)
 
-            # Second pass should see existing + first new alert.
-            second_call = fake_chivon.run_async.await_args_list[1].args[1]
-            previous = second_call["previous_alerts"]
-            self.assertEqual(len(previous), 2)
-            self.assertEqual(previous[0]["name"], "Existing leakage")
-            self.assertEqual(previous[1]["name"], "Suspected fraud")
-
-            # Third pass should see 3 priors (existing + 1 created; none skipped).
-            third_call = fake_chivon.run_async.await_args_list[2].args[1]
-            self.assertEqual(len(third_call["previous_alerts"]), 2)
+            # All concurrent passes see the same prior snapshot.
+            for call in fake_chivon.run_async.await_args_list:
+                previous = call.args[1]["previous_alerts"]
+                self.assertEqual(len(previous), 1)
+                self.assertEqual(previous[0]["name"], "Existing leakage")
 
 
 class ActionStatusHelperTest(unittest.TestCase):

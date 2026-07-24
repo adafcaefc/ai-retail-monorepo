@@ -97,10 +97,10 @@ async def populate_alerts(
     ),
 ) -> dict[str, Any]:
     """
-    Sequentially run all specialized monitoring agents for a domain.
+    Run all specialized monitoring agents for a domain concurrently.
 
-    Each monitor receives previous_alerts (existing DB alerts plus alerts
-    created earlier in this run) to avoid duplicates.
+    Each monitor receives previous_alerts (existing DB alerts for the domain)
+    so specialists avoid duplicates against known issues.
     """
     try:
         return await service.populate_alerts(session, agent)

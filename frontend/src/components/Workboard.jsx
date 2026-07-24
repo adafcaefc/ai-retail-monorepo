@@ -156,18 +156,17 @@ export default function Workboard({
 
   return (
     <section className="workboard" data-testid="workboard">
-      <header className="workboard-header">
-        <div>
-          <span className="header-kicker">
-            {agentName} dashboard
-          </span>
-          <h1>{agentName} performance board</h1>
-        </div>
-      </header>
-
       <AlertsPanel
         agentId={agentId}
         agentName={agentName}
+        header={
+          <>
+            <span className="header-kicker">
+              {agentName} dashboard
+            </span>
+            <h1>{agentName} performance board</h1>
+          </>
+        }
       />
 
       {loading ? (

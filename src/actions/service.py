@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any
 
@@ -10,6 +11,7 @@ from sqlalchemy.orm import Session
 from src.actions import repository
 from src.actions.monitoring_registry import (
     MONITORING_PASSES_BY_DOMAIN,
+    MonitoringPass,
     monitoring_passes_for,
 )
 from src.llm.chivon_impl import get_chivon
@@ -210,14 +212,6 @@ def _prior_from_stored(alert: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _prior_from_generated(alert: dict[str, Any]) -> dict[str, str]:
-    return {
-        "name": str(alert.get("name") or ""),
-        "issue": str(alert.get("issue") or ""),
-        "subagent": str(alert.get("subagent") or ""),
-    }
-
-
 def _persist_alert_with_actions(
     session: Session,
     *,
@@ -279,10 +273,11 @@ async def populate_alerts(
     agent: str,
 ) -> dict[str, Any]:
     """
-    Run all specialized monitoring agents for a domain sequentially.
+    Run all specialized monitoring agents for a domain concurrently.
 
-    Each pass receives previous_alerts (existing DB alerts for the domain plus
-    alerts created earlier in this run) so specialists avoid duplicates.
+    Every monitor receives the same previous_alerts snapshot (alerts already
+    stored for the domain) so specialists avoid duplicates against known
+    issues. Agent runs happen in parallel; DB persistence is sequential.
     """
     domain = _normalize_agent(agent)
     passes = monitoring_passes_for(domain)
@@ -292,15 +287,14 @@ async def populate_alerts(
         _prior_from_stored(item)
         for item in repository.get_alerts(session, agent=domain)
     ]
-    created_alerts: list[dict[str, Any]] = []
-    pass_results: list[dict[str, Any]] = []
+    previous_count = len(previous_alerts)
+    allowed_tables = list(_DOMAIN_TABLES[domain])
 
-    for monitoring_pass in passes:
-        previous_count = len(previous_alerts)
+    async def _run_pass(monitoring_pass: MonitoringPass) -> dict[str, Any]:
         payload = {
             "subagent_name": monitoring_pass.agent_name,
             "instructions": monitoring_pass.instructions,
-            "allowed_tables": list(_DOMAIN_TABLES[domain]),
+            "allowed_tables": allowed_tables,
             "previous_alerts": list(previous_alerts),
         }
         try:
@@ -309,13 +303,31 @@ async def populate_alerts(
                 payload,
             )
             output = _dump_output(result.output)
-            raw_alerts = output.get("alerts") or []
-            pass_error = None
+            return {
+                "monitoring_pass": monitoring_pass,
+                "raw_alerts": output.get("alerts") or [],
+                "error": None,
+            }
         except Exception as error:  # noqa: BLE001
-            raw_alerts = []
-            pass_error = str(error)
+            return {
+                "monitoring_pass": monitoring_pass,
+                "raw_alerts": [],
+                "error": str(error),
+            }
 
+    run_outputs = await asyncio.gather(
+        *[_run_pass(monitoring_pass) for monitoring_pass in passes]
+    )
+
+    created_alerts: list[dict[str, Any]] = []
+    pass_results: list[dict[str, Any]] = []
+
+    for run_output in run_outputs:
+        monitoring_pass = run_output["monitoring_pass"]
+        raw_alerts = run_output["raw_alerts"]
+        pass_error = run_output["error"]
         new_alerts: list[dict[str, Any]] = []
+
         for raw in raw_alerts:
             if hasattr(raw, "model_dump"):
                 alert = raw.model_dump(mode="json")
@@ -333,7 +345,6 @@ async def populate_alerts(
             )
             new_alerts.append(saved)
             created_alerts.append(saved)
-            previous_alerts.append(_prior_from_generated(alert))
 
         pass_entry: dict[str, Any] = {
             "monitoring_agent": monitoring_pass.agent_name,
