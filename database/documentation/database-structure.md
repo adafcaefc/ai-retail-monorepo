@@ -1,16 +1,14 @@
 # Database Structure
 
-This document describes the PostgreSQL schema defined by the migrations in `database/migrations/`.
+This document describes the PostgreSQL schema currently deployed in the database configured by `DATABASE_URL`. It was verified from PostgreSQL system catalogs on 24 July 2026. The checked-in migrations are implementation history and do not contain every deployed schema.
 
 ## Connection
 
 The application reads the database connection from the `DATABASE_URL` environment variable. Do not commit the value of that variable or any database credentials to this repository.
 
-## Migration Order
+## Source Of Truth
 
-1. `001_create_cashflow_foundation.sql` creates the shared audit table and schemas.
-2. `002_create_cashflow_tables.sql` creates the Treasury/cashflow tables.
-3. `003_create_collections_tables.sql` creates the Collections tables.
+The live database is authoritative. Re-run catalog queries when the database changes; do not assume that the files in `database/migrations/` describe every deployed table.
 
 ## Schemas
 
@@ -19,11 +17,14 @@ The application reads the database connection from the `DATABASE_URL` environmen
 | `audit` | Import lineage, status, and source workbook metadata |
 | `cashflow` | Treasury, liquidity, payables, collections timing, FX, and recommendations |
 | `collections` | Customer credit, aging, risk, DSO, recovery worklists, and recommendations |
-| `app` | Reserved application schema; no tables are currently created by the migrations |
+| `chat` | Conversations, messages, alerts, and agent actions |
+| `financial_performance` | Finance KPIs, profitability, variance drivers, products, and simulations |
+| `payment_leakage` | Payment transactions, anomaly detection, leakage summaries, and action worklists |
+| `app` | Reserved application schema; no tables were returned by the live catalog query |
 
 ## Relationship Overview
 
-All domain tables use `import_batch_id` to reference `audit.import_batches(id)` with `ON DELETE CASCADE`.
+Most imported domain tables use `import_batch_id` to reference `audit.import_batches(id)` with `ON DELETE CASCADE`. Chat tables use their own UUID relationships.
 
 ```mermaid
 erDiagram
@@ -41,6 +42,8 @@ erDiagram
     audit_import_batches ||--o{ risk_tier_exposure : contains
     audit_import_batches ||--o{ collections_worklist : contains
     audit_import_batches ||--o{ collections_recommendations : contains
+    chat_conversations ||--o{ chat_messages : contains
+    chat_alerts ||--o{ chat_actions : triggers
 ```
 
 ## Shared Audit Schema
@@ -392,6 +395,70 @@ Unique key: (`import_batch_id`, `recommendation_order`).
 | `collections.risk_tier_exposure` | `import_batch_id` |
 | `collections.worklist` | `import_batch_id`, `priority_rank` within batch |
 | `collections.recommendations` | `import_batch_id` |
+| `chat.messages` | `conversation_id`, `created_at` |
+| `financial_performance.*` | Every table has an `import_batch_id` index; business uniqueness is enforced per batch for metrics, products, recommendations, simulator rows, and variance drivers |
+| `payment_leakage.*` | Every table has an `import_batch_id` index; additional indexes cover invoice, vendor, severity, flagged status, and worklist priority; business uniqueness is enforced per batch |
+| `chat.conversations` | `id`, `title`, `created_at`, `updated_at` |
+| `chat.messages` | `id`, `conversation_id`, `sender`, `channel`, `message`, `created_at` |
+| `chat.alerts` | `id`, `name`, `subagent`, `agent`, `issue`, `date_created` |
+| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `created_at` |
+| `financial_performance.assumptions` | `id`, `import_batch_id`, `assumption_group`, `assumption_name`, `numeric_value`, `text_value`, `unit`, `notes`, `source_sheet`, `created_at` |
+| `financial_performance.kpis` | `id`, `import_batch_id`, `metric_name`, `metric_order`, `budget_value`, `actual_value`, `change_value`, `unit`, `notes`, `source_sheet`, `created_at` |
+| `financial_performance.operating_expenses` | `id`, `import_batch_id`, `cost_line`, `cost_line_order`, `budget_amount_idr_mn`, `actual_amount_idr_mn`, `variance_idr_mn`, `source_sheet`, `created_at` |
+| `financial_performance.product_margins` | `id`, `import_batch_id`, `product_name`, `product_order`, `actual_revenue_idr_mn`, `actual_gross_margin_idr_mn`, `actual_gross_margin_percentage`, `notes`, `source_sheet`, `created_at` |
+| `financial_performance.product_performance` | `id`, `import_batch_id`, `product_name`, `product_order`, budget and actual quantity, price, unit cost, revenue, COGS, and gross margin fields, `source_sheet`, `created_at` |
+| `financial_performance.profit_summary` | `id`, `import_batch_id`, `metric_name`, `metric_order`, `budget_value`, `actual_value`, `variance_value`, `unit`, `source_sheet`, `created_at` |
+| `financial_performance.variance_drivers` | `id`, `import_batch_id`, `driver_name`, `driver_order`, `impact_idr_mn`, `impact_direction`, `driver_description`, `source_sheet`, `created_at` |
+| `financial_performance.recommendations` | `id`, `import_batch_id`, `recommendation_type`, `recommendation_order`, `action_title`, `action_description`, `expected_impact`, `requires_approval`, `approval_route`, `source_sheet`, `created_at` |
+| `financial_performance.simulator_levers` | `id`, `import_batch_id`, six scenario percentage lever fields, `source_sheet`, `created_at` |
+| `financial_performance.simulator_product_results` | `id`, `import_batch_id`, `product_name`, `product_order`, scenario quantity, price, unit cost, revenue, COGS, and gross margin fields, `source_sheet`, `created_at` |
+| `financial_performance.simulator_summary` | `id`, `import_batch_id`, scenario/base EBITDA, revenue, gross margin, operating cost, target, status, and price-rise fields, `source_sheet`, `created_at` |
+| `payment_leakage.assumptions` | `id`, `import_batch_id`, `assumption_group`, `assumption_name`, `numeric_value`, `text_value`, `unit`, `notes`, `source_sheet`, `created_at` |
+| `payment_leakage.ap_transactions` | `id`, `import_batch_id`, transaction, vendor, invoice, date, amount, purchase-order, goods-received, payment, discount, bank-account, approver, and status fields, `source_sheet`, `created_at` |
+| `payment_leakage.anomaly_detections` | `id`, `import_batch_id`, transaction, vendor, invoice, duplicate, three-way-gap, discount, bank-change, split-invoice, anomaly, severity, risk, action, and payment-status fields, `source_sheet`, `created_at` |
+| `payment_leakage.category_breakdowns` | `id`, `import_batch_id`, `category_name`, `item_count`, `amount_at_risk_idr_mn`, `recommended_action`, `notes`, `is_direct_loss`, `source_sheet`, `created_at` |
+| `payment_leakage.summary` | `id`, `import_batch_id`, invoice/flag counts and rates, at-risk, blocked, recoverable, recovered, lost, protected, and discount-leakage amounts, `source_sheet`, `created_at` |
+| `payment_leakage.action_worklist` | `id`, `import_batch_id`, `priority_rank`, transaction/vendor/invoice/anomaly/severity/payment fields, `amount_at_risk_idr_mn`, `recommended_action`, `action_owner`, `source_sheet`, `created_at` |
+| `payment_leakage.recommendations` | `id`, `import_batch_id`, `recommendation_type`, `recommendation_order`, `action_title`, `action_description`, `expected_impact`, `requires_approval`, `approval_route`, `source_sheet`, `created_at` |
+
+## Chat Schema
+
+The live chat history is stored in PostgreSQL, not only in frontend state. The backend writes user and assistant messages through `src/chatflow/repository.py`.
+
+### `chat.conversations`
+
+| Column | Type | Null | Default |
+|---|---|---:|---|
+| `id` | `UUID` | No | |
+| `title` | `VARCHAR` | No | |
+| `created_at` | `TIMESTAMPTZ` | No | `now()` |
+| `updated_at` | `TIMESTAMPTZ` | No | `now()` |
+
+### `chat.messages`
+
+| Column | Type | Null | Default |
+|---|---|---:|---|
+| `id` | `UUID` | No | |
+| `conversation_id` | `UUID` | No | References the conversation identifier used by the chat repository |
+| `sender` | `VARCHAR` | No | `user` or `chatbot` in the HTML chat flow |
+| `channel` | `VARCHAR` | No | Frontend agent identifier such as `finance` or `collections` |
+| `message` | `TEXT` | No | User text or serialized assistant blocks |
+| `created_at` | `TIMESTAMPTZ` | No | `now()` |
+
+### `chat.alerts` and `chat.actions`
+
+These tables support agent alerts and routed actions. `chat.actions.routes` is a PostgreSQL array, and `chat.actions.alert_id` associates an action with an alert when present.
+
+## Live Table Count
+
+The catalog query returned 37 application tables:
+
+- `audit`: 1 table
+- `cashflow`: 7 tables
+- `chat`: 4 tables
+- `collections`: 7 tables
+- `financial_performance`: 11 tables
+- `payment_leakage`: 7 tables
 
 ## Data Loading Rules
 
@@ -402,6 +469,6 @@ Unique key: (`import_batch_id`, `recommendation_order`).
 - Monetary fields named with `_idr_mn` represent IDR millions; fields named `usd_amount` or `usd_exposure` represent USD values.
 - Week fields constrained to `1` through `13` represent the thirteen-week cashflow horizon.
 
-## Source of Truth
+## Maintenance
 
-The SQL migrations are authoritative. Update this document when a migration changes, and keep credentials only in local environment configuration.
+Update this document from the live database when tables, columns, constraints, or indexes change. Keep credentials only in local environment configuration.
