@@ -445,16 +445,37 @@ The live chat history is stored in PostgreSQL, not only in frontend state. The b
 | `message` | `TEXT` | No | User text or serialized assistant blocks |
 | `created_at` | `TIMESTAMPTZ` | No | `now()` |
 
-### `chat.alerts` and `chat.actions`
+### `chat.alerts`
 
-These tables support agent alerts and routed actions.
+One row is one issue raised by a monitoring agent. Verified from the live catalog on 24 July 2026.
 
-- `chat.actions.routes` is a PostgreSQL array.
-- `chat.actions.alert_id` associates an action with an alert when present.
-- `chat.actions.spec` stores the natural-language action plan produced by monitoring (not executable SQL).
-- `chat.actions.impact` stores the expected concise business impact.
-- `chat.actions.simulation_summary` stores JSON output from the domain simulation agent.
-- `chat.actions.status` is a string workflow state. Supported values: `planned`, `approved` (default `planned`).
+| Column | Type | Null | Notes |
+|---|---|---:|---|
+| `id` | `UUID` | No | Primary key |
+| `name` | `VARCHAR` | Yes | Short alert title |
+| `subagent` | `VARCHAR` | Yes | Raising subagent, such as `finance_margin_monitoring_agent` |
+| `agent` | `VARCHAR` | Yes | Owning agent, such as `finance`, `cashflow`, or `collection` |
+| `issue` | `TEXT` | Yes | Quantified description of the issue |
+| `date_created` | `TIMESTAMPTZ` | Yes | |
+
+### `chat.actions`
+
+One row is one proposed action. `routes` is a PostgreSQL array of owner names, and `alert_id` associates the action with an alert when present.
+
+| Column | Type | Null | Notes |
+|---|---|---:|---|
+| `id` | `UUID` | No | Primary key |
+| `action` | `VARCHAR` | No | Action title |
+| `agent` | `VARCHAR` | No | Agent that proposed the action |
+| `routes` | `ARRAY` | No | Approval and execution owners |
+| `alert_id` | `UUID` | Yes | Alert the action addresses |
+| `status` | `VARCHAR` | Yes | Workflow state: `planned`, `approved` (default `planned`) |
+| `spec` | `TEXT` | Yes | Execution detail and success metrics |
+| `impact` | `TEXT` | Yes | Expected impact statement |
+| `simulation_summary` | `JSONB` | Yes | Supporting simulation values when present |
+| `created_at` | `TIMESTAMPTZ` | Yes | |
+
+`src/llm/tools/finance_data.py:get_alert_action_plan` reads both tables and groups actions under their alert.
 
 ## Live Table Count
 

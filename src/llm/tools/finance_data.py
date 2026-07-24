@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
+from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -19,6 +20,10 @@ def _json_value(value: Any) -> Any:
         return float(value)
     if isinstance(value, (date, datetime)):
         return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
+    if isinstance(value, (list, tuple)):
+        return [_json_value(item) for item in value]
     return value
 
 
@@ -337,8 +342,167 @@ def get_payment_leakage_snapshot() -> dict[str, Any]:
         }
 
 
+def get_alert_action_plan(
+    agent: str = "",
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Return recent stored alerts with the routed actions planned for each."""
+
+    if limit < 1 or limit > 50:
+        raise ValueError("limit must be between 1 and 50.")
+    agent_filter = agent.strip()
+
+    with _read_connection() as connection:
+        alerts = _rows(
+            connection,
+            """
+            SELECT id, name, subagent, agent, issue, date_created
+            FROM chat.alerts
+            WHERE :agent = ''
+               OR lower(agent) LIKE '%' || lower(:agent) || '%'
+               OR lower(subagent) LIKE '%' || lower(:agent) || '%'
+            ORDER BY date_created DESC
+            LIMIT :limit
+            """,
+            {"agent": agent_filter, "limit": limit},
+        )
+        alert_ids = [str(alert["id"]) for alert in alerts]
+        actions = (
+            _rows(
+                connection,
+                """
+                SELECT id, alert_id, action, agent, routes, status,
+                       spec, impact, simulation_summary, created_at
+                FROM chat.actions
+                WHERE alert_id::text = ANY(:alert_ids)
+                ORDER BY created_at
+                LIMIT 200
+                """,
+                {"alert_ids": alert_ids},
+            )
+            if alert_ids
+            else []
+        )
+        unlinked_actions = _rows(
+            connection,
+            """
+            SELECT id, action, agent, routes, status, spec, impact,
+                   simulation_summary, created_at
+            FROM chat.actions
+            WHERE alert_id IS NULL
+            ORDER BY created_at DESC
+            LIMIT 20
+            """,
+            {},
+        )
+
+    actions_by_alert: dict[str, list[dict[str, Any]]] = {}
+    for action in actions:
+        alert_id = str(action.pop("alert_id"))
+        actions_by_alert.setdefault(alert_id, []).append(action)
+
+    return {
+        "agent_filter": agent_filter,
+        "alert_count": len(alerts),
+        "alerts": [
+            {
+                **alert,
+                "actions": actions_by_alert.get(str(alert["id"]), []),
+            }
+            for alert in alerts
+        ],
+        "unlinked_actions": unlinked_actions,
+        "note": (
+            "Each action carries its own status and routing owners. An "
+            "action is only executed once its owner records approval."
+        ),
+    }
+
+
+def simulate_action_impact(
+    action_id: str = "",
+    action: str = "",
+    question: str = "",
+) -> dict[str, Any]:
+    """Run the impact simulation for an action before any approval.
+
+    Call this whenever the user wants to understand what an action would
+    do: its impact, effect, consequence, result, upside, downside, risk,
+    or any what-if about applying it. Also call it as the first step when
+    the user approves or asks to execute an action, so the simulation is
+    shown before approval is confirmed. Do not wait for the user to say
+    the word simulation.
+
+    Args:
+        action_id: Identifier of the action being simulated, when known.
+        action: Title of the action being simulated.
+        question: What the user wants to understand about the impact.
+    """
+
+    print(
+        "[simulation-request] "
+        f"action_id={action_id!r} action={action!r} question={question!r}",
+        flush=True,
+    )
+    return {
+        "received": True,
+        "action_id": action_id,
+        "action": action,
+        "question": question,
+        "status": "SIMULATION_REQUESTED",
+        "note_to_agent": (
+            "The simulation engine is not implemented yet, so this call "
+            "returns no computed figures. Present the stored impact and "
+            "simulation_summary values from get_alert_action_plan as the "
+            "expected impact, state that they are the action owner's "
+            "estimate rather than a fresh calculation, and ask the user "
+            "to confirm before any approval is recorded."
+        ),
+    }
+
+
+def request_action_approval(
+    action_id: str = "",
+    action: str = "",
+    note: str = "",
+) -> dict[str, Any]:
+    """Record that the user approved an action, or asked to execute one.
+
+    Call this whenever the user approves, authorizes, signs off, accepts,
+    or asks to proceed with, execute, or go ahead with an action. The
+    request is only recorded for the action owner. Nothing is approved,
+    executed, or changed in the database.
+
+    Args:
+        action_id: Identifier of the approved action, when known.
+        action: Title of the approved action.
+        note: Any condition or instruction the user attached.
+    """
+
+    print(
+        "[approval-request] "
+        f"action_id={action_id!r} action={action!r} note={note!r}",
+        flush=True,
+    )
+    return {
+        "received": True,
+        "action_id": action_id,
+        "action": action,
+        "note": note,
+        "status": "APPROVAL_REQUESTED",
+        "note_to_agent": (
+            "The approval request was recorded to the console only. No "
+            "approval was granted, no action was executed, and no stored "
+            "action status was changed."
+        ),
+    }
+
+
 LOCAL_FINANCE_TOOLS = {
     "calculate_collection_scenario": calculate_collection_scenario,
+    "get_alert_action_plan": get_alert_action_plan,
+    "request_action_approval": request_action_approval,
+    "simulate_action_impact": simulate_action_impact,
     "get_cashflow_baseline": get_cashflow_baseline,
     "get_collections_snapshot": get_collections_snapshot,
     "get_financial_performance_snapshot": get_financial_performance_snapshot,
@@ -350,9 +514,12 @@ LOCAL_FINANCE_TOOLS = {
 __all__ = [
     "LOCAL_FINANCE_TOOLS",
     "calculate_collection_scenario",
+    "get_alert_action_plan",
     "get_cashflow_baseline",
     "get_collections_snapshot",
     "get_financial_performance_snapshot",
     "get_payment_leakage_snapshot",
+    "request_action_approval",
+    "simulate_action_impact",
     "simulate_cashflow",
 ]
