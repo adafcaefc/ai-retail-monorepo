@@ -175,3 +175,200 @@ def value_compare_query(
         "count": len(rows),
         "rows": rows,
     }
+
+
+#Simulate impact
+import json
+import re
+from sqlalchemy import text
+
+
+def parse_allowed_data(allowed_data):
+    """
+    Returns:
+    {
+        "employees": {
+            "employee_id",
+            "department",
+            "salary"
+        }
+    }
+    """
+    if isinstance(allowed_data, str):
+        allowed_data = json.loads(allowed_data)
+
+    result = {}
+
+    for table_name, table_info in allowed_data.items():
+        result[table_name] = set(table_info["columns"].keys())
+
+    return result
+
+
+def extract_columns(expression: str) -> set[str]:
+    """
+    Extract column names from a SQL fragment.
+
+    department = 'Sales'
+    salary = salary * 1.1
+ary)
+
+    -> {"department", "salary"}
+    """
+
+    expression = re.sub(r"'[^']*'", "", expression)
+
+    keywords = {
+        "sum", "avg", "count", "min", "max",
+        "and", "or", "in", "like",
+        "null", "is", "case", "when",
+        "then", "else", "end",
+    }
+
+    tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", expression)
+
+    return {
+        token
+        for token in tokens
+        if token.lower() not in keywords
+    }
+
+
+def validate_table(table_name, allowed_tables):
+    if table_name not in allowed_tables:
+        raise ValueError(
+            f"Table '{table_name}' is not allowed."
+        )
+
+
+def validate_columns(
+    table_name,
+    expressions,
+    allowed_tables,
+):
+    allowed_columns = allowed_tables[table_name]
+
+    used_columns = set()
+
+    for expression in expressions:
+        used_columns.update(
+            extract_columns(expression)
+        )
+
+    invalid_columns = used_columns - allowed_columns
+
+    if invalid_columns:
+        raise ValueError(
+            f"Invalid columns: {sorted(invalid_columns)}"
+        )
+
+
+def run_metrics(
+    conn,
+    table_name,
+    where_clause,
+    metric_expressions,
+):
+    results = {}
+
+    for i, metric in enumerate(metric_expressions):
+        sql = f"""
+        SELECT {metric} AS metric_value
+        FROM {table_name}
+        WHERE {where_clause}
+        """
+
+        row = conn.execute(
+            text(sql)
+        ).mappings().first()
+
+        results[metric] = (
+            row["metric_value"]
+            if row
+            else None
+        )
+
+    return results
+
+def simulate_impact(
+    engine,
+    table_name,
+    where_clause,
+    update_expression,
+    metric_expressions,
+    allowed_data,
+):
+    allowed_tables = parse_allowed_data(
+        allowed_data
+    )
+
+    validate_table(
+        table_name,
+        allowed_tables,
+    )
+
+    validate_columns(
+        table_name,
+        [
+            where_clause,
+            update_expression,
+            metric_expressions,
+        ],
+        allowed_tables,
+    )
+
+    update_sql = f"""
+    UPDATE {table_name}
+    SET {update_expression}
+    WHERE {where_clause}
+    """
+
+    with engine.connect() as conn:
+        tx = conn.begin()
+
+        try:
+            before = run_metrics(
+                conn,
+                table_name,
+                where_clause,
+                metric_expressions,
+            )
+
+            result = conn.execute(
+                text(update_sql)
+            )
+
+            after = run_metrics(
+                conn,
+                table_name,
+                where_clause,
+                metric_expressions,
+            )
+
+            tx.rollback()
+
+            metrics = {}
+
+            for metric in metric_expressions:
+                before_value = before[metric]
+                after_value = after[metric]
+
+                metrics[metric] = {
+                    "before": before_value,
+                    "after": after_value,
+                    "delta": (
+                        after_value - before_value
+                        if isinstance(before_value, (int, float))
+                        and isinstance(after_value, (int, float))
+                        else None
+                    )
+                }
+
+            return {
+                "rows_affected": result.rowcount,
+                "metrics": metrics,
+            }
+
+        except Exception:
+            tx.rollback()
+            raise
