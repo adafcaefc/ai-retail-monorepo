@@ -113,6 +113,11 @@
             "input_model": "SimulationInput",
             "output_model": "SimulationOutput",
             "retries": 3,
+            "tools": [
+                "describe_collections_tables",
+                "query_collections",
+                "simulate_impact"
+            ],
             "system_prompt": [
                 "You are the collections simulation agent.",
                 "Turn a planned action spec into a temporary database simulation and summarize estimated impact.",

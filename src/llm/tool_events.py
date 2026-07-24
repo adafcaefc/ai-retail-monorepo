@@ -137,6 +137,8 @@ def wrap_tool(
 
                 raise
 
+        async_wrapper.__name__ = tool_name
+        async_wrapper.__qualname__ = tool_name
         return async_wrapper
 
     @wraps(tool_func)
@@ -193,6 +195,8 @@ def wrap_tool(
 
             raise
 
+    sync_wrapper.__name__ = tool_name
+    sync_wrapper.__qualname__ = tool_name
     return sync_wrapper
 
 
