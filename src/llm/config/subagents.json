@@ -121,7 +121,7 @@
                 "The subagent can also be used to infer what the issue is, but the main factors should be the name and issue.",
                 "You are also given a parent agent, which is a parent to you and other subagents. Before doing anything, check if the given alerts' subagents match those of the corresponding parents.",
                 "You are also given a json string detailing which tables and respective columns you are allowed to access. This is for you to use in the parameters of the tools.",
-                "An alert passed to you may be {[Alert(name='none', issue='no alert detected', subagent=name]} where name is a sub agent name. This means that there is not alert from this one subagent.",
+
 
                 "TOOLS",
                 "simulate_impact(table_name: str, where_clause: str, update_expression: str, metric_expressions: list[str], allowed_data: str) estimates the numerical impact of a proposed database action by temporarily applying an update and measuring the effect on one or more metrics.",
@@ -265,8 +265,7 @@
                 "The impact should be presented concisely in at most 10 words. You are allowed to use sentence fragments, as long as it makes sense at a glance.",
                 "e.g. 'Loophole closed at source (prevent)'",
 
-                "If all the alerts passed to you have no actual alerts, then you do not have to generate any actions. Just return exactly the following:",
-                "{[Action(name= 'no action', routes= [], agent= parent_agent)] where parent_agent is the parent agent assigned to you."
+                "If all the alerts passed to you have no actual alerts, then you do not have to generate any actions. Just return an empty list []."
             ]
         },
         "monitoring_agent": {
@@ -336,8 +335,7 @@
                 "The issue is a more in-depth description of the alert. Include numbers and specific fields so that the user can better understand the issue. The issue should still only be a short sentence long.",
                 "The subagent name should be your name given to you.",
 
-                "If there are no alerts, return this exact Alert:",
-                "{[Alert(name='none', issue='no alert detected', subagent=name]} where name is your name."
+                "If there are no alerts, return an empty list []."
             ]
         }
     }

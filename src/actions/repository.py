@@ -150,8 +150,7 @@ def save_action(
 def save_actions(
     session: Session,
     actions: list[dict],
-) -> list[str]:
-
+):
     records = [
         _create_action(
             action=a["action"],
@@ -166,7 +165,7 @@ def save_actions(
     session.add_all(records)
     session.commit()
 
-    return [str(r.id) for r in records]
+    return records
 
 #updates the status of an action
 def update_action_status(
@@ -274,8 +273,7 @@ def save_alert(
 def save_alerts(
     session: Session,
     alerts: list[dict],
-) -> list[str]:
-
+):
     records = [
         _create_alert(
             name=a["name"],
@@ -289,7 +287,7 @@ def save_alerts(
     session.add_all(records)
     session.commit()
 
-    return [str(r.id) for r in records]
+    return records
 
 #get an alert by ID
 def get_alert(
