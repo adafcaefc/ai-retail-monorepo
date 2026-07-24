@@ -27,6 +27,10 @@ from src.api.finance_agents_html import (
     router as finance_agents_html_router,
 )
 
+from src.actions.router import (
+    router as alerts_actions_router,
+)
+
 from src.cashflow.router import (
     router as cashflow_router,
 )
@@ -75,6 +79,10 @@ app.include_router(
 
 app.include_router(
     finance_agents_html_router
+)
+
+app.include_router(
+    alerts_actions_router
 )
 
 

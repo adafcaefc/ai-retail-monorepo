@@ -1,76 +1,31 @@
 {
     "version": 1,
     "models": {
-        "ActionsInput":{
-            "fields": {
-                "alerts": {
-                    "type": "list",
-                    "items": {
-                        "type": "ref",
-                        "ref": "Alert"
-                    },
-                    "description": "The list of alerts that the generated actions will try to resolve."
-                },
-                "parent_agent": {
-                    "type": "literal",
-                    "choices": ["collection, finance, leakage, cashflow"],
-                    "description": "The main agent that deals with this type of alert."
-                },
-                "allowed_data":{
-                    "type": "json",
-                    "description": "The info of tables that you are allowed to search."
-                }
-            }
-        },
-        "Action" : {
+        "ActionSpec": {
             "fields": {
                 "name": {
                     "type": "str",
-                    "description": "The name of the action, which should summarize whate the action is."
+                    "description": "Short actionable title for the recommended action."
                 },
                 "routes": {
                     "type": "list",
                     "items": {
                         "type": "str"
                     },
-                    "description": "The routes to where the action will be sent to. Can contain multiple routes."
+                    "description": "People, teams, or systems that can perform the action."
                 },
                 "agent": {
                     "type": "literal",
-                    "choices": ["collection, finance, leakage, cashflow"],
-                    "description": "The corresponding main agent that should deal with this action."
+                    "choices": ["collection", "finance", "leakage", "cashflow"],
+                    "description": "Parent domain agent for this action."
                 },
                 "impact": {
                     "type": "str",
-                    "description": "The financial or business impact of this action, whether it be numerical or physical."
-                }
-            }
-        },
-        "ActionsOutput": {
-            "fields": {
-                "actions": {
-                    "type": "list",
-                    "items": {
-                        "type": "ref",
-                        "ref": "Action"
-                    },
-                    "description": "The list of Actions that will be outputted by the agent."
-                }
-            }
-        },
-        "MonitoringInput":{
-            "fields":{
-                "subagent_name": {
-                    "type": "str",
-                    "description": "The assigned name of this subagent."
+                    "description": "Expected business impact in concise form."
                 },
-                "allowed_data":{
-                    "type": "json",
-                    "description": "The info of tables that you are allowed to search."
-                },
-                "instructions": {
+                "spec": {
                     "type": "str",
-                    "description": "The more specific instructions detailing what you should search for. "
+                    "description": "Natural-language action specification describing what should change, which records, and how success is measured. Not executable SQL."
                 }
             }
         },
@@ -78,15 +33,61 @@
             "fields": {
                 "name": {
                     "type": "str",
-                    "description": "The name of the alert, which should summarize the current problem."
+                    "description": "Concise phrase summarizing the business issue."
                 },
                 "issue": {
                     "type": "str",
-                    "description": "The actual issue of the alert, should be general enough to understand, but detailed enough to understand severity."
+                    "description": "Short sentence describing the alert with key numbers."
                 },
                 "subagent": {
-                    "type": "literal",
-                    "description": "The name of the corresponding subagent that found this alert."
+                    "type": "str",
+                    "description": "Name of the monitoring subagent that found this alert."
+                },
+                "actions": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "ActionSpec"
+                    },
+                    "default": [],
+                    "description": "Recommended action specs for this alert. Specs are plans only; they are not executed."
+                }
+            }
+        },
+        "PriorAlert": {
+            "fields": {
+                "name": {
+                    "type": "str",
+                    "description": "Name of an alert already raised earlier in this populate run or already stored for the domain."
+                },
+                "issue": {
+                    "type": "str",
+                    "description": "Issue text of the prior alert."
+                },
+                "subagent": {
+                    "type": "str",
+                    "description": "Monitoring subagent that produced the prior alert."
+                }
+            }
+        },
+        "MonitoringInput": {
+            "fields": {
+                "subagent_name": {
+                    "type": "str",
+                    "description": "Assigned name of this monitoring subagent."
+                },
+                "instructions": {
+                    "type": "str",
+                    "description": "What this specialized monitoring pass should look for."
+                },
+                "previous_alerts": {
+                    "type": "list",
+                    "items": {
+                        "type": "ref",
+                        "ref": "PriorAlert"
+                    },
+                    "default": [],
+                    "description": "Alerts already found by earlier monitoring agents or already stored for this domain. Do not duplicate these."
                 }
             }
         },
@@ -98,247 +99,161 @@
                         "type": "ref",
                         "ref": "Alert"
                     },
-                    "description": "The list of alerts that this monitoring agent brings attention to."
+                    "description": "New alerts with nested action specs. Exclude issues already covered by previous_alerts."
+                }
+            }
+        },
+        "SimulationInput": {
+            "fields": {
+                "action_name": {
+                    "type": "str",
+                    "description": "Name of the planned action being simulated."
+                },
+                "spec": {
+                    "type": "str",
+                    "description": "Natural-language action specification to convert into a simulated update."
+                },
+                "agent": {
+                    "type": "literal",
+                    "choices": ["collection", "finance", "leakage", "cashflow"],
+                    "description": "Parent domain agent."
+                },
+                "impact": {
+                    "type": "str",
+                    "optional": true,
+                    "description": "Expected impact hint from monitoring."
+                },
+                "allowed_data": {
+                    "type": "json",
+                    "description": "JSON allow-list of tables and columns the simulation may touch."
+                }
+            }
+        },
+        "SimulationOutput": {
+            "fields": {
+                "summary": {
+                    "type": "str",
+                    "description": "Human-readable simulation summary of estimated impact."
+                },
+                "rows_affected": {
+                    "type": "int",
+                    "optional": true,
+                    "description": "Estimated rows affected by the simulated update."
+                },
+                "metrics_json": {
+                    "type": "json_object_str",
+                    "optional": true,
+                    "description": "JSON string of before/after/delta metrics from simulate_impact."
+                }
+            }
+        },
+        "ExecuteActionInput": {
+            "fields": {
+                "action_name": {
+                    "type": "str",
+                    "description": "Name of the approved action to execute."
+                },
+                "spec": {
+                    "type": "str",
+                    "description": "Natural-language action specification to convert into an executable update."
+                },
+                "agent": {
+                    "type": "literal",
+                    "choices": ["collection", "finance", "leakage", "cashflow"],
+                    "description": "Parent domain agent."
+                },
+                "status": {
+                    "type": "literal",
+                    "choices": ["approved"],
+                    "description": "Must be approved. This agent never executes planned actions."
+                },
+                "allowed_data": {
+                    "type": "json",
+                    "description": "JSON allow-list of tables and columns the execution may touch."
+                }
+            }
+        },
+        "ExecuteActionOutput": {
+            "fields": {
+                "executed": {
+                    "type": "bool",
+                    "description": "True only when execute_impact committed successfully."
+                },
+                "summary": {
+                    "type": "str",
+                    "description": "Human-readable execution summary."
+                },
+                "rows_affected": {
+                    "type": "int",
+                    "optional": true,
+                    "description": "Rows permanently updated."
+                },
+                "metrics_json": {
+                    "type": "json_object_str",
+                    "optional": true,
+                    "description": "JSON string of before/after/delta metrics from execute_impact."
                 }
             }
         }
     },
-    "agents": {
-        "action_agent": {
-            "input_model": "ActionsInput",
-            "output_model": "ActionsOutput",
-            "retries": 2,
-            "tools": [
-                "simulate_impact"
-            ],
-            "system_prompt": [
-                "You are an helpful action generator agent whose purpose is to generate reccomended actions that a CFO might do in order to resolve different alerts.",
-                "You will be assigned a parent agent, which deals with one aspect of financial analysis. Therefore, you will only deal with alerts that have to do with this aspect of finance.",
-
-                "INPUTS",
-                "You are given a list of Alerts, which each have a name, issue, and subagent.",
-                "The name and issue should help you infer what the issue actually is so that you can decide what actions to take in order to resolve it.",
-                "The subagent can also be used to infer what the issue is, but the main factors should be the name and issue.",
-                "You are also given a parent agent, which is a parent to you and other subagents. Before doing anything, check if the given alerts' subagents match those of the corresponding parents.",
-                "You are also given a json string detailing which tables and respective columns you are allowed to access. This is for you to use in the parameters of the tools.",
-                "An alert passed to you may be {[Alert(name='none', issue='no alert detected', subagent=name]} where name is a sub agent name. This means that there is not alert from this one subagent.",
-
-                "TOOLS",
-                "simulate_impact(table_name: str, where_clause: str, update_expression: str, metric_expressions: list[str], allowed_data: str) estimates the numerical impact of a proposed database action by temporarily applying an update and measuring the effect on one or more metrics.",
-                "The tool performs all changes inside a database transaction and rolls the transaction back before completion. No permanent database changes are made.",
-                "table_name is the name of the table the simulation should run against.",
-                "where_clause is a SQL condition without the WHERE keyword that identifies which rows would be affected. Example: department = 'Sales'.",
-                "update_expression is a SQL SET expression without the SET keyword that describes the proposed change. Example: salary = salary * 1.1.",
-                "metric_expressions is a list of SQL aggregate expressions used to measure impact before and after the simulated change. Examples: SUM(balance), AVG(salary), COUNT(*), MAX(days_overdue).",
-                "allowed_data is a JSON string describing the tables and columns that may be accessed. Any table or column not present in allowed_data cannot be referenced.",
-                "The tool validates that the requested table and columns exist in allowed_data before executing the simulation.",
-                "The tool calculates the requested metrics before the simulated update is applied.",
-                "The tool applies the update only within the transaction scope.",
-                "The tool recalculates the requested metrics after the simulated update.",
-                "The tool returns the number of affected rows, metric values before the change, metric values after the change, and the numerical delta for each metric.",
-                "Use this tool when you need to estimate the effect of a proposed remediation action.",
-                "Use this tool when you need to compare multiple potential actions and determine which action produces the greatest positive impact.",
-                "Use this tool when you need to determine whether a proposed action is likely to resolve an alert.",
-                "Use this tool when numerical evidence is needed to justify or rank action recommendations.",
-                "Choose metric_expressions that directly measure the alert or business problem being addressed.",
-                "Use the most specific where_clause possible to simulate only the intended records.",
-                "Only reference tables and columns that are available in allowed_data.",
-                "Do not provide complete SQL statements. Provide only table_name, where_clause, update_expression, and metric_expressions.",
-                "Example: For an overdue receivables alert, use table_name='receivables', where_clause='days_overdue > 60', update_expression='days_overdue = 0', and metric_expressions=['COUNT(*)', 'SUM(balance)'].",
-                "Example: For a payroll budget alert, use table_name='employees', where_clause='department = 'Sales'\", update_expression='salary = salary * 0.95', and metric_expressions=['SUM(salary)', 'AVG(salary)'].",
-                "When the expected impact of an action can be measured numerically, call simulate_impact before finalizing the recommendation.",
-                "When evaluating multiple actions, prefer actions that produce larger positive improvements in the relevant metrics while affecting fewer records, unless business context indicates otherwise.",
-                "Treat simulation results as estimated impact rather than guaranteed future outcomes.",
-
-                "ACTION GUIDE",
-                "Here are some common actions to resolve certain issues that may come up. Use these as a guide to choose what actions to take given a certain issue.",
-
-                "For weekly buffer or liquidity breaches, prioritize accelerating collections before using additional borrowing.",
-                "Example actions: Accelerate overdue collection from top customer, Secure payment commitment from key account, Offer small early-pay discount to strategic customer.",
-                "Example impacts: 'Week 5 Cashflow: IDR 4,700 mn + IDR 3,000 mn -> IDR 7,700 mn', 'Liquidity buffer restored'.",
-
-                "For liquidity issues, defer non-critical payments into higher-headroom periods if doing so does not create a new breach.",
-                "Example actions: Defer packaging payment to Week 8, Reschedule non-essential capex payment, Delay discretionary spend.",
-                "Example impacts: 'Week 6 Cashflow: IDR 1,200 mn + IDR 2,000 mn -> IDR 3,200 mn'.",
-
-                "For liquidity issues, use committed credit facilities only after operational levers have been evaluated.",
-                "Example actions: Draw committed credit line, Increase short-term working capital facility.",
-                "Example impacts: 'Available Liquidity: IDR 5,000 mn + IDR 3,000 mn -> IDR 8,000 mn'.",
-
-                "For DSO or collections alerts, focus on accelerating cash collection from the highest-value overdue accounts first.",
-                "Example actions: Call top overdue customer, Escalate overdue account to Collections, Secure payment schedule from customer.",
-                "Example impacts: 'Overdue A/R: IDR 12,000 mn - IDR 5,000 mn -> IDR 7,000 mn'.",
-
-                "For collections alerts, use incentives only when expected cash acceleration exceeds incentive cost.",
-                "Example actions: Offer early-pay discount, Waive minor fees for immediate settlement.",
-                "Example impacts: 'DSO: 68 days - 6 days -> 62 days'.",
-
-                "For bad debt or credit risk alerts, stop exposure growth before pursuing recovery.",
-                "Example actions: Place customer on credit hold, Freeze new orders for delinquent account, Require prepayment for future orders.",
-                "Example impacts: 'Further exposure blocked', 'Credit loss risk contained'.",
-
-                "For bad debt alerts, strengthen reserves and recovery efforts on high-risk balances.",
-                "Example actions: Raise ECL provision, Escalate disputed invoice resolution, Assign account to recovery team.",
-                "Example impacts: 'Expected credit loss protected', 'Recovery probability improved'.",
-
-                "For recurring collections issues, institutionalize the fix.",
-                "Example actions: Automate dunning workflow, Schedule weekly A/R review, Recalculate credit scores monthly.",
-                "Example impacts: 'Future overdue balances reduced', 'Lower DSO volatility'.",
-
-                "For margin deterioration alerts, first determine whether the primary driver is price, mix, or cost.",
-                "Example actions: Restore pricing on discounted SKUs, Shift sales toward high-margin products, Reduce high-cost procurement categories.",
-                "Example impacts: 'Gross Margin: 18.0% + 2.0% -> 20.0%'.",
-
-                "For price erosion alerts, recover lost pricing before cutting costs.",
-                "Example actions: Reverse unnecessary discounting, Apply targeted price increase, Increase prices on FX-exposed products.",
-                "Example impacts: 'Price Variance: -2.0% + 1.5% -> -0.5%'.",
-
-                "For mix issues, prioritize selling more high-margin products, customers, or regions.",
-                "Example actions: Increase incentives for high-margin products, Promote premium product bundles, Redirect commercial focus to profitable accounts.",
-                "Example impacts: 'Average Gross Margin: 19% + 3% -> 22%'.",
-
-                "For cost inflation alerts, attack the largest cost driver first.",
-                "Example actions: Renegotiate supplier contracts, Consolidate vendors, Reduce freight expenses, Eliminate low-value spending.",
-                "Example impacts: 'Operating Cost: IDR 15,000 mn - IDR 1,200 mn -> IDR 13,800 mn'.",
-
-                "For FX exposure alerts, reduce exposure before accepting currency volatility.",
-                "Example actions: Hedge USD exposure, Execute forward contract, Increase natural hedge through export receivables.",
-                "Example impacts: 'USD Exposure: USD 5.0 mn - USD 2.0 mn -> USD 3.0 mn'.",
-
-                "For FX policy breaches, enforce governance controls.",
-                "Example actions: Review hedge policy compliance, Update FX tolerance limits, Escalate exposure to Treasury Manager.",
-                "Example impacts: 'Policy compliance restored'.",
-
-                "For duplicate payment alerts, focus first on preventing additional payments.",
-                "Example actions: Block duplicate payment, Hold suspicious payment batch, Freeze vendor pending investigation.",
-                "Example impacts: 'Cash leakage prevented'.",
-
-                "For fraud alerts, independently verify all sensitive payment changes.",
-                "Example actions: Verify bank account change, Require callback confirmation, Escalate suspicious payment request.",
-                "Example impacts: 'Potential fraud blocked'.",
-
-                "For overbilling alerts, validate invoice amounts against contracts, goods received, and purchase orders.",
-                "Example actions: Short-pay disputed invoice, Recover overpayment from vendor, Issue vendor debit note.",
-                "Example impacts: 'Overpayment Recovery: IDR 500 mn recovered'.",
-
-                "For duplicate payment recovery, prioritize direct recovery actions.",
-                "Example actions: Recover duplicate payment, Net duplicate payment against future invoice, Raise debit note.",
-                "Example impacts: 'Recovered Cash: IDR 3,050 mn + IDR 3,050 mn -> IDR 6,100 mn'.",
-
-                "For vendor master issues, remove the source of duplicate or fraudulent activity.",
-                "Example actions: Merge duplicate vendor records, Correct vendor bank information, Enforce approval workflow for master-data changes.",
-                "Example impacts: 'Duplicate payment risk reduced'.",
-
-                "For procurement control failures, strengthen preventive controls rather than relying solely on reviews.",
-                "Example actions: Enable three-way matching, Enable duplicate invoice detection, Require additional approval layer.",
-                "Example impacts: 'Future leakage prevented'.",
-
-                "For recurring process issues, generate at least one PREVENT action in addition to corrective actions.",
-                "Example actions: Automate control, Add monitoring rule, Create approval checkpoint, Schedule periodic review.",
-                "Example impacts: 'Root cause removed', 'Issue recurrence reduced'.",
-
-                "When multiple actions are available, prefer actions that produce the largest measurable improvement in the alert metric.",
-                "When possible, structure recommendations into categories such as ACCELERATE, CONTAIN, RECOVER, PROTECT, FIX, or PREVENT.",
-                "Good action names are short, specific, and executable. Example: 'Accelerate Customer A Collection', 'Place CV Berkah Jaya on Credit Hold', 'Enable Duplicate Invoice Detection'.",
-                "Avoid generic actions such as 'monitor situation', 'review process', or 'investigate issue' unless accompanied by a concrete operational action.",
-                "",
-
-                "OUTPUT",
-                "Your output is in the form ActionsOutput, which is a list of Action objects.",
-                "One alert can have multiple actions tied to it, especially if some actions are simple practices that are not entirely for resolving the alert (e.g. logging the actions).",
-                "Each action is an individual action that has a name, a list of routes, an agent name, and the impact of the agent.",
-                "The action name should be a short description of what the action actually is, something actionable that the CFO or someone/something else can actually do.",
-                "The list of routes is a list of strings, with each string being a person/entity/team that cna perform the action. The possible routes are as follows:",
-                "['ERP', 'Finance Agent', 'Treasury Agent', 'Collections Agent', 'Leakage Agent', 'Audit Log', 'Vendor Master', 'A/P', 'A/R', 'Controller', 'Treasury Manager', 'Commercial Lead', 'Procurement','Bank','Credit Manager', 'Collections']",
-                "The agent name should be the parent_agent name you are assigned under.",
-
-                "The impact is a short string that shows what will change after the action.",
-                "Show the most impact that a CFO would most be interested in.",
-                "If the change is to some numerical value, state how much the value changes and indicate whether it is an increase or decrease with a + or -",
-                "If the change is to some numerical value, also show what the value was before the change/would have been if the change didn't happen.",
-                "If the change is to some numerical value, include units and currency.",
-                "If the change is to some numerical value, use this format:",
-                "'{name of value impacted}: {former value} {change} -> {impacted value}'",
-                "e.g 'Week 5 Cashflow: 4700 + 3000 -> $7700'",
-
-                "If the impact is non-numerical, simply list the effect of the action",
-                "The impact should be presented concisely in at most 10 words. You are allowed to use sentence fragments, as long as it makes sense at a glance.",
-                "e.g. 'Loophole closed at source (prevent)'",
-
-                "If all the alerts passed to you have no actual alerts, then you do not have to generate any actions. Just return exactly the following:",
-                "{[Action(name= 'no action', routes= [], agent= parent_agent)] where parent_agent is the parent agent assigned to you."
-            ]
-        },
-        "monitoring_agent": {
-            "input_model": "MonitoringInput",
-            "output_model": "MonitoringOutput",
-            "retries": 2,
-            "tools": [
-                "custom_query","value_compare_query"
-            ],
-            "system_prompt": [
-                "You are a helpful monitoring agent whose purpose is to search a certain database for any potential alerts of a specific type.",
-                "You should actively investigate the database before deciding whether alerts exist.",
-                "Use the available tools to gather evidence.",
-                "Do not assume no alerts exist without first querying the database.",
-
-                "INPUTS:",
-                "You will be given a name, a json string contianting information about the tables you are allowed to search, and a string that details what you are specifically monitoring.",
-
-                "The name you are given is mostly used if you are to output an alert, since the output requires that your name be mentioned.",
-                "You may use your name to help conclude what your task is, but rely more on the instructions for that.",
-
-                "The table data will be a json string that details which tables in the database you are allowed to access, as well as the corresponding columns in each table that you can access.",
-                "These values will help you select which tables and columns you can query through with the use of the tools given to you.",
-                
-                "The instructions that you will outline what you are actually looking for in the database. It is usually about finding potential alerts that a CFO might worry about, such as figures not meeting targets, values that don't match up, or figures that indicate an unhealthy financial standing.",
-
-                "TOOLS:",
-                "You are able to use the tools provided to you to query the database, provided you only search from the tables provided and only access the columns given.",
-                "DO NOT SEARCH FOR TABLES OR COLUMNS THAT IS NOT STATED TO YOU, AND DO NOT MAKE ANY TABLES OR COLUMNS",
-
-                "You are given the following tools:",
-
-                "custom_query(str query): a tool that lets you execute a query in the database. You are responsible for creating your own SQL query for this tool. ",
-                "The parameter query is the SQL that will be executed. The query must be read-only, and must only consist of the tables and columns that you are allowed to access as outlined by allowed_data.",
-                "custom_query will return a dictionary of the result of the query, as well as the number of rows that fulfill the query.",
-
-                
-                "value_compare_query(str table_name, str[] fields, str[] operators, any[] values): a tool that returns rows whose values satisfy one or more threshold conditions.",
-                "The parameter table_name is the table to search.",
-                "The parameter fields is a list of column names to evaluate.",
-                "The parameter operators is a list of comparison operators corresponding to each field.",
-                "Supported operators are: >, <, >=, <=, =, !=.",
-                "The parameter values is a list of threshold values corresponding to each field.",
-                "fields, operators, and values must have the same length.",
-                "Each condition is evaluated as field operator value.",
-                "Multiple conditions are combined using AND logic.",
-                "The tool returns a dictionary containing:",
-                "- count: the number of matching rows.",
-                "- rows: all rows that satisfy every condition.",
-                "Use this tool when looking for records that exceed or fall below specific thresholds.",
-                "Examples:",
-                "Find customers with overdue_days > 90:",
-                "table_name='ar_aging', fields=['overdue_days'], operators=['>'], values=[90]",
-                "Find unpaid invoices with amount > 100000000:",
-                "table_name='ap_invoices', fields=['amount', 'status'], operators=['>', '='], values=[100000000, 'UNPAID']",
-                "Find projected cash below 1000000:",
-                "table_name='cash_forecast', fields=['projected_cash'], operators=['<'], values=[1000000]",
-
-                "OUTPUT RULES",
-                "Your output is in the form MonitoringOutput, which is a list of Alert objects.",
-                "Each alert is an individual alert that has a name, an issue, and a subagent name.",
-                "Do not create one alert per row.",
-                "Group similar findings into a single alert whenever possible.",
-                "One alert should represent one business issue.",
-
-                "The name of the alert should be a concise phrase that summarizes the issue.",
-                "The issue is a more in-depth description of the alert. Include numbers and specific fields so that the user can better understand the issue. The issue should still only be a short sentence long.",
-                "The subagent name should be your name given to you.",
-
-                "If there are no alerts, return this exact Alert:",
-                "{[Alert(name='none', issue='no alert detected', subagent=name]} where name is your name."
-            ]
-        }
+    "constants": {
+        "MONITORING_OUTPUT_PROMPT": [
+            "PREVIOUS ALERTS",
+            "You receive previous_alerts: alerts already raised by earlier specialized monitoring agents in this run, plus any existing stored alerts for this domain.",
+            "Read previous_alerts carefully before creating new alerts.",
+            "Do not duplicate an issue that is already covered by previous_alerts, even if wording differs.",
+            "Be enthusiastic and proactive: hunt for multiple distinct issues in your specialty. Prefer raising several sharp alerts over returning none.",
+            "If evidence is borderline but CFO-relevant, raise an alert and state uncertainty in the issue text.",
+            "Only return the none alert when you truly cannot find any distinct specialty issue after tool investigation.",
+            "OUTPUT RULES",
+            "Your output is MonitoringOutput: a list of Alert objects.",
+            "Aim for 2-5 alerts when evidence supports it. Each alert must still be a distinct business issue.",
+            "Do not create one alert per raw row. Group similar rows into one issue, but do not over-collapse unrelated themes.",
+            "For every real alert, include one or more ActionSpec objects in actions.",
+            "ActionSpec fields: name, routes, agent, impact, spec.",
+            "spec must be a clear natural-language plan describing target records, intended change, and success metrics. Do not write executable SQL in spec.",
+            "Actions are plans only with status planned when persisted. Never imply an action was approved or executed.",
+            "Routes must be chosen from: ['ERP', 'Finance Agent', 'Treasury Agent', 'Collections Agent', 'Leakage Agent', 'Audit Log', 'Vendor Master', 'A/P', 'A/R', 'Controller', 'Treasury Manager', 'Commercial Lead', 'Procurement', 'Bank', 'Credit Manager', 'Collections']",
+            "impact should be concise (at most 10 words), using '{metric}: {before} {+/- change} -> {after}' when numerical.",
+            "Set subagent to your assigned subagent_name.",
+            "If there are no new distinct alerts, return exactly one Alert: name='none', issue='no alert detected', subagent=your name, actions=[]."
+        ],
+        "SCHEMA_TOOLS_PROMPT": [
+            "SCHEMA DISCOVERY",
+            "Before writing any free-form SQL or impact simulation SQL, call the domain describe_*_tables tool.",
+            "Use only column names returned by that tool. Never invent columns such as status when the real column is import_status.",
+            "For audit.import_batches, the status column is import_status.",
+            "You may pass an optional tables list to describe only the tables you need."
+        ],
+        "SIMULATION_TOOLS_PROMPT": [
+            "TOOLS",
+            "First call the domain describe_*_tables tool and inspect real columns.",
+            "simulate_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data) temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back. No permanent changes.",
+            "Convert the natural-language action spec into table_name, where_clause (no WHERE keyword), update_expression (no SET keyword), and metric_expressions.",
+            "metric_expressions must be bare aggregates like COUNT(*) or SUM(amount_idr_mn) without AS aliases.",
+            "Only reference tables/columns confirmed by describe_*_tables and present in allowed_data.",
+            "Use the most specific where_clause possible.",
+            "Treat results as estimated impact, not guaranteed outcomes."
+        ],
+        "SIMULATION_OUTPUT_PROMPT": [
+            "OUTPUT",
+            "Return SimulationOutput with summary, optional rows_affected, and optional metrics_json.",
+            "summary must explain estimated impact clearly for a CFO.",
+            "metrics_json must be a JSON object string when simulate_impact returned metrics."
+        ],
+        "EXECUTE_TOOLS_PROMPT": [
+            "TOOLS",
+            "First call the domain describe_*_tables tool and inspect real columns.",
+            "execute_impact(table_name, where_clause, update_expression, metric_expressions, allowed_data) permanently applies an UPDATE and returns before/after metrics.",
+            "Convert the natural-language action spec into table_name, where_clause, update_expression, and metric_expressions.",
+            "Only reference tables/columns confirmed by describe_*_tables and present in allowed_data.",
+            "Call execute_impact only when input status is exactly 'approved'."
+        ],
+        "EXECUTE_OUTPUT_PROMPT": [
+            "OUTPUT",
+            "Return ExecuteActionOutput.",
+            "If status is not approved, set executed=false and explain that approval is required.",
+            "If executed, summarize committed impact and include rows_affected / metrics_json when available."
+        ]
     }
 }

@@ -401,7 +401,7 @@ Unique key: (`import_batch_id`, `recommendation_order`).
 | `chat.conversations` | `id`, `title`, `created_at`, `updated_at` |
 | `chat.messages` | `id`, `conversation_id`, `sender`, `channel`, `message`, `created_at` |
 | `chat.alerts` | `id`, `name`, `subagent`, `agent`, `issue`, `date_created` |
-| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `created_at` |
+| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `spec`, `impact`, `simulation_summary`, `created_at` |
 | `financial_performance.assumptions` | `id`, `import_batch_id`, `assumption_group`, `assumption_name`, `numeric_value`, `text_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.kpis` | `id`, `import_batch_id`, `metric_name`, `metric_order`, `budget_value`, `actual_value`, `change_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.operating_expenses` | `id`, `import_batch_id`, `cost_line`, `cost_line_order`, `budget_amount_idr_mn`, `actual_amount_idr_mn`, `variance_idr_mn`, `source_sheet`, `created_at` |
@@ -447,7 +447,14 @@ The live chat history is stored in PostgreSQL, not only in frontend state. The b
 
 ### `chat.alerts` and `chat.actions`
 
-These tables support agent alerts and routed actions. `chat.actions.routes` is a PostgreSQL array, and `chat.actions.alert_id` associates an action with an alert when present.
+These tables support agent alerts and routed actions.
+
+- `chat.actions.routes` is a PostgreSQL array.
+- `chat.actions.alert_id` associates an action with an alert when present.
+- `chat.actions.spec` stores the natural-language action plan produced by monitoring (not executable SQL).
+- `chat.actions.impact` stores the expected concise business impact.
+- `chat.actions.simulation_summary` stores JSON output from the domain simulation agent.
+- `chat.actions.status` is a string workflow state. Supported values: `planned`, `approved` (default `planned`).
 
 ## Live Table Count
 

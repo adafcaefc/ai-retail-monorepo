@@ -3,7 +3,7 @@ from __future__ import annotations
 from src.common.constants import AppPaths
 from src.common.env import config  # noqa: F401
 from src.llm.agents.chivon import Chivon, chivon
-from src.llm.tools import LOCAL_FINANCE_TOOLS
+from src.llm.tools import LOCAL_TOOLS
 from src.llm.tool_events import wrap_tools
 
 
@@ -20,7 +20,7 @@ def load_chivon():
         model,
         types["TextInput"],
         local_tools=wrap_tools(
-            LOCAL_FINANCE_TOOLS
+            LOCAL_TOOLS
         ),
     )
 

@@ -220,9 +220,18 @@ ary)
 
     keywords = {
         "sum", "avg", "count", "min", "max",
-        "and", "or", "in", "like",
-        "null", "is", "case", "when",
-        "then", "else", "end",
+        "and", "or", "in", "like", "between",
+        "null", "is", "not", "case", "when",
+        "then", "else", "end", "select", "from",
+        "where", "join", "left", "right", "inner",
+        "outer", "on", "as", "distinct", "coalesce",
+        "true", "false", "asc", "desc", "limit",
+        "offset", "group", "by", "order", "having",
+        "union", "all", "exists", "any", "some",
+        "cast", "over", "partition", "row", "rows",
+        "completed", "started", "failed", "cancelled",
+        "least", "greatest", "filter", "within",
+        "array", "values", "with", "recursive",
     }
 
     tokens = re.findall(r"\b[a-zA-Z_][a-zA-Z0-9_]*\b", expression)
@@ -246,7 +255,23 @@ def validate_columns(
     expressions,
     allowed_tables,
 ):
-    allowed_columns = allowed_tables[table_name]
+    target_columns = allowed_tables[table_name]
+
+    # Wildcard allow-list used by permissive workflows.
+    if "*" in target_columns:
+        return
+
+    # Accept columns from any table in the domain allow-list so subqueries
+    # that touch related tables (for example audit.import_batches) validate.
+    allowed_columns = set()
+    for table, columns in allowed_tables.items():
+        allowed_columns.update(columns)
+        if "." in table:
+            schema, bare = table.split(".", 1)
+            allowed_columns.add(schema)
+            allowed_columns.add(bare)
+        else:
+            allowed_columns.add(table)
 
     used_columns = set()
 
@@ -272,8 +297,16 @@ def run_metrics(
     results = {}
 
     for i, metric in enumerate(metric_expressions):
+        # LLMs often emit "COUNT(*) AS label"; our wrapper already aliases
+        # the result as metric_value, so strip any trailing AS alias.
+        metric_sql = re.split(
+            r"\s+AS\s+",
+            str(metric).strip(),
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0].strip()
         sql = f"""
-        SELECT {metric} AS metric_value
+        SELECT {metric_sql} AS metric_value
         FROM {table_name}
         WHERE {where_clause}
         """
@@ -307,13 +340,14 @@ def simulate_impact(
         allowed_tables,
     )
 
+    expressions = [
+        where_clause,
+        update_expression,
+        *metric_expressions,
+    ]
     validate_columns(
         table_name,
-        [
-            where_clause,
-            update_expression,
-            metric_expressions,
-        ],
+        expressions,
         allowed_tables,
     )
 
@@ -372,3 +406,174 @@ def simulate_impact(
         except Exception:
             tx.rollback()
             raise
+
+
+def execute_impact(
+    engine,
+    table_name,
+    where_clause,
+    update_expression,
+    metric_expressions,
+    allowed_data,
+):
+    """
+    Permanently apply an UPDATE and return before/after metrics.
+
+    Unlike simulate_impact, this commits the transaction.
+    """
+    allowed_tables = parse_allowed_data(
+        allowed_data
+    )
+
+    validate_table(
+        table_name,
+        allowed_tables,
+    )
+
+    expressions = [
+        where_clause,
+        update_expression,
+        *metric_expressions,
+    ]
+    validate_columns(
+        table_name,
+        expressions,
+        allowed_tables,
+    )
+
+    update_sql = f"""
+    UPDATE {table_name}
+    SET {update_expression}
+    WHERE {where_clause}
+    """
+
+    with engine.connect() as conn:
+        tx = conn.begin()
+
+        try:
+            before = run_metrics(
+                conn,
+                table_name,
+                where_clause,
+                metric_expressions,
+            )
+
+            result = conn.execute(
+                text(update_sql)
+            )
+
+            after = run_metrics(
+                conn,
+                table_name,
+                where_clause,
+                metric_expressions,
+            )
+
+            tx.commit()
+
+            metrics = {}
+
+            for metric in metric_expressions:
+                before_value = before[metric]
+                after_value = after[metric]
+
+                metrics[metric] = {
+                    "before": before_value,
+                    "after": after_value,
+                    "delta": (
+                        after_value - before_value
+                        if isinstance(before_value, (int, float))
+                        and isinstance(after_value, (int, float))
+                        else None
+                    )
+                }
+
+            return {
+                "rows_affected": result.rowcount,
+                "metrics": metrics,
+                "committed": True,
+            }
+
+        except Exception:
+            tx.rollback()
+            raise
+
+
+def _custom_query(query: str) -> dict:
+    """Agent-facing wrapper that injects the shared SQLAlchemy engine."""
+    from src.db.db import get_engine
+
+    return custom_query(query, get_engine())
+
+
+def _value_compare_query(
+    table_name: str,
+    fields: list[str],
+    operators: list[str],
+    values: list,
+    allowed_data: str | dict | None = None,
+) -> dict:
+    """Agent-facing wrapper that injects the engine and optional table allow-list."""
+    from src.db.db import get_engine
+
+    if allowed_data is None:
+        allowed_tables = [table_name]
+    else:
+        allowed_tables = list(parse_allowed_data(allowed_data).keys())
+
+    return value_compare_query(
+        table_name,
+        fields,
+        operators,
+        values,
+        get_engine(),
+        allowed_tables,
+    )
+
+
+def _simulate_impact(
+    table_name: str,
+    where_clause: str,
+    update_expression: str,
+    metric_expressions: list[str],
+    allowed_data: str | dict,
+) -> dict:
+    """Agent-facing wrapper that injects the shared SQLAlchemy engine."""
+    from src.db.db import get_engine
+
+    return simulate_impact(
+        get_engine(),
+        table_name,
+        where_clause,
+        update_expression,
+        metric_expressions,
+        allowed_data,
+    )
+
+
+def _execute_impact(
+    table_name: str,
+    where_clause: str,
+    update_expression: str,
+    metric_expressions: list[str],
+    allowed_data: str | dict,
+) -> dict:
+    """Agent-facing wrapper that permanently applies an approved action."""
+    from src.db.db import get_engine
+
+    return execute_impact(
+        get_engine(),
+        table_name,
+        where_clause,
+        update_expression,
+        metric_expressions,
+        allowed_data,
+    )
+
+
+LOCAL_MONITORING_TOOLS = {
+    "custom_query": _custom_query,
+    "value_compare_query": _value_compare_query,
+    "simulate_impact": _simulate_impact,
+    "execute_impact": _execute_impact,
+}
