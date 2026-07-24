@@ -5,9 +5,15 @@ import {
 import react from
   "@vitejs/plugin-react";
 
+import {
+  viteSingleFile
+} from "vite-plugin-singlefile";
+
+
 export default defineConfig({
   plugins: [
-    react()
+    react(),
+    viteSingleFile()
   ],
 
   server: {
@@ -26,6 +32,18 @@ export default defineConfig({
 
   build: {
     outDir: "dist",
-    emptyOutDir: true
+    emptyOutDir: true,
+
+    cssCodeSplit: false,
+
+    assetsInlineLimit:
+      100000000,
+
+    rollupOptions: {
+      output: {
+        inlineDynamicImports:
+          true
+      }
+    }
   }
 });
