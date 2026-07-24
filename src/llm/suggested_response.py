@@ -45,6 +45,7 @@ Generate one or two concise questions that the user could reasonably ask next.
 Requirements:
 - Ground every question in the provided conversation context.
 - Focus primarily on the latest question and latest assistant answer.
+- Each suggestion must be no more than 72 characters, including spaces and punctuation.
 - Use recent history only to understand the user's intent and avoid repetition.
 - Ask questions that help the user investigate, compare, explain, forecast,
   simulate, or act on the financial information already discussed.
@@ -70,7 +71,7 @@ SuggestedQuestion = Annotated[
     StringConstraints(
         strip_whitespace=True,
         min_length=8,
-        max_length=180,
+        max_length=72,
     ),
 ]
 
@@ -175,7 +176,7 @@ def get_suggested_response_agent() -> Agent:
 async def generate_suggested_responses(
     context: SuggestedResponseContext,
     *,
-    timeout_seconds: float = 4.0,
+    timeout_seconds: float = 20.0,
 ) -> list[str]:
     """Generate follow-up questions without risking the primary response."""
 
