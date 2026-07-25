@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -24,20 +26,78 @@ def _call_with_timeout(fn: Callable[[], Any], timeout: float = _DB_TIMEOUT_SEC) 
 def build_dashboard(agent: str) -> dict[str, Any]:
     key = agent.strip().lower()
     if key == "collections":
-        return _collections_dashboard(
+        result = _collections_dashboard(
             _call_with_timeout(get_collections_snapshot)
         )
-    if key == "treasury":
-        return _treasury_dashboard(_call_with_timeout(get_cashflow_baseline))
-    if key == "finance":
-        return _finance_dashboard(
+    elif key == "treasury":
+        result = _treasury_dashboard(_call_with_timeout(get_cashflow_baseline))
+    elif key == "finance":
+        result = _finance_dashboard(
             _call_with_timeout(get_financial_performance_snapshot)
         )
-    if key == "leakage":
-        return _leakage_dashboard(
+    elif key == "leakage":
+        result = _leakage_dashboard(
             _call_with_timeout(get_payment_leakage_snapshot)
         )
-    raise ValueError(f"Unsupported dashboard agent: {agent}")
+    else:
+        raise ValueError(f"Unsupported dashboard agent: {agent}")
+
+    result["kpis"] = _enrich_kpis(result.get("kpis") or [])
+    return result
+
+
+def _parse_num(text: Any) -> float | None:
+    """Best-effort numeric value from a formatted KPI string ('9.2%', '4,300')."""
+    if text is None:
+        return None
+    if isinstance(text, (int, float)):
+        return float(text)
+    match = re.search(r"-?\d[\d,]*\.?\d*", str(text))
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _parse_target(delta: Any) -> float | None:
+    """Pull a target number out of a delta caption like 'target 15%'."""
+    if not delta:
+        return None
+    match = re.search(r"target\s+(-?\d[\d,]*\.?\d*)", str(delta), re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _enrich_kpis(kpis: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Attach RAG status + progress-to-target so the frontend can render a
+    glanceable status without re-parsing strings. Direction of "good" is
+    already encoded by each builder's `alert` flag, so status defaults from
+    it; a builder may also pre-set `status` for a proper three-tier band.
+    """
+    for kpi in kpis:
+        value_num = _parse_num(kpi.get("value"))
+        if value_num is not None:
+            kpi["value_num"] = value_num
+
+        target_num = _parse_target(kpi.get("delta"))
+        if target_num is not None:
+            kpi["target_num"] = target_num
+            if value_num is not None and target_num:
+                kpi["progress"] = round(
+                    max(0.0, min(1.2, value_num / target_num)), 4
+                )
+
+        if "status" not in kpi:
+            kpi["status"] = "bad" if kpi.get("alert") else "good"
+
+    return kpis
 
 
 def _fmt(n: float, digits: int = 0) -> str:
@@ -442,6 +502,8 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": f"headroom {_fmt(w5_headroom)} vs buffer",
             "alert": w5_headroom < 0,
+            # Real weekly closing-cash series for a sparkline.
+            "trend": [round(p["value"], 2) for p in points],
         },
         {
             "id": "buffer",
@@ -816,6 +878,14 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "",
             "delta": f"target {_FINANCE_TARGET * 100:.0f}%",
             "alert": margin < _FINANCE_TARGET,
+            # Three-tier RAG: at/above target = good, within 20% below = warn.
+            "status": (
+                "good"
+                if margin >= _FINANCE_TARGET
+                else "warn"
+                if margin >= _FINANCE_TARGET * 0.8
+                else "bad"
+            ),
         },
         {
             "id": "ebitda",

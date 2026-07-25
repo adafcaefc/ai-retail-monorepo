@@ -1,5 +1,6 @@
 import ChartRenderer from "./ChartRenderer.jsx";
 import SimulationRenderer from "./SimulationRenderer.jsx";
+import { accentHtml } from "../semanticAccent.jsx";
 
 
 export default function BlockRenderer({
@@ -70,7 +71,7 @@ function HtmlBlock({
       className="rendered-html"
 
       dangerouslySetInnerHTML={{
-        __html: html
+        __html: accentHtml(html)
       }}
     />
   );

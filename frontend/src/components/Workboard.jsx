@@ -13,7 +13,9 @@ import {
 
 export default function Workboard({
   agentId,
-  agentName
+  agentName,
+  onAskInsight,
+  insightBusy = false
 }) {
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
@@ -188,32 +190,81 @@ export default function Workboard({
       ) : (
         <>
           <div className="kpi-row" data-testid="kpi-row">
-            {(dashboard.kpis || []).map((kpi) => (
-              <button
-                key={kpi.id}
-                type="button"
-                className={
-                  "kpi-tile" +
-                  (kpi.alert ? " alert" : "") +
-                  (view === kpi.view ? " on" : "")
-                }
-                data-testid={`kpi-${kpi.id}`}
-                onClick={() => setView(kpi.view)}
-              >
-                <span className="kpi-open">OPEN</span>
-                <span className="kpi-label">{kpi.label}</span>
-                <strong
-                  className="kpi-value"
-                  data-testid={`kpi-${kpi.id}-value`}
+            {(dashboard.kpis || []).map((kpi) => {
+              const status =
+                kpi.status || (kpi.alert ? "bad" : "good");
+              const hasProgress =
+                typeof kpi.progress === "number";
+              const hasTrend =
+                Array.isArray(kpi.trend) && kpi.trend.length >= 2;
+
+              return (
+                <button
+                  key={kpi.id}
+                  type="button"
+                  className={
+                    "kpi-tile status-" +
+                    status +
+                    (view === kpi.view ? " on" : "")
+                  }
+                  data-testid={`kpi-${kpi.id}`}
+                  disabled={insightBusy}
+                  title={`Ask ${agentName} to interpret ${kpi.label}`}
+                  onClick={() => {
+                    setView(kpi.view);
+                    onAskInsight?.(kpi);
+                  }}
                 >
-                  {kpi.value}
-                  {kpi.unit ? (
-                    <span className="kpi-unit"> {kpi.unit}</span>
+                  <span className="kpi-cue">
+                    <SparkIcon />
+                    <span>Insight</span>
+                  </span>
+
+                  <span className="kpi-top">
+                    <span
+                      className="kpi-status-dot"
+                      aria-hidden="true"
+                    />
+                    <span className="kpi-label">{kpi.label}</span>
+                  </span>
+
+                  <strong
+                    className="kpi-value"
+                    data-testid={`kpi-${kpi.id}-value`}
+                  >
+                    {kpi.value}
+                    {kpi.unit ? (
+                      <span className="kpi-unit"> {kpi.unit}</span>
+                    ) : null}
+                  </strong>
+
+                  <span className="kpi-delta">{kpi.delta}</span>
+
+                  {hasTrend ? (
+                    <KpiSparkline
+                      points={kpi.trend}
+                    />
+                  ) : hasProgress ? (
+                    <span
+                      className="kpi-progress"
+                      title={`${Math.round(
+                        kpi.progress * 100
+                      )}% of target`}
+                    >
+                      <span
+                        className="kpi-progress-fill"
+                        style={{
+                          width: `${Math.min(
+                            100,
+                            kpi.progress * 100
+                          )}%`
+                        }}
+                      />
+                    </span>
                   ) : null}
-                </strong>
-                <span className="kpi-delta">{kpi.delta}</span>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
           <div className="workboard-mid">
@@ -256,6 +307,69 @@ export default function Workboard({
         </>
       )}
     </section>
+  );
+}
+
+function SparkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 2.5l1.9 4.9 4.9 1.9-4.9 1.9L12 16l-1.9-4.8L5.2 9.3l4.9-1.9L12 2.5zm6.5 10l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3z"
+      />
+    </svg>
+  );
+}
+
+function KpiSparkline({ points }) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return null;
+  }
+
+  const width = 100;
+  const height = 24;
+  const pad = 2;
+
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const step = (width - pad * 2) / (points.length - 1);
+
+  const coords = points.map((value, index) => {
+    const x = pad + index * step;
+    const y = pad + (height - pad * 2) * (1 - (value - min) / range);
+    return [x, y];
+  });
+
+  const line = coords
+    .map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`)
+    .join(" ");
+
+  const last = coords[coords.length - 1];
+  const area = `${line} L ${last[0].toFixed(1)} ${height} L ${coords[0][0].toFixed(1)} ${height} Z`;
+
+  return (
+    <svg
+      className="kpi-spark"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path className="kpi-spark-area" d={area} />
+      <path className="kpi-spark-line" d={line} />
+      <circle
+        className="kpi-spark-dot"
+        cx={last[0]}
+        cy={last[1]}
+        r="2.2"
+      />
+    </svg>
   );
 }
 

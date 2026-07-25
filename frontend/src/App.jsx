@@ -13,6 +13,35 @@ import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 
 
+const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
+const CHAT_WIDTH_MIN = 320;
+const CHAT_WIDTH_MAX = 760;
+const CHAT_WIDTH_DEFAULT = 380;
+const SHELL_EDGE_PADDING = 14;
+
+function clampChatWidth(value) {
+  if (!Number.isFinite(value)) {
+    return CHAT_WIDTH_DEFAULT;
+  }
+  return Math.min(
+    CHAT_WIDTH_MAX,
+    Math.max(CHAT_WIDTH_MIN, Math.round(value))
+  );
+}
+
+function readStoredChatWidth() {
+  if (typeof window === "undefined") {
+    return CHAT_WIDTH_DEFAULT;
+  }
+  const stored = Number(
+    window.localStorage.getItem(CHAT_WIDTH_KEY)
+  );
+  return stored
+    ? clampChatWidth(stored)
+    : CHAT_WIDTH_DEFAULT;
+}
+
+
 const AGENTS = {
   collections: {
     name: "Collections",
@@ -127,10 +156,25 @@ export default function App() {
     setClearOpen
   ] = useState(false);
 
+  const [
+    chatWidth,
+    setChatWidth
+  ] = useState(
+    readStoredChatWidth
+  );
+
+  const [
+    resizing,
+    setResizing
+  ] = useState(false);
+
   const abortControllers =
     useRef({});
 
   const transcriptRef =
+    useRef(null);
+
+  const composerRef =
     useRef(null);
 
   const currentAgent =
@@ -193,6 +237,80 @@ export default function App() {
   ]);
 
 
+  // Grow the composer to fit its content (up to a max), so injected
+  // suggestions and multi-line drafts are never clipped.
+  useEffect(() => {
+    const element = composerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    element.style.height = "auto";
+
+    element.style.height =
+      `${element.scrollHeight}px`;
+  }, [input, activeAgent]);
+
+
+  // Reveal a scroll surface's scrollbar only while it is actively scrolling,
+  // then fade it back out after a short idle. Hover is handled in CSS.
+  useEffect(() => {
+    const elements = [
+      transcriptRef.current,
+      composerRef.current
+    ].filter(Boolean);
+
+    const timers = new Map();
+
+    const handlers = elements.map(
+      (element) => {
+        const onScroll = () => {
+          element.classList.add(
+            "is-scrolling"
+          );
+
+          window.clearTimeout(
+            timers.get(element)
+          );
+
+          timers.set(
+            element,
+            window.setTimeout(() => {
+              element.classList.remove(
+                "is-scrolling"
+              );
+            }, 900)
+          );
+        };
+
+        element.addEventListener(
+          "scroll",
+          onScroll,
+          { passive: true }
+        );
+
+        return { element, onScroll };
+      }
+    );
+
+    return () => {
+      handlers.forEach(
+        ({ element, onScroll }) => {
+          element.removeEventListener(
+            "scroll",
+            onScroll
+          );
+        }
+      );
+
+      timers.forEach((timer) =>
+        window.clearTimeout(timer)
+      );
+    };
+  }, [activeAgent]);
+
+
   useEffect(() => {
     return () => {
       Object.values(
@@ -203,6 +321,95 @@ export default function App() {
       );
     };
   }, []);
+
+
+  function startResize(
+    startEvent
+  ) {
+    startEvent.preventDefault();
+    setResizing(true);
+
+    const applyWidth = (clientX) => {
+      const fromRight =
+        window.innerWidth -
+        clientX -
+        SHELL_EDGE_PADDING;
+
+      setChatWidth(
+        clampChatWidth(fromRight)
+      );
+    };
+
+    const onMove = (moveEvent) => {
+      applyWidth(moveEvent.clientX);
+    };
+
+    const onUp = () => {
+      setResizing(false);
+
+      window.removeEventListener(
+        "mousemove",
+        onMove
+      );
+      window.removeEventListener(
+        "mouseup",
+        onUp
+      );
+
+      setChatWidth((width) => {
+        window.localStorage.setItem(
+          CHAT_WIDTH_KEY,
+          String(width)
+        );
+        return width;
+      });
+    };
+
+    window.addEventListener(
+      "mousemove",
+      onMove
+    );
+    window.addEventListener(
+      "mouseup",
+      onUp
+    );
+  }
+
+
+  function handleResizeKey(
+    event
+  ) {
+    const step =
+      event.shiftKey ? 48 : 16;
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setChatWidth((width) => {
+        const next = clampChatWidth(
+          width + step
+        );
+        window.localStorage.setItem(
+          CHAT_WIDTH_KEY,
+          String(next)
+        );
+        return next;
+      });
+    } else if (
+      event.key === "ArrowRight"
+    ) {
+      event.preventDefault();
+      setChatWidth((width) => {
+        const next = clampChatWidth(
+          width - step
+        );
+        window.localStorage.setItem(
+          CHAT_WIDTH_KEY,
+          String(next)
+        );
+        return next;
+      });
+    }
+  }
 
 
   function updateChat(
@@ -525,6 +732,22 @@ export default function App() {
     const text =
       input.trim();
 
+    if (!text) {
+      return;
+    }
+
+    setInput("");
+
+    await submitText(text);
+  }
+
+
+  async function submitText(
+    rawText
+  ) {
+    const text =
+      String(rawText || "").trim();
+
     if (
       !text ||
       currentChat.busy
@@ -544,8 +767,6 @@ export default function App() {
     abortControllers.current[
       agentId
     ] = controller;
-
-    setInput("");
 
     updateChat(
       agentId,
@@ -675,8 +896,38 @@ export default function App() {
   }
 
 
+  function askKpiInsight(kpi) {
+    if (currentChat.busy) {
+      return;
+    }
+
+    submitText(
+      buildKpiInsightPrompt(kpi)
+    );
+
+    requestAnimationFrame(() => {
+      const element =
+        transcriptRef.current;
+
+      if (element) {
+        element.scrollTop =
+          element.scrollHeight;
+      }
+    });
+  }
+
+
   return (
-    <main className="app-shell">
+    <main
+      className={
+        resizing
+          ? "app-shell is-resizing"
+          : "app-shell"
+      }
+      style={{
+        "--chat-width": `${chatWidth}px`
+      }}
+    >
       <aside
         className="sidebar"
         aria-label="Agent chats"
@@ -778,7 +1029,25 @@ export default function App() {
       <Workboard
         agentId={activeAgent}
         agentName={currentAgent.name}
+        onAskInsight={askKpiInsight}
+        insightBusy={currentChat.busy}
       />
+
+
+      <div
+        className="chat-resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize chat panel"
+        tabIndex={0}
+        onMouseDown={startResize}
+        onKeyDown={handleResizeKey}
+      >
+        <span
+          className="chat-resize-grip"
+          aria-hidden="true"
+        />
+      </div>
 
 
       <section className="chat-panel">
@@ -902,14 +1171,12 @@ export default function App() {
               aria-label="Suggested prompts"
             >
               <div className="prompt-suggestions-heading">
-                <span className="prompt-suggestions-spark">
-
-                </span>
+                <SparkleIcon className="prompt-suggestions-spark" />
 
                 <span>
                   {currentChat.messages.length > 0
-                  ? "Continue exploring"
-                  : "Try asking"}
+                  ? "Suggested follow-ups"
+                  : "Suggested prompts"}
                 </span>
               </div>
 
@@ -919,25 +1186,21 @@ export default function App() {
                     suggestion
                   ) => (
                     <button
-                  key={suggestion}
-                  type="button"
-                  className="prompt-suggestion-button"
-                  disabled={currentChat.busy}
-                  onClick={() => {
-                    setInput(suggestion);
-                  }}
-                >
-                  <span className="prompt-suggestion-text">
-                    {suggestion}
-                  </span>
+                      key={suggestion}
+                      type="button"
+                      className="prompt-chip"
+                      disabled={currentChat.busy}
+                      onClick={() => {
+                        setInput(suggestion);
+                        composerRef.current?.focus();
+                      }}
+                    >
+                      <SparkleIcon className="prompt-chip-spark" />
 
-                  <span
-                    className="prompt-suggestion-arrow"
-                    aria-hidden="true"
-                  >
-                    ↗
-                  </span>
-                </button>
+                      <span className="prompt-chip-text">
+                        {suggestion}
+                      </span>
+                    </button>
                   )
                 )}
               </div>
@@ -952,6 +1215,7 @@ export default function App() {
             }
           >
             <textarea
+              ref={composerRef}
               value={input}
 
               disabled={
@@ -1042,6 +1306,27 @@ function EmptyState({
 }
 
 
+function SparkleIcon({
+  className
+}) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 2.5l1.9 4.9 4.9 1.9-4.9 1.9L12 16l-1.9-4.8L5.2 9.3l4.9-1.9L12 2.5zm6.5 10l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3zM5 14l.75 1.95L7.7 16.7l-1.95.75L5 19.4l-.75-1.95L2.3 16.7l1.95-.75L5 14z"
+      />
+    </svg>
+  );
+}
+
+
 function makeId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
@@ -1098,4 +1383,27 @@ function formatToolName(
   return String(
     tool || "tool"
   ).replaceAll("_", " ");
+}
+
+
+function buildKpiInsightPrompt(
+  kpi
+) {
+  const value = [
+    kpi.value,
+    kpi.unit
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const context = kpi.delta
+    ? ` (${kpi.delta})`
+    : "";
+
+  return (
+    `Interpret the "${kpi.label}" KPI, currently ${value}${context}. ` +
+    "Why is it at this level, what are the main drivers behind it, " +
+    "and what actions should I consider? Keep it concise and " +
+    "decision-focused for a CFO."
+  );
 }
