@@ -2736,9 +2736,129 @@ summary:focus-visible {
   color: var(--ink);
 }
 
+/*
+ * Problem toasts — top-right stack that announces newly detected issues
+ * (e.g. "Company A hasn't paid"). Only genuinely new problems appear here.
+ */
+.problem-toast-stack {
+  position: fixed;
+  top: 18px;
+  right: 18px;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, 92vw);
+  pointer-events: none;
+}
+
+.problem-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 12px 12px 12px 13px;
+  border: 1px solid var(--accent-danger-border);
+  border-left: 4px solid var(--accent-danger);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-lg);
+  animation: problem-toast-in 220ms var(--ease-standard);
+}
+
+@keyframes problem-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.problem-toast-icon {
+  flex: 0 0 22px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--accent-danger);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.problem-toast-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.problem-toast-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.problem-toast-agent {
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.problem-toast-name {
+  font-size: 0.8rem;
+  font-weight: 750;
+  color: var(--ink);
+}
+
+.problem-toast-issue {
+  margin: 4px 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.problem-toast-close {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+}
+
+.problem-toast-close:hover {
+  color: var(--ink);
+}
+
+.problem-toast-more {
+  pointer-events: auto;
+  align-self: flex-end;
+  padding: 5px 11px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .alerts-popover,
-  .monitoring-toast {
+  .monitoring-toast,
+  .problem-toast {
     animation: none;
   }
 }

@@ -11,6 +11,7 @@ import {
 
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
+import ProblemToasts from "./components/ProblemToasts.jsx";
 
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
@@ -1275,6 +1276,8 @@ export default function App() {
           </p>
         </footer>
       </section>
+
+      <ProblemToasts />
     </main>
   );
 }

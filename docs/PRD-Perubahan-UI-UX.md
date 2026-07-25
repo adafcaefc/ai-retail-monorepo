@@ -40,10 +40,11 @@ Prinsip yang dipegang di sepanjang pengerjaan:
 11. [Fitur 8 — Aksen Warna Blok Jawaban AI](#11-fitur-8--aksen-warna-blok-jawaban-ai)
 12. [Fitur 9 — Aksen Warna Inline (Berbasis Frasa)](#12-fitur-9--aksen-warna-inline-berbasis-frasa)
 13. [Fitur 10 — KPI Status RAG + Progress + Sparkline (Fase 1)](#13-fitur-10--kpi-status-rag--progress--sparkline-fase-1)
-14. [Ringkasan File yang Diubah](#14-ringkasan-file-yang-diubah)
-15. [Keterbatasan & Pekerjaan Lanjutan](#15-keterbatasan--pekerjaan-lanjutan)
-16. [Cara Build & Menjalankan](#16-cara-build--menjalankan)
-17. [Panduan Menyetel (Tuning)](#17-panduan-menyetel-tuning)
+14. [Fitur 11 — Notifikasi Masalah Baru dari Subagent](#14-fitur-11--notifikasi-masalah-baru-dari-subagent)
+15. [Ringkasan File yang Diubah](#15-ringkasan-file-yang-diubah)
+16. [Keterbatasan & Pekerjaan Lanjutan](#16-keterbatasan--pekerjaan-lanjutan)
+17. [Cara Build & Menjalankan](#17-cara-build--menjalankan)
+18. [Panduan Menyetel (Tuning)](#18-panduan-menyetel-tuning)
 
 ---
 
@@ -292,17 +293,48 @@ Payload KPI diperkaya di backend: field `status`, `value_num`, `target_num`, `pr
 
 ---
 
-## 14. Ringkasan File yang Diubah
+## 14. Fitur 11 — Notifikasi Masalah Baru dari Subagent
+
+### Masalah
+Subagent monitoring sudah mendeteksi masalah dan menyimpannya sebagai alert, tetapi alert itu "diam" di dalam lonceng — pengguna harus mengklik dulu untuk tahu. Tidak ada yang muncul proaktif memberi tahu *"ada masalah baru"* (contoh: "Company A belum bayar").
+
+### Apa yang berubah
+Ketika subagent monitoring menemukan masalah, kini **muncul toast di pojok kanan atas** yang menyebutkan masalahnya — memakai data alert asli (`name` + `issue` + agent), misalnya:
+
+> 🔴 **[COLLECTIONS]** High utilization leaves minimal headroom
+> *CV Toko Sejahtera is at 83.3% utilization with only IDR 1,000 mn headroom…*
+
+- Setelah monitoring selesai, alert dari **keempat board** dikumpulkan; yang **belum pernah diumumkan** dimunculkan sebagai toast.
+- Toast otomatis hilang setelah 9 detik atau bisa ditutup manual. Ditumpuk maksimal **4**, sisanya menjadi chip **"+N more in the alerts bell"** agar tidak membanjiri.
+- Masalah yang belum ditangani tetap ada di lonceng 🔔.
+
+### "Hanya masalah baru" — detail penting
+Alert **di-repopulate** tiap monitoring berjalan sehingga **ID-nya berganti** setiap kali. Karena itu deteksi "baru" memakai **identitas berbasis isi** (agent + nama + isu), disimpan di localStorage (`ledgerline.seenProblems`) — bukan ID. Hasilnya: masalah yang sama tidak muncul berulang; hanya yang benar-benar baru yang menyembul.
+
+### Sifat & keterbatasan
+Bersifat **reaktif per-load**, bukan real-time: notifikasi muncul saat monitoring berjalan (buka app / klik "Recalculate"), bukan mendeteksi kejadian pada detiknya. Untuk real-time perlu polling terjadwal (kandidat lanjutan).
+
+### File
+- `frontend/src/monitoring/MonitoringProvider.jsx` (kumpulkan alert lintas board, diff vs `seen`, ekspos daftar masalah baru)
+- `frontend/src/components/ProblemToasts.jsx` (**baru** — tumpukan toast pojok kanan atas)
+- `frontend/src/App.jsx` (render `<ProblemToasts />`)
+- `frontend/src/styles.css` (`.problem-toast*`)
+
+---
+
+## 15. Ringkasan File yang Diubah
 
 ### Frontend
 | File | Perubahan |
 |---|---|
-| `frontend/src/App.jsx` | Chip saran, resize panel, auto-hide scrollbar, textarea auto-grow, `submitText`/`askKpiInsight` |
+| `frontend/src/App.jsx` | Chip saran, resize panel, auto-hide scrollbar, textarea auto-grow, `submitText`/`askKpiInsight`, render `ProblemToasts` |
 | `frontend/src/components/Workboard.jsx` | Klik KPI → insight, status RAG, progress, sparkline |
 | `frontend/src/components/AlertsPanel.jsx` | Lonceng + badge + popover, toast monitoring |
 | `frontend/src/components/ToolCard.jsx` | Ditulis ulang — kartu langkah-kerja |
 | `frontend/src/components/ChatMessage.jsx` | Aksen inline pada teks AI |
 | `frontend/src/components/BlockRenderer.jsx` | Aksen inline pada blok HTML |
+| `frontend/src/components/ProblemToasts.jsx` | **Baru** — toast notifikasi masalah baru |
+| `frontend/src/monitoring/MonitoringProvider.jsx` | Kumpulkan masalah baru lintas board + dedupe berbasis isi |
 | `frontend/src/semanticAccent.jsx` | **Baru** — mesin aksen berbasis frasa |
 | `frontend/src/styles.css` | Design token + seluruh styling fitur di atas |
 
@@ -313,7 +345,7 @@ Payload KPI diperkaya di backend: field `status`, `value_num`, `target_num`, `pr
 
 ---
 
-## 15. Keterbatasan & Pekerjaan Lanjutan
+## 16. Keterbatasan & Pekerjaan Lanjutan
 
 - **Sistem token belum "bersih total".** Pondasi token sudah lengkap dan fitur baru memakainya, tetapi masih banyak hex lama di ~2.700 baris CSS. Migrasi penuh adalah pekerjaan mekanis besar yang sengaja tidak dihajar sekaligus (risiko regresi) — bisa dilanjutkan bertahap dengan aman.
 - **Sparkline belum merata.** Hanya Treasury (Week 5) yang punya data seri asli. Agar menyala di semua KPI diperlukan **penyimpanan histori KPI antar-waktu** di database + endpoint pengambil serinya (kandidat Fase 2). Komponennya sudah siap: begitu ada field `trend`, kartu langsung menampilkan sparkline.
@@ -324,7 +356,7 @@ Payload KPI diperkaya di backend: field `status`, `value_num`, `target_num`, `pr
 
 ---
 
-## 16. Cara Build & Menjalankan
+## 17. Cara Build & Menjalankan
 
 **Backend** (dari root proyek):
 ```powershell
@@ -346,7 +378,7 @@ Buka **http://127.0.0.1:8000/** lalu **hard refresh** (Ctrl+Shift+R) agar cache 
 
 ---
 
-## 17. Panduan Menyetel (Tuning)
+## 18. Panduan Menyetel (Tuning)
 
 | Ingin mengubah | Ubah di |
 |---|---|
@@ -356,7 +388,9 @@ Buka **http://127.0.0.1:8000/** lalu **hard refresh** (Ctrl+Shift+R) agar cache 
 | Ambang status RAG EBITDA margin | Blok `"status"` KPI margin — `src/llm/dashboard_payload.py` |
 | Durasi toast monitoring | Timeout di `AlertsPanel.jsx` (4000 / 7000 ms) |
 | Prompt insight KPI | `buildKpiInsightPrompt()` — `frontend/src/App.jsx` |
+| Jumlah maksimum toast masalah | `MAX_PROBLEM_TOASTS` — `frontend/src/monitoring/MonitoringProvider.jsx` |
+| Durasi toast masalah | Timeout (9000 ms) — `frontend/src/components/ProblemToasts.jsx` |
 
 ---
 
-*Dokumen ini dibuat berdasarkan perubahan nyata pada branch `feat/subagent`. Untuk arsitektur agent, lihat `AGENTS.md`; untuk gambaran proyek, lihat `README.md`.*
+*Dokumen ini dibuat berdasarkan perubahan nyata pada branch `feat/ui-ux-cfo-uplift`. Untuk arsitektur agent, lihat `AGENTS.md`; untuk gambaran proyek, lihat `README.md`.*
