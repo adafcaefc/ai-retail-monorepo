@@ -19,9 +19,9 @@ export async function recalculateDashboardSimulation(
 ) {
   const pathByAction = {
     calculate_collection_scenario:
-      "/api/html/simulations/collections/recalculate",
+      "/api/html/simulations/collection/recalculate",
     simulate_cashflow:
-      "/api/html/simulations/cashflow/recalculate",
+      "/api/html/simulations/treasury/recalculate",
     simulate_finance:
       "/api/html/simulations/finance/recalculate",
     simulate_leakage:

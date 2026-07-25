@@ -9,8 +9,7 @@ import {
 } from "react";
 
 import { resetAndRepopulateAlerts } from "../api/alerts.js";
-
-const AGENT_IDS = ["finance", "treasury", "collections", "leakage"];
+import { AGENT_IDS } from "../agents/registry.js";
 
 const MonitoringContext = createContext(null);
 

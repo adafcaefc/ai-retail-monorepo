@@ -1,27 +1,15 @@
-/**
- * Map frontend agent IDs to alerts/actions API domain names.
- * Backend also accepts aliases (collections→collection, treasury→cashflow).
- */
-export function toAlertsAgent(agentId) {
-  const aliases = {
-    collections: "collection",
-    treasury: "cashflow"
-  };
-  return aliases[agentId] || agentId;
-}
+// Frontend agent ids are the canonical `folder.agent` ids the API expects.
 
 export async function fetchMonitoringAgents(agentId) {
-  const agent = toAlertsAgent(agentId);
   const response = await fetch(
-    `/api/monitoring-agents?agent=${encodeURIComponent(agent)}`
+    `/api/monitoring-agents?agent=${encodeURIComponent(agentId)}`
   );
   return parseJson(response, "Monitoring agents request failed");
 }
 
 export async function fetchAlerts(agentId) {
-  const agent = toAlertsAgent(agentId);
   const response = await fetch(
-    `/api/alerts?agent=${encodeURIComponent(agent)}`
+    `/api/alerts?agent=${encodeURIComponent(agentId)}`
   );
   return parseJson(response, "Alerts request failed");
 }
@@ -34,26 +22,23 @@ export async function fetchAlertActions(alertId) {
 }
 
 export async function fetchActions(agentId) {
-  const agent = toAlertsAgent(agentId);
   const response = await fetch(
-    `/api/actions?agent=${encodeURIComponent(agent)}`
+    `/api/actions?agent=${encodeURIComponent(agentId)}`
   );
   return parseJson(response, "Actions history request failed");
 }
 
 export async function clearAlerts(agentId) {
-  const agent = toAlertsAgent(agentId);
   const response = await fetch(
-    `/api/alerts?agent=${encodeURIComponent(agent)}`,
+    `/api/alerts?agent=${encodeURIComponent(agentId)}`,
     { method: "DELETE" }
   );
   return parseJson(response, "Clear alerts request failed");
 }
 
 export async function populateAlerts(agentId) {
-  const agent = toAlertsAgent(agentId);
   const response = await fetch(
-    `/api/alerts/populate?agent=${encodeURIComponent(agent)}`,
+    `/api/alerts/populate?agent=${encodeURIComponent(agentId)}`,
     { method: "POST" }
   );
   return parseJson(response, "Populate alerts request failed");

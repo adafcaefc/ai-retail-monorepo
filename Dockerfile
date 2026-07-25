@@ -1,17 +1,31 @@
+# syntax=docker/dockerfile:1
+# Build context is the repo root (backend/ + frontend/).
+
+# ---- Stage 1: build the React frontend ----
+FROM node:20-slim AS frontend
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# ---- Stage 2: backend runtime ----
 FROM python:3.12-slim
-
-WORKDIR /app
-
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
+WORKDIR /app/backend
+
 # Dependency layer (cached unless requirements.txt changes)
-COPY requirements.txt ./
+COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
-# App layer
-COPY . .
+# Backend source
+COPY backend/ /app/backend
+
+# Built frontend served by main.py from the sibling frontend/dist
+COPY --from=frontend /frontend/dist /app/frontend/dist
 
 EXPOSE 8000
 
