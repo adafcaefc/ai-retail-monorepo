@@ -10,57 +10,20 @@ import {
 } from "./api/chatStream.js";
 
 import ChatMessage from "./components/ChatMessage.jsx";
+import Workboard from "./components/Workboard.jsx";
+import { AGENTS } from "./agents/registry.js";
 
-const AGENTS = {
-  collections: {
-    name: "Collections",
-
-    prompt:
-      "Ask Collections about receivables...",
-
-    description:
-      "Review receivables, aging, and collection priorities."
-  },
-
-  finance: {
-    name: "Finance",
-
-    prompt:
-      "Ask Finance about performance...",
-
-    description:
-      "Explore financial performance and plan variances."
-  },
-
-  leakage: {
-    name: "Leakage",
-
-    prompt:
-      "Ask Leakage about revenue exposure...",
-
-    description:
-      "Review billing gaps and revenue leakage."
-  },
-
-  treasury: {
-    name: "Treasury",
-
-    prompt:
-      "Ask Treasury about liquidity...",
-
-    description:
-      "Review liquidity and cash-flow forecasts."
-  }
-};
 
 function createInitialChat() {
   return {
     title: "",
     messages: [],
     conversationId: null,
-    busy: false
+    busy: false,
+    suggestions: []
   };
 }
+
 
 function createInitialChats() {
   return Object.fromEntries(
@@ -73,11 +36,12 @@ function createInitialChats() {
   );
 }
 
+
 export default function App() {
   const [
     activeAgent,
     setActiveAgent
-  ] = useState("collections");
+  ] = useState("finance.finance");
 
   const [
     chats,
@@ -113,9 +77,15 @@ export default function App() {
   const currentChat =
     chats[activeAgent];
 
+  const visibleSuggestions =
+    currentChat.messages.length > 0
+      ? currentChat.suggestions
+      : currentAgent.starterPrompts;
+
   const canSend =
     Boolean(input.trim()) &&
     !currentChat.busy;
+
 
   useEffect(() => {
     async function loadConversations() {
@@ -141,6 +111,7 @@ export default function App() {
     loadConversations();
   }, []);
 
+
   useEffect(() => {
     const element =
       transcriptRef.current;
@@ -155,8 +126,10 @@ export default function App() {
     });
   }, [
     activeAgent,
-    currentChat.messages
+    currentChat.messages,
+    currentChat.suggestions
   ]);
+
 
   useEffect(() => {
     return () => {
@@ -168,6 +141,7 @@ export default function App() {
       );
     };
   }, []);
+
 
   function updateChat(
     agentId,
@@ -195,6 +169,7 @@ export default function App() {
     );
   }
 
+
   function selectAgent(
     agentId
   ) {
@@ -202,6 +177,7 @@ export default function App() {
     setClearOpen(false);
     setInput("");
   }
+
 
   function removeLoading(
     agentId
@@ -220,6 +196,7 @@ export default function App() {
       })
     );
   }
+
 
   function showLoading(
     agentId,
@@ -248,6 +225,7 @@ export default function App() {
       })
     );
   }
+
 
   function handleStreamEvent(
     agentId,
@@ -280,6 +258,7 @@ export default function App() {
         );
 
         break;
+
 
       case "tool_call":
         updateChat(
@@ -324,6 +303,7 @@ export default function App() {
 
         break;
 
+
       case "tool_result":
         updateChat(
           agentId,
@@ -347,6 +327,7 @@ export default function App() {
 
                   return {
                     ...message,
+
                     result:
                       data.result
                   };
@@ -361,6 +342,7 @@ export default function App() {
         );
 
         break;
+
 
       case "assistant_response":
         updateChat(
@@ -403,6 +385,25 @@ export default function App() {
 
         break;
 
+
+      case "suggestions":
+        updateChat(
+          agentId,
+          (chat) => ({
+            ...chat,
+
+            suggestions:
+              Array.isArray(
+                data.suggestions
+              )
+                ? data.suggestions
+                : []
+          })
+        );
+
+        break;
+
+
       case "done":
         removeLoading(
           agentId
@@ -410,11 +411,14 @@ export default function App() {
 
         break;
 
+
       case "error":
         updateChat(
           agentId,
           (chat) => ({
             ...chat,
+
+            suggestions: [],
 
             messages: [
               ...chat.messages.filter(
@@ -441,6 +445,7 @@ export default function App() {
 
         break;
 
+
       default:
         console.debug(
           "Unhandled SSE event:",
@@ -448,6 +453,7 @@ export default function App() {
         );
     }
   }
+
 
   async function sendMessage(
     event
@@ -489,6 +495,8 @@ export default function App() {
           generateTitle(text),
 
         busy: true,
+
+        suggestions: [],
 
         messages: [
           ...chat.messages,
@@ -532,6 +540,8 @@ export default function App() {
           agentId,
           (chat) => ({
             ...chat,
+
+            suggestions: [],
 
             messages: [
               ...chat.messages.filter(
@@ -577,6 +587,7 @@ export default function App() {
     }
   }
 
+
   function clearCurrentChat() {
     const controller =
       abortControllers.current[
@@ -601,6 +612,7 @@ export default function App() {
     setInput("");
   }
 
+
   return (
     <main className="app-shell">
       <aside
@@ -623,9 +635,11 @@ export default function App() {
           </div>
         </div>
 
+
         <p className="section-label">
           Agent chats
         </p>
+
 
         <nav
           className="agent-list"
@@ -690,6 +704,7 @@ export default function App() {
           )}
         </nav>
 
+
         <footer className="sidebar-footer">
           {conversationList.length}
           {" "}
@@ -697,13 +712,20 @@ export default function App() {
         </footer>
       </aside>
 
+
+      <Workboard
+        agentId={activeAgent}
+        agentName={currentAgent.name}
+      />
+
+
       <section className="chat-panel">
         <header className="chat-header">
           <div>
             <span className="header-kicker">
               {currentAgent.name}
               {" "}
-              agent
+              chat
 
               {currentChat.busy
                 ? " · working"
@@ -712,9 +734,10 @@ export default function App() {
 
             <h1>
               {currentChat.title ||
-                `${currentAgent.name} workspace`}
+                `Ask ${currentAgent.name}`}
             </h1>
           </div>
+
 
           <div className="clear-area">
             <button
@@ -734,6 +757,7 @@ export default function App() {
             >
               Clear chat
             </button>
+
 
             {clearOpen && (
               <div className="clear-confirm">
@@ -771,6 +795,7 @@ export default function App() {
           </div>
         </header>
 
+
         <div
           ref={transcriptRef}
           className="transcript"
@@ -806,7 +831,58 @@ export default function App() {
           )}
         </div>
 
+
         <footer className="composer-wrap">
+          {visibleSuggestions?.length >
+            0 && (
+            <section
+              className="prompt-suggestions"
+              aria-label="Suggested prompts"
+            >
+              <div className="prompt-suggestions-heading">
+                <span className="prompt-suggestions-spark">
+
+                </span>
+
+                <span>
+                  {currentChat.messages.length > 0
+                  ? "Continue exploring"
+                  : "Try asking"}
+                </span>
+              </div>
+
+              <div className="prompt-suggestions-list">
+                {visibleSuggestions.map(
+                  (
+                    suggestion
+                  ) => (
+                    <button
+                  key={suggestion}
+                  type="button"
+                  className="prompt-suggestion-button"
+                  disabled={currentChat.busy}
+                  onClick={() => {
+                    setInput(suggestion);
+                  }}
+                >
+                  <span className="prompt-suggestion-text">
+                    {suggestion}
+                  </span>
+
+                  <span
+                    className="prompt-suggestion-arrow"
+                    aria-hidden="true"
+                  >
+                    ↗
+                  </span>
+                </button>
+                  )
+                )}
+              </div>
+            </section>
+          )}
+
+
           <form
             className="composer"
             onSubmit={
@@ -865,6 +941,7 @@ export default function App() {
             </button>
           </form>
 
+
           <p className="composer-note">
             AI responses should be
             reviewed before financial
@@ -876,12 +953,17 @@ export default function App() {
   );
 }
 
-function EmptyState({ agent }) {
+
+function EmptyState({
+  agent
+}) {
   return (
     <div className="empty-state">
       <div className="empty-content">
         <div className="empty-icon">
-          {agent.name.charAt(0)}
+          {agent.name.charAt(
+            0
+          )}
         </div>
 
         <h2>
@@ -897,11 +979,13 @@ function EmptyState({ agent }) {
   );
 }
 
+
 function makeId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 }
+
 
 function formatTime() {
   return new Intl.DateTimeFormat(
@@ -913,7 +997,10 @@ function formatTime() {
   ).format(new Date());
 }
 
-function generateTitle(message) {
+
+function generateTitle(
+  message
+) {
   const normalized =
     message
       .replace(/\s+/g, " ")
@@ -942,7 +1029,10 @@ function generateTitle(message) {
   )}...`;
 }
 
-function formatToolName(tool) {
+
+function formatToolName(
+  tool
+) {
   return String(
     tool || "tool"
   ).replaceAll("_", " ");

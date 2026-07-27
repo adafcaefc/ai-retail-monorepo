@@ -31,10 +31,14 @@ const DEFAULT_COLORS = [
 
 
 export default function ChartRenderer({
-  data
+  data,
+  variant = "default"
 }) {
   const chartPayload =
     normalizeChartPayload(data);
+
+  const size =
+    resolveChartSize(variant);
 
   if (!chartPayload.rows.length) {
     return (
@@ -52,7 +56,14 @@ export default function ChartRenderer({
   }
 
   return (
-    <section className="chart-card">
+    <section
+      className={
+        "chart-card" +
+        (variant !== "default"
+          ? ` chart-card--${variant}`
+          : "")
+      }
+    >
       <ChartHeader
         title={chartPayload.title}
         subtitle={chartPayload.subtitle}
@@ -62,6 +73,7 @@ export default function ChartRenderer({
       <div className="chart-container">
         <ChartByType
           payload={chartPayload}
+          size={size}
         />
       </div>
 
@@ -72,6 +84,64 @@ export default function ChartRenderer({
       )}
     </section>
   );
+}
+
+function resolveChartSize(variant) {
+  if (variant === "compact") {
+    return {
+      mode: "fill",
+      height: "100%",
+      bar: "100%",
+      line: "100%",
+      area: "100%",
+      waterfall: "100%",
+      circular: "100%",
+      pieInner: "42%",
+      pieOuter: "68%",
+      margin: {
+        top: 12,
+        right: 8,
+        bottom: 8,
+        left: 0
+      },
+      showLegend: false
+    };
+  }
+
+  if (variant === "fill") {
+    return {
+      mode: "fill",
+      height: "100%",
+      bar: "100%",
+      line: "100%",
+      area: "100%",
+      waterfall: "100%",
+      circular: "100%",
+      pieInner: "48%",
+      pieOuter: "72%",
+      margin: {
+        top: 18,
+        right: 14,
+        bottom: 12,
+        left: 4
+      },
+      showLegend: true
+    };
+  }
+
+  return {
+    mode: "fixed",
+    height: null,
+    bar: null,
+    line: 280,
+    area: 260,
+    waterfall: 280,
+    circular: 260,
+    pieInner: 56,
+    pieOuter: 92,
+    margin: null,
+    showLegend: true
+  };
 }
 
 
@@ -105,13 +175,15 @@ function ChartHeader({
 
 
 function ChartByType({
-  payload
+  payload,
+  size
 }) {
   switch (payload.chartType) {
     case "line":
       return (
         <LineChartView
           payload={payload}
+          size={size}
         />
       );
 
@@ -119,6 +191,7 @@ function ChartByType({
       return (
         <AreaChartView
           payload={payload}
+          size={size}
         />
       );
 
@@ -127,6 +200,7 @@ function ChartByType({
       return (
         <CircularChartView
           payload={payload}
+          size={size}
         />
       );
 
@@ -134,6 +208,7 @@ function ChartByType({
       return (
         <WaterfallChartView
           payload={payload}
+          size={size}
         />
       );
 
@@ -142,6 +217,7 @@ function ChartByType({
       return (
         <BarChartView
           payload={payload}
+          size={size}
         />
       );
   }
@@ -149,7 +225,8 @@ function ChartByType({
 
 
 function BarChartView({
-  payload
+  payload,
+  size
 }) {
   const {
     rows,
@@ -169,11 +246,24 @@ function BarChartView({
     rows.length <= 6;
 
   const chartHeight =
-    hasLongLabels
-      ?235
-      : isCompact
-        ? 220
-        :300;
+    size.mode === "fill"
+      ? size.bar
+      : hasLongLabels
+        ? 235
+        : isCompact
+          ? 220
+          : 300;
+
+  const margin =
+    size.margin || {
+      top: 28,
+      right: 18,
+      bottom:
+        hasLongLabels
+          ? 58
+          : 24,
+      left: 4
+    };
 
   return (
     <ResponsiveContainer
@@ -184,13 +274,16 @@ function BarChartView({
         data={rows}
 
         margin={{
-          top: 28,
-          right: 18,
+          ...margin,
           bottom:
             hasLongLabels
-              ? 58
-              : 24,
-          left: 4
+              ? Math.max(
+                  margin.bottom || 0,
+                  size.mode === "fill"
+                    ? 36
+                    : 58
+                )
+              : margin.bottom
         }}
 
         barCategoryGap="24%"
@@ -224,12 +317,17 @@ function BarChartView({
 
           height={
             hasLongLabels
-              ? 62
+              ? size.mode === "fill"
+                ? 42
+                : 62
               : 34
           }
 
           tick={{
-            fontSize: 9,
+            fontSize:
+              size.mode === "fill"
+                ? 9
+                : 9,
             fill: "#62708a"
           }}
         />
@@ -237,7 +335,11 @@ function BarChartView({
         <YAxis
           axisLine={false}
           tickLine={false}
-          width={64}
+          width={
+            size.mode === "fill"
+              ? 48
+              : 64
+          }
 
           tick={{
             fontSize: 10,
@@ -262,7 +364,8 @@ function BarChartView({
           }
         />
 
-        {series.length > 1 && (
+        {series.length > 1 &&
+          size.showLegend && (
           <Legend
             verticalAlign="top"
             align="right"
@@ -317,7 +420,11 @@ function BarChartView({
                 seriesDefinition.name
               }
 
-              maxBarSize={52}
+              maxBarSize={
+                size.mode === "fill"
+                  ? 56
+                  : 52
+              }
 
               radius={[
                 4,
@@ -370,7 +477,8 @@ function BarChartView({
 }
 
 function WaterfallChartView({
-  payload
+  payload,
+  size
 }) {
   const {
     unit
@@ -389,21 +497,40 @@ function WaterfallChartView({
         ).length > 14
     );
 
+  const chartHeight =
+    size.mode === "fill"
+      ? size.waterfall
+      : size.waterfall || 280;
+
+  const margin =
+    size.margin || {
+      top: 38,
+      right: 24,
+      bottom:
+        hasLongLabels
+          ? 82
+          : 42,
+      left: 12
+    };
+
   return (
     <ResponsiveContainer
       width="100%"
-      height={340}
+      height={chartHeight}
     >
       <BarChart
         data={waterfallRows}
         margin={{
-          top: 38,
-          right: 24,
+          ...margin,
           bottom:
             hasLongLabels
-              ? 82
-              : 42,
-          left: 12
+              ? Math.max(
+                  margin.bottom || 0,
+                  size.mode === "fill"
+                    ? 48
+                    : 82
+                )
+              : margin.bottom
         }}
         barCategoryGap="24%"
       >
@@ -431,7 +558,9 @@ function WaterfallChartView({
           }
           height={
             hasLongLabels
-              ? 90
+              ? size.mode === "fill"
+                ? 56
+                : 90
               : 44
           }
           tick={{
@@ -443,7 +572,11 @@ function WaterfallChartView({
         <YAxis
           axisLine={false}
           tickLine={false}
-          width={56}
+          width={
+            size.mode === "fill"
+              ? 48
+              : 56
+          }
           
           domain={[
             0,
@@ -455,7 +588,7 @@ function WaterfallChartView({
 
           tick={{
             fontSize: 9,
-            fill: "8a8f9c"
+            fill: "#8a8f9c"
           }}
 
           tickFormatter={
@@ -491,7 +624,11 @@ function WaterfallChartView({
         <Bar
           dataKey="change"
           stackId="waterfall"
-          maxBarSize={66}
+          maxBarSize={
+            size.mode === "fill"
+              ? 58
+              : 66
+          }
           radius={[4, 4, 0, 0]}
           isAnimationActive
           animationDuration={450}
@@ -715,7 +852,8 @@ function getWaterfallTooltipLabel(
 
 
 function LineChartView({
-  payload
+  payload,
+  size
 }) {
   const {
     rows,
@@ -725,20 +863,28 @@ function LineChartView({
     unit
   } = payload;
 
+  const chartHeight =
+    size.mode === "fill"
+      ? size.line
+      : size.line || 280;
+
+  const margin =
+    size.margin || {
+      top: 20,
+      right: 24,
+      bottom: 28,
+      left: 8
+    };
+
   return (
     <ResponsiveContainer
       width="100%"
-      height={500}
+      height={chartHeight}
     >
       <LineChart
         data={rows}
 
-        margin={{
-          top: 20,
-          right: 24,
-          bottom: 40,
-          left: 16
-        }}
+        margin={margin}
       >
         <CartesianGrid
           vertical={false}
@@ -760,7 +906,31 @@ function LineChartView({
         <YAxis
           axisLine={false}
           tickLine={false}
-          width={64}
+          width={
+            size.mode === "fill"
+              ? 48
+              : 64
+          }
+          domain={[
+            (dataMin) =>
+              Math.floor(
+                Math.min(
+                  dataMin,
+                  Number.isFinite(target)
+                    ? target
+                    : dataMin
+                ) * 0.92
+              ),
+            (dataMax) =>
+              Math.ceil(
+                Math.max(
+                  dataMax,
+                  Number.isFinite(target)
+                    ? target
+                    : dataMax
+                ) * 1.08
+              )
+          ]}
           tickFormatter={
             formatAxisNumber
           }
@@ -778,15 +948,17 @@ function LineChartView({
           }
         />
 
-        <Legend
-          verticalAlign="top"
-          align="right"
+        {size.showLegend && (
+          <Legend
+            verticalAlign="top"
+            align="right"
 
-          wrapperStyle={{
-            paddingBottom: 12,
-            fontSize: 11
-          }}
-        />
+            wrapperStyle={{
+              paddingBottom: 8,
+              fontSize: 11
+            }}
+          />
+        )}
 
         {Number.isFinite(target) && (
           <ReferenceLine
@@ -843,13 +1015,13 @@ function LineChartView({
               strokeWidth={3}
 
               dot={{
-                r: 4,
+                r: 3,
                 strokeWidth: 2,
                 fill: "#ffffff"
               }}
 
               activeDot={{
-                r: 6
+                r: 5
               }}
 
               connectNulls
@@ -863,7 +1035,8 @@ function LineChartView({
 
 
 function AreaChartView({
-  payload
+  payload,
+  size
 }) {
   const {
     rows,
@@ -873,20 +1046,28 @@ function AreaChartView({
     unit
   } = payload;
 
+  const chartHeight =
+    size.mode === "fill"
+      ? size.area
+      : size.area || 260;
+
+  const margin =
+    size.margin || {
+      top: 24,
+      right: 20,
+      bottom: 28,
+      left: 8
+    };
+
   return (
     <ResponsiveContainer
       width="100%"
-      height={330}
+      height={chartHeight}
     >
       <AreaChart
         data={rows}
 
-        margin={{
-          top: 30,
-          right: 24,
-          bottom: 35,
-          left: 12
-        }}
+        margin={margin}
       >
         <CartesianGrid
           vertical={false}
@@ -908,7 +1089,11 @@ function AreaChartView({
         <YAxis
           axisLine={false}
           tickLine={false}
-          width={64}
+          width={
+            size.mode === "fill"
+              ? 48
+              : 64
+          }
           tickFormatter={
             formatAxisNumber
           }
@@ -922,15 +1107,17 @@ function AreaChartView({
           }
         />
 
-        <Legend
-          verticalAlign="top"
-          align="right"
+        {size.showLegend && (
+          <Legend
+            verticalAlign="top"
+            align="right"
 
-          wrapperStyle={{
-            paddingBottom: 12,
-            fontSize: 11
-          }}
-        />
+            wrapperStyle={{
+              paddingBottom: 8,
+              fontSize: 11
+            }}
+          />
+        )}
 
         {Number.isFinite(target) && (
           <ReferenceLine
@@ -1000,7 +1187,8 @@ function AreaChartView({
 
 
 function CircularChartView({
-  payload
+  payload,
+  size
 }) {
   const {
     rows,
@@ -1013,12 +1201,29 @@ function CircularChartView({
     series[0]?.key ||
     "value";
 
+  const chartHeight =
+    size.mode === "fill"
+      ? size.circular
+      : size.circular || 260;
+
+  const innerRadius =
+    chartType === "donut"
+      ? size.pieInner
+      : 0;
+
   return (
     <ResponsiveContainer
       width="100%"
-      height={320}
+      height={chartHeight}
     >
-      <PieChart>
+      <PieChart
+        margin={{
+          top: 4,
+          right: 4,
+          bottom: size.showLegend ? 8 : 4,
+          left: 4
+        }}
+      >
         <Tooltip
           content={
             <CustomTooltip
@@ -1027,29 +1232,27 @@ function CircularChartView({
           }
         />
 
-        <Legend
-          verticalAlign="bottom"
-          wrapperStyle={{
-            fontSize: 11
-          }}
-        />
+        {size.showLegend && (
+          <Legend
+            verticalAlign="bottom"
+            wrapperStyle={{
+              fontSize: 11
+            }}
+          />
+        )}
 
         <Pie
           data={rows}
           dataKey={valueKey}
           nameKey="name"
 
-          innerRadius={
-            chartType === "donut"
-              ? 64
-              : 0
-          }
-
-          outerRadius={108}
+          innerRadius={innerRadius}
+          outerRadius={size.pieOuter}
           paddingAngle={2}
 
           label={
-            payload.showValues
+            payload.showValues &&
+            size.mode !== "compact"
               ? renderPieLabel
               : false
           }
