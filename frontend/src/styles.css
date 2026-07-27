@@ -2670,3 +2670,72 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+
+/*
+  next routes
+*/
+
+.route-block {
+  border: 1px solid #d7dee9;
+  border-radius: 20px;
+  padding: 24px;
+  margin: 16px 0;
+  background: #ffffff;
+}
+
+.route-block-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0 0 20px 0;
+}
+
+.route-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.route-item {
+  position: relative;
+
+  border: 1px solid #d7dee9;
+  border-radius: 16px;
+
+  padding: 16px 20px;
+  background: #fafafa;
+
+  overflow: hidden;
+}
+
+.route-destination {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.route-reason {
+  font-size: 14px;
+  line-height: 1.6;
+  color: #667085;
+}
+
+/* Agent routes */
+
+.route-item--agent {
+  background: #f8fbff;
+}
+
+.route-item--agent:after {
+  content: "";
+
+  position: absolute;
+
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+
+  background: #2563eb;
+}
