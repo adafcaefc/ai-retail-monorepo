@@ -3520,3 +3520,163 @@ summary:focus-visible {
     grid-template-columns: 1fr;
   }
 }
+/*
+ * ============================================================
+ * CHART INFO CARD
+ * Clicking a KPI / chart / stat opens an explanation card first;
+ * only "Continue in chat" sends a turn to the agent.
+ * ============================================================
+ */
+
+.has-info {
+  position: relative;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    box-shadow var(--dur-fast) var(--ease-standard);
+}
+
+.has-info:hover,
+.has-info:focus-visible {
+  border-color: var(--accent-info-border);
+  box-shadow: var(--shadow-sm);
+  outline: none;
+}
+
+.has-info:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+
+/* Scoped through .has-info so it outranks panel rules such as
+   `.whatif-stat span`, which would otherwise restyle the badge. */
+.has-info > .info-badge {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--gray-300);
+  pointer-events: none;
+  transition: color var(--dur-fast) var(--ease-standard);
+}
+
+.has-info:hover > .info-badge,
+.has-info:focus-visible > .info-badge {
+  color: var(--accent-info);
+}
+
+.info-card-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 94;
+}
+
+.info-card {
+  position: fixed;
+  z-index: 95;
+  max-width: 330px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--accent-info);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-lg);
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.info-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-1);
+}
+
+.info-card-title {
+  flex: 1;
+  font-size: var(--text-sm);
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.info-card-close {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  border: none;
+  background: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--gray-400);
+  cursor: pointer;
+}
+
+.info-card-close:hover {
+  color: var(--ink);
+}
+
+.info-card-text {
+  margin: 0 0 var(--space-2);
+  line-height: 1.45;
+  color: var(--gray-700);
+}
+
+.info-card-reading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--accent-info-soft);
+}
+
+.info-card-reading span {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-info-strong);
+}
+
+.info-card-reading strong {
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.info-card-formula {
+  margin-bottom: var(--space-2);
+  padding: 6px 8px;
+  border: 1px solid var(--gray-100);
+  border-radius: var(--radius-sm);
+  background: var(--gray-25);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  color: var(--gray-700);
+}
+
+.info-card-cta {
+  padding: 6px 12px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  color: #fff;
+  cursor: pointer;
+}
+
+.info-card-cta:hover:not(:disabled) {
+  background: var(--primary-deep);
+}
+
+.info-card-cta:disabled {
+  background: var(--gray-300);
+  cursor: not-allowed;
+}

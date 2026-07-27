@@ -277,6 +277,51 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     )
     max_pull = float(top_customer.get("overdue_idr_mn") or 10000)
 
+    # Three reach levels: one call, a focused push, or chase everything.
+    # Each converts recoverable cash into the DSO it would buy.
+    daily_sales = total_ar / dso if dso else 0.0
+
+    def _expected(rows: list[dict[str, Any]]) -> float:
+        rates = {"low": 0.95, "medium": 0.85, "high": 0.40}
+        got = 0.0
+        for row in rows:
+            amount = float(row.get("overdue_idr_mn") or 0)
+            explicit = row.get("expected_recovery_idr_mn")
+            if explicit is not None:
+                try:
+                    got += float(explicit)
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            tier = str(row.get("risk_tier") or "medium").strip().lower()
+            got += amount * rates.get(tier, 0.85)
+        return got
+
+    short_name = customer_name.split("(")[0].strip()[:14]
+    if worklist:
+        levels = [
+            (short_name, _expected(worklist[:1])),
+            ("Top 5", _expected(worklist[:5])),
+            ("All overdue", _expected(worklist)),
+        ]
+    else:
+        # No worklist rows — approximate the reach levels from the overdue
+        # total at a blended recovery rate. Kept monotonic on purpose:
+        # wider reach can never free less.
+        blended = 0.85
+        levels = [
+            (short_name, min(max_pull, overdue) * blended),
+            ("Top 5", min(max_pull * 3.5, overdue) * blended),
+            ("All overdue", overdue * blended),
+        ]
+
+    options_bars = []
+    for label, freed in levels:
+        if daily_sales:
+            new_dso = (total_ar - freed) / daily_sales
+            label = f"{label} · {new_dso:.0f}d"
+        options_bars.append({"label": label, "value": round(freed, 2)})
+
     kpis = [
         {
             "id": "ar",
@@ -387,6 +432,17 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 tag="risk",
             ),
         },
+        "options": {
+            **_bar_chart(
+                "Three collection options · cash freed",
+                options_bars,
+                tag="decision",
+                note=(
+                    "Bar is cash freed; the label carries the DSO it buys. "
+                    "Wider reach frees more but costs more effort."
+                ),
+            ),
+        },
     }
 
     side = {
@@ -493,6 +549,50 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
     defer = baseline.get("deferrable_payment_driver") or {}
     max_defer = float(defer.get("amount_idr_mn") or 3000)
 
+    # Forward points are not stored on the baseline; without them the premium
+    # cannot be derived, so fall back to the mockup's 170 IDR/USD and say so.
+    forward_points = float(baseline.get("forward_points_idr_per_usd") or 0)
+    premium_is_live = forward_points > 0
+    if not premium_is_live:
+        forward_points = 170.0
+
+    def _avoided(usd: float) -> float:
+        if spot <= 0 or not usd:
+            return 0.0
+        return abs(usd) * abs(adverse - spot) / 1_000_000.0
+
+    def _premium(usd: float) -> float:
+        return abs(usd) * forward_points / 1_000_000.0
+
+    half_hedge = recommended_hedge / 2
+    option_rows = [
+        [
+            "A · Do nothing",
+            _fmt(0),
+            _fmt(0),
+            "No cash out · full exposure open",
+        ],
+        [
+            "B · Forward-cover (recommended)",
+            _fmt(_avoided(recommended_hedge)),
+            _fmt(_premium(recommended_hedge)),
+            "No cash out · rate locked today",
+        ],
+        [
+            "C · Buy USD spot now",
+            _fmt(_avoided(recommended_hedge)),
+            _fmt(0),
+            f"Cash out {_fmt(recommended_hedge * spot / 1_000_000.0)} mn now "
+            "· worsens Week 5",
+        ],
+        [
+            "D · Hedge 50%",
+            _fmt(_avoided(half_hedge)),
+            _fmt(_premium(half_hedge)),
+            "No cash out · half the exposure still open",
+        ],
+    ]
+
     kpis = [
         {
             "id": "w5",
@@ -584,27 +684,19 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "options": _table_view(
-            "Drivers used by simulation",
-            ["Driver", "Counterparty", "Amount", "Week"],
-            [
-                [
-                    "Accelerate collection",
-                    str(driver.get("counterparty_name") or ""),
-                    _fmt(max_accel),
-                    str(
-                        driver.get("expected_week")
-                        or driver.get("original_week")
-                        or ""
-                    ),
-                ],
-                [
-                    "Defer payment",
-                    str(defer.get("counterparty_name") or ""),
-                    _fmt(max_defer),
-                    str(defer.get("payment_week") or ""),
-                ],
-            ],
+            "Agent option comparison · hedge the exposure",
+            ["Option", "Avoided", "Premium", "Liquidity impact"],
+            option_rows,
             tag="decision",
+            note=(
+                "Amounts in IDR mn."
+                + (
+                    ""
+                    if premium_is_live
+                    else " Premium uses an illustrative 170 IDR/USD forward "
+                    "spread — no forward points on this baseline."
+                )
+            ),
         ),
     }
 
@@ -798,6 +890,68 @@ def _row_get(row: dict[str, Any], *names: str) -> Any:
     return None
 
 
+def _finance_opex_rows(
+    profit: list[dict[str, Any]],
+) -> tuple[list[list[Any]], bool]:
+    """Opex lines vs budget, worst variance first.
+
+    profit_summary is selected with `SELECT *`, so the column names are not
+    guaranteed. Probe the plausible ones; if nothing resolves, fall back to
+    the mockup's illustrative breakdown and let the caller say so in the note.
+    Returns (rows, is_live).
+    """
+
+    rows: list[list[Any]] = []
+    for row in profit:
+        label = str(
+            _row_get(
+                row, "line_item", "opex_line", "category", "name", "label"
+            )
+            or ""
+        ).strip()
+        if not label:
+            continue
+        # Only opex lines; skip revenue/COGS rows that share the table.
+        if any(skip in label.lower() for skip in ("revenue", "cogs", "sales")):
+            continue
+
+        actual = _row_get(row, "actual_idr_mn", "actual", "amount_idr_mn", "value")
+        budget = _row_get(row, "budget_idr_mn", "budget", "plan_idr_mn", "plan")
+        if actual is None or budget is None:
+            continue
+        try:
+            act = float(actual)
+            bud = float(budget)
+        except (TypeError, ValueError):
+            continue
+
+        rows.append([label, act, bud, act - bud])
+
+    is_live = bool(rows)
+    if not is_live:
+        rows = [
+            ["Payroll", 3300.0, 3200.0, 100.0],
+            ["Logistics & freight", 1650.0, 1400.0, 250.0],
+            ["Rent & utilities", 920.0, 900.0, 20.0],
+            ["Marketing & selling", 850.0, 800.0, 50.0],
+            ["Other opex", 760.0, 700.0, 60.0],
+        ]
+
+    rows.sort(key=lambda r: r[3], reverse=True)
+    total = [
+        "Total operating expenses",
+        sum(r[1] for r in rows),
+        sum(r[2] for r in rows),
+        sum(r[3] for r in rows),
+    ]
+
+    formatted = [
+        [r[0], _fmt(r[1]), _fmt(r[2]), f"{'+' if r[3] >= 0 else ''}{_fmt(r[3])}"]
+        for r in rows + [total]
+    ]
+    return formatted, is_live
+
+
 def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     base = _finance_comp(0, 0, 0, 0, 0, "all")
     kpis_rows = snap.get("kpis") or []
@@ -868,6 +1022,8 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         }
         for line in base["lines"]
     ]
+
+    opex_rows, opex_is_live = _finance_opex_rows(profit)
 
     kpis = [
         {
@@ -983,11 +1139,16 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "opex": _table_view(
-            "Operating expenses (illustrative base)",
-            ["Line", "Base"],
-            [["Total opex", _fmt(base["opex"])]],
+            "Operating expenses vs budget",
+            ["Line", "Actual", "Budget", "Variance"],
+            opex_rows,
             tag="cost",
-            note="Replace with profit_summary opex breakdown when columns confirmed.",
+            note=(
+                "Worst variance first — the repeatable saving is at the top."
+                if opex_is_live
+                else "Illustrative breakdown; profit_summary has no opex "
+                "line columns in this batch."
+            ),
         ),
     }
 
@@ -1131,6 +1292,70 @@ def simulate_leakage_scenario(
             "txt": f"{round(total / at_risk * 100) if at_risk else 0}% of at risk",
         },
     }
+
+
+def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
+    """Cluster flagged items by vendor.
+
+    The worklist answers "what do I work next"; this answers "who keeps
+    doing this to us". Repeat offenders and duplicated vendor masters only
+    show up once the per-item flags are grouped.
+    """
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        name = str(
+            _row_get(row, "vendor_name", "counterparty", "title", "name") or ""
+        ).strip()
+        if not name:
+            continue
+
+        try:
+            amount = float(
+                _row_get(row, "amount_idr_mn", "amount", "value") or 0
+            )
+        except (TypeError, ValueError):
+            amount = 0.0
+
+        kind = str(
+            _row_get(row, "anomaly_type", "type", "category") or ""
+        ).strip()
+
+        try:
+            score = float(_row_get(row, "risk_score", "score") or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        bucket = grouped.setdefault(
+            name,
+            {"amount": 0.0, "flags": 0, "kinds": set(), "score": 0.0},
+        )
+        bucket["amount"] += amount
+        bucket["flags"] += 1
+        bucket["score"] = max(bucket["score"], score)
+        if kind:
+            bucket["kinds"].add(kind)
+
+    ordered = sorted(
+        grouped.items(), key=lambda kv: kv[1]["amount"], reverse=True
+    )
+
+    out: list[list[Any]] = []
+    for name, agg in ordered[:10]:
+        kinds = ", ".join(sorted(agg["kinds"])) or "—"
+        # No stored score: fall back to an exposure-weighted proxy so the
+        # column still ranks. Flagged as illustrative in the view note.
+        score = agg["score"] or min(99.0, agg["flags"] * 20 + agg["amount"] / 100)
+        out.append(
+            [
+                name,
+                agg["flags"],
+                kinds,
+                _fmt(agg["amount"]),
+                str(round(score)),
+            ]
+        )
+    return out
 
 
 def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
@@ -1278,6 +1503,30 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 ]
             )
 
+    vendor_rows = _leakage_vendor_rollup(worklist or anomalies)
+
+    # Everything at risk that is neither held nor clawable — currently the
+    # lost early-payment discounts.
+    lost = max(0.0, at_risk - base_sim["blocked"] - (duplicates + 400))
+
+    recovery_rows = [
+        {
+            "label": label,
+            "value": simulate_leakage_scenario(
+                hold=fraud,
+                dup_rec=rate,
+                ov_rec=rate,
+                duplicates_amount=duplicates,
+                at_risk=at_risk,
+            )["total_protected"],
+        }
+        for label, rate in (
+            ("Pessimistic 60%", 60),
+            ("Base 80%", 80),
+            ("Current 95%", 95),
+        )
+    ]
+
     views = {
         "categories": {
             **_bar_chart(
@@ -1288,25 +1537,32 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
         "blockvs": {
             **_bar_chart(
-                "Blocked vs recoverable",
+                "Blocked vs recoverable vs lost",
                 [
                     {"label": "Blocked", "value": base_sim["blocked"]},
                     {"label": "Recoverable", "value": duplicates + 400},
+                    {"label": "Lost", "value": round(lost, 2)},
                 ],
                 tag="money",
+                note=(
+                    "Blocked never leaves; recoverable must be clawed back; "
+                    "lost is already gone."
+                ),
             ),
         },
+        # Sensitivity, not a restatement of side:bottom. Shows how much of
+        # "protected" is an assumption about claw-back rather than cash held.
         "recovery": {
             **_bar_chart(
-                "Protected vs at risk",
-                [
-                    {"label": "At risk", "value": at_risk},
-                    {
-                        "label": "Protected",
-                        "value": base_sim["total_protected"],
-                    },
-                ],
+                "Recovery scenario · protected by claw-back rate",
+                recovery_rows,
                 tag="recovery",
+                target=at_risk,
+                target_label=f"At risk {_fmt(at_risk)}",
+                note=(
+                    f"Blocked {_fmt(base_sim['blocked'])} is certain; the rest "
+                    "moves with the recovery rate you assume."
+                ),
             ),
         },
         "worklist": _table_view(
@@ -1316,10 +1572,11 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             tag="worklist",
         ),
         "vendors": _table_view(
-            "Vendor / anomaly radar",
-            wl_headers,
-            wl_rows,
+            "Vendor risk radar",
+            ["Vendor", "Flags", "Types", "At risk", "Score"],
+            vendor_rows,
             tag="risk",
+            note="Flags clustered by vendor. Score is illustrative (0–100).",
         ),
     }
 

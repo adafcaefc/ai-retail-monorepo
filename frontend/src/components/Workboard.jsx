@@ -6,6 +6,8 @@ import {
 
 import ChartRenderer from "./ChartRenderer.jsx";
 import AlertsPanel from "./AlertsPanel.jsx";
+import InfoCard from "./InfoCard.jsx";
+import { findInfo } from "../infoRegistry.js";
 import {
   fetchDashboard,
   recalculateDashboardSimulation
@@ -26,6 +28,31 @@ export default function Workboard({
   const [simResult, setSimResult] = useState(null);
   const [simBusy, setSimBusy] = useState(false);
   const [simError, setSimError] = useState("");
+  const [info, setInfo] = useState(null);
+
+  // Open the info card for a clicked element. Elements with no
+  // registry mapping stay inert rather than opening an empty card.
+  function openInfo(infoKey, event, extra = {}) {
+    const entry = findInfo(agentId, infoKey);
+    if (!entry) {
+      return;
+    }
+
+    setInfo({
+      key: infoKey,
+      entry,
+      anchor: event.currentTarget.getBoundingClientRect(),
+      context: extra.context || "",
+      payload: extra.payload || null
+    });
+  }
+
+  // Only on agent switch. Not on `view`: a KPI click sets the view
+  // and opens the card in the same batch, so watching `view` here
+  // would close the card the instant it opened.
+  useEffect(() => {
+    setInfo(null);
+  }, [agentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,11 +235,15 @@ export default function Workboard({
                     (view === kpi.view ? " on" : "")
                   }
                   data-testid={`kpi-${kpi.id}`}
-                  disabled={insightBusy}
-                  title={`Ask ${agentName} to interpret ${kpi.label}`}
-                  onClick={() => {
+                  title={`What ${kpi.label} means`}
+                  onClick={(event) => {
                     setView(kpi.view);
-                    onAskInsight?.(kpi);
+                    openInfo(`tile:${kpi.id}`, event, {
+                      context: [kpi.value, kpi.unit, kpi.delta]
+                        .filter(Boolean)
+                        .join(" "),
+                      payload: kpi
+                    });
                   }}
                 >
                   <span className="kpi-cue">
@@ -268,23 +299,39 @@ export default function Workboard({
           </div>
 
           <div className="workboard-mid">
-            <article
+            <InfoTarget
+              as="article"
               className="focus-card"
-              data-testid="focus-panel"
+              testId="focus-panel"
+              infoKey={`view:${view || dashboard.default_view}`}
+              agentId={agentId}
+              onOpen={openInfo}
             >
               <FocusBody view={activeView} />
-            </article>
+            </InfoTarget>
 
             <div className="side-col" data-testid="side-panels">
-              <article className="side-card">
+              <InfoTarget
+                as="article"
+                className="side-card"
+                infoKey="side:top"
+                agentId={agentId}
+                onOpen={openInfo}
+              >
                 <FocusBody view={dashboard.side?.top} compact />
-              </article>
-              <article className="side-card">
+              </InfoTarget>
+              <InfoTarget
+                as="article"
+                className="side-card"
+                infoKey="side:bottom"
+                agentId={agentId}
+                onOpen={openInfo}
+              >
                 <FocusBody
                   view={dashboard.side?.bottom}
                   compact
                 />
-              </article>
+              </InfoTarget>
             </div>
           </div>
 
@@ -303,10 +350,78 @@ export default function Workboard({
             busy={simBusy}
             error={simError}
             result={simResult}
+            agentId={agentId}
+            onOpenInfo={openInfo}
           />
         </>
       )}
+
+      {info ? (
+        <InfoCard
+          entry={info.entry}
+          anchor={info.anchor}
+          context={info.context}
+          busy={insightBusy}
+          onClose={() => setInfo(null)}
+          onContinue={() => {
+            setInfo(null);
+            onAskInsight?.({
+              infoKey: info.key,
+              entry: info.entry,
+              context: info.context,
+              kpi: info.payload
+            });
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+/**
+ * Wraps a board panel so a click opens its info card. Panels with
+ * no registry entry render as a plain element — no cursor, no
+ * handler — so an unmapped chart is visibly inert rather than dead.
+ */
+function InfoTarget({
+  as: Tag = "div",
+  className,
+  testId,
+  infoKey,
+  agentId,
+  onOpen,
+  children
+}) {
+  const entry = findInfo(agentId, infoKey);
+
+  if (!entry) {
+    return (
+      <Tag className={className} data-testid={testId}>
+        {children}
+      </Tag>
+    );
+  }
+
+  return (
+    <Tag
+      className={`${className} has-info`}
+      data-testid={testId}
+      role="button"
+      tabIndex={0}
+      title={`What "${entry.el}" means`}
+      onClick={(event) => onOpen(infoKey, event)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(infoKey, event);
+        }
+      }}
+    >
+      {children}
+      <span className="info-badge" aria-hidden="true">
+        ⓘ
+      </span>
+    </Tag>
   );
 }
 
@@ -432,7 +547,9 @@ function WhatIfBar({
   onCalculate,
   busy,
   error,
-  result
+  result,
+  agentId,
+  onOpenInfo
 }) {
   if (!simulator) {
     return null;
@@ -546,27 +663,54 @@ function WhatIfBar({
           ) : (
             <>
               {summary.stats.map((stat) => (
-                <div key={stat.label} className="whatif-stat">
+                <InfoTarget
+                  key={stat.label}
+                  className="whatif-stat"
+                  infoKey={`stat:${stat.id}`}
+                  agentId={agentId}
+                  onOpen={(key, event) =>
+                    onOpenInfo(key, event, {
+                      context: [stat.value, stat.delta]
+                        .filter(Boolean)
+                        .join(" · ")
+                    })
+                  }
+                >
                   <span>{stat.label}</span>
                   <strong data-testid={`stat-${stat.id}`}>
                     {stat.value}
                   </strong>
                   <small className={stat.tone}>{stat.delta}</small>
-                </div>
+                </InfoTarget>
               ))}
               {summary.chart ? (
-                <div className="whatif-mini-chart">
+                <InfoTarget
+                  className="whatif-mini-chart"
+                  infoKey="simchart"
+                  agentId={agentId}
+                  onOpen={onOpenInfo}
+                >
                   <ChartRenderer
                     data={summary.chart}
                     variant="compact"
                   />
-                </div>
+                </InfoTarget>
               ) : null}
             </>
           )}
         </div>
 
-        <div className="whatif-gauge" data-testid="whatif-gauge">
+        <InfoTarget
+          className="whatif-gauge"
+          testId="whatif-gauge"
+          infoKey="gauge"
+          agentId={agentId}
+          onOpen={(key, event) =>
+            onOpenInfo(key, event, {
+              context: busy ? "" : summary.gauge.center
+            })
+          }
+        >
           <div className="whatif-label">
             {simulator.gauge_label || "Scenario"}
           </div>
@@ -588,7 +732,7 @@ function WhatIfBar({
               <p data-testid="gauge-txt">{summary.gauge.txt}</p>
             </>
           )}
-        </div>
+        </InfoTarget>
       </div>
 
       {error ? (

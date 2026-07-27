@@ -12,6 +12,7 @@ import {
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
+import { buildInfoPrompt } from "./infoRegistry.js";
 
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
@@ -897,13 +898,18 @@ export default function App() {
   }
 
 
-  function askKpiInsight(kpi) {
+  function askKpiInsight(request) {
     if (currentChat.busy) {
       return;
     }
 
     submitText(
-      buildKpiInsightPrompt(kpi)
+      request?.entry
+        ? buildInfoPrompt(
+            request.entry,
+            request.context
+          )
+        : buildKpiInsightPrompt(request)
     );
 
     requestAnimationFrame(() => {
