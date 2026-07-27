@@ -12,6 +12,12 @@ DESCRIPTOR = AgentDescriptor(
     folder="finance",
     name="treasury",
     display="Treasury",
+    description="Review liquidity and cash-flow forecasts.",
+    prompt="Ask Treasury about liquidity...",
+    starter_prompts=(
+        "Explain the current cash and liquidity risks.",
+        "Which action restores the minimum cash buffer fastest?",
+    ),
     chat_agent="finance.treasury.chat",
     simulation_agent="finance.treasury.simulation",
     action_agent="finance.treasury.action",

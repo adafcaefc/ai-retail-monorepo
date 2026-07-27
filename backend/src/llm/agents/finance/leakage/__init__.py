@@ -12,6 +12,12 @@ DESCRIPTOR = AgentDescriptor(
     folder="finance",
     name="leakage",
     display="Leakage",
+    description="Review billing gaps and revenue leakage.",
+    prompt="Ask Leakage about revenue exposure...",
+    starter_prompts=(
+        "Summarize the largest leakage risks.",
+        "Which leakage issues should be investigated first?",
+    ),
     chat_agent="finance.leakage.chat",
     simulation_agent="finance.leakage.simulation",
     action_agent="finance.leakage.action",

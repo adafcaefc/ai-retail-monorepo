@@ -12,6 +12,12 @@ DESCRIPTOR = AgentDescriptor(
     folder="finance",
     name="collection",
     display="Collection",
+    description="Review receivables, aging, and collection priorities.",
+    prompt="Ask Collection about receivables...",
+    starter_prompts=(
+        "Summarize the largest overdue collection risks.",
+        "Which customers should Collection prioritize?",
+    ),
     chat_agent="finance.collection.chat",
     simulation_agent="finance.collection.simulation",
     action_agent="finance.collection.action",

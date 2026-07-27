@@ -427,7 +427,11 @@ async def get_conversations():
 
 @router.get("/agents")
 async def list_agents() -> dict[str, Any]:
-    """Registry-driven list of user-facing agents for the frontend sidebar."""
+    """Registry-driven list of user-facing agents for the frontend sidebar.
+
+    Ordered by `agents/modules.py:ENABLED_MODULES` — that order is the sidebar
+    order, and the presentation strings below are what the sidebar renders.
+    """
     from src.llm.agents import AGENT_REGISTRY
 
     return {
@@ -437,6 +441,9 @@ async def list_agents() -> dict[str, Any]:
                 "folder": descriptor.folder,
                 "name": descriptor.name,
                 "display": descriptor.display,
+                "description": descriptor.description,
+                "prompt": descriptor.prompt,
+                "starter_prompts": list(descriptor.starter_prompts),
             }
             for descriptor in AGENT_REGISTRY.values()
         ]

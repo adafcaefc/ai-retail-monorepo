@@ -13,7 +13,7 @@ import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import { buildInfoPrompt } from "./infoRegistry.js";
-import { AGENTS } from "./agents/registry.js";
+import { useAgents } from "./agents/AgentsProvider.jsx";
 
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
@@ -56,29 +56,35 @@ function createInitialChat() {
 }
 
 
-function createInitialChats() {
-  return Object.fromEntries(
-    Object.keys(AGENTS).map(
-      (agentId) => [
-        agentId,
-        createInitialChat()
-      ]
-    )
-  );
-}
+// Stand-in while the module list is still loading, so hooks below can read
+// `currentChat` unconditionally. Its identity is stable on purpose.
+const EMPTY_CHAT = createInitialChat();
 
 
 export default function App() {
+  const {
+    agents,
+    agentIds,
+    groups,
+    loading: agentsLoading,
+    error: agentsError
+  } = useAgents();
+
   const [
     activeAgent,
     setActiveAgent
-  ] = useState("finance.finance");
+  ] = useState(null);
 
   const [
     chats,
     setChats
+  ] = useState({});
+
+  const [
+    collapsedFolders,
+    setCollapsedFolders
   ] = useState(
-    createInitialChats
+    () => new Set()
   );
 
   const [
@@ -118,19 +124,48 @@ export default function App() {
     useRef(null);
 
   const currentAgent =
-    AGENTS[activeAgent];
+    agents[activeAgent] || null;
 
   const currentChat =
-    chats[activeAgent];
+    chats[activeAgent] || EMPTY_CHAT;
 
   const visibleSuggestions =
     currentChat.messages.length > 0
       ? currentChat.suggestions
-      : currentAgent.starterPrompts;
+      : currentAgent?.starterPrompts ?? [];
 
   const canSend =
     Boolean(input.trim()) &&
     !currentChat.busy;
+
+
+  // Seed one chat per enabled module once the backend list arrives, keeping
+  // any chat already in flight. The first module is the default board.
+  useEffect(() => {
+    if (agentIds.length === 0) {
+      return;
+    }
+
+    setChats((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const agentId of agentIds) {
+        if (!next[agentId]) {
+          next[agentId] = createInitialChat();
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+
+    setActiveAgent((current) =>
+      current && agentIds.includes(current)
+        ? current
+        : agentIds[0]
+    );
+  }, [agentIds]);
 
 
   useEffect(() => {
@@ -862,6 +897,40 @@ export default function App() {
   }
 
 
+  function toggleFolder(folder) {
+    setCollapsedFolders(
+      (current) => {
+        const next = new Set(current);
+
+        if (next.has(folder)) {
+          next.delete(folder);
+        } else {
+          next.add(folder);
+        }
+
+        return next;
+      }
+    );
+  }
+
+
+  // The module list is served by the backend, so the shell waits for it
+  // rather than assuming which agents exist.
+  if (agentsLoading || !currentAgent) {
+    return (
+      <main className="app-shell app-shell-notice">
+        <p role="status">
+          {agentsError
+            ? agentsError
+            : agentsLoading
+              ? "Loading agents…"
+              : "No agents are enabled."}
+        </p>
+      </main>
+    );
+  }
+
+
   return (
     <main
       className={
@@ -900,66 +969,106 @@ export default function App() {
 
 
         <nav
-          className="agent-list"
+          className="agent-groups"
           aria-label="Choose an agent"
         >
-          {Object.entries(
-            AGENTS
-          ).map(
-            ([
-              agentId,
-              agent
-            ]) => {
-              const chat =
-                chats[agentId];
+          {groups.map((group) => {
+            const collapsed =
+              collapsedFolders.has(
+                group.folder
+              );
 
-              return (
+            return (
+              <div
+                key={group.folder}
+                className="agent-group"
+              >
                 <button
-                  key={agentId}
                   type="button"
-
-                  className={
-                    agentId ===
-                    activeAgent
-                      ? "agent-button active"
-                      : "agent-button"
+                  className="folder-toggle"
+                  aria-expanded={
+                    !collapsed
                   }
-
-                  data-busy={
-                    chat.busy
-                  }
-
                   onClick={() =>
-                    selectAgent(
-                      agentId
+                    toggleFolder(
+                      group.folder
                     )
                   }
                 >
-                  <span className="agent-avatar">
-                    {agent.name.charAt(
-                      0
-                    )}
-                  </span>
-
-                  <span className="agent-copy">
-                    <strong>
-                      {agent.name}
-                    </strong>
-
-                    <small>
-                      {chat.title ||
-                        "New conversation"}
-                    </small>
-                  </span>
-
                   <span
-                    className="activity-dot"
+                    className="folder-chevron"
                     aria-hidden="true"
                   />
+
+                  <span className="folder-name">
+                    {group.label}
+                  </span>
+
+                  <span className="folder-count">
+                    {group.agents.length}
+                  </span>
                 </button>
-              );
-            }
-          )}
+
+                {!collapsed && (
+                  <div className="agent-list">
+                    {group.agents.map(
+                      (agent) => {
+                        const chat =
+                          chats[agent.id] ||
+                          EMPTY_CHAT;
+
+                        return (
+                          <button
+                            key={agent.id}
+                            type="button"
+
+                            className={
+                              agent.id ===
+                              activeAgent
+                                ? "agent-button active"
+                                : "agent-button"
+                            }
+
+                            data-busy={
+                              chat.busy
+                            }
+
+                            onClick={() =>
+                              selectAgent(
+                                agent.id
+                              )
+                            }
+                          >
+                            <span className="agent-avatar">
+                              {agent.name.charAt(
+                                0
+                              )}
+                            </span>
+
+                            <span className="agent-copy">
+                              <strong>
+                                {agent.name}
+                              </strong>
+
+                              <small>
+                                {chat.title ||
+                                  "New conversation"}
+                              </small>
+                            </span>
+
+                            <span
+                              className="activity-dot"
+                              aria-hidden="true"
+                            />
+                          </button>
+                        );
+                      }
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
 

@@ -12,12 +12,7 @@ import {
   fetchAlerts,
   resetAndRepopulateAlerts
 } from "../api/alerts.js";
-import { AGENT_IDS, AGENT_LIST } from "../agents/registry.js";
-
-// Display names for toast copy, keyed by canonical `folder.agent` id.
-const AGENT_META = Object.fromEntries(
-  AGENT_LIST.map((agent) => [agent.id, agent.name])
-);
+import { useAgents } from "../agents/AgentsProvider.jsx";
 
 // How many problem toasts to pop at once; the rest collapse into a "+N more".
 const MAX_PROBLEM_TOASTS = 4;
@@ -54,6 +49,17 @@ function writeSeen(keys) {
 }
 
 export function MonitoringProvider({ children }) {
+  const { agentIds, agentList } = useAgents();
+
+  // Display names for toast copy, keyed by canonical `folder.agent` id.
+  const agentMeta = useMemo(
+    () =>
+      Object.fromEntries(
+        agentList.map((agent) => [agent.id, agent.name])
+      ),
+    [agentList]
+  );
+
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
@@ -66,7 +72,7 @@ export function MonitoringProvider({ children }) {
   // the ones we have never announced before as problem toasts.
   const refreshProblems = useCallback(async () => {
     const perAgent = await Promise.all(
-      AGENT_IDS.map(async (agentId) => {
+      agentIds.map(async (agentId) => {
         try {
           const payload = await fetchAlerts(agentId);
           return (payload.items || []).map((alert) => ({
@@ -92,20 +98,25 @@ export function MonitoringProvider({ children }) {
     const shown = fresh.slice(0, MAX_PROBLEM_TOASTS).map((alert) => ({
       id: alert.id || problemKey(alert.agentId, alert),
       agentId: alert.agentId,
-      agentName: AGENT_META[alert.agentId] || alert.agentId,
+      agentName: agentMeta[alert.agentId] || alert.agentId,
       name: alert.name || "Issue detected",
       issue: alert.issue || ""
     }));
 
     setProblems(shown);
     setMoreProblems(Math.max(0, fresh.length - shown.length));
-  }, []);
+  }, [agentIds, agentMeta]);
 
   const dismissProblem = useCallback((id) => {
     setProblems((current) => current.filter((item) => item.id !== id));
   }, []);
 
   const runMonitoring = useCallback(async ({ force = false } = {}) => {
+    // The module list arrives asynchronously; nothing to monitor until it does.
+    if (agentIds.length === 0) {
+      return undefined;
+    }
+
     if (runningRef.current) {
       return pageAutoStartPromise;
     }
@@ -122,7 +133,7 @@ export function MonitoringProvider({ children }) {
     const task = (async () => {
       try {
         const results = await Promise.all(
-          AGENT_IDS.map((agentId) => resetAndRepopulateAlerts(agentId))
+          agentIds.map((agentId) => resetAndRepopulateAlerts(agentId))
         );
         const created = results.reduce(
           (sum, result) => sum + (result.created_count ?? 0),
@@ -161,7 +172,7 @@ export function MonitoringProvider({ children }) {
     }
 
     return task;
-  }, [refreshProblems]);
+  }, [agentIds, refreshProblems]);
 
   useEffect(() => {
     runMonitoring({ force: false });

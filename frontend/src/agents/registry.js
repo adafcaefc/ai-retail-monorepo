@@ -1,18 +1,61 @@
-// Frontend agent registry. Add an agent = add a folder + one import line.
-// Canonical ids (folder.agent) match the backend registry exactly.
+// Frontend agent registry.
+//
+// The enabled modules and all their presentation strings come from the
+// backend (`GET /api/html/agents`, driven by agents/modules.py). Nothing here
+// decides which agents exist — these helpers only shape the API response for
+// the UI.
+//
+// A module may drop an optional `<folder>/<name>/index.js` here to override or
+// extend its UI (e.g. a custom board view). Such files are auto-discovered;
+// there is no import line to add.
 
-import finance from "./finance/finance/index.js";
-import leakage from "./finance/leakage/index.js";
-import collection from "./finance/collection/index.js";
-import treasury from "./finance/treasury/index.js";
+const overrideModules = import.meta.glob("./*/*/index.js", { eager: true });
 
-// Sidebar order.
-export const AGENT_LIST = [finance, leakage, collection, treasury];
-
-export const AGENTS = Object.fromEntries(
-  AGENT_LIST.map((agent) => [agent.id, agent])
+const OVERRIDES = Object.fromEntries(
+  Object.values(overrideModules)
+    .map((module) => module.default)
+    .filter((override) => override && override.id)
+    .map((override) => [override.id, override])
 );
 
-export const AGENT_IDS = AGENT_LIST.map((agent) => agent.id);
+/** API items -> UI agents, keyed by canonical id. API order is preserved. */
+export function buildAgents(items) {
+  return (items || []).map((item) => ({
+    id: item.id,
+    folder: item.folder,
+    name: item.display,
+    prompt: item.prompt || "",
+    description: item.description || "",
+    starterPrompts: item.starter_prompts || [],
+    // An override wins, so a module can customise its own UI.
+    ...(OVERRIDES[item.id] || {})
+  }));
+}
 
-export default AGENTS;
+/** Group agents into [{ folder, label, agents }], in first-seen API order. */
+export function groupByFolder(agentList) {
+  const groups = [];
+  const byFolder = new Map();
+
+  for (const agent of agentList) {
+    const folder = agent.folder || "other";
+
+    if (!byFolder.has(folder)) {
+      const group = {
+        folder,
+        label: folderLabel(folder),
+        agents: []
+      };
+      byFolder.set(folder, group);
+      groups.push(group);
+    }
+
+    byFolder.get(folder).agents.push(agent);
+  }
+
+  return groups;
+}
+
+function folderLabel(folder) {
+  return folder.charAt(0).toUpperCase() + folder.slice(1);
+}

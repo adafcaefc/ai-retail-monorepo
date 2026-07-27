@@ -185,6 +185,14 @@ summary:focus-visible {
   user-select: none;
 }
 
+/* Shell while the module list is loading, or when it could not be loaded. */
+.app-shell-notice {
+  grid-template-columns: minmax(0, 1fr);
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 /* Drag handle between the workboard and the chat panel. */
 .chat-resize-handle {
   display: flex;
@@ -287,6 +295,61 @@ summary:focus-visible {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* Agents are grouped by their backend folder (the `folder` in folder.agent). */
+
+.agent-groups {
+  display: grid;
+  gap: 14px;
+}
+
+.agent-group {
+  display: grid;
+  gap: 8px;
+}
+
+.folder-toggle {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.folder-toggle:hover {
+  color: var(--text);
+}
+
+.folder-chevron {
+  width: 0;
+  height: 0;
+  justify-self: center;
+  border-top: 5px solid currentColor;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  transition: transform 160ms ease;
+}
+
+.folder-toggle[aria-expanded="false"] .folder-chevron {
+  transform: rotate(-90deg);
+}
+
+.folder-count {
+  font-weight: 600;
+  letter-spacing: 0;
+  opacity: 0.7;
 }
 
 .agent-list {
@@ -1629,6 +1692,18 @@ summary:focus-visible {
   .section-label,
   .sidebar-footer {
     display: none;
+  }
+
+  /* The sidebar is a horizontal strip here. The folder toggle stays visible —
+     it is the only way to re-open a collapsed group. */
+  .agent-groups,
+  .agent-group {
+    gap: 7px;
+  }
+
+  .folder-toggle {
+    padding: 2px 4px;
+    font-size: 0.64rem;
   }
 
   .agent-list {

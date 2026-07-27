@@ -6,7 +6,9 @@ This document describes the LLM agent architecture used by the AI Finance Forum 
 
 ## Overview
 
-Agents are **modular**: each one is a self-contained folder under `src/llm/agents/<folder>/<name>/` holding its own config, tools, and dashboard. The registry (`src/llm/agents/__init__.py`) discovers them, so adding an agent means adding a folder. Config JSON is loaded at startup by the **Chivon** framework (`src/llm/chivon/chivon.py`) and executed through **pydantic-ai** against Azure OpenAI.
+Agents are **modular**: each one is a self-contained folder under `src/llm/agents/<folder>/<name>/` holding its own config, tools, and dashboard. One constant — `ENABLED_MODULES` in `src/llm/agents/modules.py` — lists the modules that are switched on, and the registry (`src/llm/agents/__init__.py`) loads exactly those. Config JSON is loaded at startup by the **Chivon** framework (`src/llm/chivon/chivon.py`) and executed through **pydantic-ai** against Azure OpenAI.
+
+`ENABLED_MODULES` is the single source of truth for **both** sides of the app. The backend serves it (with each module's display metadata) from `GET /api/html/agents`, and the React sidebar is built from that response — the frontend has no module list of its own. A folder that is not listed is never imported, and its configs never reach chivon. List order is sidebar order.
 
 Canonical agent ids have the form `folder.agent` (e.g. `finance.treasury`); the chivon chat/monitoring/simulation/action agents are keyed as `finance.treasury.chat`, `finance.treasury.monitoring.liquidity`, `finance.treasury.simulation`, `finance.treasury.action`.
 
@@ -49,7 +51,7 @@ When extending agents or renderers, treat the mockup as the target presentation 
 
 ### User-facing agents
 
-These four agents appear in the chat UI. Frontend and backend share one canonical id (`folder.agent`); the backend resolves it to the chat agent via the registry (`get_agent(id).chat_agent`, `src/llm/agents/__init__.py`).
+These four agents appear in the chat UI because `ENABLED_MODULES` lists them. Frontend and backend share one canonical id (`folder.agent`); the backend resolves it to the chat agent via the registry (`get_agent(id).chat_agent`, `src/llm/agents/__init__.py`).
 
 | Canonical id | Chat agent | Display name | Folder |
 |---|---|---|---|
@@ -68,7 +70,7 @@ The simulator agent is not exposed directly in the UI. It is invoked by the simu
 
 ## Configuration files
 
-Config files are discovered by the registry as `AGENT_CONFIG_FILES` (`src/llm/agents/__init__.py`): `agents/common/config/*.json` first (shared models/constants must merge before agents that reference them), then each agent's `agents/*/*/config/*.json`.
+Config files are assembled by the registry as `AGENT_CONFIG_FILES` (`src/llm/agents/__init__.py`): `agents/common/config/*.json` first (shared models/constants must merge before agents that reference them), then `config/*.json` for each **enabled** module, in `ENABLED_MODULES` order. Configs belonging to a folder that is not listed are not loaded, so its agent ids do not exist at runtime.
 
 | File | Contents |
 |---|---|
@@ -364,7 +366,7 @@ Prefix: `/api/html`
 | Method | Path | Description |
 |---|---|---|
 | `POST` | `/chat` | Stream a chat response (SSE). Body: `{ agent, message, conversation_id? }` — `agent` is a canonical id (`finance.treasury`) |
-| `GET` | `/agents` | Registry-driven list of user-facing agents (`{ id, folder, name, display }`) |
+| `GET` | `/agents` | The enabled modules, in `ENABLED_MODULES` order (`{ id, folder, name, display, description, prompt, starter_prompts }`). The frontend sidebar is built entirely from this |
 | `GET` | `/dashboard/{agent}` | Dashboard payload for one canonical agent id |
 | `GET` | `/conversations` | List stored conversations |
 | `GET` | `/conversations/{id}` | Get messages for a conversation |
@@ -405,15 +407,20 @@ All agents share a common persona defined in `common.json`:
 
 ## Adding or modifying an agent
 
-An agent is one folder. To add `finance.<name>`, create `src/llm/agents/finance/<name>/`:
+An agent is one folder plus one line. To add `finance.<name>`, create `src/llm/agents/finance/<name>/`:
 
 1. `config/finance_<name>_chat.json` and `config/finance_<name>_monitoring.json` — chat + monitoring/simulation/action agents, keyed `finance.<name>.chat`, `finance.<name>.monitoring.*`, `finance.<name>.simulation`, `finance.<name>.action`.
 2. `tools/<name>_data.py` exposing a `TOOLS` dict; `tools/__init__.py` re-exports it.
 3. `dashboard.py` exposing `build()` (uses helpers from `agents/common/dashboard_blocks.py`).
-4. `__init__.py` exposing `DESCRIPTOR = AgentDescriptor(...)` — the registry auto-discovers it; nothing central to edit.
-5. Frontend: add `frontend/src/agents/finance/<name>/index.js` and one import line in `frontend/src/agents/registry.js`.
-6. If the domain has new tables, add them to the allow-lists in `agents/common/tools/freeform_query.py`.
-7. Add tests as needed.
+4. `__init__.py` exposing `DESCRIPTOR = AgentDescriptor(...)`, including the presentation strings the sidebar renders (`display`, `description`, `prompt`, `starter_prompts`).
+5. Add `"finance.<name>"` to `ENABLED_MODULES` in `src/llm/agents/modules.py`, at the position you want it to occupy in the sidebar. **This is the only central edit, and it is what switches the agent on.**
+6. Frontend: nothing to do — the sidebar picks it up from `GET /api/html/agents`. Only if the agent needs custom UI, add an optional `frontend/src/agents/finance/<name>/index.js` default-exporting `{ id, ... }`; it is auto-discovered by `import.meta.glob` and its fields override the API's.
+7. If the domain has new tables, add them to the allow-lists in `agents/common/tools/freeform_query.py`.
+8. Add tests as needed.
+
+To **remove** an agent, delete its id from `ENABLED_MODULES`. The folder can stay on disk — it is no longer imported, its tools leave `LOCAL_TOOLS`, its configs leave chivon, and it disappears from the sidebar. Note that a tool owned by one module and referenced by another's config (e.g. Finance's `get_alert_action_plan`) leaves with its owner, so disabling that module breaks the config that references it.
+
+Discovery is strict: an id that is malformed, duplicated, missing on disk, or whose `DESCRIPTOR.id` disagrees with its folder path raises at import rather than being skipped.
 
 ## Key source files
 
@@ -422,7 +429,8 @@ An agent is one folder. To add `finance.<name>`, create `src/llm/agents/finance/
 | `03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html` | Initial UI mockup — static CFO suite prototype (design reference) |
 | `src/llm/chivon/chivon.py` | Agent framework (config parsing, model building, execution) |
 | `src/llm/chivon/loader.py` | Startup loader (`load_chivon`, `get_chivon`) |
-| `src/llm/agents/__init__.py` | Registry: discovers descriptors, builds `AGENT_CONFIG_FILES` / `LOCAL_TOOLS`, `get_agent()` |
+| `src/llm/agents/modules.py` | **`ENABLED_MODULES`** — the one list of enabled modules, in sidebar order |
+| `src/llm/agents/__init__.py` | Registry: loads the enabled descriptors, builds `AGENT_CONFIG_FILES` / `LOCAL_TOOLS`, `get_agent()` |
 | `src/llm/agents/descriptor.py` | `AgentDescriptor` / `MonitoringPass` dataclasses |
 | `src/llm/agents/finance/<name>/` | Per-agent config, tools, dashboard, descriptor |
 | `src/llm/agents/common/` | Shared config, tools (`freeform_query`, `monitoring_tools`, `alert_actions`, `db`), `dashboard_blocks.py` |
@@ -430,4 +438,5 @@ An agent is one folder. To add `finance.<name>`, create `src/llm/agents/finance/
 | `src/llm/html_renderer.py` | Component → UI block rendering |
 | `src/llm/model_provider.py` | Azure OpenAI model configuration |
 | `src/api/finance_agents_html.py` | HTML chat SSE API |
-| `frontend/src/agents/registry.js` | Frontend agent registry (sidebar + ids) |
+| `frontend/src/agents/AgentsProvider.jsx` | Fetches `GET /api/html/agents` once and shares the module list app-wide (`useAgents()`) |
+| `frontend/src/agents/registry.js` | Shapes the API response for the UI (`buildAgents`, `groupByFolder`) + auto-discovered optional per-agent overrides |

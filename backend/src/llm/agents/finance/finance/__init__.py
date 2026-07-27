@@ -12,6 +12,12 @@ DESCRIPTOR = AgentDescriptor(
     folder="finance",
     name="finance",
     display="Finance",
+    description="Explore financial performance and plan variances.",
+    prompt="Ask Finance about performance...",
+    starter_prompts=(
+        "Explain the main finance performance risks.",
+        "What are the largest EBITDA variance drivers?",
+    ),
     chat_agent="finance.finance.chat",
     simulation_agent="finance.finance.simulation",
     action_agent="finance.finance.action",
