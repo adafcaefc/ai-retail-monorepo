@@ -13,6 +13,7 @@ import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import { buildInfoPrompt } from "./infoRegistry.js";
+import { AGENTS } from "./agents/registry.js";
 
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
@@ -44,69 +45,6 @@ function readStoredChatWidth() {
 }
 
 
-const AGENTS = {
-  collections: {
-    name: "Collections",
-
-    prompt:
-      "Ask Collections about receivables...",
-
-    description:
-      "Review receivables, aging, and collection priorities.",
-
-    starterPrompts: [
-      "Summarize the largest overdue collection risks.",
-      "Which customers should Collections prioritize?"
-    ]
-  },
-
-  finance: {
-    name: "Finance",
-
-    prompt:
-      "Ask Finance about performance...",
-
-    description:
-      "Explore financial performance and plan variances.",
-
-    starterPrompts: [
-      "Explain the main finance performance risks.",
-      "What are the largest EBITDA variance drivers?"
-    ]
-  },
-
-  leakage: {
-    name: "Leakage",
-
-    prompt:
-      "Ask Leakage about revenue exposure...",
-
-    description:
-      "Review billing gaps and revenue leakage.",
-
-    starterPrompts: [
-      "Summarize the largest leakage risks.",
-      "Which leakage issues should be investigated first?"
-    ]
-  },
-
-  treasury: {
-    name: "Treasury",
-
-    prompt:
-      "Ask Treasury about liquidity...",
-
-    description:
-      "Review liquidity and cash-flow forecasts.",
-
-    starterPrompts: [
-      "Explain the current cash and liquidity risks.",
-      "Which action restores the minimum cash buffer fastest?"
-    ]
-  }
-};
-
-
 function createInitialChat() {
   return {
     title: "",
@@ -134,7 +72,7 @@ export default function App() {
   const [
     activeAgent,
     setActiveAgent
-  ] = useState("finance");
+  ] = useState("finance.finance");
 
   const [
     chats,

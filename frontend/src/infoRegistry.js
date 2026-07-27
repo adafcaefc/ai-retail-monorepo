@@ -10,7 +10,7 @@
  * the transcript until the CFO asks for it.
  *
  * Key shapes (aligned to the LIVE payload, not the mockup DOM):
- *   tile:<kpi.id>     KPI tiles          (ids from dashboard_payload.py)
+ *   tile:<kpi.id>     KPI tiles          (ids from each agent's dashboard.py)
  *   view:<viewKey>    focus panel        (dashboard.views[key])
  *   side:top|bottom   side panels        (dashboard.side.top / .bottom)
  *   stat:<stat.id>    what-if stat tiles (ids from summarizeResult)
@@ -25,7 +25,7 @@
  */
 
 export const INFO_REGISTRY = {
-  finance: {
+  "finance.finance": {
     "tile:margin": {
       el: "KPI · EBITDA margin",
       x: "Operating profit as a share of revenue. The headline the CFO reacts to — actual against the 15% target.",
@@ -116,7 +116,7 @@ export const INFO_REGISTRY = {
     }
   },
 
-  treasury: {
+  "finance.treasury": {
     "tile:w5": {
       el: "KPI · Week 5 closing cash",
       x: "The tight week: closing cash falls below the policy buffer.",
@@ -202,7 +202,7 @@ export const INFO_REGISTRY = {
     }
   },
 
-  collections: {
+  "finance.collection": {
     "tile:ar": {
       el: "KPI · AR outstanding",
       x: "Total receivables on the book.",
@@ -293,7 +293,7 @@ export const INFO_REGISTRY = {
     }
   },
 
-  leakage: {
+  "finance.leakage": {
     "tile:flagged": {
       el: "KPI · Flagged this cycle",
       x: "Total amount at risk across every item the scan flagged this cycle.",

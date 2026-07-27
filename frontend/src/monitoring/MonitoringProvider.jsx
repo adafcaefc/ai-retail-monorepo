@@ -12,15 +12,12 @@ import {
   fetchAlerts,
   resetAndRepopulateAlerts
 } from "../api/alerts.js";
+import { AGENT_IDS, AGENT_LIST } from "../agents/registry.js";
 
-const AGENT_IDS = ["finance", "treasury", "collections", "leakage"];
-
-const AGENT_META = {
-  finance: "Finance",
-  treasury: "Treasury",
-  collections: "Collections",
-  leakage: "Leakage"
-};
+// Display names for toast copy, keyed by canonical `folder.agent` id.
+const AGENT_META = Object.fromEntries(
+  AGENT_LIST.map((agent) => [agent.id, agent.name])
+);
 
 // How many problem toasts to pop at once; the rest collapse into a "+N more".
 const MAX_PROBLEM_TOASTS = 4;
