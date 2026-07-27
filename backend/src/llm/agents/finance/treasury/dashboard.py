@@ -8,6 +8,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
     _donut_chart,
+    _enriched,
     _fmt,
     _line_chart,
     _pct,
@@ -53,6 +54,50 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
     defer = baseline.get("deferrable_payment_driver") or {}
     max_defer = float(defer.get("amount_idr_mn") or 3000)
 
+    # Forward points are not stored on the baseline; without them the premium
+    # cannot be derived, so fall back to the mockup's 170 IDR/USD and say so.
+    forward_points = float(baseline.get("forward_points_idr_per_usd") or 0)
+    premium_is_live = forward_points > 0
+    if not premium_is_live:
+        forward_points = 170.0
+
+    def _avoided(usd: float) -> float:
+        if spot <= 0 or not usd:
+            return 0.0
+        return abs(usd) * abs(adverse - spot) / 1_000_000.0
+
+    def _premium(usd: float) -> float:
+        return abs(usd) * forward_points / 1_000_000.0
+
+    half_hedge = recommended_hedge / 2
+    option_rows = [
+        [
+            "A · Do nothing",
+            _fmt(0),
+            _fmt(0),
+            "No cash out · full exposure open",
+        ],
+        [
+            "B · Forward-cover (recommended)",
+            _fmt(_avoided(recommended_hedge)),
+            _fmt(_premium(recommended_hedge)),
+            "No cash out · rate locked today",
+        ],
+        [
+            "C · Buy USD spot now",
+            _fmt(_avoided(recommended_hedge)),
+            _fmt(0),
+            f"Cash out {_fmt(recommended_hedge * spot / 1_000_000.0)} mn now "
+            "· worsens Week 5",
+        ],
+        [
+            "D · Hedge 50%",
+            _fmt(_avoided(half_hedge)),
+            _fmt(_premium(half_hedge)),
+            "No cash out · half the exposure still open",
+        ],
+    ]
+
     kpis = [
         {
             "id": "w5",
@@ -62,6 +107,8 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": f"headroom {_fmt(w5_headroom)} vs buffer",
             "alert": w5_headroom < 0,
+            # Real weekly closing-cash series for a sparkline.
+            "trend": [round(p["value"], 2) for p in points],
         },
         {
             "id": "buffer",
@@ -142,27 +189,19 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "options": _table_view(
-            "Drivers used by simulation",
-            ["Driver", "Counterparty", "Amount", "Week"],
-            [
-                [
-                    "Accelerate collection",
-                    str(driver.get("counterparty_name") or ""),
-                    _fmt(max_accel),
-                    str(
-                        driver.get("expected_week")
-                        or driver.get("original_week")
-                        or ""
-                    ),
-                ],
-                [
-                    "Defer payment",
-                    str(defer.get("counterparty_name") or ""),
-                    _fmt(max_defer),
-                    str(defer.get("payment_week") or ""),
-                ],
-            ],
+            "Agent option comparison · hedge the exposure",
+            ["Option", "Avoided", "Premium", "Liquidity impact"],
+            option_rows,
             tag="decision",
+            note=(
+                "Amounts in IDR mn."
+                + (
+                    ""
+                    if premium_is_live
+                    else " Premium uses an illustrative 170 IDR/USD forward "
+                    "spread — no forward points on this baseline."
+                )
+            ),
         ),
     }
 
@@ -255,4 +294,6 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
 
 
 def build() -> dict[str, Any]:
-    return _treasury_dashboard(_call_with_timeout(get_cashflow_baseline))
+    return _enriched(
+        _treasury_dashboard(_call_with_timeout(get_cashflow_baseline))
+    )

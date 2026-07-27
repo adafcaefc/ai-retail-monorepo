@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -12,6 +14,67 @@ def _call_with_timeout(fn: Callable[[], Any], timeout: float = _DB_TIMEOUT_SEC) 
     with ThreadPoolExecutor(max_workers=1) as pool:
         future = pool.submit(fn)
         return future.result(timeout=timeout)
+
+
+def _parse_num(text: Any) -> float | None:
+    """Best-effort numeric value from a formatted KPI string ('9.2%', '4,300')."""
+    if text is None:
+        return None
+    if isinstance(text, (int, float)):
+        return float(text)
+    match = re.search(r"-?\d[\d,]*\.?\d*", str(text))
+    if not match:
+        return None
+    try:
+        return float(match.group(0).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _parse_target(delta: Any) -> float | None:
+    """Pull a target number out of a delta caption like 'target 15%'."""
+    if not delta:
+        return None
+    match = re.search(r"target\s+(-?\d[\d,]*\.?\d*)", str(delta), re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        return float(match.group(1).replace(",", ""))
+    except ValueError:
+        return None
+
+
+def _enrich_kpis(kpis: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    Attach RAG status + progress-to-target so the frontend can render a
+    glanceable status without re-parsing strings. Direction of "good" is
+    already encoded by each builder's `alert` flag, so status defaults from
+    it; a builder may also pre-set `status` for a proper three-tier band.
+    """
+    for kpi in kpis:
+        value_num = _parse_num(kpi.get("value"))
+        if value_num is not None:
+            kpi["value_num"] = value_num
+
+        target_num = _parse_target(kpi.get("delta"))
+        if target_num is not None:
+            kpi["target_num"] = target_num
+            if value_num is not None and target_num:
+                kpi["progress"] = round(
+                    max(0.0, min(1.2, value_num / target_num)), 4
+                )
+
+        if "status" not in kpi:
+            kpi["status"] = "bad" if kpi.get("alert") else "good"
+
+    return kpis
+
+
+def _enriched(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run a finished dashboard payload through KPI enrichment."""
+    payload["kpis"] = _enrich_kpis(payload.get("kpis") or [])
+    return payload
+
 
 def _fmt(n: float, digits: int = 0) -> str:
     if digits <= 0:

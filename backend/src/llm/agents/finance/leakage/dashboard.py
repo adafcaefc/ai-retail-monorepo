@@ -8,6 +8,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
     _donut_chart,
+    _enriched,
     _fmt,
     _line_chart,
     _pct,
@@ -50,6 +51,70 @@ def simulate_leakage_scenario(
             "txt": f"{round(total / at_risk * 100) if at_risk else 0}% of at risk",
         },
     }
+
+
+def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
+    """Cluster flagged items by vendor.
+
+    The worklist answers "what do I work next"; this answers "who keeps
+    doing this to us". Repeat offenders and duplicated vendor masters only
+    show up once the per-item flags are grouped.
+    """
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        name = str(
+            _row_get(row, "vendor_name", "counterparty", "title", "name") or ""
+        ).strip()
+        if not name:
+            continue
+
+        try:
+            amount = float(
+                _row_get(row, "amount_idr_mn", "amount", "value") or 0
+            )
+        except (TypeError, ValueError):
+            amount = 0.0
+
+        kind = str(
+            _row_get(row, "anomaly_type", "type", "category") or ""
+        ).strip()
+
+        try:
+            score = float(_row_get(row, "risk_score", "score") or 0)
+        except (TypeError, ValueError):
+            score = 0.0
+
+        bucket = grouped.setdefault(
+            name,
+            {"amount": 0.0, "flags": 0, "kinds": set(), "score": 0.0},
+        )
+        bucket["amount"] += amount
+        bucket["flags"] += 1
+        bucket["score"] = max(bucket["score"], score)
+        if kind:
+            bucket["kinds"].add(kind)
+
+    ordered = sorted(
+        grouped.items(), key=lambda kv: kv[1]["amount"], reverse=True
+    )
+
+    out: list[list[Any]] = []
+    for name, agg in ordered[:10]:
+        kinds = ", ".join(sorted(agg["kinds"])) or "—"
+        # No stored score: fall back to an exposure-weighted proxy so the
+        # column still ranks. Flagged as illustrative in the view note.
+        score = agg["score"] or min(99.0, agg["flags"] * 20 + agg["amount"] / 100)
+        out.append(
+            [
+                name,
+                agg["flags"],
+                kinds,
+                _fmt(agg["amount"]),
+                str(round(score)),
+            ]
+        )
+    return out
 
 
 def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
@@ -197,6 +262,30 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 ]
             )
 
+    vendor_rows = _leakage_vendor_rollup(worklist or anomalies)
+
+    # Everything at risk that is neither held nor clawable — currently the
+    # lost early-payment discounts.
+    lost = max(0.0, at_risk - base_sim["blocked"] - (duplicates + 400))
+
+    recovery_rows = [
+        {
+            "label": label,
+            "value": simulate_leakage_scenario(
+                hold=fraud,
+                dup_rec=rate,
+                ov_rec=rate,
+                duplicates_amount=duplicates,
+                at_risk=at_risk,
+            )["total_protected"],
+        }
+        for label, rate in (
+            ("Pessimistic 60%", 60),
+            ("Base 80%", 80),
+            ("Current 95%", 95),
+        )
+    ]
+
     views = {
         "categories": {
             **_bar_chart(
@@ -207,25 +296,32 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
         "blockvs": {
             **_bar_chart(
-                "Blocked vs recoverable",
+                "Blocked vs recoverable vs lost",
                 [
                     {"label": "Blocked", "value": base_sim["blocked"]},
                     {"label": "Recoverable", "value": duplicates + 400},
+                    {"label": "Lost", "value": round(lost, 2)},
                 ],
                 tag="money",
+                note=(
+                    "Blocked never leaves; recoverable must be clawed back; "
+                    "lost is already gone."
+                ),
             ),
         },
+        # Sensitivity, not a restatement of side:bottom. Shows how much of
+        # "protected" is an assumption about claw-back rather than cash held.
         "recovery": {
             **_bar_chart(
-                "Protected vs at risk",
-                [
-                    {"label": "At risk", "value": at_risk},
-                    {
-                        "label": "Protected",
-                        "value": base_sim["total_protected"],
-                    },
-                ],
+                "Recovery scenario · protected by claw-back rate",
+                recovery_rows,
                 tag="recovery",
+                target=at_risk,
+                target_label=f"At risk {_fmt(at_risk)}",
+                note=(
+                    f"Blocked {_fmt(base_sim['blocked'])} is certain; the rest "
+                    "moves with the recovery rate you assume."
+                ),
             ),
         },
         "worklist": _table_view(
@@ -235,10 +331,11 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             tag="worklist",
         ),
         "vendors": _table_view(
-            "Vendor / anomaly radar",
-            wl_headers,
-            wl_rows,
+            "Vendor risk radar",
+            ["Vendor", "Flags", "Types", "At risk", "Score"],
+            vendor_rows,
             tag="risk",
+            note="Flags clustered by vendor. Score is illustrative (0–100).",
         ),
     }
 
@@ -311,4 +408,6 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 
 
 def build() -> dict[str, Any]:
-    return _leakage_dashboard(_call_with_timeout(get_payment_leakage_snapshot))
+    return _enriched(
+        _leakage_dashboard(_call_with_timeout(get_payment_leakage_snapshot))
+    )

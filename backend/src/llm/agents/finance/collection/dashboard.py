@@ -8,6 +8,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
     _donut_chart,
+    _enriched,
     _fmt,
     _line_chart,
     _pct,
@@ -71,6 +72,51 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         or "PT Anugerah Prima (Customer A)"
     )
     max_pull = float(top_customer.get("overdue_idr_mn") or 10000)
+
+    # Three reach levels: one call, a focused push, or chase everything.
+    # Each converts recoverable cash into the DSO it would buy.
+    daily_sales = total_ar / dso if dso else 0.0
+
+    def _expected(rows: list[dict[str, Any]]) -> float:
+        rates = {"low": 0.95, "medium": 0.85, "high": 0.40}
+        got = 0.0
+        for row in rows:
+            amount = float(row.get("overdue_idr_mn") or 0)
+            explicit = row.get("expected_recovery_idr_mn")
+            if explicit is not None:
+                try:
+                    got += float(explicit)
+                    continue
+                except (TypeError, ValueError):
+                    pass
+            tier = str(row.get("risk_tier") or "medium").strip().lower()
+            got += amount * rates.get(tier, 0.85)
+        return got
+
+    short_name = customer_name.split("(")[0].strip()[:14]
+    if worklist:
+        levels = [
+            (short_name, _expected(worklist[:1])),
+            ("Top 5", _expected(worklist[:5])),
+            ("All overdue", _expected(worklist)),
+        ]
+    else:
+        # No worklist rows — approximate the reach levels from the overdue
+        # total at a blended recovery rate. Kept monotonic on purpose:
+        # wider reach can never free less.
+        blended = 0.85
+        levels = [
+            (short_name, min(max_pull, overdue) * blended),
+            ("Top 5", min(max_pull * 3.5, overdue) * blended),
+            ("All overdue", overdue * blended),
+        ]
+
+    options_bars = []
+    for label, freed in levels:
+        if daily_sales:
+            new_dso = (total_ar - freed) / daily_sales
+            label = f"{label} · {new_dso:.0f}d"
+        options_bars.append({"label": label, "value": round(freed, 2)})
 
     kpis = [
         {
@@ -182,6 +228,17 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 tag="risk",
             ),
         },
+        "options": {
+            **_bar_chart(
+                "Three collection options · cash freed",
+                options_bars,
+                tag="decision",
+                note=(
+                    "Bar is cash freed; the label carries the DSO it buys. "
+                    "Wider reach frees more but costs more effort."
+                ),
+            ),
+        },
     }
 
     side = {
@@ -250,10 +307,7 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-# ---------------------------------------------------------------------------
-# Treasury
-# ---------------------------------------------------------------------------
-
-
 def build() -> dict[str, Any]:
-    return _collections_dashboard(_call_with_timeout(get_collections_snapshot))
+    return _enriched(
+        _collections_dashboard(_call_with_timeout(get_collections_snapshot))
+    )

@@ -8,6 +8,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
     _donut_chart,
+    _enriched,
     _fmt,
     _line_chart,
     _pct,
@@ -114,6 +115,68 @@ def _finance_comp(
     }
 
 
+def _finance_opex_rows(
+    profit: list[dict[str, Any]],
+) -> tuple[list[list[Any]], bool]:
+    """Opex lines vs budget, worst variance first.
+
+    profit_summary is selected with `SELECT *`, so the column names are not
+    guaranteed. Probe the plausible ones; if nothing resolves, fall back to
+    the mockup's illustrative breakdown and let the caller say so in the note.
+    Returns (rows, is_live).
+    """
+
+    rows: list[list[Any]] = []
+    for row in profit:
+        label = str(
+            _row_get(
+                row, "line_item", "opex_line", "category", "name", "label"
+            )
+            or ""
+        ).strip()
+        if not label:
+            continue
+        # Only opex lines; skip revenue/COGS rows that share the table.
+        if any(skip in label.lower() for skip in ("revenue", "cogs", "sales")):
+            continue
+
+        actual = _row_get(row, "actual_idr_mn", "actual", "amount_idr_mn", "value")
+        budget = _row_get(row, "budget_idr_mn", "budget", "plan_idr_mn", "plan")
+        if actual is None or budget is None:
+            continue
+        try:
+            act = float(actual)
+            bud = float(budget)
+        except (TypeError, ValueError):
+            continue
+
+        rows.append([label, act, bud, act - bud])
+
+    is_live = bool(rows)
+    if not is_live:
+        rows = [
+            ["Payroll", 3300.0, 3200.0, 100.0],
+            ["Logistics & freight", 1650.0, 1400.0, 250.0],
+            ["Rent & utilities", 920.0, 900.0, 20.0],
+            ["Marketing & selling", 850.0, 800.0, 50.0],
+            ["Other opex", 760.0, 700.0, 60.0],
+        ]
+
+    rows.sort(key=lambda r: r[3], reverse=True)
+    total = [
+        "Total operating expenses",
+        sum(r[1] for r in rows),
+        sum(r[2] for r in rows),
+        sum(r[3] for r in rows),
+    ]
+
+    formatted = [
+        [r[0], _fmt(r[1]), _fmt(r[2]), f"{'+' if r[3] >= 0 else ''}{_fmt(r[3])}"]
+        for r in rows + [total]
+    ]
+    return formatted, is_live
+
+
 def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     base = _finance_comp(0, 0, 0, 0, 0, "all")
     kpis_rows = snap.get("kpis") or []
@@ -185,6 +248,8 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         for line in base["lines"]
     ]
 
+    opex_rows, opex_is_live = _finance_opex_rows(profit)
+
     kpis = [
         {
             "id": "margin",
@@ -194,6 +259,14 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "",
             "delta": f"target {_FINANCE_TARGET * 100:.0f}%",
             "alert": margin < _FINANCE_TARGET,
+            # Three-tier RAG: at/above target = good, within 20% below = warn.
+            "status": (
+                "good"
+                if margin >= _FINANCE_TARGET
+                else "warn"
+                if margin >= _FINANCE_TARGET * 0.8
+                else "bad"
+            ),
         },
         {
             "id": "ebitda",
@@ -291,11 +364,16 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             ),
         },
         "opex": _table_view(
-            "Operating expenses (illustrative base)",
-            ["Line", "Base"],
-            [["Total opex", _fmt(base["opex"])]],
+            "Operating expenses vs budget",
+            ["Line", "Actual", "Budget", "Variance"],
+            opex_rows,
             tag="cost",
-            note="Replace with profit_summary opex breakdown when columns confirmed.",
+            note=(
+                "Worst variance first — the repeatable saving is at the top."
+                if opex_is_live
+                else "Illustrative breakdown; profit_summary has no opex "
+                "line columns in this batch."
+            ),
         ),
     }
 
@@ -408,4 +486,6 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 
 
 def build() -> dict[str, Any]:
-    return _finance_dashboard(_call_with_timeout(get_financial_performance_snapshot))
+    return _enriched(
+        _finance_dashboard(_call_with_timeout(get_financial_performance_snapshot))
+    )

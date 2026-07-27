@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   approveAction,
@@ -44,7 +44,9 @@ export default function AlertsPanel({
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [notifDismissed, setNotifDismissed] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const wasRunningRef = useRef(false);
 
   const [subagentsOpen, setSubagentsOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
@@ -102,11 +104,56 @@ export default function AlertsPanel({
     };
   }, [agentId, monitoring.runId]);
 
+  // Surface monitoring progress as a transient toast instead of a
+  // dashboard-blocking banner. Only fire on the running -> settled
+  // transition so switching agents does not re-announce old results.
   useEffect(() => {
     if (monitoring.isRunning) {
-      setNotifDismissed(false);
+      wasRunningRef.current = true;
+      setToast({
+        kind: "running",
+        text: "Running monitoring agents across all boards…"
+      });
+      return;
     }
-  }, [monitoring.isRunning]);
+
+    if (wasRunningRef.current) {
+      wasRunningRef.current = false;
+      if (monitoring.error) {
+        setToast({ kind: "error", text: monitoring.error });
+      } else {
+        setToast({
+          kind: "done",
+          text: monitoring.note || "Monitoring complete."
+        });
+      }
+    }
+  }, [monitoring.isRunning, monitoring.error, monitoring.note]);
+
+  useEffect(() => {
+    if (!toast || toast.kind === "running") {
+      return;
+    }
+    const timeout = window.setTimeout(
+      () => setToast(null),
+      toast.kind === "error" ? 7000 : 4000
+    );
+    return () => window.clearTimeout(timeout);
+  }, [toast]);
+
+  // Close the alerts popover on Escape.
+  useEffect(() => {
+    if (!alertsOpen) {
+      return;
+    }
+    const onKey = (event) => {
+      if (event.key === "Escape") {
+        setAlertsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [alertsOpen]);
 
   const flatActions = useMemo(
     () => flattenActions(alerts),
@@ -282,13 +329,10 @@ export default function AlertsPanel({
     }
   }
 
-  const topAlert = alerts[0] || null;
   const monitoringBusy = monitoring.isRunning;
   const displayError = error || monitoring.error;
   const displayNote = monitoring.note;
-  const showNotifBar =
-    !notifDismissed &&
-    (monitoringBusy || loading || Boolean(topAlert) || Boolean(displayError));
+  const alertCount = alerts.length;
 
   return (
     <div className="workboard-top-stack">
@@ -337,89 +381,120 @@ export default function AlertsPanel({
             >
               Audit History
             </button>
-          </div>
-        </div>
-      </header>
 
-      {showNotifBar ? (
-        <div
-          className={
-            "notif-header" +
-            (!monitoringBusy && !loading && alerts.length > 0
-              ? " notif-header-expanded"
-              : "")
-          }
-          role="status"
-          data-testid="notif-header"
-        >
-          <div className="notif-header-top">
-            {monitoringBusy ? (
-              <span
-                className="workboard-spinner notif-header-spinner"
-                aria-hidden="true"
-              />
-            ) : (
-              <div className="notif-header-bell" aria-hidden="true">
-                <svg viewBox="0 0 24 24" width="17" height="17">
-                  <path
-                    d="M12 3a5 5 0 00-5 5v3l-2 3h14l-2-3V8a5 5 0 00-5-5zm0 18a2.5 2.5 0 002.4-2h-4.8A2.5 2.5 0 0012 21z"
-                    fill="#c4314b"
-                  />
-                </svg>
-              </div>
-            )}
-            <div className="notif-header-text">
-              {monitoringBusy ? (
-                <>
-                  <b>Monitoring</b>
-                  {" — "}
-                  Running monitoring agents…
-                </>
-              ) : loading ? (
-                <>
-                  <b>Alerts</b>
-                  {" — "}
-                  Loading alerts…
-                </>
-              ) : displayError ? (
-                <>
-                  <b>Monitoring error</b>
-                  {" — "}
-                  {displayError}
-                </>
-              ) : topAlert ? (
-                <>
-                  <b>
-                    {alerts.length} alert
-                    {alerts.length === 1 ? "" : "s"}
-                  </b>
-                  {" — "}
-                  Tap an alert to see suggested action names.
-                </>
-              ) : (
-                <>
-                  <b>Monitoring</b>
-                  {" — "}
-                  {displayNote || "No alerts detected."}
-                </>
-              )}
-            </div>
             <button
               type="button"
-              className="notif-header-close"
-              aria-label="Dismiss notification"
-              onClick={() => setNotifDismissed(true)}
+              className={
+                "alerts-btn alerts-bell" +
+                (alertsOpen ? " on" : "") +
+                (monitoringBusy ? " is-busy" : "")
+              }
+              aria-label={`${alertCount} alert${
+                alertCount === 1 ? "" : "s"
+              }`}
+              aria-expanded={alertsOpen}
+              onClick={() => setAlertsOpen((open) => !open)}
             >
-              ×
+              {monitoringBusy ? (
+                <span
+                  className="workboard-spinner alerts-bell-spinner"
+                  aria-hidden="true"
+                />
+              ) : (
+                <BellIcon />
+              )}
+              {alertCount > 0 ? (
+                <span className="alerts-bell-badge">{alertCount}</span>
+              ) : null}
             </button>
           </div>
 
-          {!monitoringBusy && !loading && alerts.length > 0 ? (
-            <ul className="status-alert-list notif-alert-list">
-              {alerts.map((alert) => (
-                <StatusAlertCard key={alert.id} alert={alert} />
-              ))}
-            </ul>
+          {alertsOpen ? (
+            <>
+              <button
+                type="button"
+                className="alerts-popover-scrim"
+                aria-label="Close alerts"
+                onClick={() => setAlertsOpen(false)}
+              />
+              <div
+                className="alerts-popover"
+                role="dialog"
+                aria-label={`${agentName} alerts`}
+              >
+                <div className="alerts-popover-head">
+                  <div>
+                    <strong>
+                      {alertCount} alert{alertCount === 1 ? "" : "s"}
+                    </strong>
+                    <span>{agentName}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="alerts-popover-close"
+                    aria-label="Close"
+                    onClick={() => setAlertsOpen(false)}
+                  >
+                    ×
+                  </button>
+                </div>
+
+                {loading ? (
+                  <div className="alerts-popover-empty">
+                    <span
+                      className="workboard-spinner"
+                      aria-hidden="true"
+                    />
+                    <span>Loading alerts…</span>
+                  </div>
+                ) : displayError ? (
+                  <p className="alerts-popover-empty" role="alert">
+                    {displayError}
+                  </p>
+                ) : alertCount === 0 ? (
+                  <div className="alerts-popover-empty">
+                    <BellIcon />
+                    <span>No alerts detected. You&apos;re all clear.</span>
+                  </div>
+                ) : (
+                  <ul className="status-alert-list alerts-popover-list">
+                    {alerts.map((alert) => (
+                      <StatusAlertCard key={alert.id} alert={alert} />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      {toast ? (
+        <div
+          className={"monitoring-toast " + toast.kind}
+          role="status"
+          data-testid="monitoring-toast"
+        >
+          {toast.kind === "running" ? (
+            <span
+              className="workboard-spinner monitoring-toast-spinner"
+              aria-hidden="true"
+            />
+          ) : (
+            <span className="monitoring-toast-icon" aria-hidden="true">
+              {toast.kind === "error" ? "!" : "✓"}
+            </span>
+          )}
+          <span className="monitoring-toast-text">{toast.text}</span>
+          {toast.kind !== "running" ? (
+            <button
+              type="button"
+              className="monitoring-toast-close"
+              aria-label="Dismiss"
+              onClick={() => setToast(null)}
+            >
+              ×
+            </button>
           ) : null}
         </div>
       ) : null}
@@ -925,6 +1000,24 @@ function ApprovalStep({
         </div>
       </div>
     </div>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg
+      className="alerts-bell-icon"
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 3a5 5 0 00-5 5v3l-2 3h14l-2-3V8a5 5 0 00-5-5zm0 18a2.5 2.5 0 002.4-2h-4.8A2.5 2.5 0 0012 21z"
+      />
+    </svg>
   );
 }
 
