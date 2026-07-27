@@ -170,14 +170,41 @@ summary:focus-visible {
 
 .app-shell {
   display: grid;
+  gap: 14px;
+  height: 100dvh;
+  padding: 14px;
+  overflow: hidden;
+}
+
+/*
+ * Chat tertutup:
+ * sidebar + dashboard menggunakan seluruh sisa ruang.
+ */
+.app-shell.chat-closed {
+  grid-template-columns:
+    220px
+    minmax(0, 1fr);
+}
+
+/*
+ * Chat terbuka:
+ * sidebar + dashboard + resize handle + chat drawer.
+ */
+.app-shell.chat-open {
   grid-template-columns:
     220px
     minmax(0, 1fr)
     10px
     var(--chat-width, 380px);
-  gap: 14px;
-  height: 100dvh;
-  padding: 14px;
+}
+
+/*
+ * Chat tetap mounted di React agar state dan history tidak hilang,
+ * tetapi tidak mengambil ruang ketika drawer ditutup.
+ */
+.app-shell.chat-closed .chat-panel,
+.app-shell.chat-closed .chat-resize-handle {
+  display: none;
 }
 
 .app-shell.is-resizing {
@@ -451,6 +478,28 @@ summary:focus-visible {
   overflow: hidden;
 }
 
+.app-shell.chat-open .chat-panel {
+  animation: chat-drawer-enter var(--dur-base) var(--ease-standard);
+}
+
+@keyframes chat-drawer-enter {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.chat-open .chat-panel {
+    animation: none;
+  }
+}
+
 .chat-header {
   display: flex;
   min-height: 92px;
@@ -476,6 +525,46 @@ summary:focus-visible {
 
 .clear-area {
   position: relative;
+}
+
+.chat-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.chat-close-button {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 13px;
+  background: var(--surface);
+  box-shadow:
+    6px 6px 14px #cbd2dc,
+    -6px -6px 14px #ffffff;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 1.35rem;
+  line-height: 1;
+  transition:
+    color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard),
+    transform var(--dur-fast) var(--ease-standard);
+}
+
+.chat-close-button:hover {
+  color: var(--ink);
+  background: var(--surface-strong);
+  transform: translateY(-1px);
+}
+
+.chat-close-button:active {
+  transform: translateY(0);
 }
 
 .clear-button {
@@ -931,8 +1020,6 @@ summary:focus-visible {
 
 /* Chart */
 
-
-
 .chart-header h3 {
   margin: 0;
   font-size: 0.98rem;
@@ -957,7 +1044,9 @@ summary:focus-visible {
   border-radius: 14px;
   background: linear-gradient(180deg, #fbfcfe, #f4f7fb);
   overflow: hidden;
-  transition: border-color 160ms ease, box-shadow 160ms ease;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .tool-step.running {
@@ -1139,7 +1228,10 @@ summary:focus-visible {
   border-radius: 10px;
   background: #0f1b2d;
   color: #d7e2f4;
-  font: 0.7rem/1.5 Consolas, "SF Mono", monospace;
+  font:
+    0.7rem/1.5 Consolas,
+    "SF Mono",
+    monospace;
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1453,9 +1545,7 @@ summary:focus-visible {
   border: 1px solid #e3e2ea;
   border-radius: 12px;
   background: #ffffff;
-  box-shadow:
-    0 1px 3px
-    rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .chart-card-header {
@@ -1562,21 +1652,8 @@ summary:focus-visible {
   padding: 10px 12px;
   border: 1px solid #d9dce4;
   border-radius: 9px;
-  background:
-    rgba(
-      255,
-      255,
-      255,
-      0.98
-    );
-  box-shadow:
-    0 8px 20px
-    rgba(
-      31,
-      41,
-      55,
-      0.14
-    );
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 20px rgba(31, 41, 55, 0.14);
 }
 
 .chart-tooltip > strong {
@@ -1664,15 +1741,41 @@ summary:focus-visible {
     overflow: auto;
   }
 
-  .app-shell {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto minmax(0, 1fr);
+  .app-shell,
+  .app-shell.chat-open,
+  .app-shell.chat-closed {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows:
+      auto
+      minmax(0, 1fr);
     gap: 10px;
     height: 100dvh;
     padding: 10px;
   }
 
-  .chat-resize-handle {
+  /*
+ * Mobile:
+ * agent sidebar tetap menjadi strip bagian atas.
+ * Saat chat dibuka, chat menggantikan dashboard sebagai workspace.
+ */
+  .app-shell.chat-open .workboard {
+    display: none;
+  }
+
+  .app-shell.chat-open .chat-panel {
+    display: grid;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .app-shell.chat-closed .workboard {
+    display: grid;
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .chat-resize-handle,
+  .app-shell.chat-open .chat-resize-handle {
     display: none;
   }
 
@@ -1707,8 +1810,7 @@ summary:focus-visible {
   }
 
   .agent-list {
-    grid-template-columns:
-      repeat(4, minmax(68px, 1fr));
+    grid-template-columns: repeat(4, minmax(68px, 1fr));
     gap: 7px;
   }
 
@@ -1812,13 +1914,11 @@ summary:focus-visible {
 .simulation-error {
   padding: 11px 13px;
 
-  border:
-    1px solid #f1b8b1;
+  border: 1px solid #f1b8b1;
 
   border-radius: 11px;
 
-  background:
-    var(--danger-soft);
+  background: var(--danger-soft);
 
   color: #8e2e27;
 
@@ -1828,15 +1928,13 @@ summary:focus-visible {
 .simulation-success {
   padding: 11px 13px;
 
-  border:
-    1px solid #a6d7c1;
+  border: 1px solid #a6d7c1;
 
   border-radius: 11px;
 
   background: #ecfdf3;
 
-  color:
-    var(--success);
+  color: var(--success);
 
   font-size: 0.75rem;
   font-weight: 700;
@@ -1847,8 +1945,7 @@ summary:focus-visible {
 }
 
 .recalculate-button:not(:disabled):hover {
-  background:
-    var(--primary-deep);
+  background: var(--primary-deep);
 }
 
 /* Workboard */
@@ -2413,8 +2510,7 @@ summary:focus-visible {
   display: grid;
   place-items: center;
   font-weight: 900;
-  background:
-    conic-gradient(var(--success) 0 62%, #e3e8f2 0 100%);
+  background: conic-gradient(var(--success) 0 62%, #e3e8f2 0 100%);
   color: var(--ink);
 }
 
@@ -2425,17 +2521,18 @@ summary:focus-visible {
 }
 
 @media (max-width: 1200px) {
-  .app-shell {
-    grid-template-columns: 180px minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) 42vh;
+  .app-shell.chat-closed {
+    grid-template-columns:
+      180px
+      minmax(0, 1fr);
   }
 
-  .chat-resize-handle {
-    display: none;
-  }
-
-  .chat-panel {
-    grid-column: 1 / -1;
+  .app-shell.chat-open {
+    grid-template-columns:
+      180px
+      minmax(0, 1fr)
+      10px
+      min(var(--chat-width, 380px), 42vw);
   }
 
   .kpi-row {
@@ -2494,11 +2591,7 @@ summary:focus-visible {
   background: rgba(255, 255, 255, 0.82);
   color: #3b4a68;
   cursor: pointer;
-  font-family:
-    Aptos,
-    "Segoe UI",
-    Arial,
-    sans-serif;
+  font-family: Aptos, "Segoe UI", Arial, sans-serif;
   font-size: 0.72rem;
   font-weight: 550;
   line-height: 1.35;
@@ -2532,9 +2625,7 @@ summary:focus-visible {
   border-color: rgba(91, 95, 199, 0.55);
   background: #ffffff;
   color: #1f2d4d;
-  box-shadow:
-    0 4px 12px
-    rgba(35, 45, 90, 0.1);
+  box-shadow: 0 4px 12px rgba(35, 45, 90, 0.1);
 }
 
 .prompt-chip:hover:not(:disabled) .prompt-chip-spark {
@@ -2573,10 +2664,7 @@ summary:focus-visible {
   }
 }
 
-@media (
-  prefers-reduced-motion:
-    reduce
-) {
+@media (prefers-reduced-motion: reduce) {
   .prompt-chip,
   .prompt-chip-spark {
     transition: none;
@@ -2985,6 +3073,33 @@ summary:focus-visible {
 .alerts-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.chat-toggle-btn {
+  white-space: nowrap;
+}
+
+.chat-toggle-btn.on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.chat-toggle-btn.on:hover:not(:disabled) {
+  border-color: var(--primary-deep);
+  background: var(--primary-deep);
+  color: #fff;
+}
+
+.chat-toggle-icon {
+  flex: 0 0 auto;
+}
+
+.chat-toggle-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .alerts-badge {
@@ -3823,4 +3938,40 @@ summary:focus-visible {
 .info-card-cta:disabled {
   background: var(--gray-300);
   cursor: not-allowed;
+}
+
+@media (max-width: 1040px) {
+  .alerts-toolbar {
+    justify-content: flex-start;
+  }
+
+  .chat-toggle-label {
+    max-width: 110px;
+  }
+}
+
+@media (max-width: 620px) {
+  .chat-toggle-label {
+    max-width: 88px;
+  }
+
+  .chat-header {
+    gap: 8px;
+  }
+
+  .chat-header-actions {
+    gap: 6px;
+  }
+
+  .clear-button {
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 0.72rem;
+  }
+
+  .chat-close-button {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
 }

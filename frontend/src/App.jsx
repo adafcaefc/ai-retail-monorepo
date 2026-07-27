@@ -1,20 +1,12 @@
-import {
-  useEffect,
-  useRef,
-  useState
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-  fetchConversations,
-  streamChat
-} from "./api/chatStream.js";
+import { fetchConversations, streamChat } from "./api/chatStream.js";
 
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import { buildInfoPrompt } from "./infoRegistry.js";
 import { useAgents } from "./agents/AgentsProvider.jsx";
-
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
 const CHAT_WIDTH_MIN = 320;
@@ -26,24 +18,16 @@ function clampChatWidth(value) {
   if (!Number.isFinite(value)) {
     return CHAT_WIDTH_DEFAULT;
   }
-  return Math.min(
-    CHAT_WIDTH_MAX,
-    Math.max(CHAT_WIDTH_MIN, Math.round(value))
-  );
+  return Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, Math.round(value)));
 }
 
 function readStoredChatWidth() {
   if (typeof window === "undefined") {
     return CHAT_WIDTH_DEFAULT;
   }
-  const stored = Number(
-    window.localStorage.getItem(CHAT_WIDTH_KEY)
-  );
-  return stored
-    ? clampChatWidth(stored)
-    : CHAT_WIDTH_DEFAULT;
+  const stored = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
+  return stored ? clampChatWidth(stored) : CHAT_WIDTH_DEFAULT;
 }
-
 
 function createInitialChat() {
   return {
@@ -51,15 +35,14 @@ function createInitialChat() {
     messages: [],
     conversationId: null,
     busy: false,
-    suggestions: []
+    suggestions: [],
+    draft: "",
   };
 }
-
 
 // Stand-in while the module list is still loading, so hooks below can read
 // `currentChat` unconditionally. Its identity is stable on purpose.
 const EMPTY_CHAT = createInitialChat();
-
 
 export default function App() {
   const {
@@ -67,77 +50,43 @@ export default function App() {
     agentIds,
     groups,
     loading: agentsLoading,
-    error: agentsError
+    error: agentsError,
   } = useAgents();
 
-  const [
-    activeAgent,
-    setActiveAgent
-  ] = useState(null);
+  const [activeAgent, setActiveAgent] = useState(null);
 
-  const [
-    chats,
-    setChats
-  ] = useState({});
+  const [chats, setChats] = useState({});
 
-  const [
-    collapsedFolders,
-    setCollapsedFolders
-  ] = useState(
-    () => new Set()
-  );
+  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
 
-  const [
-    input,
-    setInput
-  ] = useState("");
+  const [conversationList, setConversationList] = useState([]);
 
-  const [
-    conversationList,
-    setConversationList
-  ] = useState([]);
+  const [clearOpen, setClearOpen] = useState(false);
 
-  const [
-    clearOpen,
-    setClearOpen
-  ] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const [
-    chatWidth,
-    setChatWidth
-  ] = useState(
-    readStoredChatWidth
-  );
+  const [chatWidth, setChatWidth] = useState(readStoredChatWidth);
 
-  const [
-    resizing,
-    setResizing
-  ] = useState(false);
+  const [resizing, setResizing] = useState(false);
 
-  const abortControllers =
-    useRef({});
+  const abortControllers = useRef({});
 
-  const transcriptRef =
-    useRef(null);
+  const transcriptRef = useRef(null);
 
-  const composerRef =
-    useRef(null);
+  const composerRef = useRef(null);
 
-  const currentAgent =
-    agents[activeAgent] || null;
+  const currentAgent = agents[activeAgent] || null;
 
-  const currentChat =
-    chats[activeAgent] || EMPTY_CHAT;
+  const currentChat = chats[activeAgent] || EMPTY_CHAT;
+
+  const input = currentChat.draft || "";
 
   const visibleSuggestions =
     currentChat.messages.length > 0
       ? currentChat.suggestions
-      : currentAgent?.starterPrompts ?? [];
+      : (currentAgent?.starterPrompts ?? []);
 
-  const canSend =
-    Boolean(input.trim()) &&
-    !currentChat.busy;
-
+  const canSend = Boolean(input.trim()) && !currentChat.busy;
 
   // Seed one chat per enabled module once the backend list arrives, keeping
   // any chat already in flight. The first module is the default board.
@@ -161,56 +110,53 @@ export default function App() {
     });
 
     setActiveAgent((current) =>
-      current && agentIds.includes(current)
-        ? current
-        : agentIds[0]
+      current && agentIds.includes(current) ? current : agentIds[0],
     );
   }, [agentIds]);
-
 
   useEffect(() => {
     async function loadConversations() {
       try {
-        const result =
-          await fetchConversations();
+        const result = await fetchConversations();
 
-        setConversationList(
-          Array.isArray(
-            result.items
-          )
-            ? result.items
-            : []
-        );
+        setConversationList(Array.isArray(result.items) ? result.items : []);
       } catch (error) {
-        console.error(
-          "Unable to load conversations:",
-          error
-        );
+        console.error("Unable to load conversations:", error);
       }
     }
 
     loadConversations();
   }, []);
 
-
   useEffect(() => {
-    const element =
-      transcriptRef.current;
+    const element = transcriptRef.current;
 
     if (!element) {
       return;
     }
 
     requestAnimationFrame(() => {
-      element.scrollTop =
-        element.scrollHeight;
+      element.scrollTop = element.scrollHeight;
     });
-  }, [
-    activeAgent,
-    currentChat.messages,
-    currentChat.suggestions
-  ]);
+  }, [activeAgent, currentChat.messages, currentChat.suggestions]);
 
+  useEffect(() => {
+    if (!isChatOpen) {
+      return;
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape" && !clearOpen) {
+        setIsChatOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isChatOpen, clearOpen]);
 
   // Grow the composer to fit its content (up to a max), so injected
   // suggestions and multi-line drafts are never clipped.
@@ -223,96 +169,62 @@ export default function App() {
 
     element.style.height = "auto";
 
-    element.style.height =
-      `${element.scrollHeight}px`;
+    element.style.height = `${element.scrollHeight}px`;
   }, [input, activeAgent]);
-
 
   // Reveal a scroll surface's scrollbar only while it is actively scrolling,
   // then fade it back out after a short idle. Hover is handled in CSS.
   useEffect(() => {
-    const elements = [
-      transcriptRef.current,
-      composerRef.current
-    ].filter(Boolean);
+    const elements = [transcriptRef.current, composerRef.current].filter(
+      Boolean,
+    );
 
     const timers = new Map();
 
-    const handlers = elements.map(
-      (element) => {
-        const onScroll = () => {
-          element.classList.add(
-            "is-scrolling"
-          );
+    const handlers = elements.map((element) => {
+      const onScroll = () => {
+        element.classList.add("is-scrolling");
 
-          window.clearTimeout(
-            timers.get(element)
-          );
+        window.clearTimeout(timers.get(element));
 
-          timers.set(
-            element,
-            window.setTimeout(() => {
-              element.classList.remove(
-                "is-scrolling"
-              );
-            }, 900)
-          );
-        };
-
-        element.addEventListener(
-          "scroll",
-          onScroll,
-          { passive: true }
+        timers.set(
+          element,
+          window.setTimeout(() => {
+            element.classList.remove("is-scrolling");
+          }, 900),
         );
+      };
 
-        return { element, onScroll };
-      }
-    );
+      element.addEventListener("scroll", onScroll, { passive: true });
+
+      return { element, onScroll };
+    });
 
     return () => {
-      handlers.forEach(
-        ({ element, onScroll }) => {
-          element.removeEventListener(
-            "scroll",
-            onScroll
-          );
-        }
-      );
+      handlers.forEach(({ element, onScroll }) => {
+        element.removeEventListener("scroll", onScroll);
+      });
 
-      timers.forEach((timer) =>
-        window.clearTimeout(timer)
-      );
+      timers.forEach((timer) => window.clearTimeout(timer));
     };
   }, [activeAgent]);
 
-
   useEffect(() => {
     return () => {
-      Object.values(
-        abortControllers.current
-      ).forEach(
-        (controller) =>
-          controller.abort()
+      Object.values(abortControllers.current).forEach((controller) =>
+        controller.abort(),
       );
     };
   }, []);
 
-
-  function startResize(
-    startEvent
-  ) {
+  function startResize(startEvent) {
     startEvent.preventDefault();
     setResizing(true);
 
     const applyWidth = (clientX) => {
-      const fromRight =
-        window.innerWidth -
-        clientX -
-        SHELL_EDGE_PADDING;
+      const fromRight = window.innerWidth - clientX - SHELL_EDGE_PADDING;
 
-      setChatWidth(
-        clampChatWidth(fromRight)
-      );
+      setChatWidth(clampChatWidth(fromRight));
     };
 
     const onMove = (moveEvent) => {
@@ -322,174 +234,118 @@ export default function App() {
     const onUp = () => {
       setResizing(false);
 
-      window.removeEventListener(
-        "mousemove",
-        onMove
-      );
-      window.removeEventListener(
-        "mouseup",
-        onUp
-      );
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
 
       setChatWidth((width) => {
-        window.localStorage.setItem(
-          CHAT_WIDTH_KEY,
-          String(width)
-        );
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(width));
         return width;
       });
     };
 
-    window.addEventListener(
-      "mousemove",
-      onMove
-    );
-    window.addEventListener(
-      "mouseup",
-      onUp
-    );
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
-
-  function handleResizeKey(
-    event
-  ) {
-    const step =
-      event.shiftKey ? 48 : 16;
+  function handleResizeKey(event) {
+    const step = event.shiftKey ? 48 : 16;
 
     if (event.key === "ArrowLeft") {
       event.preventDefault();
       setChatWidth((width) => {
-        const next = clampChatWidth(
-          width + step
-        );
-        window.localStorage.setItem(
-          CHAT_WIDTH_KEY,
-          String(next)
-        );
+        const next = clampChatWidth(width + step);
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
         return next;
       });
-    } else if (
-      event.key === "ArrowRight"
-    ) {
+    } else if (event.key === "ArrowRight") {
       event.preventDefault();
       setChatWidth((width) => {
-        const next = clampChatWidth(
-          width - step
-        );
-        window.localStorage.setItem(
-          CHAT_WIDTH_KEY,
-          String(next)
-        );
+        const next = clampChatWidth(width - step);
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
         return next;
       });
     }
   }
 
+  function updateChat(agentId, updater) {
+    setChats((currentChats) => {
+      const current = currentChats[agentId];
 
-  function updateChat(
-    agentId,
-    updater
-  ) {
-    setChats(
-      (currentChats) => {
-        const current =
-          currentChats[agentId];
+      const updated =
+        typeof updater === "function"
+          ? updater(current)
+          : {
+              ...current,
+              ...updater,
+            };
 
-        const updated =
-          typeof updater ===
-          "function"
-            ? updater(current)
-            : {
-                ...current,
-                ...updater
-              };
-
-        return {
-          ...currentChats,
-          [agentId]: updated
-        };
-      }
-    );
+      return {
+        ...currentChats,
+        [agentId]: updated,
+      };
+    });
   }
 
+  function setCurrentDraft(value) {
+    if (!activeAgent) {
+      return;
+    }
 
-  function selectAgent(
-    agentId
-  ) {
+    updateChat(activeAgent, (chat) => ({
+      ...chat,
+      draft: value,
+    }));
+  }
+
+  function selectAgent(agentId) {
     setActiveAgent(agentId);
     setClearOpen(false);
-    setInput("");
   }
 
+  function toggleChat() {
+    setClearOpen(false);
 
-  function removeLoading(
-    agentId
-  ) {
-    updateChat(
-      agentId,
-      (chat) => ({
+    setIsChatOpen((open) => !open);
+  }
+
+  function closeChat() {
+    setClearOpen(false);
+    setIsChatOpen(false);
+  }
+
+  function removeLoading(agentId) {
+    updateChat(agentId, (chat) => ({
+      ...chat,
+
+      messages: chat.messages.filter((message) => message.role !== "loading"),
+    }));
+  }
+
+  function showLoading(agentId, text) {
+    updateChat(agentId, (chat) => ({
+      ...chat,
+
+      messages: [
+        ...chat.messages.filter((message) => message.role !== "loading"),
+
+        {
+          id: `loading-${agentId}`,
+          role: "loading",
+          text,
+        },
+      ],
+    }));
+  }
+
+  function handleStreamEvent(agentId, event) {
+    const data = event.data || {};
+
+    if (data.conversation_id) {
+      updateChat(agentId, (chat) => ({
         ...chat,
 
-        messages:
-          chat.messages.filter(
-            (message) =>
-              message.role !==
-              "loading"
-          )
-      })
-    );
-  }
-
-
-  function showLoading(
-    agentId,
-    text
-  ) {
-    updateChat(
-      agentId,
-      (chat) => ({
-        ...chat,
-
-        messages: [
-          ...chat.messages.filter(
-            (message) =>
-              message.role !==
-              "loading"
-          ),
-
-          {
-            id:
-              `loading-${agentId}`,
-
-            role: "loading",
-            text
-          }
-        ]
-      })
-    );
-  }
-
-
-  function handleStreamEvent(
-    agentId,
-    event
-  ) {
-    const data =
-      event.data || {};
-
-    if (
-      data.conversation_id
-    ) {
-      updateChat(
-        agentId,
-        (chat) => ({
-          ...chat,
-
-          conversationId:
-            data.conversation_id
-        })
-      );
+        conversationId: data.conversation_id,
+      }));
     }
 
     switch (event.name) {
@@ -497,281 +353,183 @@ export default function App() {
         showLoading(
           agentId,
 
-          data.message ||
-            "Running analysis"
+          data.message || "Running analysis",
         );
 
         break;
-
 
       case "tool_call":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id:
-                  data.id ||
-                  makeId(),
+            {
+              id: data.id || makeId(),
 
-                role: "tool",
+              role: "tool",
 
-                tool:
-                  data.tool,
+              tool: data.tool,
 
-                arguments:
-                  data.arguments ||
-                  {},
+              arguments: data.arguments || {},
 
-                result: null
-              }
-            ]
-          })
-        );
+              result: null,
+            },
+          ],
+        }));
 
         showLoading(
           agentId,
 
-          `Running ${formatToolName(
-            data.tool
-          )}`
+          `Running ${formatToolName(data.tool)}`,
         );
 
         break;
-
 
       case "tool_result":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages:
-              chat.messages.map(
-                (message) => {
-                  const matches =
-                    message.role ===
-                      "tool" &&
-                    message.tool ===
-                      data.tool &&
-                    message.result ==
-                      null;
+          messages: chat.messages.map((message) => {
+            const matches =
+              message.role === "tool" &&
+              message.tool === data.tool &&
+              message.result == null;
 
-                  if (!matches) {
-                    return message;
-                  }
+            if (!matches) {
+              return message;
+            }
 
-                  return {
-                    ...message,
+            return {
+              ...message,
 
-                    result:
-                      data.result
-                  };
-                }
-              )
-          })
-        );
+              result: data.result,
+            };
+          }),
+        }));
 
-        showLoading(
-          agentId,
-          "Combining tool results"
-        );
+        showLoading(agentId, "Combining tool results");
 
         break;
-
 
       case "assistant_response":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id:
-                  data.id ||
-                  makeId(),
+            {
+              id: data.id || makeId(),
 
-                role:
-                  "assistant",
+              role: "assistant",
 
-                text:
-                  data.text ||
-                  "",
+              text: data.text || "",
 
-                blocks:
-                  Array.isArray(
-                    data.blocks
-                  )
-                    ? data.blocks
-                    : [],
+              blocks: Array.isArray(data.blocks) ? data.blocks : [],
 
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
+              time: formatTime(),
+            },
+          ],
+        }));
 
         break;
-
 
       case "suggestions":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            suggestions:
-              Array.isArray(
-                data.suggestions
-              )
-                ? data.suggestions
-                : []
-          })
-        );
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        }));
 
         break;
-
 
       case "done":
-        removeLoading(
-          agentId
-        );
+        removeLoading(agentId);
 
         break;
-
 
       case "error":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            suggestions: [],
+          suggestions: [],
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id: makeId(),
+            {
+              id: makeId(),
 
-                role: "error",
+              role: "error",
 
-                text:
-                  data.message ||
-                  "The stream reported an error.",
+              text: data.message || "The stream reported an error.",
 
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
+              time: formatTime(),
+            },
+          ],
+        }));
 
         break;
 
-
       default:
-        console.debug(
-          "Unhandled SSE event:",
-          event
-        );
+        console.debug("Unhandled SSE event:", event);
     }
   }
 
-
-  async function sendMessage(
-    event
-  ) {
+  async function sendMessage(event) {
     event.preventDefault();
 
-    const text =
-      input.trim();
+    const text = input.trim();
 
     if (!text) {
       return;
     }
 
-    setInput("");
+    setCurrentDraft("");
 
     await submitText(text);
   }
 
+  async function submitText(rawText) {
+    const text = String(rawText || "").trim();
 
-  async function submitText(
-    rawText
-  ) {
-    const text =
-      String(rawText || "").trim();
-
-    if (
-      !text ||
-      currentChat.busy
-    ) {
+    if (!text || currentChat.busy) {
       return;
     }
 
-    const agentId =
-      activeAgent;
+    const agentId = activeAgent;
 
-    const conversationId =
-      currentChat.conversationId;
+    const conversationId = currentChat.conversationId;
 
-    const controller =
-      new AbortController();
+    const controller = new AbortController();
 
-    abortControllers.current[
-      agentId
-    ] = controller;
+    abortControllers.current[agentId] = controller;
 
-    updateChat(
-      agentId,
-      (chat) => ({
-        ...chat,
+    updateChat(agentId, (chat) => ({
+      ...chat,
 
-        title:
-          chat.title ||
-          generateTitle(text),
+      title: chat.title || generateTitle(text),
 
-        busy: true,
+      busy: true,
 
-        suggestions: [],
+      suggestions: [],
 
-        messages: [
-          ...chat.messages,
+      messages: [
+        ...chat.messages,
 
-          {
-            id: makeId(),
+        {
+          id: makeId(),
 
-            role: "user",
+          role: "user",
 
-            text,
+          text,
 
-            time:
-              formatTime()
-          }
-        ]
-      })
-    );
+          time: formatTime(),
+        },
+      ],
+    }));
 
     try {
       await streamChat({
@@ -779,140 +537,95 @@ export default function App() {
         message: text,
         conversationId,
 
-        signal:
-          controller.signal,
+        signal: controller.signal,
 
-        onEvent:
-          (streamEvent) =>
-            handleStreamEvent(
-              agentId,
-              streamEvent
-            )
+        onEvent: (streamEvent) => handleStreamEvent(agentId, streamEvent),
       });
     } catch (error) {
-      if (
-        error.name !==
-        "AbortError"
-      ) {
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
-
-            suggestions: [],
-
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
-
-              {
-                id: makeId(),
-
-                role: "error",
-
-                text:
-                  `The service could not respond. ${error.message}`,
-
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
-      }
-    } finally {
-      delete abortControllers
-        .current[agentId];
-
-      updateChat(
-        agentId,
-        (chat) => ({
+      if (error.name !== "AbortError") {
+        updateChat(agentId, (chat) => ({
           ...chat,
 
-          busy: false,
+          suggestions: [],
 
-          messages:
-            chat.messages.filter(
-              (message) =>
-                message.role !==
-                "loading"
-            )
-        })
-      );
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
+
+            {
+              id: makeId(),
+
+              role: "error",
+
+              text: `The service could not respond. ${error.message}`,
+
+              time: formatTime(),
+            },
+          ],
+        }));
+      }
+    } finally {
+      delete abortControllers.current[agentId];
+
+      updateChat(agentId, (chat) => ({
+        ...chat,
+
+        busy: false,
+
+        messages: chat.messages.filter((message) => message.role !== "loading"),
+      }));
     }
   }
 
-
   function clearCurrentChat() {
-    const controller =
-      abortControllers.current[
-        activeAgent
-      ];
+    const controller = abortControllers.current[activeAgent];
 
     if (controller) {
       controller.abort();
 
-      delete abortControllers
-        .current[
-          activeAgent
-        ];
+      delete abortControllers.current[activeAgent];
     }
 
-    updateChat(
-      activeAgent,
-      createInitialChat()
-    );
+    updateChat(activeAgent, createInitialChat());
 
     setClearOpen(false);
-    setInput("");
   }
-
 
   function askKpiInsight(request) {
     if (currentChat.busy) {
       return;
     }
 
+    setClearOpen(false);
+    setIsChatOpen(true);
+
     submitText(
       request?.entry
-        ? buildInfoPrompt(
-            request.entry,
-            request.context
-          )
-        : buildKpiInsightPrompt(request)
+        ? buildInfoPrompt(request.entry, request.context)
+        : buildKpiInsightPrompt(request),
     );
 
     requestAnimationFrame(() => {
-      const element =
-        transcriptRef.current;
+      const element = transcriptRef.current;
 
       if (element) {
-        element.scrollTop =
-          element.scrollHeight;
+        element.scrollTop = element.scrollHeight;
       }
     });
   }
 
-
   function toggleFolder(folder) {
-    setCollapsedFolders(
-      (current) => {
-        const next = new Set(current);
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
 
-        if (next.has(folder)) {
-          next.delete(folder);
-        } else {
-          next.add(folder);
-        }
-
-        return next;
+      if (next.has(folder)) {
+        next.delete(folder);
+      } else {
+        next.add(folder);
       }
-    );
-  }
 
+      return next;
+    });
+  }
 
   // The module list is served by the backend, so the shell waits for it
   // rather than assuming which agents exist.
@@ -930,140 +643,85 @@ export default function App() {
     );
   }
 
-
   return (
     <main
-      className={
-        resizing
-          ? "app-shell is-resizing"
-          : "app-shell"
-      }
+      className={[
+        "app-shell",
+        isChatOpen ? "chat-open" : "chat-closed",
+        resizing ? "is-resizing" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
       style={{
-        "--chat-width": `${chatWidth}px`
+        "--chat-width": `${chatWidth}px`,
       }}
     >
-      <aside
-        className="sidebar"
-        aria-label="Agent chats"
-      >
+      <aside className="sidebar" aria-label="Agent chats">
         <div className="brand">
-          <div className="brand-mark">
-            L
-          </div>
+          <div className="brand-mark">L</div>
 
           <div className="brand-copy">
-            <strong>
-              Ledgerline
-            </strong>
+            <strong>Ledgerline</strong>
 
-            <span>
-              Finance forum
-            </span>
+            <span>Finance forum</span>
           </div>
         </div>
 
+        <p className="section-label">Agent chats</p>
 
-        <p className="section-label">
-          Agent chats
-        </p>
-
-
-        <nav
-          className="agent-groups"
-          aria-label="Choose an agent"
-        >
+        <nav className="agent-groups" aria-label="Choose an agent">
           {groups.map((group) => {
-            const collapsed =
-              collapsedFolders.has(
-                group.folder
-              );
+            const collapsed = collapsedFolders.has(group.folder);
 
             return (
-              <div
-                key={group.folder}
-                className="agent-group"
-              >
+              <div key={group.folder} className="agent-group">
                 <button
                   type="button"
                   className="folder-toggle"
-                  aria-expanded={
-                    !collapsed
-                  }
-                  onClick={() =>
-                    toggleFolder(
-                      group.folder
-                    )
-                  }
+                  aria-expanded={!collapsed}
+                  onClick={() => toggleFolder(group.folder)}
                 >
-                  <span
-                    className="folder-chevron"
-                    aria-hidden="true"
-                  />
+                  <span className="folder-chevron" aria-hidden="true" />
 
-                  <span className="folder-name">
-                    {group.label}
-                  </span>
+                  <span className="folder-name">{group.label}</span>
 
-                  <span className="folder-count">
-                    {group.agents.length}
-                  </span>
+                  <span className="folder-count">{group.agents.length}</span>
                 </button>
 
                 {!collapsed && (
                   <div className="agent-list">
-                    {group.agents.map(
-                      (agent) => {
-                        const chat =
-                          chats[agent.id] ||
-                          EMPTY_CHAT;
+                    {group.agents.map((agent) => {
+                      const chat = chats[agent.id] || EMPTY_CHAT;
 
-                        return (
-                          <button
-                            key={agent.id}
-                            type="button"
+                      return (
+                        <button
+                          key={agent.id}
+                          type="button"
 
-                            className={
-                              agent.id ===
-                              activeAgent
-                                ? "agent-button active"
-                                : "agent-button"
-                            }
+                          className={
+                            agent.id === activeAgent
+                              ? "agent-button active"
+                              : "agent-button"
+                          }
 
-                            data-busy={
-                              chat.busy
-                            }
+                          data-busy={chat.busy}
 
-                            onClick={() =>
-                              selectAgent(
-                                agent.id
-                              )
-                            }
-                          >
-                            <span className="agent-avatar">
-                              {agent.name.charAt(
-                                0
-                              )}
-                            </span>
+                          onClick={() => selectAgent(agent.id)}
+                        >
+                          <span className="agent-avatar">
+                            {agent.name.charAt(0)}
+                          </span>
 
-                            <span className="agent-copy">
-                              <strong>
-                                {agent.name}
-                              </strong>
+                          <span className="agent-copy">
+                            <strong>{agent.name}</strong>
 
-                              <small>
-                                {chat.title ||
-                                  "New conversation"}
-                              </small>
-                            </span>
+                            <small>{chat.title || "New conversation"}</small>
+                          </span>
 
-                            <span
-                              className="activity-dot"
-                              aria-hidden="true"
-                            />
-                          </button>
-                        );
-                      }
-                    )}
+                          <span className="activity-dot" aria-hidden="true" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1071,155 +729,114 @@ export default function App() {
           })}
         </nav>
 
-
         <footer className="sidebar-footer">
-          {conversationList.length}
-          {" "}
-          saved conversation(s)
+          {conversationList.length} saved conversation(s)
         </footer>
       </aside>
-
 
       <Workboard
         agentId={activeAgent}
         agentName={currentAgent.name}
         onAskInsight={askKpiInsight}
         insightBusy={currentChat.busy}
+        isChatOpen={isChatOpen}
+        onToggleChat={toggleChat}
       />
 
+      {isChatOpen ? (
+        <div
+          className="chat-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize chat panel"
+          aria-controls="agent-chat-panel"
+          tabIndex={0}
+          onMouseDown={startResize}
+          onKeyDown={handleResizeKey}
+        >
+          <span className="chat-resize-grip" aria-hidden="true" />
+        </div>
+      ) : null}
 
-      <div
-        className="chat-resize-handle"
-        role="separator"
-        aria-orientation="vertical"
-        aria-label="Resize chat panel"
-        tabIndex={0}
-        onMouseDown={startResize}
-        onKeyDown={handleResizeKey}
+      <section
+        id="agent-chat-panel"
+        className="chat-panel"
+        aria-label={`${currentAgent.name} chat`}
       >
-        <span
-          className="chat-resize-grip"
-          aria-hidden="true"
-        />
-      </div>
-
-
-      <section className="chat-panel">
         <header className="chat-header">
           <div>
             <span className="header-kicker">
-              {currentAgent.name}
-              {" "}
-              chat
-
-              {currentChat.busy
-                ? " · working"
-                : ""}
+              {currentAgent.name} chat
+              {currentChat.busy ? " · working" : ""}
             </span>
 
-            <h1>
-              {currentChat.title ||
-                `Ask ${currentAgent.name}`}
-            </h1>
+            <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
           </div>
 
+          <div className="chat-header-actions">
+            <div className="clear-area">
+              <button
+                type="button"
+                className="clear-button"
+                disabled={!currentChat.messages.length}
+                onClick={() => setClearOpen((open) => !open)}
+              >
+                Clear chat
+              </button>
 
-          <div className="clear-area">
+              {clearOpen && (
+                <div className="clear-confirm">
+                  <p>Clear this agent&apos;s local messages?</p>
+
+                  <div>
+                    <button type="button" onClick={() => setClearOpen(false)}>
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={clearCurrentChat}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className="clear-button"
-
-              disabled={
-                !currentChat
-                  .messages.length
-              }
-
-              onClick={() =>
-                setClearOpen(
-                  (open) => !open
-                )
-              }
+              className="chat-close-button"
+              aria-label={`Close ${currentAgent.name} chat`}
+              title="Close chat"
+              onClick={closeChat}
             >
-              Clear chat
+              ×
             </button>
-
-
-            {clearOpen && (
-              <div className="clear-confirm">
-                <p>
-                  Clear this agent&apos;s
-                  local messages?
-                </p>
-
-                <div>
-                  <button
-                    type="button"
-
-                    onClick={() =>
-                      setClearOpen(
-                        false
-                      )
-                    }
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    className="danger"
-
-                    onClick={
-                      clearCurrentChat
-                    }
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </header>
 
-
-        <div
-          ref={transcriptRef}
-          className="transcript"
-          aria-live="polite"
-        >
-          {!currentChat
-            .messages.length ? (
-            <EmptyState
-              agent={
-                currentAgent
-              }
-            />
+        <div ref={transcriptRef} className="transcript" aria-live="polite">
+          {!currentChat.messages.length ? (
+            <EmptyState agent={currentAgent} />
           ) : (
             <ol className="message-list">
-              {currentChat.messages.map(
-                (message) => (
-                  <ChatMessage
-                    key={
-                      message.id
-                    }
+              {currentChat.messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
 
-                    message={
-                      message
-                    }
+                  message={message}
 
-                    agentName={
-                      currentAgent.name
-                    }
-                  />
-                )
-              )}
+                  agentName={currentAgent.name}
+                />
+              ))}
             </ol>
           )}
         </div>
 
-
         <footer className="composer-wrap">
-          {visibleSuggestions?.length >
-            0 && (
+          {visibleSuggestions?.length > 0 && (
             <section
               className="prompt-suggestions"
               aria-label="Suggested prompts"
@@ -1229,103 +846,67 @@ export default function App() {
 
                 <span>
                   {currentChat.messages.length > 0
-                  ? "Suggested follow-ups"
-                  : "Suggested prompts"}
+                    ? "Suggested follow-ups"
+                    : "Suggested prompts"}
                 </span>
               </div>
 
               <div className="prompt-suggestions-list">
-                {visibleSuggestions.map(
-                  (
-                    suggestion
-                  ) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      className="prompt-chip"
-                      disabled={currentChat.busy}
-                      onClick={() => {
-                        setInput(suggestion);
-                        composerRef.current?.focus();
-                      }}
-                    >
-                      <SparkleIcon className="prompt-chip-spark" />
+                {visibleSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="prompt-chip"
+                    disabled={currentChat.busy}
+                    onClick={() => {
+                      setCurrentDraft(suggestion);
 
-                      <span className="prompt-chip-text">
-                        {suggestion}
-                      </span>
-                    </button>
-                  )
-                )}
+                      requestAnimationFrame(() => {
+                        composerRef.current?.focus();
+                      });
+                    }}
+                  >
+                    <SparkleIcon className="prompt-chip-spark" />
+
+                    <span className="prompt-chip-text">{suggestion}</span>
+                  </button>
+                ))}
               </div>
             </section>
           )}
 
-
-          <form
-            className="composer"
-            onSubmit={
-              sendMessage
-            }
-          >
+          <form className="composer" onSubmit={sendMessage}>
             <textarea
               ref={composerRef}
               value={input}
 
-              disabled={
-                currentChat.busy
-              }
+              disabled={currentChat.busy}
 
               rows={1}
               maxLength={2000}
 
-              placeholder={
-                currentAgent.prompt
-              }
+              placeholder={currentAgent.prompt}
 
-              aria-label={
-                `Message ${currentAgent.name}`
-              }
+              aria-label={`Message ${currentAgent.name}`}
 
-              onChange={
-                (event) =>
-                  setInput(
-                    event.target
-                      .value
-                  )
-              }
+              onChange={(event) => setCurrentDraft(event.target.value)}
 
-              onKeyDown={
-                (event) => {
-                  if (
-                    event.key ===
-                      "Enter" &&
-                    !event.shiftKey
-                  ) {
-                    event.preventDefault();
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
 
-                    event.currentTarget
-                      .form
-                      .requestSubmit();
-                  }
+                  event.currentTarget.form.requestSubmit();
                 }
-              }
+              }}
             />
 
-            <button
-              type="submit"
-              className="send-button"
-              disabled={!canSend}
-            >
+            <button type="submit" className="send-button" disabled={!canSend}>
               Send
             </button>
           </form>
 
-
           <p className="composer-note">
-            AI responses should be
-            reviewed before financial
-            decisions are made.
+            AI responses should be reviewed before financial decisions are made.
           </p>
         </footer>
       </section>
@@ -1335,36 +916,21 @@ export default function App() {
   );
 }
 
-
-function EmptyState({
-  agent
-}) {
+function EmptyState({ agent }) {
   return (
     <div className="empty-state">
       <div className="empty-content">
-        <div className="empty-icon">
-          {agent.name.charAt(
-            0
-          )}
-        </div>
+        <div className="empty-icon">{agent.name.charAt(0)}</div>
 
-        <h2>
-          {agent.name}, ready
-          when you are
-        </h2>
+        <h2>{agent.name}, ready when you are</h2>
 
-        <p>
-          {agent.description}
-        </p>
+        <p>{agent.description}</p>
       </div>
     </div>
   );
 }
 
-
-function SparkleIcon({
-  className
-}) {
+function SparkleIcon({ className }) {
   return (
     <svg
       className={className}
@@ -1382,79 +948,43 @@ function SparkleIcon({
   );
 }
 
-
 function makeId() {
   return crypto.randomUUID
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random()}`;
 }
 
-
 function formatTime() {
-  return new Intl.DateTimeFormat(
-    undefined,
-    {
-      hour: "numeric",
-      minute: "2-digit"
-    }
-  ).format(new Date());
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
 }
 
+function generateTitle(message) {
+  const normalized = message.replace(/\s+/g, " ").trim();
 
-function generateTitle(
-  message
-) {
-  const normalized =
-    message
-      .replace(/\s+/g, " ")
-      .trim();
-
-  if (
-    normalized.length <= 42
-  ) {
+  if (normalized.length <= 42) {
     return normalized;
   }
 
-  const clipped =
-    normalized.slice(0, 42);
+  const clipped = normalized.slice(0, 42);
 
-  const lastSpace =
-    clipped.lastIndexOf(" ");
+  const lastSpace = clipped.lastIndexOf(" ");
 
-  const cutoff =
-    lastSpace > 24
-      ? lastSpace
-      : 42;
+  const cutoff = lastSpace > 24 ? lastSpace : 42;
 
-  return `${clipped.slice(
-    0,
-    cutoff
-  )}...`;
+  return `${clipped.slice(0, cutoff)}...`;
 }
 
-
-function formatToolName(
-  tool
-) {
-  return String(
-    tool || "tool"
-  ).replaceAll("_", " ");
+function formatToolName(tool) {
+  return String(tool || "tool").replaceAll("_", " ");
 }
 
+function buildKpiInsightPrompt(kpi) {
+  const value = [kpi.value, kpi.unit].filter(Boolean).join(" ");
 
-function buildKpiInsightPrompt(
-  kpi
-) {
-  const value = [
-    kpi.value,
-    kpi.unit
-  ]
-    .filter(Boolean)
-    .join(" ");
-
-  const context = kpi.delta
-    ? ` (${kpi.delta})`
-    : "";
+  const context = kpi.delta ? ` (${kpi.delta})` : "";
 
   return (
     `Interpret the "${kpi.label}" KPI, currently ${value}${context}. ` +
