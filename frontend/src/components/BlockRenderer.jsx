@@ -1,5 +1,6 @@
 import ChartRenderer from "./ChartRenderer.jsx";
 import SimulationRenderer from "./SimulationRenderer.jsx";
+import RouteRenderer from "./RouteRenderer.jsx";
 import { accentHtml } from "../semanticAccent.jsx";
 
 
@@ -34,9 +35,8 @@ export default function BlockRenderer({
 
     case "next_route":
       return (
-        <JsonBlock
-          title="Suggested next route"
-          data={block.data}
+        <RouteRenderer
+          data={(block.data)}
         />
       );
 
