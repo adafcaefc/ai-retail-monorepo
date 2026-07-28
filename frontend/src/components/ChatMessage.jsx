@@ -1,5 +1,6 @@
 import BlockRenderer from "./BlockRenderer.jsx";
 import ToolCard from "./ToolCard.jsx";
+import { accentPlain } from "../semanticAccent.jsx";
 
 export default function ChatMessage({
   message,
@@ -55,7 +56,9 @@ export default function ChatMessage({
       <div className="message-body">
         {message.text && (
           <div className="bubble">
-            {message.text}
+            {isUser
+              ? message.text
+              : accentPlain(message.text)}
           </div>
         )}
 

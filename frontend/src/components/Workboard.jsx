@@ -1,18 +1,21 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import ChartRenderer from "./ChartRenderer.jsx";
+import AlertsPanel from "./AlertsPanel.jsx";
+import InfoCard from "./InfoCard.jsx";
+import { findInfo } from "../infoRegistry.js";
 import {
   fetchDashboard,
-  recalculateDashboardSimulation
+  recalculateDashboardSimulation,
 } from "../api/dashboard.js";
 
 export default function Workboard({
   agentId,
-  agentName
+  agentName,
+  onAskInsight,
+  insightBusy = false,
+  isChatOpen = false,
+  onToggleChat,
 }) {
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
@@ -23,6 +26,31 @@ export default function Workboard({
   const [simResult, setSimResult] = useState(null);
   const [simBusy, setSimBusy] = useState(false);
   const [simError, setSimError] = useState("");
+  const [info, setInfo] = useState(null);
+
+  // Open the info card for a clicked element. Elements with no
+  // registry mapping stay inert rather than opening an empty card.
+  function openInfo(infoKey, event, extra = {}) {
+    const entry = findInfo(agentId, infoKey);
+    if (!entry) {
+      return;
+    }
+
+    setInfo({
+      key: infoKey,
+      entry,
+      anchor: event.currentTarget.getBoundingClientRect(),
+      context: extra.context || "",
+      payload: extra.payload || null,
+    });
+  }
+
+  // Only on agent switch. Not on `view`: a KPI click sets the view
+  // and opens the card in the same batch, so watching `view` here
+  // would close the card the instant it opened.
+  useEffect(() => {
+    setInfo(null);
+  }, [agentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,16 +74,11 @@ export default function Workboard({
           nextValues[input.id] = Number(input.default ?? 0);
         }
         setValues(nextValues);
-        setScope(
-          payload.simulator?.scope_options?.[0] || "all"
-        );
+        setScope(payload.simulator?.scope_options?.[0] || "all");
       } catch (loadError) {
         if (!cancelled) {
           setDashboard(null);
-          setError(
-            loadError.message ||
-              "Unable to load dashboard."
-          );
+          setError(loadError.message || "Unable to load dashboard.");
         }
       } finally {
         if (!cancelled) {
@@ -96,12 +119,9 @@ export default function Workboard({
       if (action === "calculate_collection_scenario") {
         body = {
           customer_name:
-            dashboard.simulator.submit_data?.customer_name ||
-            "Customer A",
-          cash_to_collect_idr_mn: Number(
-            values.cash_to_collect_idr_mn || 0
-          ),
-          discount_pct: Number(values.discount_pct || 0)
+            dashboard.simulator.submit_data?.customer_name || "Customer A",
+          cash_to_collect_idr_mn: Number(values.cash_to_collect_idr_mn || 0),
+          discount_pct: Number(values.discount_pct || 0),
         };
       } else if (action === "simulate_finance") {
         body = {
@@ -110,7 +130,7 @@ export default function Workboard({
           vol: Number(values.vol || 0),
           fx: Number(values.fx || 0),
           opex: Number(values.opex || 0),
-          scope
+          scope,
         };
       } else if (action === "simulate_leakage") {
         const baseline = dashboard.simulator.baseline || {};
@@ -121,141 +141,306 @@ export default function Workboard({
           duplicates_amount: baseline.duplicates_amount,
           overbill_amount: baseline.overbill_amount,
           other_blocked: baseline.other_blocked,
-          at_risk: baseline.at_risk
+          at_risk: baseline.at_risk,
         };
       } else if (action === "simulate_cashflow") {
         body = {
           accelerate_collection_idr_mn: Number(
-            values.accelerate_collection_idr_mn || 0
+            values.accelerate_collection_idr_mn || 0,
           ),
-          defer_payment_idr_mn: Number(
-            values.defer_payment_idr_mn || 0
-          ),
-          credit_line_draw_idr_mn: Number(
-            values.credit_line_draw_idr_mn || 0
-          ),
-          hedge_usd: Number(values.hedge_usd || 0)
+          defer_payment_idr_mn: Number(values.defer_payment_idr_mn || 0),
+          credit_line_draw_idr_mn: Number(values.credit_line_draw_idr_mn || 0),
+          hedge_usd: Number(values.hedge_usd || 0),
         };
       }
 
-      const result = await recalculateDashboardSimulation(
-        action,
-        body
-      );
+      const result = await recalculateDashboardSimulation(action, body);
       setSimResult(result);
     } catch (requestError) {
-      setSimError(
-        requestError.message ||
-          "Simulation recalculation failed."
-      );
+      setSimError(requestError.message || "Simulation recalculation failed.");
     } finally {
       setSimBusy(false);
     }
   }
 
-  if (loading) {
-    return (
-      <section
-        className="workboard workboard-loading"
-        data-testid="workboard"
-      >
-        <div
-          className="workboard-loader"
-          role="status"
-          aria-live="polite"
-        >
-          <span
-            className="workboard-spinner"
-            aria-hidden="true"
-          />
+  return (
+    <section className="workboard" data-testid="workboard">
+      <AlertsPanel
+        agentId={agentId}
+        agentName={agentName}
+        isChatOpen={isChatOpen}
+        onToggleChat={onToggleChat}
+        header={
+          <>
+            <span className="header-kicker">{agentName} dashboard</span>
+
+            <h1>{agentName} performance board</h1>
+          </>
+        }
+      />
+
+      {loading ? (
+        <div className="workboard-loader" role="status" aria-live="polite">
+          <span className="workboard-spinner" aria-hidden="true" />
           <span>Loading {agentName} dashboard…</span>
         </div>
-      </section>
-    );
-  }
-
-  if (error || !dashboard) {
-    return (
-      <section
-        className="workboard workboard-loading"
-        data-testid="workboard"
-      >
+      ) : error || !dashboard ? (
         <div className="workboard-status error" role="alert">
           {error || "Dashboard unavailable."}
         </div>
-      </section>
+      ) : (
+        <>
+          <div className="kpi-row" data-testid="kpi-row">
+            {(dashboard.kpis || []).map((kpi) => {
+              const status = kpi.status || (kpi.alert ? "bad" : "good");
+              const hasProgress = typeof kpi.progress === "number";
+              const hasTrend =
+                Array.isArray(kpi.trend) && kpi.trend.length >= 2;
+
+              return (
+                <button
+                  key={kpi.id}
+                  type="button"
+                  className={
+                    "kpi-tile status-" +
+                    status +
+                    (view === kpi.view ? " on" : "")
+                  }
+                  data-testid={`kpi-${kpi.id}`}
+                  title={`What ${kpi.label} means`}
+                  onClick={(event) => {
+                    setView(kpi.view);
+                    openInfo(`tile:${kpi.id}`, event, {
+                      context: [kpi.value, kpi.unit, kpi.delta]
+                        .filter(Boolean)
+                        .join(" "),
+                      payload: kpi,
+                    });
+                  }}
+                >
+                  <span className="kpi-cue">
+                    <SparkIcon />
+                    <span>Insight</span>
+                  </span>
+
+                  <span className="kpi-top">
+                    <span className="kpi-status-dot" aria-hidden="true" />
+                    <span className="kpi-label">{kpi.label}</span>
+                  </span>
+
+                  <strong
+                    className="kpi-value"
+                    data-testid={`kpi-${kpi.id}-value`}
+                  >
+                    {kpi.value}
+                    {kpi.unit ? (
+                      <span className="kpi-unit"> {kpi.unit}</span>
+                    ) : null}
+                  </strong>
+
+                  <span className="kpi-delta">{kpi.delta}</span>
+
+                  {hasTrend ? (
+                    <KpiSparkline points={kpi.trend} />
+                  ) : hasProgress ? (
+                    <span
+                      className="kpi-progress"
+                      title={`${Math.round(kpi.progress * 100)}% of target`}
+                    >
+                      <span
+                        className="kpi-progress-fill"
+                        style={{
+                          width: `${Math.min(100, kpi.progress * 100)}%`,
+                        }}
+                      />
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="workboard-mid">
+            <InfoTarget
+              as="article"
+              className="focus-card"
+              testId="focus-panel"
+              infoKey={`view:${view || dashboard.default_view}`}
+              agentId={agentId}
+              onOpen={openInfo}
+            >
+              <FocusBody view={activeView} />
+            </InfoTarget>
+
+            <div className="side-col" data-testid="side-panels">
+              <InfoTarget
+                as="article"
+                className="side-card"
+                infoKey="side:top"
+                agentId={agentId}
+                onOpen={openInfo}
+              >
+                <FocusBody view={dashboard.side?.top} compact />
+              </InfoTarget>
+              <InfoTarget
+                as="article"
+                className="side-card"
+                infoKey="side:bottom"
+                agentId={agentId}
+                onOpen={openInfo}
+              >
+                <FocusBody view={dashboard.side?.bottom} compact />
+              </InfoTarget>
+            </div>
+          </div>
+
+          <WhatIfBar
+            simulator={dashboard.simulator}
+            values={values}
+            scope={scope}
+            setScope={setScope}
+            onChange={(id, value) =>
+              setValues((current) => ({
+                ...current,
+                [id]: value,
+              }))
+            }
+            onCalculate={runSimulation}
+            busy={simBusy}
+            error={simError}
+            result={simResult}
+            agentId={agentId}
+            onOpenInfo={openInfo}
+          />
+        </>
+      )}
+
+      {info ? (
+        <InfoCard
+          entry={info.entry}
+          anchor={info.anchor}
+          context={info.context}
+          busy={insightBusy}
+          onClose={() => setInfo(null)}
+          onContinue={() => {
+            setInfo(null);
+            onAskInsight?.({
+              infoKey: info.key,
+              entry: info.entry,
+              context: info.context,
+              kpi: info.payload,
+            });
+          }}
+        />
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * Wraps a board panel so a click opens its info card. Panels with
+ * no registry entry render as a plain element — no cursor, no
+ * handler — so an unmapped chart is visibly inert rather than dead.
+ */
+function InfoTarget({
+  as: Tag = "div",
+  className,
+  testId,
+  infoKey,
+  agentId,
+  onOpen,
+  children,
+}) {
+  const entry = findInfo(agentId, infoKey);
+
+  if (!entry) {
+    return (
+      <Tag className={className} data-testid={testId}>
+        {children}
+      </Tag>
     );
   }
 
   return (
-    <section className="workboard" data-testid="workboard">
-      <header className="workboard-header">
-        <div>
-          <span className="header-kicker">
-            {agentName} dashboard
-          </span>
-          <h1>{agentName} performance board</h1>
-        </div>
-      </header>
-
-      <div className="kpi-row" data-testid="kpi-row">
-        {(dashboard.kpis || []).map((kpi) => (
-          <button
-            key={kpi.id}
-            type="button"
-            className={
-              "kpi-tile" +
-              (kpi.alert ? " alert" : "") +
-              (view === kpi.view ? " on" : "")
-            }
-            data-testid={`kpi-${kpi.id}`}
-            onClick={() => setView(kpi.view)}
-          >
-            <span className="kpi-open">OPEN</span>
-            <span className="kpi-label">{kpi.label}</span>
-            <strong className="kpi-value" data-testid={`kpi-${kpi.id}-value`}>
-              {kpi.value}
-              {kpi.unit ? (
-                <span className="kpi-unit"> {kpi.unit}</span>
-              ) : null}
-            </strong>
-            <span className="kpi-delta">{kpi.delta}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="workboard-mid">
-        <article className="focus-card" data-testid="focus-panel">
-          <FocusBody view={activeView} />
-        </article>
-
-        <div className="side-col" data-testid="side-panels">
-          <article className="side-card">
-            <FocusBody view={dashboard.side?.top} compact />
-          </article>
-          <article className="side-card">
-            <FocusBody view={dashboard.side?.bottom} compact />
-          </article>
-        </div>
-      </div>
-
-      <WhatIfBar
-        simulator={dashboard.simulator}
-        values={values}
-        scope={scope}
-        setScope={setScope}
-        onChange={(id, value) =>
-          setValues((current) => ({
-            ...current,
-            [id]: value
-          }))
+    <Tag
+      className={`${className} has-info`}
+      data-testid={testId}
+      role="button"
+      tabIndex={0}
+      title={`What "${entry.el}" means`}
+      onClick={(event) => onOpen(infoKey, event)}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpen(infoKey, event);
         }
-        onCalculate={runSimulation}
-        busy={simBusy}
-        error={simError}
-        result={simResult}
+      }}
+    >
+      {children}
+      <span className="info-badge" aria-hidden="true">
+        ⓘ
+      </span>
+    </Tag>
+  );
+}
+
+function SparkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="12"
+      height="12"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 2.5l1.9 4.9 4.9 1.9-4.9 1.9L12 16l-1.9-4.8L5.2 9.3l4.9-1.9L12 2.5zm6.5 10l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3z"
       />
-    </section>
+    </svg>
+  );
+}
+
+function KpiSparkline({ points }) {
+  if (!Array.isArray(points) || points.length < 2) {
+    return null;
+  }
+
+  const width = 100;
+  const height = 24;
+  const pad = 2;
+
+  const min = Math.min(...points);
+  const max = Math.max(...points);
+  const range = max - min || 1;
+  const step = (width - pad * 2) / (points.length - 1);
+
+  const coords = points.map((value, index) => {
+    const x = pad + index * step;
+    const y = pad + (height - pad * 2) * (1 - (value - min) / range);
+    return [x, y];
+  });
+
+  const line = coords
+    .map(
+      ([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`,
+    )
+    .join(" ");
+
+  const last = coords[coords.length - 1];
+  const area = `${line} L ${last[0].toFixed(1)} ${height} L ${coords[0][0].toFixed(1)} ${height} Z`;
+
+  return (
+    <svg
+      className="kpi-spark"
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <path className="kpi-spark-area" d={area} />
+      <path className="kpi-spark-line" d={line} />
+      <circle className="kpi-spark-dot" cx={last[0]} cy={last[1]} r="2.2" />
+    </svg>
   );
 }
 
@@ -301,10 +486,7 @@ function FocusBody({ view, compact = false }) {
 
   return (
     <div className={compact ? "side-chart" : "focus-chart"}>
-      <ChartRenderer
-        data={view}
-        variant={compact ? "compact" : "fill"}
-      />
+      <ChartRenderer data={view} variant={compact ? "compact" : "fill"} />
     </div>
   );
 }
@@ -318,7 +500,9 @@ function WhatIfBar({
   onCalculate,
   busy,
   error,
-  result
+  result,
+  agentId,
+  onOpenInfo,
 }) {
   if (!simulator) {
     return null;
@@ -336,9 +520,7 @@ function WhatIfBar({
               <button
                 key={option}
                 type="button"
-                className={
-                  "scope-btn" + (scope === option ? " on" : "")
-                }
+                className={"scope-btn" + (scope === option ? " on" : "")}
                 onClick={() => setScope(option)}
               >
                 {option === "all" ? "All lines" : "FX lines"}
@@ -353,10 +535,7 @@ function WhatIfBar({
           >
             {busy ? (
               <>
-                <span
-                  className="calc-spinner"
-                  aria-hidden="true"
-                />
+                <span className="calc-spinner" aria-hidden="true" />
                 Running scenario…
               </>
             ) : (
@@ -366,11 +545,7 @@ function WhatIfBar({
         </div>
       </div>
 
-      <div
-        className={
-          "whatif-grid" + (busy ? " is-loading" : "")
-        }
-      >
+      <div className={"whatif-grid" + (busy ? " is-loading" : "")}>
         <div className="whatif-levers">
           <div className="whatif-label">Levers</div>
           {(simulator.inputs || []).map((input) => (
@@ -389,10 +564,7 @@ function WhatIfBar({
                   data-testid={`lever-${input.id}`}
                   disabled={busy}
                   onInput={(event) =>
-                    onChange(
-                      input.id,
-                      Number(event.currentTarget.value)
-                    )
+                    onChange(input.id, Number(event.currentTarget.value))
                   }
                 />
                 <input
@@ -405,10 +577,7 @@ function WhatIfBar({
                   data-testid={`lever-${input.id}-number`}
                   disabled={busy}
                   onChange={(event) =>
-                    onChange(
-                      input.id,
-                      Number(event.currentTarget.value)
-                    )
+                    onChange(input.id, Number(event.currentTarget.value))
                   }
                 />
               </div>
@@ -418,11 +587,7 @@ function WhatIfBar({
 
         <div className="whatif-stats" data-testid="whatif-stats">
           {busy ? (
-            <div
-              className="whatif-loading"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="whatif-loading" role="status" aria-live="polite">
               <span
                 className="calc-spinner calc-spinner-lg"
                 aria-hidden="true"
@@ -432,35 +597,54 @@ function WhatIfBar({
           ) : (
             <>
               {summary.stats.map((stat) => (
-                <div key={stat.label} className="whatif-stat">
+                <InfoTarget
+                  key={stat.label}
+                  className="whatif-stat"
+                  infoKey={`stat:${stat.id}`}
+                  agentId={agentId}
+                  onOpen={(key, event) =>
+                    onOpenInfo(key, event, {
+                      context: [stat.value, stat.delta]
+                        .filter(Boolean)
+                        .join(" · "),
+                    })
+                  }
+                >
                   <span>{stat.label}</span>
-                  <strong data-testid={`stat-${stat.id}`}>
-                    {stat.value}
-                  </strong>
+                  <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
                   <small className={stat.tone}>{stat.delta}</small>
-                </div>
+                </InfoTarget>
               ))}
               {summary.chart ? (
-                <div className="whatif-mini-chart">
-                  <ChartRenderer
-                    data={summary.chart}
-                    variant="compact"
-                  />
-                </div>
+                <InfoTarget
+                  className="whatif-mini-chart"
+                  infoKey="simchart"
+                  agentId={agentId}
+                  onOpen={onOpenInfo}
+                >
+                  <ChartRenderer data={summary.chart} variant="compact" />
+                </InfoTarget>
               ) : null}
             </>
           )}
         </div>
 
-        <div className="whatif-gauge" data-testid="whatif-gauge">
+        <InfoTarget
+          className="whatif-gauge"
+          testId="whatif-gauge"
+          infoKey="gauge"
+          agentId={agentId}
+          onOpen={(key, event) =>
+            onOpenInfo(key, event, {
+              context: busy ? "" : summary.gauge.center,
+            })
+          }
+        >
           <div className="whatif-label">
             {simulator.gauge_label || "Scenario"}
           </div>
           {busy ? (
-            <div
-              className="whatif-loading whatif-loading-gauge"
-              role="status"
-            >
+            <div className="whatif-loading whatif-loading-gauge" role="status">
               <span
                 className="calc-spinner calc-spinner-lg"
                 aria-hidden="true"
@@ -474,7 +658,7 @@ function WhatIfBar({
               <p data-testid="gauge-txt">{summary.gauge.txt}</p>
             </>
           )}
-        </div>
+        </InfoTarget>
       </div>
 
       {error ? (
@@ -494,28 +678,28 @@ function summarizeResult(action, result, simulator) {
         label: "Scenario",
         value: "—",
         delta: "Awaiting scenario",
-        tone: ""
+        tone: "",
       },
       {
         id: "b",
         label: "Impact",
         value: "—",
         delta: "Set levers to begin",
-        tone: ""
+        tone: "",
       },
       {
         id: "c",
         label: "Target",
         value: "—",
         delta: "Results after run",
-        tone: ""
-      }
+        tone: "",
+      },
     ],
     chart: null,
     gauge: {
       center: "—",
-      txt: "Run scenario to update"
-    }
+      txt: "Run scenario to update",
+    },
   };
 
   if (!result) {
@@ -533,22 +717,22 @@ function summarizeResult(action, result, simulator) {
           label: "Scenario margin",
           value: `${stats.scenario_margin_pct}%`,
           delta: `${stats.delta_margin_pts >= 0 ? "+" : ""}${stats.delta_margin_pts} pts`,
-          tone: stats.delta_margin_pts >= 0 ? "good" : "bad"
+          tone: stats.delta_margin_pts >= 0 ? "good" : "bad",
         },
         {
           id: "ebitda",
           label: "EBITDA",
           value: formatNumber(stats.ebitda_idr_mn),
           delta: `${stats.delta_ebitda_idr_mn >= 0 ? "+" : ""}${formatNumber(stats.delta_ebitda_idr_mn)} mn`,
-          tone: stats.delta_ebitda_idr_mn >= 0 ? "good" : "bad"
+          tone: stats.delta_ebitda_idr_mn >= 0 ? "good" : "bad",
         },
         {
           id: "target",
           label: "vs Target",
           value: `${stats.vs_target_pts} pts`,
           delta: stats.vs_target_pts >= 0 ? "at/above" : "below",
-          tone: stats.vs_target_pts >= 0 ? "good" : "bad"
-        }
+          tone: stats.vs_target_pts >= 0 ? "good" : "bad",
+        },
       ],
       chart: {
         title: "Now vs Scenario",
@@ -559,15 +743,15 @@ function summarizeResult(action, result, simulator) {
         data: [
           {
             label: "Now",
-            value: round1((baseline.margin || 0) * 100)
+            value: round1((baseline.margin || 0) * 100),
           },
           {
             label: "Scenario",
-            value: round1((scenario.margin || 0) * 100)
-          }
-        ]
+            value: round1((scenario.margin || 0) * 100),
+          },
+        ],
       },
-      gauge: result.gauge || empty.gauge
+      gauge: result.gauge || empty.gauge,
     };
   }
 
@@ -581,22 +765,22 @@ function summarizeResult(action, result, simulator) {
           label: "Scenario DSO",
           value: `${formatNumber(payload.dso_after_days)}d`,
           delta: `${formatNumber(payload.dso_change_days)}d change`,
-          tone: payload.dso_change_days <= 0 ? "good" : "bad"
+          tone: payload.dso_change_days <= 0 ? "good" : "bad",
         },
         {
           id: "cash",
           label: "Cash collected",
           value: formatNumber(payload.cash_collected_idr_mn),
           delta: "IDR mn",
-          tone: "good"
+          tone: "good",
         },
         {
           id: "discount",
           label: "Discount cost",
           value: formatNumber(payload.discount_cost_idr_mn),
           delta: `${payload.discount_pct}%`,
-          tone: ""
-        }
+          tone: "",
+        },
       ],
       chart: {
         title: "DSO now vs scenario",
@@ -608,14 +792,14 @@ function summarizeResult(action, result, simulator) {
           { label: "Now", value: Number(baseline.dso || 0) },
           {
             label: "Scenario",
-            value: Number(payload.dso_after_days || 0)
-          }
-        ]
+            value: Number(payload.dso_after_days || 0),
+          },
+        ],
       },
       gauge: {
         center: `${formatNumber(payload.dso_after_days)}d`,
-        txt: `Target ${baseline.target_dso}d`
-      }
+        txt: `Target ${baseline.target_dso}d`,
+      },
     };
   }
 
@@ -629,23 +813,22 @@ function summarizeResult(action, result, simulator) {
           label: "Week 5 cash",
           value: formatNumber(payload.week5_cash_idr_mn),
           delta: `was ${formatNumber(baseline.week5_cash)}`,
-          tone:
-            payload.week5_headroom_idr_mn >= 0 ? "good" : "bad"
+          tone: payload.week5_headroom_idr_mn >= 0 ? "good" : "bad",
         },
         {
           id: "below",
           label: "Weeks below buffer",
           value: String(payload.weeks_below_buffer),
           delta: `buffer ${formatNumber(payload.minimum_buffer_idr_mn)}`,
-          tone: payload.weeks_below_buffer === 0 ? "good" : "bad"
+          tone: payload.weeks_below_buffer === 0 ? "good" : "bad",
         },
         {
           id: "fx",
           label: "FX downside avoided",
           value: formatNumber(payload.fx_downside_avoided_idr_mn),
           delta: `premium ${formatNumber(payload.forward_premium_idr_mn)}`,
-          tone: "good"
-        }
+          tone: "good",
+        },
       ],
       chart: {
         title: "Week 5 cash",
@@ -656,14 +839,14 @@ function summarizeResult(action, result, simulator) {
           { label: "Now", value: Number(baseline.week5_cash || 0) },
           {
             label: "Scenario",
-            value: Number(payload.week5_cash_idr_mn || 0)
-          }
-        ]
+            value: Number(payload.week5_cash_idr_mn || 0),
+          },
+        ],
       },
       gauge: {
         center: `${formatNumber(payload.hedge_coverage_pct)}%`,
-        txt: "Hedge coverage"
-      }
+        txt: "Hedge coverage",
+      },
     };
   }
 
@@ -675,22 +858,22 @@ function summarizeResult(action, result, simulator) {
           label: "Total protected",
           value: formatNumber(result.total_protected),
           delta: `${result.pct_of_at_risk}% of at risk`,
-          tone: "good"
+          tone: "good",
         },
         {
           id: "blocked",
           label: "Blocked",
           value: formatNumber(result.blocked),
           delta: "never leaves",
-          tone: "good"
+          tone: "good",
         },
         {
           id: "recovered",
           label: "Recovered",
           value: formatNumber(result.recovered),
           delta: "clawed back",
-          tone: "good"
-        }
+          tone: "good",
+        },
       ],
       chart: {
         title: "Protected vs at risk",
@@ -699,11 +882,11 @@ function summarizeResult(action, result, simulator) {
           { label: "At risk", value: Number(result.at_risk || 0) },
           {
             label: "Protected",
-            value: Number(result.total_protected || 0)
-          }
-        ]
+            value: Number(result.total_protected || 0),
+          },
+        ],
       },
-      gauge: result.gauge || empty.gauge
+      gauge: result.gauge || empty.gauge,
     };
   }
 
@@ -716,7 +899,7 @@ function formatNumber(value) {
     return "—";
   }
   return numeric.toLocaleString(undefined, {
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 }
 

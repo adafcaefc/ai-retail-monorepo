@@ -1,80 +1,33 @@
-import {
-  useEffect,
-  useRef,
-  useState
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-  fetchConversations,
-  streamChat
-} from "./api/chatStream.js";
+import { fetchConversations, streamChat } from "./api/chatStream.js";
 
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
+import ProblemToasts from "./components/ProblemToasts.jsx";
+import { buildInfoPrompt } from "./infoRegistry.js";
+import { useAgents } from "./agents/AgentsProvider.jsx";
 
+const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
+const CHAT_WIDTH_MIN = 320;
+const CHAT_WIDTH_MAX = 760;
+const CHAT_WIDTH_DEFAULT = 380;
+const SHELL_EDGE_PADDING = 14;
 
-const AGENTS = {
-  collections: {
-    name: "Collections",
-
-    prompt:
-      "Ask Collections about receivables...",
-
-    description:
-      "Review receivables, aging, and collection priorities.",
-
-    starterPrompts: [
-      "Summarize the largest overdue collection risks.",
-      "Which customers should Collections prioritize?"
-    ]
-  },
-
-  finance: {
-    name: "Finance",
-
-    prompt:
-      "Ask Finance about performance...",
-
-    description:
-      "Explore financial performance and plan variances.",
-
-    starterPrompts: [
-      "Explain the main finance performance risks.",
-      "What are the largest EBITDA variance drivers?"
-    ]
-  },
-
-  leakage: {
-    name: "Leakage",
-
-    prompt:
-      "Ask Leakage about revenue exposure...",
-
-    description:
-      "Review billing gaps and revenue leakage.",
-
-    starterPrompts: [
-      "Summarize the largest leakage risks.",
-      "Which leakage issues should be investigated first?"
-    ]
-  },
-
-  treasury: {
-    name: "Treasury",
-
-    prompt:
-      "Ask Treasury about liquidity...",
-
-    description:
-      "Review liquidity and cash-flow forecasts.",
-
-    starterPrompts: [
-      "Explain the current cash and liquidity risks.",
-      "Which action restores the minimum cash buffer fastest?"
-    ]
+function clampChatWidth(value) {
+  if (!Number.isFinite(value)) {
+    return CHAT_WIDTH_DEFAULT;
   }
-};
+  return Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, Math.round(value)));
+}
 
+function readStoredChatWidth() {
+  if (typeof window === "undefined") {
+    return CHAT_WIDTH_DEFAULT;
+  }
+  const stored = Number(window.localStorage.getItem(CHAT_WIDTH_KEY));
+  return stored ? clampChatWidth(stored) : CHAT_WIDTH_DEFAULT;
+}
 
 function createInitialChat() {
   return {
@@ -82,232 +35,317 @@ function createInitialChat() {
     messages: [],
     conversationId: null,
     busy: false,
-    suggestions: []
+    suggestions: [],
+    draft: "",
   };
 }
 
-
-function createInitialChats() {
-  return Object.fromEntries(
-    Object.keys(AGENTS).map(
-      (agentId) => [
-        agentId,
-        createInitialChat()
-      ]
-    )
-  );
-}
-
+// Stand-in while the module list is still loading, so hooks below can read
+// `currentChat` unconditionally. Its identity is stable on purpose.
+const EMPTY_CHAT = createInitialChat();
 
 export default function App() {
-  const [
-    activeAgent,
-    setActiveAgent
-  ] = useState("finance");
+  const {
+    agents,
+    agentIds,
+    groups,
+    loading: agentsLoading,
+    error: agentsError,
+  } = useAgents();
 
-  const [
-    chats,
-    setChats
-  ] = useState(
-    createInitialChats
-  );
+  const [activeAgent, setActiveAgent] = useState(null);
 
-  const [
-    input,
-    setInput
-  ] = useState("");
+  const [chats, setChats] = useState({});
 
-  const [
-    conversationList,
-    setConversationList
-  ] = useState([]);
+  const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
 
-  const [
-    clearOpen,
-    setClearOpen
-  ] = useState(false);
+  const [conversationList, setConversationList] = useState([]);
 
-  const abortControllers =
-    useRef({});
+  const [clearOpen, setClearOpen] = useState(false);
 
-  const transcriptRef =
-    useRef(null);
+  const [isChatOpen, setIsChatOpen] = useState(false);
 
-  const currentAgent =
-    AGENTS[activeAgent];
+  const [chatWidth, setChatWidth] = useState(readStoredChatWidth);
 
-  const currentChat =
-    chats[activeAgent];
+  const [resizing, setResizing] = useState(false);
+
+  const abortControllers = useRef({});
+
+  const transcriptRef = useRef(null);
+
+  const composerRef = useRef(null);
+
+  const currentAgent = agents[activeAgent] || null;
+
+  const currentChat = chats[activeAgent] || EMPTY_CHAT;
+
+  const input = currentChat.draft || "";
 
   const visibleSuggestions =
     currentChat.messages.length > 0
       ? currentChat.suggestions
-      : currentAgent.starterPrompts;
+      : (currentAgent?.starterPrompts ?? []);
 
-  const canSend =
-    Boolean(input.trim()) &&
-    !currentChat.busy;
+  const canSend = Boolean(input.trim()) && !currentChat.busy;
 
+  // Seed one chat per enabled module once the backend list arrives, keeping
+  // any chat already in flight. The first module is the default board.
+  useEffect(() => {
+    if (agentIds.length === 0) {
+      return;
+    }
+
+    setChats((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const agentId of agentIds) {
+        if (!next[agentId]) {
+          next[agentId] = createInitialChat();
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+
+    setActiveAgent((current) =>
+      current && agentIds.includes(current) ? current : agentIds[0],
+    );
+  }, [agentIds]);
 
   useEffect(() => {
     async function loadConversations() {
       try {
-        const result =
-          await fetchConversations();
+        const result = await fetchConversations();
 
-        setConversationList(
-          Array.isArray(
-            result.items
-          )
-            ? result.items
-            : []
-        );
+        setConversationList(Array.isArray(result.items) ? result.items : []);
       } catch (error) {
-        console.error(
-          "Unable to load conversations:",
-          error
-        );
+        console.error("Unable to load conversations:", error);
       }
     }
 
     loadConversations();
   }, []);
 
-
   useEffect(() => {
-    const element =
-      transcriptRef.current;
+    const element = transcriptRef.current;
 
     if (!element) {
       return;
     }
 
     requestAnimationFrame(() => {
-      element.scrollTop =
-        element.scrollHeight;
+      element.scrollTop = element.scrollHeight;
     });
-  }, [
-    activeAgent,
-    currentChat.messages,
-    currentChat.suggestions
-  ]);
+  }, [activeAgent, currentChat.messages, currentChat.suggestions]);
 
+  useEffect(() => {
+    if (!isChatOpen) {
+      return;
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape" && !clearOpen) {
+        setIsChatOpen(false);
+      }
+    }
+
+    window.addEventListener("keydown", handleEscape);
+
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isChatOpen, clearOpen]);
+
+  // Grow the composer to fit its content (up to a max), so injected
+  // suggestions and multi-line drafts are never clipped.
+  useEffect(() => {
+    const element = composerRef.current;
+
+    if (!element) {
+      return;
+    }
+
+    element.style.height = "auto";
+
+    element.style.height = `${element.scrollHeight}px`;
+  }, [input, activeAgent]);
+
+  // Reveal a scroll surface's scrollbar only while it is actively scrolling,
+  // then fade it back out after a short idle. Hover is handled in CSS.
+  useEffect(() => {
+    const elements = [transcriptRef.current, composerRef.current].filter(
+      Boolean,
+    );
+
+    const timers = new Map();
+
+    const handlers = elements.map((element) => {
+      const onScroll = () => {
+        element.classList.add("is-scrolling");
+
+        window.clearTimeout(timers.get(element));
+
+        timers.set(
+          element,
+          window.setTimeout(() => {
+            element.classList.remove("is-scrolling");
+          }, 900),
+        );
+      };
+
+      element.addEventListener("scroll", onScroll, { passive: true });
+
+      return { element, onScroll };
+    });
+
+    return () => {
+      handlers.forEach(({ element, onScroll }) => {
+        element.removeEventListener("scroll", onScroll);
+      });
+
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [activeAgent]);
 
   useEffect(() => {
     return () => {
-      Object.values(
-        abortControllers.current
-      ).forEach(
-        (controller) =>
-          controller.abort()
+      Object.values(abortControllers.current).forEach((controller) =>
+        controller.abort(),
       );
     };
   }, []);
 
+  function startResize(startEvent) {
+    startEvent.preventDefault();
+    setResizing(true);
 
-  function updateChat(
-    agentId,
-    updater
-  ) {
-    setChats(
-      (currentChats) => {
-        const current =
-          currentChats[agentId];
+    const applyWidth = (clientX) => {
+      const fromRight = window.innerWidth - clientX - SHELL_EDGE_PADDING;
 
-        const updated =
-          typeof updater ===
-          "function"
-            ? updater(current)
-            : {
-                ...current,
-                ...updater
-              };
+      setChatWidth(clampChatWidth(fromRight));
+    };
 
-        return {
-          ...currentChats,
-          [agentId]: updated
-        };
-      }
-    );
+    const onMove = (moveEvent) => {
+      applyWidth(moveEvent.clientX);
+    };
+
+    const onUp = () => {
+      setResizing(false);
+
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+
+      setChatWidth((width) => {
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(width));
+        return width;
+      });
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
+  function handleResizeKey(event) {
+    const step = event.shiftKey ? 48 : 16;
 
-  function selectAgent(
-    agentId
-  ) {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setChatWidth((width) => {
+        const next = clampChatWidth(width + step);
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
+        return next;
+      });
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setChatWidth((width) => {
+        const next = clampChatWidth(width - step);
+        window.localStorage.setItem(CHAT_WIDTH_KEY, String(next));
+        return next;
+      });
+    }
+  }
+
+  function updateChat(agentId, updater) {
+    setChats((currentChats) => {
+      const current = currentChats[agentId];
+
+      const updated =
+        typeof updater === "function"
+          ? updater(current)
+          : {
+              ...current,
+              ...updater,
+            };
+
+      return {
+        ...currentChats,
+        [agentId]: updated,
+      };
+    });
+  }
+
+  function setCurrentDraft(value) {
+    if (!activeAgent) {
+      return;
+    }
+
+    updateChat(activeAgent, (chat) => ({
+      ...chat,
+      draft: value,
+    }));
+  }
+
+  function selectAgent(agentId) {
     setActiveAgent(agentId);
     setClearOpen(false);
-    setInput("");
   }
 
+  function toggleChat() {
+    setClearOpen(false);
 
-  function removeLoading(
-    agentId
-  ) {
-    updateChat(
-      agentId,
-      (chat) => ({
+    setIsChatOpen((open) => !open);
+  }
+
+  function closeChat() {
+    setClearOpen(false);
+    setIsChatOpen(false);
+  }
+
+  function removeLoading(agentId) {
+    updateChat(agentId, (chat) => ({
+      ...chat,
+
+      messages: chat.messages.filter((message) => message.role !== "loading"),
+    }));
+  }
+
+  function showLoading(agentId, text) {
+    updateChat(agentId, (chat) => ({
+      ...chat,
+
+      messages: [
+        ...chat.messages.filter((message) => message.role !== "loading"),
+
+        {
+          id: `loading-${agentId}`,
+          role: "loading",
+          text,
+        },
+      ],
+    }));
+  }
+
+  function handleStreamEvent(agentId, event) {
+    const data = event.data || {};
+
+    if (data.conversation_id) {
+      updateChat(agentId, (chat) => ({
         ...chat,
 
-        messages:
-          chat.messages.filter(
-            (message) =>
-              message.role !==
-              "loading"
-          )
-      })
-    );
-  }
-
-
-  function showLoading(
-    agentId,
-    text
-  ) {
-    updateChat(
-      agentId,
-      (chat) => ({
-        ...chat,
-
-        messages: [
-          ...chat.messages.filter(
-            (message) =>
-              message.role !==
-              "loading"
-          ),
-
-          {
-            id:
-              `loading-${agentId}`,
-
-            role: "loading",
-            text
-          }
-        ]
-      })
-    );
-  }
-
-
-  function handleStreamEvent(
-    agentId,
-    event
-  ) {
-    const data =
-      event.data || {};
-
-    if (
-      data.conversation_id
-    ) {
-      updateChat(
-        agentId,
-        (chat) => ({
-          ...chat,
-
-          conversationId:
-            data.conversation_id
-        })
-      );
+        conversationId: data.conversation_id,
+      }));
     }
 
     switch (event.name) {
@@ -315,267 +353,183 @@ export default function App() {
         showLoading(
           agentId,
 
-          data.message ||
-            "Running analysis"
+          data.message || "Running analysis",
         );
 
         break;
-
 
       case "tool_call":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id:
-                  data.id ||
-                  makeId(),
+            {
+              id: data.id || makeId(),
 
-                role: "tool",
+              role: "tool",
 
-                tool:
-                  data.tool,
+              tool: data.tool,
 
-                arguments:
-                  data.arguments ||
-                  {},
+              arguments: data.arguments || {},
 
-                result: null
-              }
-            ]
-          })
-        );
+              result: null,
+            },
+          ],
+        }));
 
         showLoading(
           agentId,
 
-          `Running ${formatToolName(
-            data.tool
-          )}`
+          `Running ${formatToolName(data.tool)}`,
         );
 
         break;
-
 
       case "tool_result":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages:
-              chat.messages.map(
-                (message) => {
-                  const matches =
-                    message.role ===
-                      "tool" &&
-                    message.tool ===
-                      data.tool &&
-                    message.result ==
-                      null;
+          messages: chat.messages.map((message) => {
+            const matches =
+              message.role === "tool" &&
+              message.tool === data.tool &&
+              message.result == null;
 
-                  if (!matches) {
-                    return message;
-                  }
+            if (!matches) {
+              return message;
+            }
 
-                  return {
-                    ...message,
+            return {
+              ...message,
 
-                    result:
-                      data.result
-                  };
-                }
-              )
-          })
-        );
+              result: data.result,
+            };
+          }),
+        }));
 
-        showLoading(
-          agentId,
-          "Combining tool results"
-        );
+        showLoading(agentId, "Combining tool results");
 
         break;
-
 
       case "assistant_response":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id:
-                  data.id ||
-                  makeId(),
+            {
+              id: data.id || makeId(),
 
-                role:
-                  "assistant",
+              role: "assistant",
 
-                text:
-                  data.text ||
-                  "",
+              text: data.text || "",
 
-                blocks:
-                  Array.isArray(
-                    data.blocks
-                  )
-                    ? data.blocks
-                    : [],
+              blocks: Array.isArray(data.blocks) ? data.blocks : [],
 
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
+              time: formatTime(),
+            },
+          ],
+        }));
 
         break;
-
 
       case "suggestions":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            suggestions:
-              Array.isArray(
-                data.suggestions
-              )
-                ? data.suggestions
-                : []
-          })
-        );
+          suggestions: Array.isArray(data.suggestions) ? data.suggestions : [],
+        }));
 
         break;
-
 
       case "done":
-        removeLoading(
-          agentId
-        );
+        removeLoading(agentId);
 
         break;
-
 
       case "error":
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
+        updateChat(agentId, (chat) => ({
+          ...chat,
 
-            suggestions: [],
+          suggestions: [],
 
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
 
-              {
-                id: makeId(),
+            {
+              id: makeId(),
 
-                role: "error",
+              role: "error",
 
-                text:
-                  data.message ||
-                  "The stream reported an error.",
+              text: data.message || "The stream reported an error.",
 
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
+              time: formatTime(),
+            },
+          ],
+        }));
 
         break;
 
-
       default:
-        console.debug(
-          "Unhandled SSE event:",
-          event
-        );
+        console.debug("Unhandled SSE event:", event);
     }
   }
 
-
-  async function sendMessage(
-    event
-  ) {
+  async function sendMessage(event) {
     event.preventDefault();
 
-    const text =
-      input.trim();
+    const text = input.trim();
 
-    if (
-      !text ||
-      currentChat.busy
-    ) {
+    if (!text) {
       return;
     }
 
-    const agentId =
-      activeAgent;
+    setCurrentDraft("");
 
-    const conversationId =
-      currentChat.conversationId;
+    await submitText(text);
+  }
 
-    const controller =
-      new AbortController();
+  async function submitText(rawText) {
+    const text = String(rawText || "").trim();
 
-    abortControllers.current[
-      agentId
-    ] = controller;
+    if (!text || currentChat.busy) {
+      return;
+    }
 
-    setInput("");
+    const agentId = activeAgent;
 
-    updateChat(
-      agentId,
-      (chat) => ({
-        ...chat,
+    const conversationId = currentChat.conversationId;
 
-        title:
-          chat.title ||
-          generateTitle(text),
+    const controller = new AbortController();
 
-        busy: true,
+    abortControllers.current[agentId] = controller;
 
-        suggestions: [],
+    updateChat(agentId, (chat) => ({
+      ...chat,
 
-        messages: [
-          ...chat.messages,
+      title: chat.title || generateTitle(text),
 
-          {
-            id: makeId(),
+      busy: true,
 
-            role: "user",
+      suggestions: [],
 
-            text,
+      messages: [
+        ...chat.messages,
 
-            time:
-              formatTime()
-          }
-        ]
-      })
-    );
+        {
+          id: makeId(),
+
+          role: "user",
+
+          text,
+
+          time: formatTime(),
+        },
+      ],
+    }));
 
     try {
       await streamChat({
@@ -583,464 +537,416 @@ export default function App() {
         message: text,
         conversationId,
 
-        signal:
-          controller.signal,
+        signal: controller.signal,
 
-        onEvent:
-          (streamEvent) =>
-            handleStreamEvent(
-              agentId,
-              streamEvent
-            )
+        onEvent: (streamEvent) => handleStreamEvent(agentId, streamEvent),
       });
     } catch (error) {
-      if (
-        error.name !==
-        "AbortError"
-      ) {
-        updateChat(
-          agentId,
-          (chat) => ({
-            ...chat,
-
-            suggestions: [],
-
-            messages: [
-              ...chat.messages.filter(
-                (message) =>
-                  message.role !==
-                  "loading"
-              ),
-
-              {
-                id: makeId(),
-
-                role: "error",
-
-                text:
-                  `The service could not respond. ${error.message}`,
-
-                time:
-                  formatTime()
-              }
-            ]
-          })
-        );
-      }
-    } finally {
-      delete abortControllers
-        .current[agentId];
-
-      updateChat(
-        agentId,
-        (chat) => ({
+      if (error.name !== "AbortError") {
+        updateChat(agentId, (chat) => ({
           ...chat,
 
-          busy: false,
+          suggestions: [],
 
-          messages:
-            chat.messages.filter(
-              (message) =>
-                message.role !==
-                "loading"
-            )
-        })
-      );
+          messages: [
+            ...chat.messages.filter((message) => message.role !== "loading"),
+
+            {
+              id: makeId(),
+
+              role: "error",
+
+              text: `The service could not respond. ${error.message}`,
+
+              time: formatTime(),
+            },
+          ],
+        }));
+      }
+    } finally {
+      delete abortControllers.current[agentId];
+
+      updateChat(agentId, (chat) => ({
+        ...chat,
+
+        busy: false,
+
+        messages: chat.messages.filter((message) => message.role !== "loading"),
+      }));
     }
   }
 
-
   function clearCurrentChat() {
-    const controller =
-      abortControllers.current[
-        activeAgent
-      ];
+    const controller = abortControllers.current[activeAgent];
 
     if (controller) {
       controller.abort();
 
-      delete abortControllers
-        .current[
-          activeAgent
-        ];
+      delete abortControllers.current[activeAgent];
     }
 
-    updateChat(
-      activeAgent,
-      createInitialChat()
-    );
+    updateChat(activeAgent, createInitialChat());
 
     setClearOpen(false);
-    setInput("");
   }
 
+  function askKpiInsight(request) {
+    if (currentChat.busy) {
+      return;
+    }
+
+    setClearOpen(false);
+    setIsChatOpen(true);
+
+    submitText(
+      request?.entry
+        ? buildInfoPrompt(request.entry, request.context)
+        : buildKpiInsightPrompt(request),
+    );
+
+    requestAnimationFrame(() => {
+      const element = transcriptRef.current;
+
+      if (element) {
+        element.scrollTop = element.scrollHeight;
+      }
+    });
+  }
+
+  function toggleFolder(folder) {
+    setCollapsedFolders((current) => {
+      const next = new Set(current);
+
+      if (next.has(folder)) {
+        next.delete(folder);
+      } else {
+        next.add(folder);
+      }
+
+      return next;
+    });
+  }
+
+  // The module list is served by the backend, so the shell waits for it
+  // rather than assuming which agents exist.
+  if (agentsLoading || !currentAgent) {
+    return (
+      <main className="app-shell app-shell-notice">
+        <p role="status">
+          {agentsError
+            ? agentsError
+            : agentsLoading
+              ? "Loading agents…"
+              : "No agents are enabled."}
+        </p>
+      </main>
+    );
+  }
 
   return (
-    <main className="app-shell">
-      <aside
-        className="sidebar"
-        aria-label="Agent chats"
-      >
+    <main
+      className={[
+        "app-shell",
+        isChatOpen ? "chat-open" : "chat-closed",
+        resizing ? "is-resizing" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")}
+      style={{
+        "--chat-width": `${chatWidth}px`,
+      }}
+    >
+      <aside className="sidebar" aria-label="Agent chats">
         <div className="brand">
-          <div className="brand-mark">
-            L
-          </div>
+          <div className="brand-mark">L</div>
 
           <div className="brand-copy">
-            <strong>
-              Ledgerline
-            </strong>
+            <strong>Ledgerline</strong>
 
-            <span>
-              Finance forum
-            </span>
+            <span>Finance forum</span>
           </div>
         </div>
 
+        <p className="section-label">Agent chats</p>
 
-        <p className="section-label">
-          Agent chats
-        </p>
+        <nav className="agent-groups" aria-label="Choose an agent">
+          {groups.map((group) => {
+            const collapsed = collapsedFolders.has(group.folder);
 
-
-        <nav
-          className="agent-list"
-          aria-label="Choose an agent"
-        >
-          {Object.entries(
-            AGENTS
-          ).map(
-            ([
-              agentId,
-              agent
-            ]) => {
-              const chat =
-                chats[agentId];
-
-              return (
+            return (
+              <div key={group.folder} className="agent-group">
                 <button
-                  key={agentId}
                   type="button"
-
-                  className={
-                    agentId ===
-                    activeAgent
-                      ? "agent-button active"
-                      : "agent-button"
-                  }
-
-                  data-busy={
-                    chat.busy
-                  }
-
-                  onClick={() =>
-                    selectAgent(
-                      agentId
-                    )
-                  }
+                  className="folder-toggle"
+                  aria-expanded={!collapsed}
+                  onClick={() => toggleFolder(group.folder)}
                 >
-                  <span className="agent-avatar">
-                    {agent.name.charAt(
-                      0
-                    )}
-                  </span>
+                  <span className="folder-chevron" aria-hidden="true" />
 
-                  <span className="agent-copy">
-                    <strong>
-                      {agent.name}
-                    </strong>
+                  <span className="folder-name">{group.label}</span>
 
-                    <small>
-                      {chat.title ||
-                        "New conversation"}
-                    </small>
-                  </span>
-
-                  <span
-                    className="activity-dot"
-                    aria-hidden="true"
-                  />
+                  <span className="folder-count">{group.agents.length}</span>
                 </button>
-              );
-            }
-          )}
+
+                {!collapsed && (
+                  <div className="agent-list">
+                    {group.agents.map((agent) => {
+                      const chat = chats[agent.id] || EMPTY_CHAT;
+
+                      return (
+                        <button
+                          key={agent.id}
+                          type="button"
+
+                          className={
+                            agent.id === activeAgent
+                              ? "agent-button active"
+                              : "agent-button"
+                          }
+
+                          data-busy={chat.busy}
+
+                          onClick={() => selectAgent(agent.id)}
+                        >
+                          <span className="agent-avatar">
+                            {agent.name.charAt(0)}
+                          </span>
+
+                          <span className="agent-copy">
+                            <strong>{agent.name}</strong>
+
+                            <small>{chat.title || "New conversation"}</small>
+                          </span>
+
+                          <span className="activity-dot" aria-hidden="true" />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
-
         <footer className="sidebar-footer">
-          {conversationList.length}
-          {" "}
-          saved conversation(s)
+          {conversationList.length} saved conversation(s)
         </footer>
       </aside>
-
 
       <Workboard
         agentId={activeAgent}
         agentName={currentAgent.name}
+        onAskInsight={askKpiInsight}
+        insightBusy={currentChat.busy}
+        isChatOpen={isChatOpen}
+        onToggleChat={toggleChat}
       />
 
+      {isChatOpen ? (
+        <div
+          className="chat-resize-handle"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize chat panel"
+          aria-controls="agent-chat-panel"
+          tabIndex={0}
+          onMouseDown={startResize}
+          onKeyDown={handleResizeKey}
+        >
+          <span className="chat-resize-grip" aria-hidden="true" />
+        </div>
+      ) : null}
 
-      <section className="chat-panel">
+      <section
+        id="agent-chat-panel"
+        className="chat-panel"
+        aria-label={`${currentAgent.name} chat`}
+      >
         <header className="chat-header">
           <div>
             <span className="header-kicker">
-              {currentAgent.name}
-              {" "}
-              chat
-
-              {currentChat.busy
-                ? " · working"
-                : ""}
+              {currentAgent.name} chat
+              {currentChat.busy ? " · working" : ""}
             </span>
 
-            <h1>
-              {currentChat.title ||
-                `Ask ${currentAgent.name}`}
-            </h1>
+            <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
           </div>
 
+          <div className="chat-header-actions">
+            <div className="clear-area">
+              <button
+                type="button"
+                className="clear-button"
+                disabled={!currentChat.messages.length}
+                onClick={() => setClearOpen((open) => !open)}
+              >
+                Clear chat
+              </button>
 
-          <div className="clear-area">
+              {clearOpen && (
+                <div className="clear-confirm">
+                  <p>Clear this agent&apos;s local messages?</p>
+
+                  <div>
+                    <button type="button" onClick={() => setClearOpen(false)}>
+                      Cancel
+                    </button>
+
+                    <button
+                      type="button"
+                      className="danger"
+                      onClick={clearCurrentChat}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               type="button"
-              className="clear-button"
-
-              disabled={
-                !currentChat
-                  .messages.length
-              }
-
-              onClick={() =>
-                setClearOpen(
-                  (open) => !open
-                )
-              }
+              className="chat-close-button"
+              aria-label={`Close ${currentAgent.name} chat`}
+              title="Close chat"
+              onClick={closeChat}
             >
-              Clear chat
+              ×
             </button>
-
-
-            {clearOpen && (
-              <div className="clear-confirm">
-                <p>
-                  Clear this agent&apos;s
-                  local messages?
-                </p>
-
-                <div>
-                  <button
-                    type="button"
-
-                    onClick={() =>
-                      setClearOpen(
-                        false
-                      )
-                    }
-                  >
-                    Cancel
-                  </button>
-
-                  <button
-                    type="button"
-                    className="danger"
-
-                    onClick={
-                      clearCurrentChat
-                    }
-                  >
-                    Clear
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </header>
 
-
-        <div
-          ref={transcriptRef}
-          className="transcript"
-          aria-live="polite"
-        >
-          {!currentChat
-            .messages.length ? (
-            <EmptyState
-              agent={
-                currentAgent
-              }
-            />
+        <div ref={transcriptRef} className="transcript" aria-live="polite">
+          {!currentChat.messages.length ? (
+            <EmptyState agent={currentAgent} />
           ) : (
             <ol className="message-list">
-              {currentChat.messages.map(
-                (message) => (
-                  <ChatMessage
-                    key={
-                      message.id
-                    }
+              {currentChat.messages.map((message) => (
+                <ChatMessage
+                  key={message.id}
 
-                    message={
-                      message
-                    }
+                  message={message}
 
-                    agentName={
-                      currentAgent.name
-                    }
-                  />
-                )
-              )}
+                  agentName={currentAgent.name}
+                />
+              ))}
             </ol>
           )}
         </div>
 
-
         <footer className="composer-wrap">
-          {visibleSuggestions?.length >
-            0 && (
+          {visibleSuggestions?.length > 0 && (
             <section
               className="prompt-suggestions"
               aria-label="Suggested prompts"
             >
               <div className="prompt-suggestions-heading">
-                <span className="prompt-suggestions-spark">
-
-                </span>
+                <SparkleIcon className="prompt-suggestions-spark" />
 
                 <span>
                   {currentChat.messages.length > 0
-                  ? "Continue exploring"
-                  : "Try asking"}
+                    ? "Suggested follow-ups"
+                    : "Suggested prompts"}
                 </span>
               </div>
 
               <div className="prompt-suggestions-list">
-                {visibleSuggestions.map(
-                  (
-                    suggestion
-                  ) => (
-                    <button
-                  key={suggestion}
-                  type="button"
-                  className="prompt-suggestion-button"
-                  disabled={currentChat.busy}
-                  onClick={() => {
-                    setInput(suggestion);
-                  }}
-                >
-                  <span className="prompt-suggestion-text">
-                    {suggestion}
-                  </span>
+                {visibleSuggestions.map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    className="prompt-chip"
+                    disabled={currentChat.busy}
+                    onClick={() => {
+                      setCurrentDraft(suggestion);
 
-                  <span
-                    className="prompt-suggestion-arrow"
-                    aria-hidden="true"
+                      requestAnimationFrame(() => {
+                        composerRef.current?.focus();
+                      });
+                    }}
                   >
-                    ↗
-                  </span>
-                </button>
-                  )
-                )}
+                    <SparkleIcon className="prompt-chip-spark" />
+
+                    <span className="prompt-chip-text">{suggestion}</span>
+                  </button>
+                ))}
               </div>
             </section>
           )}
 
-
-          <form
-            className="composer"
-            onSubmit={
-              sendMessage
-            }
-          >
+          <form className="composer" onSubmit={sendMessage}>
             <textarea
+              ref={composerRef}
               value={input}
 
-              disabled={
-                currentChat.busy
-              }
+              disabled={currentChat.busy}
 
               rows={1}
               maxLength={2000}
 
-              placeholder={
-                currentAgent.prompt
-              }
+              placeholder={currentAgent.prompt}
 
-              aria-label={
-                `Message ${currentAgent.name}`
-              }
+              aria-label={`Message ${currentAgent.name}`}
 
-              onChange={
-                (event) =>
-                  setInput(
-                    event.target
-                      .value
-                  )
-              }
+              onChange={(event) => setCurrentDraft(event.target.value)}
 
-              onKeyDown={
-                (event) => {
-                  if (
-                    event.key ===
-                      "Enter" &&
-                    !event.shiftKey
-                  ) {
-                    event.preventDefault();
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
 
-                    event.currentTarget
-                      .form
-                      .requestSubmit();
-                  }
+                  event.currentTarget.form.requestSubmit();
                 }
-              }
+              }}
             />
 
-            <button
-              type="submit"
-              className="send-button"
-              disabled={!canSend}
-            >
+            <button type="submit" className="send-button" disabled={!canSend}>
               Send
             </button>
           </form>
 
-
           <p className="composer-note">
-            AI responses should be
-            reviewed before financial
-            decisions are made.
+            AI responses should be reviewed before financial decisions are made.
           </p>
         </footer>
       </section>
+
+      <ProblemToasts />
     </main>
   );
 }
 
-
-function EmptyState({
-  agent
-}) {
+function EmptyState({ agent }) {
   return (
     <div className="empty-state">
       <div className="empty-content">
-        <div className="empty-icon">
-          {agent.name.charAt(
-            0
-          )}
-        </div>
+        <div className="empty-icon">{agent.name.charAt(0)}</div>
 
-        <h2>
-          {agent.name}, ready
-          when you are
-        </h2>
+        <h2>{agent.name}, ready when you are</h2>
 
-        <p>
-          {agent.description}
-        </p>
+        <p>{agent.description}</p>
       </div>
     </div>
   );
 }
 
+function SparkleIcon({ className }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 2.5l1.9 4.9 4.9 1.9-4.9 1.9L12 16l-1.9-4.8L5.2 9.3l4.9-1.9L12 2.5zm6.5 10l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3zM5 14l.75 1.95L7.7 16.7l-1.95.75L5 19.4l-.75-1.95L2.3 16.7l1.95-.75L5 14z"
+      />
+    </svg>
+  );
+}
 
 function makeId() {
   return crypto.randomUUID
@@ -1048,54 +954,42 @@ function makeId() {
     : `${Date.now()}-${Math.random()}`;
 }
 
-
 function formatTime() {
-  return new Intl.DateTimeFormat(
-    undefined,
-    {
-      hour: "numeric",
-      minute: "2-digit"
-    }
-  ).format(new Date());
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date());
 }
 
+function generateTitle(message) {
+  const normalized = message.replace(/\s+/g, " ").trim();
 
-function generateTitle(
-  message
-) {
-  const normalized =
-    message
-      .replace(/\s+/g, " ")
-      .trim();
-
-  if (
-    normalized.length <= 42
-  ) {
+  if (normalized.length <= 42) {
     return normalized;
   }
 
-  const clipped =
-    normalized.slice(0, 42);
+  const clipped = normalized.slice(0, 42);
 
-  const lastSpace =
-    clipped.lastIndexOf(" ");
+  const lastSpace = clipped.lastIndexOf(" ");
 
-  const cutoff =
-    lastSpace > 24
-      ? lastSpace
-      : 42;
+  const cutoff = lastSpace > 24 ? lastSpace : 42;
 
-  return `${clipped.slice(
-    0,
-    cutoff
-  )}...`;
+  return `${clipped.slice(0, cutoff)}...`;
 }
 
+function formatToolName(tool) {
+  return String(tool || "tool").replaceAll("_", " ");
+}
 
-function formatToolName(
-  tool
-) {
-  return String(
-    tool || "tool"
-  ).replaceAll("_", " ");
+function buildKpiInsightPrompt(kpi) {
+  const value = [kpi.value, kpi.unit].filter(Boolean).join(" ");
+
+  const context = kpi.delta ? ` (${kpi.delta})` : "";
+
+  return (
+    `Interpret the "${kpi.label}" KPI, currently ${value}${context}. ` +
+    "Why is it at this level, what are the main drivers behind it, " +
+    "and what actions should I consider? Keep it concise and " +
+    "decision-focused for a CFO."
+  );
 }
