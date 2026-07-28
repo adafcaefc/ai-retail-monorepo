@@ -5,7 +5,7 @@ import {
   fetchActions,
   fetchAlertsWithActions,
   fetchMonitoringAgents,
-  simulateAction
+  simulateAction,
 } from "../api/alerts.js";
 import { useMonitoring } from "../monitoring/MonitoringProvider.jsx";
 import BlockRenderer from "./BlockRenderer.jsx";
@@ -13,7 +13,7 @@ import BlockRenderer from "./BlockRenderer.jsx";
 const STEPS = [
   { id: "recommendations", label: "Recommendations" },
   { id: "analysis", label: "Analysis" },
-  { id: "approval", label: "Approval" }
+  { id: "approval", label: "Approval" },
 ];
 
 // How many simulations may be in flight at once. Each one is a multi-turn
@@ -29,14 +29,16 @@ async function runPool(items, limit, worker) {
       while (queue.length > 0) {
         await worker(queue.shift());
       }
-    })
+    }),
   );
 }
 
 export default function AlertsPanel({
   agentId,
   agentName,
-  header = null
+  header = null,
+  isChatOpen = false,
+  onToggleChat,
 }) {
   const monitoring = useMonitoring();
   const [alerts, setAlerts] = useState([]);
@@ -78,7 +80,7 @@ export default function AlertsPanel({
       try {
         const [payload, monitorsPayload] = await Promise.all([
           fetchAlertsWithActions(agentId),
-          fetchMonitoringAgents(agentId)
+          fetchMonitoringAgents(agentId),
         ]);
         if (!cancelled) {
           setAlerts(payload.items || []);
@@ -112,7 +114,7 @@ export default function AlertsPanel({
       wasRunningRef.current = true;
       setToast({
         kind: "running",
-        text: "Running monitoring agents across all boards…"
+        text: "Running monitoring agents across all boards…",
       });
       return;
     }
@@ -124,7 +126,7 @@ export default function AlertsPanel({
       } else {
         setToast({
           kind: "done",
-          text: monitoring.note || "Monitoring complete."
+          text: monitoring.note || "Monitoring complete.",
         });
       }
     }
@@ -136,7 +138,7 @@ export default function AlertsPanel({
     }
     const timeout = window.setTimeout(
       () => setToast(null),
-      toast.kind === "error" ? 7000 : 4000
+      toast.kind === "error" ? 7000 : 4000,
     );
     return () => window.clearTimeout(timeout);
   }, [toast]);
@@ -155,18 +157,15 @@ export default function AlertsPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [alertsOpen]);
 
-  const flatActions = useMemo(
-    () => flattenActions(alerts),
-    [alerts]
-  );
+  const flatActions = useMemo(() => flattenActions(alerts), [alerts]);
 
   const monitorStatusRows = useMemo(
     () => buildMonitorStatusRows(monitors, alerts),
-    [monitors, alerts]
+    [monitors, alerts],
   );
 
   const plannedCount = flatActions.filter(
-    (item) => item.action.status === "planned"
+    (item) => item.action.status === "planned",
   ).length;
 
   async function reloadAlerts() {
@@ -186,7 +185,7 @@ export default function AlertsPanel({
     if (monitoring.isRunning) {
       return;
     }
-    setNotifDismissed(false);
+
     setError("");
     await monitoring.recalculate();
   }
@@ -201,14 +200,11 @@ export default function AlertsPanel({
       setHistory(Array.isArray(payload.items) ? payload.items : []);
     } catch (historyError) {
       setHistory([]);
-      setError(
-        historyError.message || "Unable to load action history."
-      );
+      setError(historyError.message || "Unable to load action history.");
     } finally {
       setHistoryLoading(false);
     }
   }
-
 
   function toggleSelected(actionId) {
     setSelectedIds((prev) => {
@@ -234,7 +230,7 @@ export default function AlertsPanel({
   }
 
   const selectedItems = flatActions.filter((item) =>
-    selectedIds.has(item.action.id)
+    selectedIds.has(item.action.id),
   );
 
   async function runAnalysis() {
@@ -266,7 +262,7 @@ export default function AlertsPanel({
       if (failed.length > 0) {
         setError(
           `Simulation failed for ${failed.length} of ` +
-            `${selectedItems.length} actions: ${failed.join(", ")}`
+            `${selectedItems.length} actions: ${failed.join(", ")}`,
         );
       }
     } catch (reloadError) {
@@ -368,17 +364,11 @@ export default function AlertsPanel({
             >
               Subagents
               {monitorStatusRows.length > 0 ? (
-                <span className="alerts-badge">
-                  {monitorStatusRows.length}
-                </span>
+                <span className="alerts-badge">{monitorStatusRows.length}</span>
               ) : null}
             </button>
 
-            <button
-              type="button"
-              className="alerts-btn"
-              onClick={openHistory}
-            >
+            <button type="button" className="alerts-btn" onClick={openHistory}>
               Audit History
             </button>
 
@@ -389,9 +379,7 @@ export default function AlertsPanel({
                 (alertsOpen ? " on" : "") +
                 (monitoringBusy ? " is-busy" : "")
               }
-              aria-label={`${alertCount} alert${
-                alertCount === 1 ? "" : "s"
-              }`}
+              aria-label={`${alertCount} alert${alertCount === 1 ? "" : "s"}`}
               aria-expanded={alertsOpen}
               onClick={() => setAlertsOpen((open) => !open)}
             >
@@ -403,9 +391,32 @@ export default function AlertsPanel({
               ) : (
                 <BellIcon />
               )}
+
               {alertCount > 0 ? (
                 <span className="alerts-bell-badge">{alertCount}</span>
               ) : null}
+            </button>
+
+            <button
+              type="button"
+              className={
+                "alerts-btn chat-toggle-btn" + (isChatOpen ? " on" : "")
+              }
+              aria-expanded={isChatOpen}
+              aria-controls="agent-chat-panel"
+              aria-label={
+                isChatOpen ? `Close ${agentName} chat` : `Ask ${agentName}`
+              }
+              title={
+                isChatOpen
+                  ? `Close ${agentName} chat`
+                  : `Open ${agentName} chat`
+              }
+              onClick={() => onToggleChat?.()}
+            >
+              <ChatSparkleIcon />
+
+              <span className="chat-toggle-label">Ask {agentName}</span>
             </button>
           </div>
 
@@ -441,10 +452,7 @@ export default function AlertsPanel({
 
                 {loading ? (
                   <div className="alerts-popover-empty">
-                    <span
-                      className="workboard-spinner"
-                      aria-hidden="true"
-                    />
+                    <span className="workboard-spinner" aria-hidden="true" />
                     <span>Loading alerts…</span>
                   </div>
                 ) : displayError ? (
@@ -507,9 +515,7 @@ export default function AlertsPanel({
           onClose={() => setSubagentsOpen(false)}
           wide={false}
         >
-          {displayNote ? (
-            <p className="alerts-note">{displayNote}</p>
-          ) : null}
+          {displayNote ? <p className="alerts-note">{displayNote}</p> : null}
           {displayError ? (
             <p className="alerts-error" role="alert">
               {displayError}
@@ -540,9 +546,7 @@ export default function AlertsPanel({
                   </div>
                   <div className="monitor-status-count">
                     <strong>{row.actionCount}</strong>
-                    <span>
-                      action{row.actionCount === 1 ? "" : "s"}
-                    </span>
+                    <span>action{row.actionCount === 1 ? "" : "s"}</span>
                   </div>
                 </li>
               ))}
@@ -575,9 +579,7 @@ export default function AlertsPanel({
             ))}
           </ol>
 
-          {displayNote ? (
-            <p className="alerts-note">{displayNote}</p>
-          ) : null}
+          {displayNote ? <p className="alerts-note">{displayNote}</p> : null}
           {displayError ? (
             <p className="alerts-error" role="alert">
               {displayError}
@@ -663,14 +665,11 @@ export default function AlertsPanel({
                     <tr key={action.id}>
                       <td>{formatWhen(action.created_at)}</td>
                       <td>{action.action}</td>
-                      <td>
-                        {(action.routes || []).join(", ") || "—"}
-                      </td>
+                      <td>{(action.routes || []).join(", ") || "—"}</td>
                       <td>
                         <span
                           className={
-                            "status-pill status-" +
-                            (action.status || "planned")
+                            "status-pill status-" + (action.status || "planned")
                           }
                         >
                           {action.status || "planned"}
@@ -694,21 +693,18 @@ function RecommendationsStep({
   onToggle,
   onContinue,
   continueBusy,
-  selectedCount
+  selectedCount,
 }) {
-  const groups = alerts.filter(
-    (alert) => (alert.actions || []).length > 0
-  );
+  const groups = alerts.filter((alert) => (alert.actions || []).length > 0);
   const totalActions = groups.reduce(
     (sum, alert) => sum + (alert.actions || []).length,
-    0
+    0,
   );
 
   if (groups.length === 0) {
     return (
       <p className="alerts-empty">
-        No recommended actions yet. Use Recalculate to run monitoring
-        agents.
+        No recommended actions yet. Use Recalculate to run monitoring agents.
       </p>
     );
   }
@@ -719,8 +715,8 @@ function RecommendationsStep({
         <div>
           <strong>Select recommendations</strong>
           <p>
-            Choose one or more recommendations for deeper analysis
-            before approval.
+            Choose one or more recommendations for deeper analysis before
+            approval.
           </p>
         </div>
         <span className="selected-chip">{selectedCount} selected</span>
@@ -804,9 +800,7 @@ function RecommendationsStep({
           disabled={selectedCount === 0 || continueBusy}
           onClick={onContinue}
         >
-          {continueBusy
-            ? "Analyzing…"
-            : "Analyze selected actions"}
+          {continueBusy ? "Analyzing…" : "Analyze selected actions"}
         </button>
       </div>
     </div>
@@ -819,7 +813,7 @@ function AnalysisStep({
   actionBusyId,
   onSimulate,
   onBack,
-  onContinue
+  onContinue,
 }) {
   return (
     <div className="action-step-panel">
@@ -827,8 +821,7 @@ function AnalysisStep({
         <div>
           <strong>Analysis</strong>
           <p>
-            Review simulated impact for each selected action before
-            approval.
+            Review simulated impact for each selected action before approval.
           </p>
         </div>
       </div>
@@ -867,14 +860,10 @@ function AnalysisStep({
                   <button
                     type="button"
                     className="alerts-mini-btn"
-                    disabled={
-                      actionBusyId === action.id || !action.spec
-                    }
+                    disabled={actionBusyId === action.id || !action.spec}
                     onClick={() => onSimulate(action.id)}
                   >
-                    {actionBusyId === action.id
-                      ? "Simulating…"
-                      : "Re-simulate"}
+                    {actionBusyId === action.id ? "Simulating…" : "Re-simulate"}
                   </button>
                 </div>
               </div>
@@ -906,20 +895,16 @@ function ApprovalStep({
   onApprove,
   onApproveAll,
   onBack,
-  onDone
+  onDone,
 }) {
-  const pending = items.filter(
-    (item) => item.action.status === "planned"
-  );
+  const pending = items.filter((item) => item.action.status === "planned");
 
   return (
     <div className="action-step-panel">
       <div className="action-step-head">
         <div>
           <strong>Approval</strong>
-          <p>
-            Confirm owner sign-off. Nothing executes without approval.
-          </p>
+          <p>Confirm owner sign-off. Nothing executes without approval.</p>
         </div>
       </div>
 
@@ -952,9 +937,7 @@ function ApprovalStep({
                     }
                     onClick={() => onApprove(action.id)}
                   >
-                    {actionBusyId === action.id
-                      ? "Approving…"
-                      : "Approve"}
+                    {actionBusyId === action.id ? "Approving…" : "Approve"}
                   </button>
                 </div>
               ) : null}
@@ -963,8 +946,7 @@ function ApprovalStep({
                   <em>Alert</em> {alert.name}
                 </span>
                 <span>
-                  <em>Owners</em>{" "}
-                  {(action.routes || []).join(", ") || "—"}
+                  <em>Owners</em> {(action.routes || []).join(", ") || "—"}
                 </span>
               </div>
             </div>
@@ -1021,6 +1003,24 @@ function BellIcon() {
   );
 }
 
+function ChatSparkleIcon() {
+  return (
+    <svg
+      className="chat-toggle-icon"
+      viewBox="0 0 24 24"
+      width="14"
+      height="14"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 2.5l1.9 4.9 4.9 1.9-4.9 1.9L12 16l-1.9-4.8L5.2 9.3l4.9-1.9L12 2.5zm6.5 10l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3z"
+      />
+    </svg>
+  );
+}
+
 function StatusAlertCard({ alert }) {
   const [open, setOpen] = useState(false);
   const actions = alert.actions || [];
@@ -1070,14 +1070,7 @@ function StatusAlertCard({ alert }) {
   );
 }
 
-function Modal({
-  title,
-  subtitle,
-  icon,
-  onClose,
-  children,
-  wide = false
-}) {
+function Modal({ title, subtitle, icon, onClose, children, wide = false }) {
   return (
     <div
       className="alerts-modal-backdrop"
@@ -1085,9 +1078,7 @@ function Modal({
       onClick={onClose}
     >
       <div
-        className={
-          "alerts-modal" + (wide ? " alerts-modal-wide" : "")
-        }
+        className={"alerts-modal" + (wide ? " alerts-modal-wide" : "")}
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -1137,15 +1128,14 @@ function buildMonitorStatusRows(monitors, alerts) {
     if (!key) {
       continue;
     }
-    actionCounts[key] =
-      (actionCounts[key] || 0) + (alert.actions || []).length;
+    actionCounts[key] = (actionCounts[key] || 0) + (alert.actions || []).length;
   }
 
   if ((monitors || []).length > 0) {
     return monitors.map((monitor) => ({
       name: monitor.name,
       order: monitor.order,
-      actionCount: actionCounts[monitor.name] || 0
+      actionCount: actionCounts[monitor.name] || 0,
     }));
   }
 
@@ -1154,7 +1144,7 @@ function buildMonitorStatusRows(monitors, alerts) {
     .map((name, index) => ({
       name,
       order: index + 1,
-      actionCount: actionCounts[name]
+      actionCount: actionCounts[name],
     }));
 }
 
@@ -1191,7 +1181,7 @@ function formatWhen(value) {
       day: "numeric",
       year: "numeric",
       hour: "numeric",
-      minute: "2-digit"
+      minute: "2-digit",
     }).format(new Date(value));
   } catch {
     return String(value);

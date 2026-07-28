@@ -1,0 +1,1125 @@
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+<!--
+:root
+	{}
+*
+	{box-sizing:border-box}
+html, body
+	{height:100%}
+body
+	{margin:0;
+	background:#eef1f7;
+	font-family:'Segoe UI',-apple-system,Arial,sans-serif;
+	color:#1c2436}
+.app
+	{display:flex;
+	height:100vh;
+	max-width:1580px;
+	margin:0 auto;
+	background:#fff;
+	overflow:hidden}
+.side
+	{width:200px;
+	flex:0 0 200px;
+	background:#fff;
+	border-right:1px solid #e9edf5;
+	padding:14px 10px;
+	display:flex;
+	flex-direction:column}
+.brand
+	{display:flex;
+	align-items:center;
+	padding:4px 6px 12px}
+.brand .logo
+	{width:36px;
+	height:36px;
+	border-radius:10px;
+	background:#eaf0ff;
+	display:flex;
+	align-items:center;
+	justify-content:center}
+.brand .bn
+	{font-size:15px;
+	font-weight:800;
+	color:#12203f;
+	line-height:1.1}
+.brand .bs
+	{font-size:10.5px;
+	color:#8a93a8}
+.sidelbl
+	{font-size:9.5px;
+	letter-spacing:1.1px;
+	color:#9aa2b5;
+	padding:6px 8px;
+	font-weight:800}
+.agent
+	{display:flex;
+	align-items:center;
+	padding:8px 9px;
+	margin:2px;
+	border-radius:11px;
+	border:1px solid transparent}
+.agent.on
+	{background:#eef3ff;
+	border-color:#d3e0fb}
+.agent .ai
+	{width:29px;
+	height:29px;
+	border-radius:8px;
+	background:#f0f3fa;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	flex:0 0 29px;
+	font-size:14px}
+.agent.on .ai
+	{background:#dbe6ff}
+.agent .an
+	{font-size:13px;
+	font-weight:800;
+	color:#1a2740}
+.agent .as
+	{font-size:10.5px;
+	color:#939cb0}
+.side .foot
+	{margin-top:auto;
+	padding:10px 8px;
+	font-size:10px;
+	color:#9aa2b5;
+	line-height:1.5}
+.work
+	{flex:1;
+	min-width:0;
+	display:flex;
+	flex-direction:column;
+	height:100vh;
+	overflow:hidden}
+.alertbar
+	{display:flex;
+	align-items:center;
+	border-bottom:1px solid #f6d5db;
+	padding:9px 20px}
+.alertbar .bell
+	{width:30px;
+	height:30px;
+	border-radius:8px;
+	background:#fde3e7;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	flex:0 0 30px}
+.alertbar .at
+	{font-size:12.5px;
+	color:#8a1f30;
+	line-height:1.35}
+.alertbar .at b
+	{color:#b4283c}
+.alertbar .abtn
+	{font-size:11.5px;
+	font-weight:800;
+	color:#fff;
+	border:none;
+	border-radius:7px;
+	padding:7px 13px;
+	margin-left:auto;
+	white-space:nowrap}
+.alertbar .ax
+	{font-size:16px;
+	color:#b98a92;
+	border:none;
+	background:none;
+	padding:2px 4px}
+.wtop
+	{display:flex;
+	align-items:center;
+	padding:9px 20px 6px;
+	flex-wrap:wrap}
+.wtop .lbl
+	{font-size:11.5px;
+	font-weight:700}
+.wtop h1
+	{margin:1px 0 0;
+	font-size:19px;
+	font-weight:800;
+	letter-spacing:-.3px}
+.wtop h1 .idt
+	{font-size:12.5px;
+	font-weight:400}
+.wtop .status
+	{font-size:10.5px;
+	color:#0b7a3b;
+	font-weight:700;
+	margin-left:6px}
+.wtop .sp
+	{margin-left:auto;
+	display:flex}
+.gbtn
+	{font-size:11.5px;
+	font-weight:700;
+	padding:6px 11px;
+	border-radius:7px;
+	border:1px solid #dbe0ec;
+	background:#fff;
+	color:#59627a}
+.gbtn.act
+	{background:#107c41;
+	color:#fff;
+	border-color:#107c41}
+.badge
+	{display:inline-block;
+	min-width:15px;
+	font-size:9px;
+	font-weight:800;
+	background:#c4314b;
+	color:#fff;
+	border-radius:9px;
+	padding:1px 5px;
+	margin-left:5px}
+.idt
+	{color:#8891a8;
+	font-style:italic;
+	font-weight:400}
+body.hide-id .idt
+	{display:none}
+.board
+	{flex:1;
+	min-height:0;
+	display:flex;
+	flex-direction:column;
+	padding:4px 20px 10px;
+	overflow:hidden}
+.kpirow
+	{display:grid}
+.kpi
+	{background:#fff;
+	border:2px solid #cfe0fb;
+	border-radius:11px;
+	padding:8px 11px;
+	min-width:0}
+.kpi.alert
+	{border-color:#f0b8c0}
+.kpi .kk
+	{font-size:9px;
+	color:#7a8299;
+	text-transform:uppercase;
+	letter-spacing:.3px;
+	font-weight:800}
+.kpi .kv
+	{font-size:20px;
+	font-weight:900;
+	margin:1px 0;
+	letter-spacing:-.5px}
+.kpi .kd
+	{font-size:10px;
+	font-weight:700}
+.kpi .open
+	{top:8px;
+	right:9px;
+	font-size:8px;
+	font-weight:800;
+	opacity:.8}
+.kpi.alert .open
+	{color:#c4314b}
+.g
+	{color:#0b7a3b}
+.r
+	{color:#c4314b}
+.am
+	{color:#c67a00}
+.mid
+	{flex:1;
+	min-height:0;
+	display:grid;
+	overflow:hidden}
+.card
+	{background:#fff;
+	border:1px solid #e9edf5;
+	border-radius:11px;
+	padding:10px 12px;
+	display:flex;
+	flex-direction:column;
+	min-height:0;
+	overflow:hidden}
+.ch
+	{display:flex;
+	align-items:center;
+	margin-bottom:2px}
+.ch h3
+	{margin:0;
+	font-size:13px;
+	font-weight:800}
+.ch .ctag
+	{margin-left:auto;
+	font-size:8.5px;
+	text-transform:uppercase;
+	letter-spacing:.4px;
+	color:#7a8299;
+	background:#f1f3f9;
+	padding:2px 7px;
+	border-radius:8px;
+	font-weight:800}
+.ch .flash
+	{margin-left:auto;
+	font-size:10px;
+	font-weight:800;
+	opacity:0}
+.csub
+	{font-size:10.5px;
+	color:#727c94;
+	margin:0 0 4px}
+.chartwrap
+	{flex:1;
+	min-height:0;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	overflow:hidden}
+.chartwrap svg
+	{max-width:100%;
+	max-height:100%}
+.sidecol
+	{display:grid;
+	min-height:0}
+.sidecol .card
+	{padding:8px 11px}
+.mini2
+	{display:grid;
+	align-items:center;
+	min-height:0}
+.note
+	{background:#eff4ff;
+	border:1px solid #d9e4fb;
+	border-radius:7px;
+	padding:6px 9px;
+	font-size:10.5px;
+	margin-top:5px;
+	color:#25314f}
+.conf
+	{font-size:8.5px;
+	font-weight:800;
+	padding:1px 6px;
+	border-radius:8px;
+	white-space:nowrap}
+.tbl
+	{width:100%;
+	border-collapse:collapse;
+	font-size:10.5px}
+.tbl th
+	{text-align:left;
+	color:#7a8299;
+	font-weight:700;
+	border-bottom:1px solid #eef1f7;
+	padding:3px 5px}
+.tbl td
+	{padding:3px 5px;
+	border-bottom:1px solid #f5f7fb}
+.tbl td.n
+	{text-align:right}
+.wifbar
+	{background:#f7f9ff;
+	border:1px solid #e2e9fb;
+	border-radius:11px;
+	padding:8px 13px;
+	display:flex;
+	flex-direction:column}
+.wiftop
+	{display:flex;
+	align-items:center;
+	flex-wrap:wrap}
+.wifctrl
+	{margin-left:auto;
+	display:flex;
+	align-items:center;
+	flex-wrap:wrap}
+.wifgrid3
+	{display:grid;
+	align-items:start}
+.wifcell
+	{min-width:0}
+.wlbl
+	{font-size:9px;
+	font-weight:800;
+	color:#7a8299;
+	text-transform:uppercase;
+	letter-spacing:.3px;
+	margin-bottom:5px}
+.wchart
+	{display:flex;
+	align-items:center;
+	justify-content:center}
+.wchart svg
+	{max-width:100%}
+.statrow
+	{display:flex;
+	margin-bottom:7px}
+.stat
+	{flex:1;
+	border:1px solid #e9edf5;
+	border-radius:8px;
+	padding:5px 8px;
+	background:#fff;
+	min-width:0}
+.stat .k
+	{font-size:8px;
+	color:#7a8299;
+	font-weight:800;
+	text-transform:uppercase}
+.stat .v
+	{font-size:15px;
+	font-weight:900;
+	margin-top:1px}
+.stat .d
+	{font-size:9px;
+	font-weight:700}
+.wiftitle
+	{font-size:12px;
+	font-weight:800}
+.wiftitle .idt
+	{font-weight:400;
+	font-size:10.5px}
+.levers
+	{display:grid}
+.lever
+	{min-width:0}
+.lever .ln
+	{font-size:9.5px;
+	font-weight:700;
+	color:#4a5570;
+	white-space:nowrap}
+.lever .lc
+	{display:flex;
+	align-items:center}
+.lever input[type=range]
+	{width:58px}
+.lever .nb
+	{width:50px;
+	border:1px solid #cfd5e6;
+	border-radius:5px;
+	text-align:right;
+	font-size:11px;
+	padding:2px 4px;
+	font-family:inherit}
+.calcbtn
+	{font-size:12px;
+	font-weight:800;
+	color:#fff;
+	border:none;
+	border-radius:8px;
+	padding:8px 14px;
+	white-space:nowrap}
+.presetsel
+	{font-size:11px;
+	border:1px solid #cfd5e6;
+	border-radius:6px;
+	padding:5px 7px;
+	font-family:inherit;
+	color:#33406a;
+	background:#fff}
+.scopebtn
+	{font-size:10px;
+	font-weight:700;
+	border:1px solid #cfd5e6;
+	background:#fff;
+	border-radius:6px;
+	padding:4px 8px;
+	color:#33406a}
+.scopebtn.on
+	{color:#fff}
+.botrow
+	{display:grid}
+.nbox
+	{border-radius:10px;
+	padding:7px 12px;
+	background:#fff;
+	display:flex;
+	align-items:center}
+.nbox .nt
+	{font-size:8.5px;
+	font-weight:800;
+	text-transform:uppercase;
+	letter-spacing:.4px}
+.nbox .nm
+	{font-size:12px;
+	font-weight:800}
+.nbox .nd
+	{font-size:10px;
+	color:#5f6a83;
+	line-height:1.3}
+.nbox .go
+	{font-size:15px;
+	color:#107c41;
+	margin-left:auto;
+	font-weight:900}
+.chatpanel
+	{width:392px;
+	flex:0 0 392px;
+	border-left:1px solid #e9edf5;
+	display:flex;
+	flex-direction:column;
+	height:100vh;
+	background:#f7f9fc}
+.chathead
+	{padding:12px 15px;
+	border-bottom:1px solid #eef1f7;
+	display:flex;
+	align-items:center;
+	background:#fff}
+.chathead .av
+	{width:30px;
+	height:30px;
+	border-radius:8px;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	flex:0 0 30px}
+.chathead .nm
+	{font-size:14px;
+	font-weight:800}
+.chathead .sub2
+	{font-size:10px;
+	color:#7a8299}
+.cmsgs
+	{flex:1;
+	overflow:auto;
+	padding:14px 13px 6px}
+.crow
+	{margin-bottom:13px;
+	display:flex}
+.crow.cfo
+	{justify-content:flex-end}
+.cbub
+	{font-size:12.5px;
+	line-height:1.5;
+	padding:9px 12px;
+	border-radius:12px;
+	max-width:93%}
+.cbub.ai
+	{background:#fff;
+	border:1px solid #e9edf5;
+	color:#25314f}
+.cbub.cfo
+	{color:#fff;
+	max-width:82%}
+.cbub .ct
+	{font-size:11.5px;
+	font-weight:800;
+	margin-bottom:4px}
+.cbub .cchart
+	{margin:7px 0 4px;
+	background:#fbfcff;
+	border:1px solid #eef1f7;
+	border-radius:8px;
+	padding:6px}
+.cbub table
+	{width:100%;
+	border-collapse:collapse;
+	font-size:10.5px;
+	margin:6px 0 2px}
+.cbub th
+	{text-align:left;
+	color:#7a8299;
+	font-weight:700;
+	border-bottom:1px solid #eef1f7;
+	padding:3px 5px}
+.cbub td
+	{padding:3px 5px;
+	border-bottom:1px solid #f5f7fb}
+.cbub td.n
+	{text-align:right}
+.cchips
+	{padding:8px 11px 3px;
+	display:flex;
+	flex-wrap:wrap;
+	border-top:1px solid #eef1f7;
+	background:#fff;
+	max-height:104px;
+	overflow:auto}
+.chip
+	{font-size:12px;
+	font-weight:600;
+	color:#33406a;
+	background:#fff;
+	border:1px solid #d3dbf0;
+	border-radius:16px;
+	padding:6px 12px}
+.chip.chal
+	{border-color:#f0c8bf;
+	color:#a23b2a;
+	background:#fff7f5}
+.chiplbl
+	{width:100%;
+	font-size:9px;
+	font-weight:800;
+	text-transform:uppercase;
+	letter-spacing:.4px;
+	margin:2px 0}
+.cpill
+	{padding:9px 12px 12px;
+	display:flex;
+	align-items:center;
+	background:#fff}
+.cpill input
+	{flex:1;
+	border:1px solid #e3e7f1;
+	background:#f3f5fb;
+	border-radius:22px;
+	font-size:13px;
+	font-family:inherit;
+	padding:9px 15px}
+.cpill input:focus
+	{outline:2px solid #cfe0fb}
+.cpill .snd
+	{width:34px;
+	height:34px;
+	border-radius:50%;
+	color:#fff;
+	border:none;
+	font-size:15px;
+	flex:0 0 34px}
+.modal
+	{background:rgba(20,31,56,.45);
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	z-index:50}
+.modalc, .actmodalc
+	{background:#fff;
+	border-radius:16px;
+	box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modalc
+	{max-width:460px;
+	padding:26px 28px;
+	text-align:center}
+.modalc .bell
+	{width:56px;
+	height:56px;
+	border-radius:14px;
+	background:#fde3e7;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	margin:0 auto 14px}
+.modalc h2
+	{margin:0 0 6px;
+	font-size:20px}
+.modalc p
+	{margin:0 0 6px;
+	font-size:13px;
+	color:#5f6a83;
+	line-height:1.5}
+.modalc .big
+	{font-size:28px;
+	font-weight:900;
+	color:#c4314b;
+	margin:10px 0 2px}
+.modalc .go
+	{margin-top:16px;
+	font-size:14px;
+	font-weight:800;
+	color:#fff;
+	border:none;
+	border-radius:10px;
+	padding:12px 22px}
+.actmodalc
+	{max-width:640px;
+	width:92%;
+	max-height:88vh;
+	overflow:auto;
+	padding:20px 24px}
+.actmodalc h2
+	{margin:0 0 3px;
+	font-size:18px}
+.actmodalc .sub
+	{font-size:12px;
+	color:#5f6a83;
+	margin-bottom:14px}
+.actmodalc .x
+	{top:14px;
+	right:18px;
+	font-size:22px;
+	color:#98a1b5;
+	border:none;
+	background:none}
+.actrow
+	{display:flex;
+	align-items:flex-start;
+	border:1px solid #e9edf5;
+	border-radius:9px;
+	padding:10px 12px;
+	margin-bottom:8px}
+.actrow input
+	{margin-top:3px}
+.actrow .an
+	{font-size:12.5px;
+	font-weight:800}
+.actrow .an .idt
+	{font-weight:400}
+.actrow .aroute
+	{font-size:11px;
+	color:#727c94;
+	margin-top:2px}
+.execbtn
+	{font-size:13px;
+	font-weight:800;
+	background:#107c41;
+	color:#fff;
+	border:none;
+	border-radius:8px;
+	padding:10px 18px;
+	margin-top:4px}
+.casc
+	{border:1px solid #e9edf5;
+	border-left-width:5px;
+	border-radius:9px;
+	padding:10px 13px;
+	margin-top:9px;
+	background:#fff}
+.casc .cn
+	{font-size:12.5px;
+	font-weight:800;
+	display:flex;
+	align-items:center}
+.casc .cr
+	{font-size:11.5px;
+	color:#555;
+	margin-top:3px;
+	line-height:1.5}
+.pill2
+	{font-size:9px;
+	font-weight:800;
+	padding:2px 8px;
+	border-radius:9px;
+	margin-left:7px}
+.pp
+	{background:#fff4ce;
+	color:#8a6d00}
+.pn
+	{background:#e7ecfb;
+	color:#3a56b0}
+.pd
+	{background:#dff6dd;
+	color:#0b7a3b}
+.pr
+	{background:#e6f0fb;
+	color:#0f6cbd}
+.cmet
+	{font-size:10.5px;
+	color:#0b7a3b;
+	font-weight:700;
+	margin-top:3px}
+.apprbtn
+	{font-size:10px;
+	font-weight:800;
+	background:#fff;
+	color:#107c41;
+	border:1px solid #107c41;
+	border-radius:6px;
+	padding:3px 10px;
+	margin-left:8px}
+.apprall
+	{font-size:11px;
+	font-weight:800;
+	background:#fff;
+	color:#107c41;
+	border:1px solid #107c41;
+	border-radius:7px;
+	padding:6px 13px;
+	margin-top:10px}
+.govnote
+	{background:#eff4ff;
+	border:1px solid #d9e4fb;
+	border-radius:8px;
+	padding:9px 12px;
+	font-size:11.5px;
+	color:#25314f;
+	margin-top:12px}
+.logwrap
+	{max-height:56vh;
+	overflow:auto;
+	margin-top:8px}
+.logtbl
+	{width:100%;
+	border-collapse:collapse;
+	font-size:11px}
+.logtbl th
+	{text-align:left;
+	color:#7a8299;
+	font-weight:700;
+	border-bottom:1px solid #eef1f7;
+	padding:5px 6px;
+	position:sticky;
+	top:0;
+	background:#fff}
+.logtbl td
+	{padding:5px 6px;
+	border-bottom:1px solid #f5f7fb}
+.stpill
+	{font-size:9px;
+	font-weight:800;
+	padding:2px 8px;
+	border-radius:9px}
+.st-pending
+	{background:#fff4ce;
+	color:#8a6d00}
+.st-approved
+	{background:#dff6dd;
+	color:#0b7a3b}
+.st-done
+	{background:#e7ecfb;
+	color:#3a56b0}
+.logsum
+	{font-size:12px;
+	font-weight:800;
+	margin:2px 0 6px}
+.agentchip
+	{display:inline-flex;
+	align-items:center;
+	font-size:10.5px;
+	font-weight:800;
+	color:#5b3fc7;
+	background:#efeafc;
+	border:1px solid #ddd4f5;
+	border-radius:20px;
+	padding:4px 10px}
+.agentchip .dot
+	{width:7px;
+	height:7px;
+	border-radius:50%;
+	background:#2e8b57}
+.toastwrap
+	{right:18px;
+	bottom:18px;
+	z-index:80;
+	display:flex;
+	flex-direction:column;
+	max-width:340px}
+.toast
+	{background:#fff;
+	border:1px solid #e3e8f2;
+	border-left:4px solid #5b5fc7;
+	border-radius:10px;
+	box-shadow:0 10px 30px rgba(20,31,56,.2);
+	padding:10px 13px}
+.toast .tt
+	{font-weight:800;
+	font-size:12.5px;
+	display:flex;
+	align-items:center}
+.toast .td
+	{color:#5f6a83;
+	margin-top:3px;
+	font-size:11.5px;
+	line-height:1.4}
+.toast.pending
+	{border-left-color:#e0a400}
+.toast.approved
+	{border-left-color:#107c41}
+.toast.executed
+	{border-left-color:#2f6bd8}
+.toast.auto
+	{border-left-color:#5b5fc7}
+.toast.handoff
+	{border-left-color:#0f6cbd}
+.notifrow
+	{display:flex;
+	align-items:flex-start;
+	border:1px solid #eef1f7;
+	border-left-width:4px;
+	border-radius:9px;
+	padding:9px 12px;
+	margin-bottom:8px}
+.notifrow.unread
+	{background:#f7f9ff}
+.notifrow .ni
+	{font-size:15px;
+	flex:0 0 auto;
+	line-height:1.3}
+.notifrow .nti
+	{font-size:12.5px;
+	font-weight:800}
+.notifrow .nd
+	{font-size:11.5px;
+	color:#5f6a83;
+	margin-top:2px;
+	line-height:1.4}
+.notifrow .ntm
+	{font-size:10px;
+	color:#98a1b5;
+	margin-top:3px;
+	font-weight:700}
+#floatInfo
+	{z-index:95;
+	max-width:330px;
+	background:#fff;
+	border:1px solid #d8deec;
+	border-left:4px solid #5b5fc7;
+	border-radius:10px;
+	box-shadow:0 14px 38px rgba(20,31,56,.24);
+	padding:11px 13px;
+	display:none;
+	font-size:12px;
+	color:#25314f}
+#floatInfo .fi-t
+	{font-weight:800;
+	color:#141f38;
+	font-size:12.5px;
+	margin-bottom:4px}
+#floatInfo .fi-x
+	{line-height:1.45;
+	margin-bottom:7px}
+#floatInfo .fi-f
+	{font-family:Consolas,'Courier New',monospace;
+	font-size:10.5px;
+	background:#f4f6fb;
+	border:1px solid #e6ebf5;
+	border-radius:6px;
+	padding:6px 8px;
+	color:#33406a;
+	white-space:pre-wrap;
+	margin-bottom:8px}
+#floatInfo .fi-btn
+	{font-size:11px;
+	font-weight:800;
+	color:#fff;
+	border:none;
+	border-radius:7px;
+	padding:6px 12px}
+[data-ik]
+	{}
+.side, .chatpanel
+	{}
+body.side-min .side
+	{width:0;
+	flex-basis:0;
+	padding:0;
+	overflow:hidden;
+	border-right:none}
+body.chat-min .chatpanel
+	{width:0;
+	flex-basis:0;
+	overflow:hidden;
+	border-left:none}
+.mintog
+	{margin-left:auto;
+	background:#eef3ff;
+	border:1px solid #d3e0fb;
+	color:#3a56b0;
+	border-radius:7px;
+	font-size:13px;
+	font-weight:800;
+	padding:2px 8px;
+	line-height:1.1}
+.rail
+	{top:14px;
+	z-index:60;
+	color:#fff;
+	border:none;
+	font-size:11px;
+	font-weight:800;
+	padding:10px 6px;
+	display:none;
+	writing-mode:vertical-rl;
+	letter-spacing:.6px}
+.rail.left
+	{left:0;
+	border-radius:0 9px 9px 0}
+.rail.right
+	{right:0;
+	border-radius:9px 0 0 9px}
+body.side-min .rail.left
+	{display:block}
+body.chat-min .rail.right
+	{display:block}
+#cmpModal .cmpwrap
+	{max-height:56vh;
+	overflow:auto}
+.cmptbl
+	{width:100%;
+	border-collapse:collapse;
+	font-size:11.5px}
+.cmptbl th
+	{position:sticky;
+	top:0;
+	background:#fff;
+	text-align:left;
+	color:#7a8299;
+	border-bottom:1px solid #eef1f7;
+	padding:6px 8px}
+.cmptbl td
+	{padding:6px 8px;
+	border-bottom:1px solid #f5f7fb}
+.savebtn
+	{font-size:11.5px;
+	font-weight:800;
+	background:#0b7a3b;
+	color:#fff;
+	border:none;
+	border-radius:8px;
+	padding:8px 12px}
+.cmpbtn
+	{font-size:11.5px;
+	font-weight:700;
+	padding:7px 11px;
+	border-radius:7px;
+	border:1px solid #dbe0ec;
+	background:#fff;
+	color:#33406a}
+-->
+</style>
+</head>
+<body>
+<div class="modal" id="alertModal">
+<div class="modalc">
+<div class="bell"></div>
+<h2 id="amTitle"></h2>
+<div class="big" id="amBig"></div>
+<p id="amP"></p>
+<button class="go">Review the dashboard ▶</button> </div>
+</div>
+<div class="modal" id="actModal" style="display:none">
+<div class="actmodalc"><button class="x">×</button>
+<h2>⚡ Agentic action plan</h2>
+<div class="sub">Execute with approval · nothing goes live without each owner's sign-off.</div>
+<div id="actlist"></div>
+<button class="execbtn">⚡ Execute selected actions</button>
+<div id="cascade"></div>
+<div class="govnote"><b>Governance:</b> every action is logged (who / what / when / why) and needs its owner's approval. Two owners approve sensitive actions. This is what makes it agentic, not a chatbot.</div>
+</div>
+</div>
+<div class="modal" id="histModal" style="display:none">
+<div class="actmodalc"><button class="x">×</button>
+<h2>&#128220; Action history log</h2>
+<div class="sub">Every action taken this session, with its current status.</div>
+<div class="logsum" id="logsum"></div>
+<div class="logwrap">
+<table class="logtbl" id="logtbl">
+</table>
+</div>
+</div>
+</div>
+<div class="modal" id="notifModal" style="display:none">
+<div class="actmodalc"><button class="x">×</button>
+<h2>&#128276; AI Agentic action · status notifications</h2>
+<div class="sub">Live alerts as the agent acts and as approvals move — what changed and what needs you. Separate from the full history log.</div>
+<div class="logsum" id="notifsum"></div>
+<div class="logwrap" id="notiflist"></div>
+</div>
+</div>
+<div class="toastwrap" id="toastwrap"></div>
+<div id="floatInfo"></div>
+<button class="rail left">☰ Agents</button><button class="rail right">&#128172; Ask AI</button>
+<div class="modal" id="cmpModal" style="display:none">
+<div class="actmodalc"><button class="x">×</button>
+<h2>⚖ Compare saved scenarios</h2>
+<div class="sub">Every scenario you saved from the what-if simulator, side by side.</div>
+<div id="cmpbody"></div>
+<div style="margin-top:12px"><button class="cmpbtn">Clear all</button></div>
+</div>
+</div>
+<div class="app">
+<div class="side">
+<div class="brand">
+<div class="logo"></div>
+<div>
+<div class="bn">Ledgerline</div>
+<div class="bs">Finance suite</div>
+</div>
+<button class="mintog" title="Collapse menu">«</button></div>
+<div class="sidelbl">AGENT CHATS</div>
+<div class="agent on" id="ag_finance">
+<div class="ai">&#128200;</div>
+<div>
+<div class="an">Finance</div>
+<div class="as">Performance</div>
+</div>
+</div>
+<div class="agent" id="ag_treasury">
+<div class="ai">&#127974;</div>
+<div>
+<div class="an">Treasury</div>
+<div class="as">Cash &amp; FX</div>
+</div>
+</div>
+<div class="agent" id="ag_collections">
+<div class="ai">&#128179;</div>
+<div>
+<div class="an">Collections</div>
+<div class="as">Receivables</div>
+</div>
+</div>
+<div class="agent" id="ag_leakage">
+<div class="ai">&#128269;</div>
+<div>
+<div class="an">Leakage</div>
+<div class="as">Payment integrity</div>
+</div>
+</div>
+<div class="foot">One connected suite. Simulation only, figures illustrative from ERP source data + what-if. No live systems.</div>
+</div>
+<div class="work">
+<div class="alertbar" id="alertbar">
+<div class="bell"></div>
+<div class="at" id="alerttxt"></div>
+<button class="abtn" id="alertbtn"></button><button class="ax">×</button></div>
+<div class="wtop">
+<div>
+<div class="lbl" id="wlbl2">✉ Finance agent</div>
+<h1 id="wtitle">Finance dashboard</h1>
+</div>
+<span class="status">● ERP · live</span>
+<div class="sp"><span class="agentchip"><span class="dot"></span>Agentic AI · active</span>
+<button class="gbtn act">⚡ AI Agentic action</button><button class="gbtn">&#128276; Agent status
+<span class="badge" id="notifBadge" style="display:none; background:#5b5fc7">0</span>
+</button><button class="gbtn">&#128220; History <span class="badge" id="pendBadge" style="display:none">
+0</span></button><button id="langtog" class="gbtn">Bahasa: ON</button><button id="reset" class="gbtn">
+↻ Reset</button></div>
+</div>
+<div class="board">
+<div class="kpirow" id="kpirow"></div>
+<div class="mid">
+<div class="card" id="focus"></div>
+<div class="sidecol" id="sidecol"></div>
+</div>
+<div class="wifbar">
+<div class="wiftop">
+<div class="wiftitle" id="wiftitle">What-if simulator <span class="idt">simulasi</span></div>
+<div class="wifctrl" id="wifctrl"></div>
+</div>
+<div class="wifgrid3">
+<div class="wifcell">
+<div class="wlbl" id="wlevlbl">Levers</div>
+<div class="levers" id="levers"></div>
+</div>
+<div class="wifcell">
+<div class="statrow" id="wifstats"></div>
+<div class="wchart" id="wifchart"></div>
+</div>
+<div class="wifcell" style="text-align:center">
+<div class="wlbl" id="wgaugelbl">Path to target</div>
+<div class="wchart" id="wifgauge"></div>
+<div id="wifgtxt" style="font-size:10px; color:#727c94; margin-top:1px"></div>
+</div>
+</div>
+</div>
+<div class="botrow" id="botrow"></div>
+</div>
+</div>
+<div class="chatpanel">
+<div class="chathead">
+<div class="av"></div>
+<div>
+<div class="nm" id="chatnm">Ask Finance AI</div>
+<div class="sub2">Replies with charts, tables &amp; analysis · updates the dashboard</div>
+</div>
+<button class="mintog" title="Collapse chat">»</button></div>
+<div class="cmsgs" id="cmsgs"></div>
+<div class="cchips" id="chips"></div>
+<div class="cpill"><input id="cinput"><button class="snd">↑</button></div>
+</div>
+</div>
+</body>
+</html>

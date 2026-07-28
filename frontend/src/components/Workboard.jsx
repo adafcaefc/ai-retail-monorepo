@@ -1,8 +1,4 @@
-import {
-  useEffect,
-  useMemo,
-  useState
-} from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import ChartRenderer from "./ChartRenderer.jsx";
 import AlertsPanel from "./AlertsPanel.jsx";
@@ -10,14 +6,16 @@ import InfoCard from "./InfoCard.jsx";
 import { findInfo } from "../infoRegistry.js";
 import {
   fetchDashboard,
-  recalculateDashboardSimulation
+  recalculateDashboardSimulation,
 } from "../api/dashboard.js";
 
 export default function Workboard({
   agentId,
   agentName,
   onAskInsight,
-  insightBusy = false
+  insightBusy = false,
+  isChatOpen = false,
+  onToggleChat,
 }) {
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
@@ -43,7 +41,7 @@ export default function Workboard({
       entry,
       anchor: event.currentTarget.getBoundingClientRect(),
       context: extra.context || "",
-      payload: extra.payload || null
+      payload: extra.payload || null,
     });
   }
 
@@ -76,16 +74,11 @@ export default function Workboard({
           nextValues[input.id] = Number(input.default ?? 0);
         }
         setValues(nextValues);
-        setScope(
-          payload.simulator?.scope_options?.[0] || "all"
-        );
+        setScope(payload.simulator?.scope_options?.[0] || "all");
       } catch (loadError) {
         if (!cancelled) {
           setDashboard(null);
-          setError(
-            loadError.message ||
-              "Unable to load dashboard."
-          );
+          setError(loadError.message || "Unable to load dashboard.");
         }
       } finally {
         if (!cancelled) {
@@ -126,12 +119,9 @@ export default function Workboard({
       if (action === "calculate_collection_scenario") {
         body = {
           customer_name:
-            dashboard.simulator.submit_data?.customer_name ||
-            "Customer A",
-          cash_to_collect_idr_mn: Number(
-            values.cash_to_collect_idr_mn || 0
-          ),
-          discount_pct: Number(values.discount_pct || 0)
+            dashboard.simulator.submit_data?.customer_name || "Customer A",
+          cash_to_collect_idr_mn: Number(values.cash_to_collect_idr_mn || 0),
+          discount_pct: Number(values.discount_pct || 0),
         };
       } else if (action === "simulate_finance") {
         body = {
@@ -140,7 +130,7 @@ export default function Workboard({
           vol: Number(values.vol || 0),
           fx: Number(values.fx || 0),
           opex: Number(values.opex || 0),
-          scope
+          scope,
         };
       } else if (action === "simulate_leakage") {
         const baseline = dashboard.simulator.baseline || {};
@@ -151,33 +141,23 @@ export default function Workboard({
           duplicates_amount: baseline.duplicates_amount,
           overbill_amount: baseline.overbill_amount,
           other_blocked: baseline.other_blocked,
-          at_risk: baseline.at_risk
+          at_risk: baseline.at_risk,
         };
       } else if (action === "simulate_cashflow") {
         body = {
           accelerate_collection_idr_mn: Number(
-            values.accelerate_collection_idr_mn || 0
+            values.accelerate_collection_idr_mn || 0,
           ),
-          defer_payment_idr_mn: Number(
-            values.defer_payment_idr_mn || 0
-          ),
-          credit_line_draw_idr_mn: Number(
-            values.credit_line_draw_idr_mn || 0
-          ),
-          hedge_usd: Number(values.hedge_usd || 0)
+          defer_payment_idr_mn: Number(values.defer_payment_idr_mn || 0),
+          credit_line_draw_idr_mn: Number(values.credit_line_draw_idr_mn || 0),
+          hedge_usd: Number(values.hedge_usd || 0),
         };
       }
 
-      const result = await recalculateDashboardSimulation(
-        action,
-        body
-      );
+      const result = await recalculateDashboardSimulation(action, body);
       setSimResult(result);
     } catch (requestError) {
-      setSimError(
-        requestError.message ||
-          "Simulation recalculation failed."
-      );
+      setSimError(requestError.message || "Simulation recalculation failed.");
     } finally {
       setSimBusy(false);
     }
@@ -188,26 +168,20 @@ export default function Workboard({
       <AlertsPanel
         agentId={agentId}
         agentName={agentName}
+        isChatOpen={isChatOpen}
+        onToggleChat={onToggleChat}
         header={
           <>
-            <span className="header-kicker">
-              {agentName} dashboard
-            </span>
+            <span className="header-kicker">{agentName} dashboard</span>
+
             <h1>{agentName} performance board</h1>
           </>
         }
       />
 
       {loading ? (
-        <div
-          className="workboard-loader"
-          role="status"
-          aria-live="polite"
-        >
-          <span
-            className="workboard-spinner"
-            aria-hidden="true"
-          />
+        <div className="workboard-loader" role="status" aria-live="polite">
+          <span className="workboard-spinner" aria-hidden="true" />
           <span>Loading {agentName} dashboard…</span>
         </div>
       ) : error || !dashboard ? (
@@ -218,10 +192,8 @@ export default function Workboard({
         <>
           <div className="kpi-row" data-testid="kpi-row">
             {(dashboard.kpis || []).map((kpi) => {
-              const status =
-                kpi.status || (kpi.alert ? "bad" : "good");
-              const hasProgress =
-                typeof kpi.progress === "number";
+              const status = kpi.status || (kpi.alert ? "bad" : "good");
+              const hasProgress = typeof kpi.progress === "number";
               const hasTrend =
                 Array.isArray(kpi.trend) && kpi.trend.length >= 2;
 
@@ -242,7 +214,7 @@ export default function Workboard({
                       context: [kpi.value, kpi.unit, kpi.delta]
                         .filter(Boolean)
                         .join(" "),
-                      payload: kpi
+                      payload: kpi,
                     });
                   }}
                 >
@@ -252,10 +224,7 @@ export default function Workboard({
                   </span>
 
                   <span className="kpi-top">
-                    <span
-                      className="kpi-status-dot"
-                      aria-hidden="true"
-                    />
+                    <span className="kpi-status-dot" aria-hidden="true" />
                     <span className="kpi-label">{kpi.label}</span>
                   </span>
 
@@ -272,23 +241,16 @@ export default function Workboard({
                   <span className="kpi-delta">{kpi.delta}</span>
 
                   {hasTrend ? (
-                    <KpiSparkline
-                      points={kpi.trend}
-                    />
+                    <KpiSparkline points={kpi.trend} />
                   ) : hasProgress ? (
                     <span
                       className="kpi-progress"
-                      title={`${Math.round(
-                        kpi.progress * 100
-                      )}% of target`}
+                      title={`${Math.round(kpi.progress * 100)}% of target`}
                     >
                       <span
                         className="kpi-progress-fill"
                         style={{
-                          width: `${Math.min(
-                            100,
-                            kpi.progress * 100
-                          )}%`
+                          width: `${Math.min(100, kpi.progress * 100)}%`,
                         }}
                       />
                     </span>
@@ -327,10 +289,7 @@ export default function Workboard({
                 agentId={agentId}
                 onOpen={openInfo}
               >
-                <FocusBody
-                  view={dashboard.side?.bottom}
-                  compact
-                />
+                <FocusBody view={dashboard.side?.bottom} compact />
               </InfoTarget>
             </div>
           </div>
@@ -343,7 +302,7 @@ export default function Workboard({
             onChange={(id, value) =>
               setValues((current) => ({
                 ...current,
-                [id]: value
+                [id]: value,
               }))
             }
             onCalculate={runSimulation}
@@ -369,7 +328,7 @@ export default function Workboard({
               infoKey: info.key,
               entry: info.entry,
               context: info.context,
-              kpi: info.payload
+              kpi: info.payload,
             });
           }}
         />
@@ -390,7 +349,7 @@ function InfoTarget({
   infoKey,
   agentId,
   onOpen,
-  children
+  children,
 }) {
   const entry = findInfo(agentId, infoKey);
 
@@ -463,7 +422,9 @@ function KpiSparkline({ points }) {
   });
 
   const line = coords
-    .map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`)
+    .map(
+      ([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)} ${y.toFixed(1)}`,
+    )
     .join(" ");
 
   const last = coords[coords.length - 1];
@@ -478,12 +439,7 @@ function KpiSparkline({ points }) {
     >
       <path className="kpi-spark-area" d={area} />
       <path className="kpi-spark-line" d={line} />
-      <circle
-        className="kpi-spark-dot"
-        cx={last[0]}
-        cy={last[1]}
-        r="2.2"
-      />
+      <circle className="kpi-spark-dot" cx={last[0]} cy={last[1]} r="2.2" />
     </svg>
   );
 }
@@ -530,10 +486,7 @@ function FocusBody({ view, compact = false }) {
 
   return (
     <div className={compact ? "side-chart" : "focus-chart"}>
-      <ChartRenderer
-        data={view}
-        variant={compact ? "compact" : "fill"}
-      />
+      <ChartRenderer data={view} variant={compact ? "compact" : "fill"} />
     </div>
   );
 }
@@ -549,7 +502,7 @@ function WhatIfBar({
   error,
   result,
   agentId,
-  onOpenInfo
+  onOpenInfo,
 }) {
   if (!simulator) {
     return null;
@@ -567,9 +520,7 @@ function WhatIfBar({
               <button
                 key={option}
                 type="button"
-                className={
-                  "scope-btn" + (scope === option ? " on" : "")
-                }
+                className={"scope-btn" + (scope === option ? " on" : "")}
                 onClick={() => setScope(option)}
               >
                 {option === "all" ? "All lines" : "FX lines"}
@@ -584,10 +535,7 @@ function WhatIfBar({
           >
             {busy ? (
               <>
-                <span
-                  className="calc-spinner"
-                  aria-hidden="true"
-                />
+                <span className="calc-spinner" aria-hidden="true" />
                 Running scenario…
               </>
             ) : (
@@ -597,11 +545,7 @@ function WhatIfBar({
         </div>
       </div>
 
-      <div
-        className={
-          "whatif-grid" + (busy ? " is-loading" : "")
-        }
-      >
+      <div className={"whatif-grid" + (busy ? " is-loading" : "")}>
         <div className="whatif-levers">
           <div className="whatif-label">Levers</div>
           {(simulator.inputs || []).map((input) => (
@@ -620,10 +564,7 @@ function WhatIfBar({
                   data-testid={`lever-${input.id}`}
                   disabled={busy}
                   onInput={(event) =>
-                    onChange(
-                      input.id,
-                      Number(event.currentTarget.value)
-                    )
+                    onChange(input.id, Number(event.currentTarget.value))
                   }
                 />
                 <input
@@ -636,10 +577,7 @@ function WhatIfBar({
                   data-testid={`lever-${input.id}-number`}
                   disabled={busy}
                   onChange={(event) =>
-                    onChange(
-                      input.id,
-                      Number(event.currentTarget.value)
-                    )
+                    onChange(input.id, Number(event.currentTarget.value))
                   }
                 />
               </div>
@@ -649,11 +587,7 @@ function WhatIfBar({
 
         <div className="whatif-stats" data-testid="whatif-stats">
           {busy ? (
-            <div
-              className="whatif-loading"
-              role="status"
-              aria-live="polite"
-            >
+            <div className="whatif-loading" role="status" aria-live="polite">
               <span
                 className="calc-spinner calc-spinner-lg"
                 aria-hidden="true"
@@ -672,14 +606,12 @@ function WhatIfBar({
                     onOpenInfo(key, event, {
                       context: [stat.value, stat.delta]
                         .filter(Boolean)
-                        .join(" · ")
+                        .join(" · "),
                     })
                   }
                 >
                   <span>{stat.label}</span>
-                  <strong data-testid={`stat-${stat.id}`}>
-                    {stat.value}
-                  </strong>
+                  <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
                   <small className={stat.tone}>{stat.delta}</small>
                 </InfoTarget>
               ))}
@@ -690,10 +622,7 @@ function WhatIfBar({
                   agentId={agentId}
                   onOpen={onOpenInfo}
                 >
-                  <ChartRenderer
-                    data={summary.chart}
-                    variant="compact"
-                  />
+                  <ChartRenderer data={summary.chart} variant="compact" />
                 </InfoTarget>
               ) : null}
             </>
@@ -707,7 +636,7 @@ function WhatIfBar({
           agentId={agentId}
           onOpen={(key, event) =>
             onOpenInfo(key, event, {
-              context: busy ? "" : summary.gauge.center
+              context: busy ? "" : summary.gauge.center,
             })
           }
         >
@@ -715,10 +644,7 @@ function WhatIfBar({
             {simulator.gauge_label || "Scenario"}
           </div>
           {busy ? (
-            <div
-              className="whatif-loading whatif-loading-gauge"
-              role="status"
-            >
+            <div className="whatif-loading whatif-loading-gauge" role="status">
               <span
                 className="calc-spinner calc-spinner-lg"
                 aria-hidden="true"
@@ -752,28 +678,28 @@ function summarizeResult(action, result, simulator) {
         label: "Scenario",
         value: "—",
         delta: "Awaiting scenario",
-        tone: ""
+        tone: "",
       },
       {
         id: "b",
         label: "Impact",
         value: "—",
         delta: "Set levers to begin",
-        tone: ""
+        tone: "",
       },
       {
         id: "c",
         label: "Target",
         value: "—",
         delta: "Results after run",
-        tone: ""
-      }
+        tone: "",
+      },
     ],
     chart: null,
     gauge: {
       center: "—",
-      txt: "Run scenario to update"
-    }
+      txt: "Run scenario to update",
+    },
   };
 
   if (!result) {
@@ -791,22 +717,22 @@ function summarizeResult(action, result, simulator) {
           label: "Scenario margin",
           value: `${stats.scenario_margin_pct}%`,
           delta: `${stats.delta_margin_pts >= 0 ? "+" : ""}${stats.delta_margin_pts} pts`,
-          tone: stats.delta_margin_pts >= 0 ? "good" : "bad"
+          tone: stats.delta_margin_pts >= 0 ? "good" : "bad",
         },
         {
           id: "ebitda",
           label: "EBITDA",
           value: formatNumber(stats.ebitda_idr_mn),
           delta: `${stats.delta_ebitda_idr_mn >= 0 ? "+" : ""}${formatNumber(stats.delta_ebitda_idr_mn)} mn`,
-          tone: stats.delta_ebitda_idr_mn >= 0 ? "good" : "bad"
+          tone: stats.delta_ebitda_idr_mn >= 0 ? "good" : "bad",
         },
         {
           id: "target",
           label: "vs Target",
           value: `${stats.vs_target_pts} pts`,
           delta: stats.vs_target_pts >= 0 ? "at/above" : "below",
-          tone: stats.vs_target_pts >= 0 ? "good" : "bad"
-        }
+          tone: stats.vs_target_pts >= 0 ? "good" : "bad",
+        },
       ],
       chart: {
         title: "Now vs Scenario",
@@ -817,15 +743,15 @@ function summarizeResult(action, result, simulator) {
         data: [
           {
             label: "Now",
-            value: round1((baseline.margin || 0) * 100)
+            value: round1((baseline.margin || 0) * 100),
           },
           {
             label: "Scenario",
-            value: round1((scenario.margin || 0) * 100)
-          }
-        ]
+            value: round1((scenario.margin || 0) * 100),
+          },
+        ],
       },
-      gauge: result.gauge || empty.gauge
+      gauge: result.gauge || empty.gauge,
     };
   }
 
@@ -839,22 +765,22 @@ function summarizeResult(action, result, simulator) {
           label: "Scenario DSO",
           value: `${formatNumber(payload.dso_after_days)}d`,
           delta: `${formatNumber(payload.dso_change_days)}d change`,
-          tone: payload.dso_change_days <= 0 ? "good" : "bad"
+          tone: payload.dso_change_days <= 0 ? "good" : "bad",
         },
         {
           id: "cash",
           label: "Cash collected",
           value: formatNumber(payload.cash_collected_idr_mn),
           delta: "IDR mn",
-          tone: "good"
+          tone: "good",
         },
         {
           id: "discount",
           label: "Discount cost",
           value: formatNumber(payload.discount_cost_idr_mn),
           delta: `${payload.discount_pct}%`,
-          tone: ""
-        }
+          tone: "",
+        },
       ],
       chart: {
         title: "DSO now vs scenario",
@@ -866,14 +792,14 @@ function summarizeResult(action, result, simulator) {
           { label: "Now", value: Number(baseline.dso || 0) },
           {
             label: "Scenario",
-            value: Number(payload.dso_after_days || 0)
-          }
-        ]
+            value: Number(payload.dso_after_days || 0),
+          },
+        ],
       },
       gauge: {
         center: `${formatNumber(payload.dso_after_days)}d`,
-        txt: `Target ${baseline.target_dso}d`
-      }
+        txt: `Target ${baseline.target_dso}d`,
+      },
     };
   }
 
@@ -887,23 +813,22 @@ function summarizeResult(action, result, simulator) {
           label: "Week 5 cash",
           value: formatNumber(payload.week5_cash_idr_mn),
           delta: `was ${formatNumber(baseline.week5_cash)}`,
-          tone:
-            payload.week5_headroom_idr_mn >= 0 ? "good" : "bad"
+          tone: payload.week5_headroom_idr_mn >= 0 ? "good" : "bad",
         },
         {
           id: "below",
           label: "Weeks below buffer",
           value: String(payload.weeks_below_buffer),
           delta: `buffer ${formatNumber(payload.minimum_buffer_idr_mn)}`,
-          tone: payload.weeks_below_buffer === 0 ? "good" : "bad"
+          tone: payload.weeks_below_buffer === 0 ? "good" : "bad",
         },
         {
           id: "fx",
           label: "FX downside avoided",
           value: formatNumber(payload.fx_downside_avoided_idr_mn),
           delta: `premium ${formatNumber(payload.forward_premium_idr_mn)}`,
-          tone: "good"
-        }
+          tone: "good",
+        },
       ],
       chart: {
         title: "Week 5 cash",
@@ -914,14 +839,14 @@ function summarizeResult(action, result, simulator) {
           { label: "Now", value: Number(baseline.week5_cash || 0) },
           {
             label: "Scenario",
-            value: Number(payload.week5_cash_idr_mn || 0)
-          }
-        ]
+            value: Number(payload.week5_cash_idr_mn || 0),
+          },
+        ],
       },
       gauge: {
         center: `${formatNumber(payload.hedge_coverage_pct)}%`,
-        txt: "Hedge coverage"
-      }
+        txt: "Hedge coverage",
+      },
     };
   }
 
@@ -933,22 +858,22 @@ function summarizeResult(action, result, simulator) {
           label: "Total protected",
           value: formatNumber(result.total_protected),
           delta: `${result.pct_of_at_risk}% of at risk`,
-          tone: "good"
+          tone: "good",
         },
         {
           id: "blocked",
           label: "Blocked",
           value: formatNumber(result.blocked),
           delta: "never leaves",
-          tone: "good"
+          tone: "good",
         },
         {
           id: "recovered",
           label: "Recovered",
           value: formatNumber(result.recovered),
           delta: "clawed back",
-          tone: "good"
-        }
+          tone: "good",
+        },
       ],
       chart: {
         title: "Protected vs at risk",
@@ -957,11 +882,11 @@ function summarizeResult(action, result, simulator) {
           { label: "At risk", value: Number(result.at_risk || 0) },
           {
             label: "Protected",
-            value: Number(result.total_protected || 0)
-          }
-        ]
+            value: Number(result.total_protected || 0),
+          },
+        ],
       },
-      gauge: result.gauge || empty.gauge
+      gauge: result.gauge || empty.gauge,
     };
   }
 
@@ -974,7 +899,7 @@ function formatNumber(value) {
     return "—";
   }
   return numeric.toLocaleString(undefined, {
-    maximumFractionDigits: 2
+    maximumFractionDigits: 2,
   });
 }
 
