@@ -1,5 +1,6 @@
 import BlockRenderer from "./BlockRenderer.jsx";
 import ToolCard from "./ToolCard.jsx";
+import { ThinkingSkeleton } from "./Skeleton.jsx";
 import { accentPlain } from "../semanticAccent.jsx";
 
 export default function ChatMessage({
@@ -20,16 +21,9 @@ export default function ChatMessage({
     message.role === "loading"
   ) {
     return (
-      <li className="loading-row">
-        <span
-          className="spinner"
-          aria-hidden="true"
-        />
-
-        <span>
-          {message.text}
-        </span>
-      </li>
+      <ThinkingSkeleton
+        text={message.text}
+      />
     );
   }
 

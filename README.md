@@ -26,7 +26,7 @@ Agents can also be consumed via Microsoft Teams (Adaptive Cards) through `/api/f
 - **Backend:** Python 3.12, FastAPI, SQLAlchemy, PostgreSQL
 - **AI:** [pydantic-ai](https://ai.pydantic.dev/) agents configured via JSON, one folder per agent under `src/llm/agents/`
 - **Frontend (dev):** React + Vite in `frontend/`
-- **Frontend (production):** Self-contained `index.html` at the repo root
+- **Frontend (production):** Vite build in `frontend/dist`, served by FastAPI
 - **Deploy:** Docker, Azure Container Registry, Azure Container Apps
 
 ## UI mockup (initial design)

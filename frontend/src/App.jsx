@@ -5,6 +5,12 @@ import { fetchConversations, streamChat } from "./api/chatStream.js";
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
+import AppTopbar from "./components/AppTopbar.jsx";
+import AlertsPanel from "./components/AlertsPanel.jsx";
+import {
+  AgentListSkeleton,
+  DashboardSkeleton,
+} from "./components/Skeleton.jsx";
 import { buildInfoPrompt } from "./infoRegistry.js";
 import { useAgents } from "./agents/AgentsProvider.jsx";
 
@@ -13,6 +19,19 @@ const CHAT_WIDTH_MIN = 320;
 const CHAT_WIDTH_MAX = 760;
 const CHAT_WIDTH_DEFAULT = 380;
 const SHELL_EDGE_PADDING = 14;
+
+const SIDEBAR_KEY = "ledgerline.sidebarOpen";
+
+// How long a freshly expanded folder shows placeholder rows. Long enough to
+// read as "the list is coming", short enough not to feel like a stall.
+const FOLDER_REVEAL_MS = 420;
+
+function readStoredSidebarOpen() {
+  if (typeof window === "undefined") {
+    return true;
+  }
+  return window.localStorage.getItem(SIDEBAR_KEY) !== "closed";
+}
 
 function clampChatWidth(value) {
   if (!Number.isFinite(value)) {
@@ -59,6 +78,11 @@ export default function App() {
 
   const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
 
+  // Folders that just expanded and are still showing placeholder rows.
+  const [revealingFolders, setRevealingFolders] = useState(() => new Set());
+
+  const [sidebarOpen, setSidebarOpen] = useState(readStoredSidebarOpen);
+
   const [conversationList, setConversationList] = useState([]);
 
   const [clearOpen, setClearOpen] = useState(false);
@@ -74,6 +98,8 @@ export default function App() {
   const transcriptRef = useRef(null);
 
   const composerRef = useRef(null);
+
+  const revealTimers = useRef(new Map());
 
   const currentAgent = agents[activeAgent] || null;
 
@@ -210,10 +236,15 @@ export default function App() {
   }, [activeAgent]);
 
   useEffect(() => {
+    const timers = revealTimers.current;
+
     return () => {
       Object.values(abortControllers.current).forEach((controller) =>
         controller.abort(),
       );
+
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
     };
   }, []);
 
@@ -614,6 +645,8 @@ export default function App() {
   }
 
   function toggleFolder(folder) {
+    const wasCollapsed = collapsedFolders.has(folder);
+
     setCollapsedFolders((current) => {
       const next = new Set(current);
 
@@ -625,291 +658,379 @@ export default function App() {
 
       return next;
     });
+
+    if (!wasCollapsed) {
+      return;
+    }
+
+    // Expanding: show placeholder rows first so the group reads as "opening"
+    // instead of snapping in, which is hard to follow on a dense sidebar.
+    window.clearTimeout(revealTimers.current.get(folder));
+
+    setRevealingFolders((current) => new Set(current).add(folder));
+
+    revealTimers.current.set(
+      folder,
+      window.setTimeout(() => {
+        revealTimers.current.delete(folder);
+
+        setRevealingFolders((current) => {
+          const next = new Set(current);
+          next.delete(folder);
+          return next;
+        });
+      }, FOLDER_REVEAL_MS),
+    );
   }
 
+  function toggleSidebar() {
+    setSidebarOpen((open) => {
+      const next = !open;
+
+      window.localStorage.setItem(SIDEBAR_KEY, next ? "open" : "closed");
+
+      return next;
+    });
+  }
+
+  const shellClassName = [
+    "app-shell",
+    isChatOpen ? "chat-open" : "chat-closed",
+    sidebarOpen ? "sidebar-open" : "sidebar-collapsed",
+    resizing ? "is-resizing" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   // The module list is served by the backend, so the shell waits for it
-  // rather than assuming which agents exist.
+  // rather than assuming which agents exist. The chrome renders immediately
+  // and the two panels stand in with skeletons.
   if (agentsLoading || !currentAgent) {
     return (
-      <main className="app-shell app-shell-notice">
-        <p role="status">
-          {agentsError
-            ? agentsError
-            : agentsLoading
-              ? "Loading agents…"
-              : "No agents are enabled."}
-        </p>
+      <main className={shellClassName}>
+        <AppTopbar sidebarOpen={sidebarOpen} onToggleSidebar={toggleSidebar} />
+
+        <div className="app-body">
+          {sidebarOpen ? (
+            <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
+              <p className="section-label">Agent chats</p>
+
+              {agentsError ? (
+                <p className="sidebar-notice" role="alert">
+                  {agentsError}
+                </p>
+              ) : agentsLoading ? (
+                <AgentListSkeleton rows={4} />
+              ) : (
+                <p className="sidebar-notice">No agents are enabled.</p>
+              )}
+            </aside>
+          ) : null}
+
+          <section className="workboard">
+            {agentsError ? (
+              <div className="workboard-status error" role="alert">
+                {agentsError}
+              </div>
+            ) : agentsLoading ? (
+              <DashboardSkeleton label="Preparing your dashboard" />
+            ) : (
+              <div className="workboard-status" role="status">
+                No agents are enabled.
+              </div>
+            )}
+          </section>
+        </div>
       </main>
     );
   }
 
   return (
     <main
-      className={[
-        "app-shell",
-        isChatOpen ? "chat-open" : "chat-closed",
-        resizing ? "is-resizing" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className={shellClassName}
       style={{
         "--chat-width": `${chatWidth}px`,
       }}
     >
-      <aside className="sidebar" aria-label="Agent chats">
-        <div className="brand">
-          <div className="brand-mark">L</div>
+      <AppTopbar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={toggleSidebar}
+        kicker={`${currentAgent.name} dashboard`}
+        title={`${currentAgent.name} performance board`}
+      >
+        <AlertsPanel
+          agentId={activeAgent}
+          agentName={currentAgent.name}
+          isChatOpen={isChatOpen}
+          onToggleChat={toggleChat}
+        />
+      </AppTopbar>
 
-          <div className="brand-copy">
-            <strong>Ledgerline</strong>
+      <div className="app-body">
+        {sidebarOpen ? (
+          <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
+            <div className="brand">
+              <div className="brand-mark">L</div>
 
-            <span>Finance forum</span>
+              <div className="brand-copy">
+                <strong>Ledgerline</strong>
+
+                <span>Finance forum</span>
+              </div>
+            </div>
+
+            <p className="section-label">Agent chats</p>
+
+            <nav className="agent-groups" aria-label="Choose an agent">
+              {groups.map((group) => {
+                const collapsed = collapsedFolders.has(group.folder);
+                const revealing = revealingFolders.has(group.folder);
+
+                return (
+                  <div key={group.folder} className="agent-group">
+                    <button
+                      type="button"
+                      className="folder-toggle"
+                      aria-expanded={!collapsed}
+                      aria-busy={revealing}
+                      onClick={() => toggleFolder(group.folder)}
+                    >
+                      <span className="folder-chevron" aria-hidden="true" />
+
+                      <span className="folder-name">{group.label}</span>
+
+                      <span className="folder-count">{group.agents.length}</span>
+                    </button>
+
+                    {!collapsed && revealing && (
+                      <AgentListSkeleton
+                        rows={group.agents.length}
+                        label={`Opening ${group.label}`}
+                      />
+                    )}
+
+                    {!collapsed && !revealing && (
+                      <div className="agent-list">
+                        {group.agents.map((agent) => {
+                          const chat = chats[agent.id] || EMPTY_CHAT;
+
+                          return (
+                            <button
+                              key={agent.id}
+                              type="button"
+
+                              className={
+                                agent.id === activeAgent
+                                  ? "agent-button active"
+                                  : "agent-button"
+                              }
+
+                              data-busy={chat.busy}
+
+                              onClick={() => selectAgent(agent.id)}
+                            >
+                              <span className="agent-avatar">
+                                {agent.name.charAt(0)}
+                              </span>
+
+                              <span className="agent-copy">
+                                <strong>{agent.name}</strong>
+
+                                <small>{chat.title || "New conversation"}</small>
+                              </span>
+
+                              <span className="activity-dot" aria-hidden="true" />
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </nav>
+
+            <footer className="sidebar-footer">
+              {conversationList.length} saved conversation(s)
+            </footer>
+          </aside>
+        ) : null}
+
+        <Workboard
+          agentId={activeAgent}
+          agentName={currentAgent.name}
+          onAskInsight={askKpiInsight}
+          insightBusy={currentChat.busy}
+        />
+
+        {isChatOpen ? (
+          <div
+            className="chat-resize-handle"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize chat panel"
+            aria-controls="agent-chat-panel"
+            tabIndex={0}
+            onMouseDown={startResize}
+            onKeyDown={handleResizeKey}
+          >
+            <span className="chat-resize-grip" aria-hidden="true" />
           </div>
-        </div>
+        ) : null}
 
-        <p className="section-label">Agent chats</p>
+        <section
+          id="agent-chat-panel"
+          className="chat-panel"
+          aria-label={`${currentAgent.name} chat`}
+        >
+          <header className="chat-header">
+            <div>
+              <span className="header-kicker">
+                {currentAgent.name} chat
+                {currentChat.busy ? " · working" : ""}
+              </span>
 
-        <nav className="agent-groups" aria-label="Choose an agent">
-          {groups.map((group) => {
-            const collapsed = collapsedFolders.has(group.folder);
+              <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
+            </div>
 
-            return (
-              <div key={group.folder} className="agent-group">
+            <div className="chat-header-actions">
+              <div className="clear-area">
                 <button
                   type="button"
-                  className="folder-toggle"
-                  aria-expanded={!collapsed}
-                  onClick={() => toggleFolder(group.folder)}
+                  className="clear-button"
+                  disabled={!currentChat.messages.length}
+                  onClick={() => setClearOpen((open) => !open)}
                 >
-                  <span className="folder-chevron" aria-hidden="true" />
-
-                  <span className="folder-name">{group.label}</span>
-
-                  <span className="folder-count">{group.agents.length}</span>
+                  Clear chat
                 </button>
 
-                {!collapsed && (
-                  <div className="agent-list">
-                    {group.agents.map((agent) => {
-                      const chat = chats[agent.id] || EMPTY_CHAT;
+                {clearOpen && (
+                  <div className="clear-confirm">
+                    <p>Clear this agent&apos;s local messages?</p>
 
-                      return (
-                        <button
-                          key={agent.id}
-                          type="button"
+                    <div>
+                      <button type="button" onClick={() => setClearOpen(false)}>
+                        Cancel
+                      </button>
 
-                          className={
-                            agent.id === activeAgent
-                              ? "agent-button active"
-                              : "agent-button"
-                          }
-
-                          data-busy={chat.busy}
-
-                          onClick={() => selectAgent(agent.id)}
-                        >
-                          <span className="agent-avatar">
-                            {agent.name.charAt(0)}
-                          </span>
-
-                          <span className="agent-copy">
-                            <strong>{agent.name}</strong>
-
-                            <small>{chat.title || "New conversation"}</small>
-                          </span>
-
-                          <span className="activity-dot" aria-hidden="true" />
-                        </button>
-                      );
-                    })}
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={clearCurrentChat}
+                      >
+                        Clear
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
-            );
-          })}
-        </nav>
 
-        <footer className="sidebar-footer">
-          {conversationList.length} saved conversation(s)
-        </footer>
-      </aside>
-
-      <Workboard
-        agentId={activeAgent}
-        agentName={currentAgent.name}
-        onAskInsight={askKpiInsight}
-        insightBusy={currentChat.busy}
-        isChatOpen={isChatOpen}
-        onToggleChat={toggleChat}
-      />
-
-      {isChatOpen ? (
-        <div
-          className="chat-resize-handle"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize chat panel"
-          aria-controls="agent-chat-panel"
-          tabIndex={0}
-          onMouseDown={startResize}
-          onKeyDown={handleResizeKey}
-        >
-          <span className="chat-resize-grip" aria-hidden="true" />
-        </div>
-      ) : null}
-
-      <section
-        id="agent-chat-panel"
-        className="chat-panel"
-        aria-label={`${currentAgent.name} chat`}
-      >
-        <header className="chat-header">
-          <div>
-            <span className="header-kicker">
-              {currentAgent.name} chat
-              {currentChat.busy ? " · working" : ""}
-            </span>
-
-            <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
-          </div>
-
-          <div className="chat-header-actions">
-            <div className="clear-area">
               <button
                 type="button"
-                className="clear-button"
-                disabled={!currentChat.messages.length}
-                onClick={() => setClearOpen((open) => !open)}
+                className="chat-close-button"
+                aria-label={`Close ${currentAgent.name} chat`}
+                title="Close chat"
+                onClick={closeChat}
               >
-                Clear chat
+                ×
               </button>
-
-              {clearOpen && (
-                <div className="clear-confirm">
-                  <p>Clear this agent&apos;s local messages?</p>
-
-                  <div>
-                    <button type="button" onClick={() => setClearOpen(false)}>
-                      Cancel
-                    </button>
-
-                    <button
-                      type="button"
-                      className="danger"
-                      onClick={clearCurrentChat}
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
+          </header>
 
-            <button
-              type="button"
-              className="chat-close-button"
-              aria-label={`Close ${currentAgent.name} chat`}
-              title="Close chat"
-              onClick={closeChat}
-            >
-              ×
-            </button>
-          </div>
-        </header>
+          <div ref={transcriptRef} className="transcript" aria-live="polite">
+            {!currentChat.messages.length ? (
+              <EmptyState agent={currentAgent} />
+            ) : (
+              <ol className="message-list">
+                {currentChat.messages.map((message) => (
+                  <ChatMessage
+                    key={message.id}
 
-        <div ref={transcriptRef} className="transcript" aria-live="polite">
-          {!currentChat.messages.length ? (
-            <EmptyState agent={currentAgent} />
-          ) : (
-            <ol className="message-list">
-              {currentChat.messages.map((message) => (
-                <ChatMessage
-                  key={message.id}
+                    message={message}
 
-                  message={message}
-
-                  agentName={currentAgent.name}
-                />
-              ))}
-            </ol>
-          )}
-        </div>
-
-        <footer className="composer-wrap">
-          {visibleSuggestions?.length > 0 && (
-            <section
-              className="prompt-suggestions"
-              aria-label="Suggested prompts"
-            >
-              <div className="prompt-suggestions-heading">
-                <SparkleIcon className="prompt-suggestions-spark" />
-
-                <span>
-                  {currentChat.messages.length > 0
-                    ? "Suggested follow-ups"
-                    : "Suggested prompts"}
-                </span>
-              </div>
-
-              <div className="prompt-suggestions-list">
-                {visibleSuggestions.map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    className="prompt-chip"
-                    disabled={currentChat.busy}
-                    onClick={() => {
-                      setCurrentDraft(suggestion);
-
-                      requestAnimationFrame(() => {
-                        composerRef.current?.focus();
-                      });
-                    }}
-                  >
-                    <SparkleIcon className="prompt-chip-spark" />
-
-                    <span className="prompt-chip-text">{suggestion}</span>
-                  </button>
+                    agentName={currentAgent.name}
+                  />
                 ))}
-              </div>
-            </section>
-          )}
+              </ol>
+            )}
+          </div>
 
-          <form className="composer" onSubmit={sendMessage}>
-            <textarea
-              ref={composerRef}
-              value={input}
+          <footer className="composer-wrap">
+            {visibleSuggestions?.length > 0 && (
+              <section
+                className="prompt-suggestions"
+                aria-label="Suggested prompts"
+              >
+                <div className="prompt-suggestions-heading">
+                  <SparkleIcon className="prompt-suggestions-spark" />
 
-              disabled={currentChat.busy}
+                  <span>
+                    {currentChat.messages.length > 0
+                      ? "Suggested follow-ups"
+                      : "Suggested prompts"}
+                  </span>
+                </div>
 
-              rows={1}
-              maxLength={2000}
+                <div className="prompt-suggestions-list">
+                  {visibleSuggestions.map((suggestion) => (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className="prompt-chip"
+                      disabled={currentChat.busy}
+                      onClick={() => {
+                        setCurrentDraft(suggestion);
 
-              placeholder={currentAgent.prompt}
+                        requestAnimationFrame(() => {
+                          composerRef.current?.focus();
+                        });
+                      }}
+                    >
+                      <SparkleIcon className="prompt-chip-spark" />
 
-              aria-label={`Message ${currentAgent.name}`}
+                      <span className="prompt-chip-text">{suggestion}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
 
-              onChange={(event) => setCurrentDraft(event.target.value)}
+            <form className="composer" onSubmit={sendMessage}>
+              <textarea
+                ref={composerRef}
+                value={input}
 
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
-                  event.preventDefault();
+                disabled={currentChat.busy}
 
-                  event.currentTarget.form.requestSubmit();
-                }
-              }}
-            />
+                rows={1}
+                maxLength={2000}
 
-            <button type="submit" className="send-button" disabled={!canSend}>
-              Send
-            </button>
-          </form>
+                placeholder={currentAgent.prompt}
 
-          <p className="composer-note">
-            AI responses should be reviewed before financial decisions are made.
-          </p>
-        </footer>
-      </section>
+                aria-label={`Message ${currentAgent.name}`}
+
+                onChange={(event) => setCurrentDraft(event.target.value)}
+
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+
+                    event.currentTarget.form.requestSubmit();
+                  }
+                }}
+              />
+
+              <button type="submit" className="send-button" disabled={!canSend}>
+                Send
+              </button>
+            </form>
+
+            <p className="composer-note">
+              AI responses should be reviewed before financial decisions are made.
+            </p>
+          </footer>
+        </section>
+      </div>
 
       <ProblemToasts />
     </main>

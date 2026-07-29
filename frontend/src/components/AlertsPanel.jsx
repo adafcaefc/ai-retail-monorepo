@@ -9,6 +9,7 @@ import {
 } from "../api/alerts.js";
 import { useMonitoring } from "../monitoring/MonitoringProvider.jsx";
 import BlockRenderer from "./BlockRenderer.jsx";
+import { ListSkeleton, SkeletonLines } from "./Skeleton.jsx";
 
 const STEPS = [
   { id: "recommendations", label: "Recommendations" },
@@ -36,7 +37,6 @@ async function runPool(items, limit, worker) {
 export default function AlertsPanel({
   agentId,
   agentName,
-  header = null,
   isChatOpen = false,
   onToggleChat,
 }) {
@@ -59,6 +59,10 @@ export default function AlertsPanel({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [actionBusyId, setActionBusyId] = useState("");
   const [simResults, setSimResults] = useState({});
+  // Action ids whose simulation is still in flight. The Analysis step opens
+  // straight away and each card resolves on its own, so this drives the
+  // per-card placeholder rather than a modal-wide blocking spinner.
+  const [simPending, setSimPending] = useState(() => new Set());
 
   useEffect(() => {
     if (!agentId) {
@@ -74,6 +78,7 @@ export default function AlertsPanel({
       setStep(0);
       setSelectedIds(new Set());
       setSimResults({});
+      setSimPending(new Set());
       setLoading(true);
       setError("");
 
@@ -168,8 +173,16 @@ export default function AlertsPanel({
     (item) => item.action.status === "planned",
   ).length;
 
-  async function reloadAlerts() {
-    setLoading(true);
+  /**
+   * `silent` refreshes the alert data without raising the modal-wide
+   * skeleton. Any reload triggered from inside the action journey uses it:
+   * the step already shows its own per-card progress, and swapping the whole
+   * panel for a skeleton is exactly the stall we are trying to avoid.
+   */
+  async function reloadAlerts({ silent = false } = {}) {
+    if (!silent) {
+      setLoading(true);
+    }
     setError("");
     try {
       const payload = await fetchAlertsWithActions(agentId);
@@ -177,7 +190,9 @@ export default function AlertsPanel({
     } catch (loadError) {
       setError(loadError.message || "Unable to load alerts.");
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }
 
@@ -218,6 +233,16 @@ export default function AlertsPanel({
     });
   }
 
+  // Without this the only way to analyse everything is to scroll the whole
+  // list and tick each card, which is the scrolling we are trying to remove.
+  function toggleSelectAll() {
+    setSelectedIds((prev) =>
+      prev.size === flatActions.length
+        ? new Set()
+        : new Set(flatActions.map((item) => item.action.id)),
+    );
+  }
+
   function openActionModal() {
     setActionOpen(true);
     setStep(0);
@@ -238,31 +263,44 @@ export default function AlertsPanel({
       return;
     }
 
+    const items = selectedItems;
     setActionBusyId("batch-simulate");
     setError("");
 
+    // Move to Analysis before any request goes out. Simulations are
+    // multi-turn agent runs, so waiting for them all before switching left
+    // the user staring at the recommendation list; instead the cards are
+    // laid out immediately and each one fills in when its own run lands.
+    setSimPending(new Set(items.map((item) => item.action.id)));
+    setStep(1);
+
     // Each action is an independent agent run, so they overlap. The pool is
     // bounded to stay inside the Azure OpenAI request limit.
-    const nextResults = {};
     const failed = [];
 
-    await runPool(selectedItems, SIMULATE_CONCURRENCY, async (item) => {
+    await runPool(items, SIMULATE_CONCURRENCY, async (item) => {
+      const actionId = item.action.id;
       try {
-        nextResults[item.action.id] = await simulateAction(item.action.id);
+        const result = await simulateAction(actionId);
+        setSimResults((prev) => ({ ...prev, [actionId]: result }));
       } catch (simulateError) {
-        failed.push(item.action.action || item.action.id);
-        console.error("Simulation failed", item.action.id, simulateError);
+        failed.push(item.action.action || actionId);
+        console.error("Simulation failed", actionId, simulateError);
+      } finally {
+        setSimPending((prev) => {
+          const next = new Set(prev);
+          next.delete(actionId);
+          return next;
+        });
       }
     });
 
     try {
-      setSimResults((prev) => ({ ...prev, ...nextResults }));
-      await reloadAlerts();
-      setStep(1);
+      await reloadAlerts({ silent: true });
       if (failed.length > 0) {
         setError(
           `Simulation failed for ${failed.length} of ` +
-            `${selectedItems.length} actions: ${failed.join(", ")}`,
+            `${items.length} actions: ${failed.join(", ")}`,
         );
       }
     } catch (reloadError) {
@@ -286,7 +324,7 @@ export default function AlertsPanel({
           await approveAction(item.action.id);
         }
       }
-      await reloadAlerts();
+      await reloadAlerts({ silent: true });
       if (historyOpen) {
         const payload = await fetchActions(agentId);
         setHistory(Array.isArray(payload.items) ? payload.items : []);
@@ -301,13 +339,19 @@ export default function AlertsPanel({
   async function handleSingleSimulate(actionId) {
     setActionBusyId(actionId);
     setError("");
+    setSimPending((prev) => new Set(prev).add(actionId));
     try {
       const result = await simulateAction(actionId);
       setSimResults((prev) => ({ ...prev, [actionId]: result }));
-      await reloadAlerts();
+      await reloadAlerts({ silent: true });
     } catch (simulateError) {
       setError(simulateError.message || "Simulate failed.");
     } finally {
+      setSimPending((prev) => {
+        const next = new Set(prev);
+        next.delete(actionId);
+        return next;
+      });
       setActionBusyId("");
     }
   }
@@ -317,7 +361,7 @@ export default function AlertsPanel({
     setError("");
     try {
       await approveAction(actionId);
-      await reloadAlerts();
+      await reloadAlerts({ silent: true });
     } catch (approveError) {
       setError(approveError.message || "Approve failed.");
     } finally {
@@ -331,20 +375,19 @@ export default function AlertsPanel({
   const alertCount = alerts.length;
 
   return (
-    <div className="workboard-top-stack">
-      <header className="workboard-header">
-        <div>{header}</div>
-        <div className="alerts-block alerts-header-tools">
+    <>
+      <div className="alerts-block alerts-header-tools">
           <div className="alerts-toolbar">
             <button
               type="button"
               className="alerts-btn primary"
               onClick={openActionModal}
             >
-              <span aria-hidden="true">⚡</span>
               Agent Action
               {plannedCount > 0 ? (
-                <span className="alerts-badge muted">{plannedCount}</span>
+                <span className="alerts-badge muted alerts-badge-text">
+                  {plannedCount} issue{plannedCount === 1 ? "" : "s"} found
+                </span>
               ) : null}
             </button>
 
@@ -451,10 +494,7 @@ export default function AlertsPanel({
                 </div>
 
                 {loading ? (
-                  <div className="alerts-popover-empty">
-                    <span className="workboard-spinner" aria-hidden="true" />
-                    <span>Loading alerts…</span>
-                  </div>
+                  <ListSkeleton rows={3} label="Loading alerts" />
                 ) : displayError ? (
                   <p className="alerts-popover-empty" role="alert">
                     {displayError}
@@ -474,8 +514,7 @@ export default function AlertsPanel({
               </div>
             </>
           ) : null}
-        </div>
-      </header>
+      </div>
 
       {toast ? (
         <div
@@ -522,14 +561,14 @@ export default function AlertsPanel({
             </p>
           ) : null}
           {loading || monitoringBusy ? (
-            <div className="alerts-loading">
-              <span className="workboard-spinner" aria-hidden="true" />
-              <span>
-                {monitoringBusy
-                  ? "Running monitoring agents…"
-                  : "Loading subagents…"}
-              </span>
-            </div>
+            <ListSkeleton
+              rows={3}
+              label={
+                monitoringBusy
+                  ? "Running monitoring agents"
+                  : "Loading subagents"
+              }
+            />
           ) : monitorStatusRows.length === 0 ? (
             <p className="alerts-empty">
               No monitoring subagents configured for this board.
@@ -558,10 +597,10 @@ export default function AlertsPanel({
       {actionOpen ? (
         <Modal
           title={`${agentName} Agent Action`}
-          icon="⚡"
           subtitle="Review recommendations, analyze potential impact, and submit the preferred actions for approval."
           onClose={() => setActionOpen(false)}
           wide
+          scrollResetKey={step}
         >
           <ol className="action-stepper" aria-label="Action journey">
             {STEPS.map((item, index) => (
@@ -587,14 +626,12 @@ export default function AlertsPanel({
           ) : null}
 
           {loading || monitoringBusy ? (
-            <div className="alerts-loading">
-              <span className="workboard-spinner" aria-hidden="true" />
-              <span>
-                {monitoringBusy
-                  ? "Running monitoring agents…"
-                  : "Loading actions…"}
-              </span>
-            </div>
+            <ListSkeleton
+              rows={3}
+              label={
+                monitoringBusy ? "Running monitoring agents" : "Loading actions"
+              }
+            />
           ) : null}
 
           {!loading && !monitoringBusy && step === 0 ? (
@@ -602,6 +639,7 @@ export default function AlertsPanel({
               alerts={alerts}
               selectedIds={selectedIds}
               onToggle={toggleSelected}
+              onToggleAll={toggleSelectAll}
               onContinue={runAnalysis}
               continueBusy={actionBusyId === "batch-simulate"}
               selectedCount={selectedItems.length}
@@ -612,6 +650,7 @@ export default function AlertsPanel({
             <AnalysisStep
               items={selectedItems}
               simResults={simResults}
+              simPending={simPending}
               actionBusyId={actionBusyId}
               onSimulate={handleSingleSimulate}
               onBack={() => setStep(0)}
@@ -643,10 +682,7 @@ export default function AlertsPanel({
           onClose={() => setHistoryOpen(false)}
         >
           {historyLoading ? (
-            <div className="alerts-loading">
-              <span className="workboard-spinner" aria-hidden="true" />
-              <span>Loading history…</span>
-            </div>
+            <ListSkeleton rows={4} label="Loading history" />
           ) : history.length === 0 ? (
             <p className="alerts-empty">No actions recorded yet.</p>
           ) : (
@@ -683,7 +719,7 @@ export default function AlertsPanel({
           )}
         </Modal>
       ) : null}
-    </div>
+    </>
   );
 }
 
@@ -691,6 +727,7 @@ function RecommendationsStep({
   alerts,
   selectedIds,
   onToggle,
+  onToggleAll,
   onContinue,
   continueBusy,
   selectedCount,
@@ -700,6 +737,7 @@ function RecommendationsStep({
     (sum, alert) => sum + (alert.actions || []).length,
     0,
   );
+  const allSelected = totalActions > 0 && selectedCount === totalActions;
 
   if (groups.length === 0) {
     return (
@@ -719,7 +757,16 @@ function RecommendationsStep({
             approval.
           </p>
         </div>
-        <span className="selected-chip">{selectedCount} selected</span>
+        <div className="action-step-head-tools">
+          <button
+            type="button"
+            className="alerts-mini-btn"
+            onClick={onToggleAll}
+          >
+            {allSelected ? "Clear all" : `Select all (${totalActions})`}
+          </button>
+          <span className="selected-chip">{selectedCount} selected</span>
+        </div>
       </div>
 
       <ul className="action-group-list">
@@ -810,11 +857,17 @@ function RecommendationsStep({
 function AnalysisStep({
   items,
   simResults,
+  simPending,
   actionBusyId,
   onSimulate,
   onBack,
   onContinue,
 }) {
+  const pendingCount = items.filter(({ action }) =>
+    simPending.has(action.id),
+  ).length;
+  const doneCount = items.length - pendingCount;
+
   return (
     <div className="action-step-panel">
       <div className="action-step-head">
@@ -824,10 +877,16 @@ function AnalysisStep({
             Review simulated impact for each selected action before approval.
           </p>
         </div>
+        {pendingCount > 0 ? (
+          <span className="selected-chip is-running">
+            Simulating {doneCount}/{items.length}
+          </span>
+        ) : null}
       </div>
 
       <ul className="rec-action-list">
         {items.map(({ alert, action }) => {
+          const pending = simPending.has(action.id);
           const sim = simResults[action.id];
           const simulation =
             sim?.simulation || action.simulation_summary || null;
@@ -839,31 +898,60 @@ function AnalysisStep({
             ? simulation.blocks
             : [];
           return (
-            <li key={action.id} className="rec-action-card static">
+            <li
+              key={action.id}
+              className={"rec-action-card static" + (pending ? " pending" : "")}
+            >
               <div className="rec-action-body">
                 <div className="rec-action-top">
                   <strong>{action.action}</strong>
-                  <span className="alert-subagent">{alert.name}</span>
+                  {pending ? (
+                    <span className="sim-pending-tag">
+                      Simulating
+                      <span className="thinking-dots" aria-hidden="true">
+                        <i />
+                        <i />
+                        <i />
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="alert-subagent">{alert.name}</span>
+                  )}
                 </div>
-                <p>{summary}</p>
-                {blocks.length > 0 ? (
-                  <div className="sim-blocks">
-                    {blocks.map((block, index) => (
-                      <BlockRenderer
-                        key={`${action.id}-block-${index}`}
-                        block={block}
-                      />
-                    ))}
+                {/* The card is laid out the moment Analysis opens; only the
+                    body waits on the agent run, so nothing jumps when the
+                    real summary replaces this. */}
+                {pending ? (
+                  <div className="sim-pending-body" role="status">
+                    <SkeletonLines lines={3} />
                   </div>
-                ) : null}
+                ) : (
+                  <>
+                    <p>{summary}</p>
+                    {blocks.length > 0 ? (
+                      <div className="sim-blocks">
+                        {blocks.map((block, index) => (
+                          <BlockRenderer
+                            key={`${action.id}-block-${index}`}
+                            block={block}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                )}
                 <div className="alert-action-btns">
                   <button
                     type="button"
                     className="alerts-mini-btn"
-                    disabled={actionBusyId === action.id || !action.spec}
+                    disabled={
+                      pending || actionBusyId === action.id || !action.spec
+                    }
                     onClick={() => onSimulate(action.id)}
                   >
-                    {actionBusyId === action.id ? "Simulating…" : "Re-simulate"}
+                    {pending || actionBusyId === action.id
+                      ? "Simulating…"
+                      : "Re-simulate"}
                   </button>
                 </div>
               </div>
@@ -876,6 +964,9 @@ function AnalysisStep({
         <button type="button" className="alerts-btn" onClick={onBack}>
           Back
         </button>
+        {/* Deliberately not disabled while simulations run — approval shows
+            each action's own state, so there is no reason to hold the user
+            here waiting for every card to land. */}
         <button
           type="button"
           className="alerts-btn primary"
@@ -1070,7 +1161,27 @@ function StatusAlertCard({ alert }) {
   );
 }
 
-function Modal({ title, subtitle, icon, onClose, children, wide = false }) {
+function Modal({
+  title,
+  subtitle,
+  icon,
+  onClose,
+  children,
+  wide = false,
+  scrollResetKey,
+}) {
+  const scrollRef = useRef(null);
+
+  // The primary action is pinned to the bottom of the modal, so a step can
+  // be advanced from halfway down a long list. Without this the next step
+  // would open already scrolled past its own heading.
+  useEffect(() => {
+    if (scrollResetKey === undefined) {
+      return;
+    }
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [scrollResetKey]);
+
   return (
     <div
       className="alerts-modal-backdrop"
@@ -1078,6 +1189,7 @@ function Modal({ title, subtitle, icon, onClose, children, wide = false }) {
       onClick={onClose}
     >
       <div
+        ref={scrollRef}
         className={"alerts-modal" + (wide ? " alerts-modal-wide" : "")}
         role="dialog"
         aria-modal="true"

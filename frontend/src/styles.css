@@ -51,6 +51,32 @@
   --amber-500: #b54708;
   --amber-600: #9a3d12;
 
+  /*
+   * EY chrome — sampled from the supplied brand assets and used verbatim.
+   * --ey-black is the header, --ey-gray is the panel background (matched to
+   * the nav-bar mockup's rail colour), --ey-yellow is the beam. Do not
+   * re-derive or tint these without a reason.
+   */
+  /*
+   * Two dark tones, kept close but not identical, so the rail still reads
+   * as its own panel rather than a flat continuation of the header.
+   *   --ey-black : #211F22 — the header/toolbar. ey-logo.png is the
+   *                light-background EY mark (dark navy letters), so
+   *                img.ey-logo gives it a white chip rather than sitting
+   *                flush on this dark surface.
+   *   --ey-gray  : #2E2E38 — the left sidebar, matched to the navigation
+   *                mockup's rail colour.
+   */
+  --ey-black: #211f22;
+  --ey-gray: #2e2e38;
+  --ey-gray-raised: #38383b;
+  --ey-gray-hover: #454548;
+  --ey-line: rgba(255, 255, 255, 0.11);
+  --ey-line-strong: rgba(255, 255, 255, 0.2);
+  --ey-text: #f2f2f4;
+  --ey-muted: #a6a7b2;
+  --ey-yellow: #ffe600;
+
   /* ---------- Layer 2: semantic ---------- */
 
   /* Surfaces & text */
@@ -168,21 +194,44 @@ summary:focus-visible {
 
 /* Application layout */
 
+/*
+ * Shell = full-width EY header + the working area beneath it.
+ * The header spans the window so the EY mark sits in the true top-left
+ * corner; everything that scrolls or resizes lives in `.app-body`.
+ */
 .app-shell {
   display: grid;
-  gap: 14px;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100dvh;
-  padding: 14px;
   overflow: hidden;
+  background: var(--canvas);
+}
+
+/*
+ * Panels are docked, not floating: no page padding, no gutter, no rounded
+ * cards. Each region meets its neighbour on a hairline, which gives the
+ * dashboard the full width it can get and removes the "cards on a canvas"
+ * look the header no longer matches.
+ */
+.app-body {
+  display: grid;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Sidebar track width — one knob for every layout below. */
+.app-shell {
+  --rail: 220px;
 }
 
 /*
  * Chat tertutup:
  * sidebar + dashboard menggunakan seluruh sisa ruang.
  */
-.app-shell.chat-closed {
+.app-shell.chat-closed .app-body {
   grid-template-columns:
-    220px
+    var(--rail)
     minmax(0, 1fr);
 }
 
@@ -190,9 +239,24 @@ summary:focus-visible {
  * Chat terbuka:
  * sidebar + dashboard + resize handle + chat drawer.
  */
-.app-shell.chat-open {
+.app-shell.chat-open .app-body {
   grid-template-columns:
-    220px
+    var(--rail)
+    minmax(0, 1fr)
+    10px
+    var(--chat-width, 380px);
+}
+
+/*
+ * Sidebar ditutup: kolomnya dilepas sepenuhnya (bukan sekadar width 0),
+ * sehingga dashboard memakai seluruh lebar tanpa menyisakan gap.
+ */
+.app-shell.sidebar-collapsed.chat-closed .app-body {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.sidebar-collapsed.chat-open .app-body {
+  grid-template-columns:
     minmax(0, 1fr)
     10px
     var(--chat-width, 380px);
@@ -212,12 +276,187 @@ summary:focus-visible {
   user-select: none;
 }
 
-/* Shell while the module list is loading, or when it could not be loaded. */
-.app-shell-notice {
-  grid-template-columns: minmax(0, 1fr);
+/* Sidebar slides in rather than popping, so the toggle reads as a movement. */
+.app-shell.sidebar-open .sidebar {
+  animation: sidebar-enter var(--dur-base) var(--ease-standard);
+}
+
+@keyframes sidebar-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.sidebar-open .sidebar {
+    animation: none;
+  }
+}
+
+.sidebar-notice {
+  margin: 8px;
+  color: var(--ey-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+/* ---------- Header ----------
+ * One bar for the whole app: EY block, board title, board toolbar. Only the
+ * brand block is dark (it carries the EY mark); the rest stays light so the
+ * header reads as part of the workspace rather than a second dark strip.
+ */
+
+/* One dark surface for the whole header — brand block and toolbar share the
+   same --ey-black, so there is no light/dark seam between them. */
+.app-topbar {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: stretch;
+  min-height: 64px;
+  border-bottom: 1px solid var(--ey-line);
+  background: var(--ey-black);
+}
+
+/* Align the brand block with the rail below it, so the header and the
+   sidebar read as one column when the sidebar is open. */
+.app-shell.sidebar-open .app-topbar {
+  grid-template-columns: var(--rail) minmax(0, 1fr);
+}
+
+.topbar-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px 18px;
+  flex-wrap: wrap;
+  padding: 8px 16px;
+}
+
+.topbar-heading {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.topbar-heading h1 {
+  overflow: hidden;
+  /* Off-white, not pure #fff: reads as "adjusted to the dark surface" rather
+     than a flat maximum-contrast slab. */
+  color: #eaeaec;
+  margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.22;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar-toggle {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
   place-items: center;
-  color: var(--muted);
-  font-size: 0.9rem;
+  padding: 0;
+  border: 1px solid var(--ey-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ey-text);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-standard),
+    border-color var(--dur-fast) var(--ease-standard),
+    color var(--dur-fast) var(--ease-standard);
+}
+
+.topbar-toggle:hover {
+  border-color: var(--ey-yellow);
+  background: rgba(255, 230, 0, 0.12);
+  color: var(--ey-yellow);
+}
+
+.topbar-toggle:focus-visible {
+  outline: 3px solid rgba(255, 230, 0, 0.35);
+  outline-offset: 2px;
+}
+
+.topbar-toggle-icon {
+  display: grid;
+  gap: 3px;
+  width: 16px;
+}
+
+.topbar-toggle-icon i {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transition: transform var(--dur-base) var(--ease-standard);
+}
+
+/* Closed: the bars pinch into a "menu is hidden" chevron-ish mark. */
+.app-shell.sidebar-collapsed .topbar-toggle-icon i:first-child {
+  transform: translateX(3px) scaleX(0.62);
+}
+
+.app-shell.sidebar-collapsed .topbar-toggle-icon i:last-child {
+  transform: translateX(3px) scaleX(0.62);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar-toggle-icon i {
+    transition: none;
+  }
+}
+
+/* The one dark surface in the header — it holds the EY mark. */
+.topbar-brand {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  background: var(--ey-black);
+  color: var(--ey-text);
+}
+
+.ey-logo {
+  display: block;
+  width: auto;
+  height: 30px;
+  flex: 0 0 auto;
+}
+
+/* ey-logo.png uses dark navy letters (the light-background EY mark), so it
+   needs a light chip behind it to stay legible on the dark header/sidebar —
+   it isn't a transparent-flush mark. */
+img.ey-logo {
+  height: 34px;
+  padding: 4px 7px;
+  object-fit: contain;
+  background: #ffffff;
+  border-radius: 7px;
+}
+
+/* Narrow window: the brand block stops reserving the rail width and the
+   title's kicker drops, so the toolbar keeps a full row to itself. */
+@media (max-width: 1000px) {
+  .app-shell.sidebar-open .app-topbar {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .topbar-heading h1 {
+    font-size: 1rem;
+  }
+
+  .topbar-heading .header-kicker {
+    display: none;
+  }
 }
 
 /* Drag handle between the workboard and the chat panel. */
@@ -264,12 +503,18 @@ summary:focus-visible {
 .workboard {
   min-width: 0;
   min-height: 0;
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  border-radius: 20px;
+  border: 0;
+  border-radius: 0;
   background: var(--surface);
-  box-shadow:
-    12px 12px 24px #c8ced8,
-    -10px -10px 22px #ffffff;
+  box-shadow: none;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+}
+
+.chat-panel {
+  border-left: 1px solid var(--line);
 }
 
 /* Sidebar */
@@ -500,21 +745,37 @@ summary:focus-visible {
   }
 }
 
+/* `min-width: 0` on the title side and a shrinkable gap: without them the
+   action buttons pushed the header past the drawer's edge on a narrow panel. */
 .chat-header {
   display: flex;
   min-height: 92px;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 18px 24px;
+  gap: clamp(8px, 2vw, 16px);
+  padding: 18px clamp(12px, 2vw, 24px);
   border-bottom: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.5);
 }
 
+.chat-header > div:first-child {
+  min-width: 0;
+}
+
+/*
+ * The title is the first user message, so it can be long. Two lines with an
+ * ellipsis keeps the header a fixed size instead of pushing the transcript
+ * down the panel on a narrow drawer.
+ */
 .chat-header h1 {
+  display: -webkit-box;
+  overflow: hidden;
   margin: 4px 0 0;
-  font-size: clamp(1.15rem, 2vw, 1.55rem);
-  line-height: 1.2;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: clamp(1.05rem, 1.6vw, 1.4rem);
+  line-height: 1.24;
+  overflow-wrap: anywhere;
 }
 
 .header-kicker {
@@ -696,14 +957,24 @@ summary:focus-visible {
   }
 }
 
+/*
+ * `minmax(0, 1fr)` — not the default `auto` track. An auto track takes the
+ * min-content width of its WIDEST row, so one long tool card or table used to
+ * widen the whole column and push every message past the drawer's edge.
+ */
 .message-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   max-width: 1120px;
   gap: 18px;
   margin: 0 auto;
   padding: 0;
   list-style: none;
+}
+
+.message-list > li {
+  min-width: 0;
 }
 
 .message {
@@ -729,12 +1000,16 @@ summary:focus-visible {
   font-weight: 800;
 }
 
+/* Fills the row minus the avatar; a fixed `min(94%, …)` overflowed once the
+   avatar and its gap were added on a narrow drawer. */
 .message-body {
-  width: min(94%, 1080px);
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 1080px;
 }
 
 .user .message-body {
+  flex: 0 1 auto;
   width: auto;
   max-width: 74%;
 }
@@ -1037,8 +1312,11 @@ summary:focus-visible {
 }
 
 /* Agent tool step — a readable work log entry, not a JSON dump. */
+/* `width: 100%` plus the 47px indent overflowed the row by exactly the
+   indent; `auto` lets the block fill what is left after the margin. */
 .tool-step {
-  width: min(100%, 760px);
+  width: auto;
+  max-width: 760px;
   margin-left: 47px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -1237,26 +1515,6 @@ summary:focus-visible {
 }
 
 /* Loading */
-
-.loading-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-left: 47px;
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.spinner {
-  width: 15px;
-  height: 15px;
-  flex: 0 0 15px;
-  border: 2px solid #c7d6ed;
-  border-top-color: var(--primary);
-  border-radius: 50%;
-  animation: spin 750ms linear infinite;
-}
 
 /* Composer */
 
@@ -1741,15 +1999,15 @@ summary:focus-visible {
     overflow: auto;
   }
 
-  .app-shell,
-  .app-shell.chat-open,
-  .app-shell.chat-closed {
+  .app-shell.chat-open .app-body,
+  .app-shell.chat-closed .app-body,
+  .app-shell.sidebar-collapsed.chat-open .app-body,
+  .app-shell.sidebar-collapsed.chat-closed .app-body {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows:
       auto
       minmax(0, 1fr);
     gap: 10px;
-    height: 100dvh;
     padding: 10px;
   }
 
@@ -1860,8 +2118,7 @@ summary:focus-visible {
     max-width: 84%;
   }
 
-  .tool-step,
-  .loading-row {
+  .tool-step {
     margin-left: 0;
   }
 
@@ -1950,31 +2207,44 @@ summary:focus-visible {
 
 /* Workboard */
 
+/*
+ * The board sizes itself against its OWN width, not the viewport's: the chat
+ * drawer and the sidebar toggle both change how much room it has at a fixed
+ * window size, so viewport media queries used to leave charts squeezed or
+ * clipped. `container-type: inline-size` makes the @container rules below the
+ * single source of truth for the board's breakpoints.
+ */
 .workboard {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /*
+   * The chart row must never be shorter than the panels inside it.
+   *   - `minmax(0, 1fr)` let it collapse to zero, so the panels drew straight
+   *     over the simulator.
+   *   - `minmax(240px, 1fr)` replaced the automatic floor with a hard 240px,
+   *     which is still far too short once the panels stack (250 + 250 + gap),
+   *     so the overlap came back at high zoom.
+   * `min-content` restores a floor that tracks the real content height at
+   * every breakpoint, while `1fr` still absorbs spare height when there is
+   * some. Anything taller than the board scrolls (see overflow-y below).
+   */
+  grid-template-rows: auto minmax(min-content, 1fr) auto;
   gap: 10px;
   padding: 12px 14px 14px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  container-type: inline-size;
+  container-name: board;
 }
 
-.workboard-top-stack {
-  display: grid;
-  gap: 8px;
-  min-width: 0;
+/* Loading / error stand-ins fill the rows the real board would occupy. */
+.workboard > .workboard-skeleton {
+  grid-row: 1 / -1;
 }
 
-.workboard-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.workboard-header h1 {
-  margin: 2px 0 0;
-  font-size: 1.15rem;
+.workboard > .workboard-status {
+  grid-row: 1 / -1;
+  align-self: center;
+  justify-self: center;
 }
 
 .workboard-badge {
@@ -1984,24 +2254,6 @@ summary:focus-visible {
   background: #fff4ce;
   border-radius: 999px;
   padding: 4px 10px;
-}
-
-.workboard-loading {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  grid-template-rows: none;
-}
-
-.workboard-loader {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  color: var(--muted);
-  font-size: 0.9rem;
-  font-weight: 600;
 }
 
 .workboard-spinner {
@@ -2032,9 +2284,13 @@ summary:focus-visible {
   border-radius: 12px;
 }
 
+/*
+ * Auto-fit rather than a fixed 5 columns: tiles reflow into as many rows as
+ * the board width allows instead of shrinking until the value is unreadable.
+ */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 8px;
 }
 
@@ -2372,40 +2628,6 @@ summary:focus-visible {
   cursor: not-allowed;
 }
 
-.calc-spinner {
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.35);
-  border-top-color: #fff;
-  animation: workboard-spin 0.75s linear infinite;
-  flex: 0 0 auto;
-}
-
-.calc-spinner-lg {
-  width: 28px;
-  height: 28px;
-  border-color: #d7dee9;
-  border-top-color: var(--primary);
-}
-
-.whatif-loading {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  min-height: 120px;
-  color: var(--muted);
-  font-size: 0.8rem;
-  font-weight: 600;
-}
-
-.whatif-loading-gauge {
-  min-height: 110px;
-}
-
 .whatif-grid.is-loading .whatif-levers {
   opacity: 0.55;
   pointer-events: none;
@@ -2520,28 +2742,127 @@ summary:focus-visible {
   color: var(--muted);
 }
 
-@media (max-width: 1200px) {
-  .app-shell.chat-closed {
-    grid-template-columns:
-      180px
-      minmax(0, 1fr);
+/*
+ * ---------- Board breakpoints (container-driven) ----------
+ * These fire on the board's own inline size, so opening the chat drawer,
+ * hiding the sidebar, resizing the window and browser zoom all take the same
+ * path. Charts get an explicit floor height at every step so a Recharts
+ * ResponsiveContainer never resolves to a near-zero box.
+ */
+
+@container board (max-width: 1080px) {
+  .workboard-mid {
+    grid-template-columns: 1.25fr 1fr;
   }
 
-  .app-shell.chat-open {
+  /* Tighten the three simulator columns rather than stacking them — the
+     stacked gauge doubled the bar's height and pushed the charts off. */
+  .whatif-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr) minmax(0, 0.62fr);
+    gap: 10px;
+  }
+
+  .lever input[type="range"] {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .lever-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 58px;
+  }
+
+  .whatif-gauge .gauge-center {
+    width: 74px;
+    height: 74px;
+    margin: 8px auto;
+  }
+}
+
+/*
+ * Below this the board stops trying to fit one screen: it scrolls, and each
+ * panel keeps a readable minimum height instead of being crushed by the
+ * `minmax(0, 1fr)` row.
+ */
+@container board (max-width: 860px) {
+  /*
+   * `.workboard` itself cannot be styled from here: an element never matches
+   * its own container query, only its descendants do. Its row sizing and
+   * overflow are set on the base rule instead — putting them here silently
+   * did nothing, which is how the overlap survived the first fix.
+   */
+  .workboard-mid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-rows: minmax(250px, auto);
+  }
+
+  .side-col {
+    grid-template-rows: minmax(210px, auto) minmax(210px, auto);
+  }
+
+  .whatif-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .whatif-stats {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .focus-chart,
+  .side-chart {
+    min-height: 190px;
+  }
+
+  .lever input[type="range"] {
+    width: 100%;
+  }
+
+  .lever-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 64px;
+  }
+}
+
+@container board (max-width: 620px) {
+  .kpi-row {
+    grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  }
+
+  .whatif-top {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .whatif-controls {
+    margin-left: 0;
+  }
+}
+
+/*
+ * Upper bound matters: this block sits after the 760px block in the file, so
+ * without `min-width: 761px` it would out-cascade the mobile layout at equal
+ * specificity — leaving the desktop rail width while the sidebar had already
+ * switched to its horizontal strip, which overflowed it by ~113px.
+ */
+@media (max-width: 1200px) and (min-width: 761px) {
+  .app-shell {
+    --rail: 180px;
+  }
+
+  /* Keep the drawer from eating the board on a narrow window. */
+  .app-shell.chat-open .app-body {
     grid-template-columns:
-      180px
+      var(--rail)
       minmax(0, 1fr)
       10px
       min(var(--chat-width, 380px), 42vw);
   }
 
-  .kpi-row {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .whatif-grid,
-  .workboard-mid {
-    grid-template-columns: 1fr;
+  .app-shell.sidebar-collapsed.chat-open .app-body {
+    grid-template-columns:
+      minmax(0, 1fr)
+      10px
+      min(var(--chat-width, 380px), 42vw);
   }
 }
 
@@ -3034,18 +3355,25 @@ summary:focus-visible {
   gap: 8px;
 }
 
+/* Toolbar buttons are the header's primary controls, so they carry a real
+   hit area (34px) rather than the 28px they had as a secondary strip. */
 .alerts-btn {
   display: inline-flex;
   align-items: center;
+  min-height: 34px;
   gap: 6px;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: #fff;
-  padding: 6px 12px;
-  font-size: 0.72rem;
+  padding: 0 13px;
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--ink);
   cursor: pointer;
+  white-space: nowrap;
+  transition:
+    border-color var(--dur-fast) var(--ease-standard),
+    background var(--dur-fast) var(--ease-standard);
 }
 
 .alerts-btn:hover:not(:disabled) {
@@ -3120,6 +3448,14 @@ summary:focus-visible {
   color: #1f1a00;
 }
 
+.alerts-badge-text {
+  min-width: auto;
+  height: auto;
+  padding: 2px 8px;
+  white-space: nowrap;
+  font-size: 0.66rem;
+}
+
 .alerts-panel-head {
   display: flex;
   align-items: flex-start;
@@ -3177,17 +3513,10 @@ summary:focus-visible {
 }
 
 .alerts-empty,
-.alerts-loading,
 .alert-no-actions {
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
-}
-
-.alerts-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 .alert-subagent {
@@ -3364,6 +3693,13 @@ summary:focus-visible {
   line-height: 1.4;
 }
 
+.action-step-head-tools {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 8px;
+}
+
 .selected-chip {
   border-radius: 999px;
   background: #eef2f8;
@@ -3425,6 +3761,36 @@ summary:focus-visible {
   border-color: #9db7e8;
   background: #f5f9ff;
   box-shadow: inset 0 0 0 1px #c9daf7;
+}
+
+/*
+ * A card whose simulation is still running. Analysis opens as soon as the
+ * user commits, so these are laid out before any result exists — the frame,
+ * title and buttons are final and only the body swaps in, which keeps the
+ * list from reflowing as each agent run lands.
+ */
+.rec-action-card.pending {
+  border-style: dashed;
+  border-color: #cfdaeb;
+  background: #fbfcfe;
+}
+
+.sim-pending-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+
+.sim-pending-body {
+  margin-top: 8px;
+}
+
+.selected-chip.is-running {
+  background: #eaf1fb;
+  color: var(--primary-deep);
 }
 
 .rec-action-card input[type="checkbox"] {
@@ -3493,15 +3859,28 @@ summary:focus-visible {
   margin-right: 4px;
 }
 
+/*
+ * Pinned to the bottom of the modal's scrollport. The recommendation list
+ * routinely runs longer than the modal, and the primary action used to sit
+ * past its end — the user had to scroll through every issue before they
+ * could act on any of them. Sticky keeps the action in reach from the first
+ * card on. The negative side/bottom margins bleed the bar to the modal's
+ * edges so nothing shows through beside or beneath it.
+ */
 .action-step-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin-top: 4px;
-  padding-top: 12px;
+  margin: 4px -20px -20px;
+  padding: 12px 20px 20px;
   border-top: 1px solid #eef1f7;
+  background: #fff;
+  box-shadow: 0 -8px 16px -12px rgba(23, 32, 51, 0.35);
   color: var(--muted);
   font-size: 0.74rem;
   font-weight: 650;
@@ -3974,4 +4353,537 @@ summary:focus-visible {
     height: 38px;
     flex-basis: 38px;
   }
+}
+
+/*
+ * ============================================================
+ * SKELETONS
+ * Placeholders that mirror the shape of the content they stand
+ * in for. Preferred over spinners on this app: a dense board
+ * needs to show *what* is arriving, not just that something is.
+ * ============================================================
+ */
+
+.skeleton {
+  display: block;
+  position: relative;
+  border-radius: 6px;
+  background: var(--gray-100);
+  overflow: hidden;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.72),
+    transparent
+  );
+  animation: skeleton-sweep 1.4s var(--ease-standard) infinite;
+}
+
+@keyframes skeleton-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after {
+    animation: none;
+    opacity: 0.35;
+    transform: none;
+  }
+}
+
+.skeleton-lines {
+  display: grid;
+  gap: 7px;
+  width: 100%;
+}
+
+/* ---------- Sidebar agent rows ---------- */
+
+.agent-skeleton {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  min-height: 68px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 16px;
+}
+
+.agent-skeleton-copy {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+/* ---------- Board ---------- */
+
+.workboard-skeleton {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 10px;
+  min-height: 0;
+}
+
+.kpi-tile-skeleton {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 12px 12px 10px 15px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gray-200);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.panel-skeleton {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.panel-skeleton-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.chart-skeleton {
+  display: flex;
+  min-height: 90px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.chart-skeleton-bars {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  justify-content: space-around;
+  gap: 6%;
+}
+
+.chart-skeleton-bar {
+  min-width: 0;
+  flex: 1 1 auto;
+  max-width: 56px;
+}
+
+.chart-skeleton-axis {
+  display: block;
+  height: 1px;
+  flex: 0 0 auto;
+  background: var(--line);
+}
+
+/* ---------- What-if bar ---------- */
+
+.whatif-skeleton {
+  padding: 10px 12px;
+  border: 1px solid #e2e9fb;
+  border-radius: 12px;
+  background: #f7f9ff;
+}
+
+.whatif-skeleton-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.whatif-skeleton-grid {
+  display: grid;
+  grid-template-columns: 1.15fr 1.2fr 0.75fr;
+  gap: 12px;
+}
+
+.whatif-skeleton-levers,
+.whatif-skeleton-lever {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+
+.whatif-stat-skeleton {
+  display: grid;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/*
+ * Flex column, not a plain block: the bar heights below are percentages, so
+ * every ancestor up to the sized box has to pass a definite height down.
+ */
+.whatif-mini-chart-skeleton {
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.whatif-gauge-skeleton {
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  align-content: center;
+  min-height: 110px;
+}
+
+.gauge-skeleton-ring {
+  border-radius: 50%;
+}
+
+@container board (max-width: 860px) {
+  .whatif-skeleton-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------- Chat "thinking" ---------- */
+
+.thinking-skeleton {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  list-style: none;
+}
+
+.thinking-skeleton-avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.thinking-skeleton-body {
+  display: grid;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 720px;
+  gap: 10px;
+  padding: 13px 16px;
+  border-radius: 17px;
+  background: var(--surface);
+}
+
+.thinking-skeleton-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.thinking-dots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: thinking-dot 1.1s ease-in-out infinite;
+}
+
+.thinking-dots i:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.thinking-dots i:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes thinking-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.25;
+  }
+
+  30% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thinking-dots i {
+    animation: none;
+    opacity: 0.6;
+  }
+}
+
+/* ---------- List panels (alerts, subagents, history) ---------- */
+
+.list-skeleton {
+  display: grid;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.list-skeleton-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-strong);
+}
+
+.list-skeleton-copy {
+  display: grid;
+  min-width: 0;
+  gap: 7px;
+}
+
+/* Running scenario: the button carries a sweeping bar, not a spinner. */
+.calc-btn.is-busy {
+  position: relative;
+  overflow: hidden;
+}
+
+.calc-btn.is-busy::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.38),
+    transparent
+  );
+  animation: skeleton-sweep 1.1s var(--ease-standard) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .calc-btn.is-busy::after {
+    animation: none;
+  }
+}
+
+/*
+ * ============================================================
+ * EY CHROME — dark shell
+ * Header (--ey-black, the logo tile colour so the mark sits
+ * flush), left agent rail and right chat drawer (--ey-gray).
+ * The dashboard in the middle stays light: it is the reading
+ * surface, and charts/tables are tuned for it.
+ *
+ * The chat keeps its answer content on light cards (.bubble,
+ * .block-stack, .tool-step, .chart-card) — only the chrome
+ * around them goes dark, so nothing rendered by the agent has
+ * to be re-themed to stay legible.
+ * ============================================================
+ */
+
+/* ---------- Left rail ---------- */
+
+.sidebar {
+  --muted: var(--ey-muted);
+  --line: var(--ey-line);
+  border-right-color: rgba(255, 255, 255, 0.08);
+  background: var(--ey-gray);
+  color: var(--ey-text);
+}
+
+.sidebar .brand-mark {
+  background: var(--ey-yellow);
+  color: var(--ey-black);
+}
+
+.sidebar .brand-copy strong {
+  color: #fff;
+}
+
+.sidebar .brand-copy span,
+.sidebar .section-label,
+.sidebar .sidebar-footer,
+.sidebar .folder-toggle {
+  color: var(--ey-muted);
+}
+
+.sidebar .folder-toggle:hover {
+  color: #fff;
+}
+
+.sidebar .agent-button {
+  border-color: var(--ey-line);
+  background: var(--ey-gray-raised);
+  box-shadow: none;
+  color: var(--ey-text);
+}
+
+.sidebar .agent-button:hover {
+  background: var(--ey-gray-hover);
+}
+
+.sidebar .agent-button.active {
+  border-color: var(--ey-yellow);
+  background: var(--ey-gray-hover);
+  box-shadow: inset 3px 0 0 var(--ey-yellow);
+}
+
+.sidebar .agent-avatar {
+  background: rgba(255, 230, 0, 0.14);
+  color: var(--ey-yellow);
+}
+
+.sidebar .agent-copy small {
+  color: var(--ey-muted);
+}
+
+.sidebar .skeleton {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.sidebar .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.14),
+    transparent
+  );
+}
+
+.sidebar .agent-skeleton {
+  border-color: var(--ey-line);
+  background: var(--ey-gray-raised);
+}
+
+/* ============================================================
+ * EY chrome ends here — the chat drawer and the board stay on
+ * the light palette so agent output (tables, charts, coloured
+ * confidence badges) needs no re-theming to stay legible.
+ * ============================================================
+ */
+
+/*
+ * ============================================================
+ * HEADER TOOLBAR — EY palette, dark header
+ * The whole header is --ey-black now, so every control here is
+ * re-based for a dark surface: light outlines instead of dark
+ * ink on white, EY yellow reserved for exactly one primary
+ * action so it keeps meaning instead of shouting everywhere.
+ * ============================================================
+ */
+
+.topbar-main .header-kicker {
+  /* Muted-but-light: not the near-black --muted token (invisible on dark),
+     and not full white either — "adjusts to" the surface, doesn't fight it. */
+  color: rgba(234, 234, 236, 0.6);
+}
+
+/* Primary action — #18191A on #FFE600 clears WCAG AAA (≈14:1). */
+.topbar-main .alerts-btn.primary {
+  border-color: var(--ey-yellow);
+  background: var(--ey-yellow);
+  color: var(--ey-black);
+}
+
+.topbar-main .alerts-btn.primary:hover:not(:disabled) {
+  border-color: #f5dd00;
+  background: #f5dd00;
+}
+
+/* Secondary actions: light outline + off-white text on the dark surface,
+   rather than the light-header assumption of dark ink on a white pill. */
+.topbar-main .alerts-btn:not(.primary) {
+  border-color: rgba(234, 234, 236, 0.22);
+  background: transparent;
+  color: #eaeaec;
+}
+
+.topbar-main .alerts-btn:hover:not(:disabled):not(.primary):not(.on) {
+  border-color: var(--ey-yellow);
+  background: rgba(255, 230, 0, 0.1);
+}
+
+.topbar-main .alerts-btn.on {
+  border-color: var(--ey-yellow);
+  background: rgba(255, 230, 0, 0.16);
+  color: var(--ey-yellow);
+}
+
+.topbar-main .alerts-bell-icon {
+  color: rgba(234, 234, 236, 0.75);
+}
+
+.topbar-main .alerts-bell:hover:not(:disabled) .alerts-bell-icon,
+.topbar-main .alerts-bell.on .alerts-bell-icon {
+  color: var(--ey-yellow);
+}
+
+/* Chat entry point matches the other secondary buttons at rest — it stands
+   out only once the drawer is open, via the shared `.on` yellow state. */
+.topbar-main .chat-toggle-btn:hover:not(:disabled) {
+  border-color: var(--ey-yellow);
+  background: rgba(255, 230, 0, 0.1);
+}
+
+.topbar-main .chat-toggle-btn.on,
+.topbar-main .chat-toggle-btn.on:hover:not(:disabled) {
+  border-color: var(--ey-yellow);
+  background: rgba(255, 230, 0, 0.16);
+  color: var(--ey-yellow);
+}
+
+.topbar-main .alerts-badge {
+  background: var(--ey-yellow);
+  color: var(--ey-black);
+}
+
+/*
+ * The planned-action count on Agent Action sits directly on the yellow
+ * button, so a bright chip + near-white number there reads as one glaring
+ * spot. A dark translucent chip with a softened (not pure-white) number
+ * keeps it legible without the glare — the bell badge below gets the same
+ * treatment for consistency, since it had the same pure-white-on-bright-red
+ * problem.
+ */
+.topbar-main .alerts-badge.muted,
+.topbar-main .alerts-bell-badge {
+  background: rgba(20, 20, 24, 0.55);
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.topbar-main .alerts-btn:focus-visible {
+  outline: 3px solid rgba(255, 230, 0, 0.35);
+  outline-offset: 2px;
 }

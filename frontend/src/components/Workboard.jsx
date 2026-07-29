@@ -1,22 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 
 import ChartRenderer from "./ChartRenderer.jsx";
-import AlertsPanel from "./AlertsPanel.jsx";
 import InfoCard from "./InfoCard.jsx";
+import {
+  DashboardSkeleton,
+  WhatIfGaugeSkeleton,
+  WhatIfStatsSkeleton,
+} from "./Skeleton.jsx";
 import { findInfo } from "../infoRegistry.js";
 import {
   fetchDashboard,
   recalculateDashboardSimulation,
 } from "../api/dashboard.js";
 
-export default function Workboard({
-  agentId,
-  agentName,
-  onAskInsight,
-  insightBusy = false,
-  isChatOpen = false,
-  onToggleChat,
-}) {
+// The board toolbar (Agent Action, Recalculate, alerts, Ask <agent>) lives in
+// the app header now, so this component renders data only.
+export default function Workboard({ agentId, agentName, onAskInsight, insightBusy = false }) {
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
   const [loading, setLoading] = useState(true);
@@ -165,25 +164,8 @@ export default function Workboard({
 
   return (
     <section className="workboard" data-testid="workboard">
-      <AlertsPanel
-        agentId={agentId}
-        agentName={agentName}
-        isChatOpen={isChatOpen}
-        onToggleChat={onToggleChat}
-        header={
-          <>
-            <span className="header-kicker">{agentName} dashboard</span>
-
-            <h1>{agentName} performance board</h1>
-          </>
-        }
-      />
-
       {loading ? (
-        <div className="workboard-loader" role="status" aria-live="polite">
-          <span className="workboard-spinner" aria-hidden="true" />
-          <span>Loading {agentName} dashboard…</span>
-        </div>
+        <DashboardSkeleton label={`Loading ${agentName} dashboard`} />
       ) : error || !dashboard ? (
         <div className="workboard-status error" role="alert">
           {error || "Dashboard unavailable."}
@@ -528,19 +510,12 @@ function WhatIfBar({
             ))}
           <button
             type="button"
-            className="calc-btn"
+            className={"calc-btn" + (busy ? " is-busy" : "")}
             data-testid="calculate-simulation"
             disabled={busy}
             onClick={onCalculate}
           >
-            {busy ? (
-              <>
-                <span className="calc-spinner" aria-hidden="true" />
-                Running scenario…
-              </>
-            ) : (
-              "Calculate simulation"
-            )}
+            {busy ? "Running scenario…" : "Calculate simulation"}
           </button>
         </div>
       </div>
@@ -585,49 +560,42 @@ function WhatIfBar({
           ))}
         </div>
 
-        <div className="whatif-stats" data-testid="whatif-stats">
-          {busy ? (
-            <div className="whatif-loading" role="status" aria-live="polite">
-              <span
-                className="calc-spinner calc-spinner-lg"
-                aria-hidden="true"
-              />
-              <span>Updating scenario results…</span>
-            </div>
-          ) : (
-            <>
-              {summary.stats.map((stat) => (
-                <InfoTarget
-                  key={stat.label}
-                  className="whatif-stat"
-                  infoKey={`stat:${stat.id}`}
-                  agentId={agentId}
-                  onOpen={(key, event) =>
-                    onOpenInfo(key, event, {
-                      context: [stat.value, stat.delta]
-                        .filter(Boolean)
-                        .join(" · "),
-                    })
-                  }
-                >
-                  <span>{stat.label}</span>
-                  <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
-                  <small className={stat.tone}>{stat.delta}</small>
-                </InfoTarget>
-              ))}
-              {summary.chart ? (
-                <InfoTarget
-                  className="whatif-mini-chart"
-                  infoKey="simchart"
-                  agentId={agentId}
-                  onOpen={onOpenInfo}
-                >
-                  <ChartRenderer data={summary.chart} variant="compact" />
-                </InfoTarget>
-              ) : null}
-            </>
-          )}
-        </div>
+        {busy ? (
+          <WhatIfStatsSkeleton />
+        ) : (
+          <div className="whatif-stats" data-testid="whatif-stats">
+            {summary.stats.map((stat) => (
+              <InfoTarget
+                key={stat.label}
+                className="whatif-stat"
+                infoKey={`stat:${stat.id}`}
+                agentId={agentId}
+                onOpen={(key, event) =>
+                  onOpenInfo(key, event, {
+                    context: [stat.value, stat.delta]
+                      .filter(Boolean)
+                      .join(" · "),
+                  })
+                }
+              >
+                <span>{stat.label}</span>
+                <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
+                <small className={stat.tone}>{stat.delta}</small>
+              </InfoTarget>
+            ))}
+
+            {summary.chart ? (
+              <InfoTarget
+                className="whatif-mini-chart"
+                infoKey="simchart"
+                agentId={agentId}
+                onOpen={onOpenInfo}
+              >
+                <ChartRenderer data={summary.chart} variant="compact" />
+              </InfoTarget>
+            ) : null}
+          </div>
+        )}
 
         <InfoTarget
           className="whatif-gauge"
@@ -644,12 +612,7 @@ function WhatIfBar({
             {simulator.gauge_label || "Scenario"}
           </div>
           {busy ? (
-            <div className="whatif-loading whatif-loading-gauge" role="status">
-              <span
-                className="calc-spinner calc-spinner-lg"
-                aria-hidden="true"
-              />
-            </div>
+            <WhatIfGaugeSkeleton />
           ) : (
             <>
               <div className="gauge-center" data-testid="gauge-center">

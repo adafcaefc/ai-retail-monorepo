@@ -269,6 +269,7 @@ function BarChartView({
     <ResponsiveContainer
       width="100%"
       height={chartHeight}
+      debounce={80}
     >
       <BarChart
         data={rows}
@@ -517,6 +518,7 @@ function WaterfallChartView({
     <ResponsiveContainer
       width="100%"
       height={chartHeight}
+      debounce={80}
     >
       <BarChart
         data={waterfallRows}
@@ -880,6 +882,7 @@ function LineChartView({
     <ResponsiveContainer
       width="100%"
       height={chartHeight}
+      debounce={80}
     >
       <LineChart
         data={rows}
@@ -1063,6 +1066,7 @@ function AreaChartView({
     <ResponsiveContainer
       width="100%"
       height={chartHeight}
+      debounce={80}
     >
       <AreaChart
         data={rows}
@@ -1215,12 +1219,13 @@ function CircularChartView({
     <ResponsiveContainer
       width="100%"
       height={chartHeight}
+      debounce={80}
     >
       <PieChart
         margin={{
           top: 4,
           right: 4,
-          bottom: size.showLegend ? 8 : 4,
+          bottom: 4,
           left: 4
         }}
       >
@@ -1232,14 +1237,20 @@ function CircularChartView({
           }
         />
 
-        {size.showLegend && (
-          <Legend
-            verticalAlign="bottom"
-            wrapperStyle={{
-              fontSize: 11
-            }}
-          />
-        )}
+        {/*
+          Slice names always ride in the legend, never as outside labels.
+          Outside labels are laid out beyond the pie's radius, so in a short
+          side card they escaped the card and covered whatever sat below.
+        */}
+        <Legend
+          verticalAlign="bottom"
+          height={22}
+          iconSize={8}
+          wrapperStyle={{
+            fontSize: 10,
+            lineHeight: "14px"
+          }}
+        />
 
         <Pie
           data={rows}
@@ -1250,13 +1261,7 @@ function CircularChartView({
           outerRadius={size.pieOuter}
           paddingAngle={2}
 
-          label={
-            payload.showValues &&
-            size.mode !== "compact"
-              ? renderPieLabel
-              : false
-          }
-
+          label={<PieSliceLabel />}
           labelLine={false}
         >
           {rows.map(
@@ -1391,15 +1396,75 @@ function CustomTooltip({
 }
 
 
-function renderPieLabel({
-  name,
+/**
+ * Percentage drawn inside its own slice.
+ *
+ * Kept within the pie's radius by construction, so it can never overflow the
+ * card the way Recharts' default outside labels did. Slices too thin to hold
+ * a legible number are skipped — the legend and tooltip still name them.
+ */
+function PieSliceLabel({
+  cx,
+  cy,
+  midAngle,
+  innerRadius,
+  outerRadius,
   percent
 }) {
+  const pct =
+    Math.round(
+      Number(percent) * 100
+    );
+
+  if (
+    !Number.isFinite(pct) ||
+    pct < 8
+  ) {
+    return null;
+  }
+
+  const inner =
+    Number(innerRadius) || 0;
+
+  const outer =
+    Number(outerRadius) || 0;
+
+  // Mid-band for a donut, two-thirds out for a full pie — both stay clear
+  // of the centre hole and of the outer edge.
+  const radius =
+    inner > 0
+      ? inner + (outer - inner) * 0.5
+      : outer * 0.62;
+
+  const radians =
+    (-Number(midAngle) * Math.PI) /
+    180;
+
+  const x =
+    Number(cx) +
+    radius * Math.cos(radians);
+
+  const y =
+    Number(cy) +
+    radius * Math.sin(radians);
+
   return (
-    `${name} ` +
-    `${Math.round(
-      percent * 100
-    )}%`
+    <text
+      x={x}
+      y={y}
+      textAnchor="middle"
+      dominantBaseline="central"
+      fill="#ffffff"
+      fontSize={10}
+      fontWeight={800}
+      style={{
+        paintOrder: "stroke",
+        stroke: "rgba(0, 0, 0, 0.28)",
+        strokeWidth: 2.5
+      }}
+    >
+      {pct}%
+    </text>
   );
 }
 
