@@ -267,7 +267,65 @@ Kalau ternyata event masih jauh (≥4 minggu), Opsi A lebih rapi: tidak ada biay
 
 ---
 
-## 8. Catatan untuk file QC
+## 8. Dampak ke fitur — apa saja yang ikut berubah
+
+Mengganti dataset bukan cuma mengganti angka. Ini permukaan yang terdampak, dihitung dari payload yang berjalan hari ini:
+
+| Agent | KPI | Chart | Tabel | Side | Lever | Sparkline |
+|---|---:|---:|---:|---:|---:|---:|
+| Finance | 5 | 4 | 1 | 2 | 5 | 0 |
+| Treasury | 5 | 3 | 1 | 2 | 4 | 1 |
+| Collection | 5 | 4 | 1 | 2 | 2 | 0 |
+| Leakage | 5 | 3 | 2 | 2 | 3 | 0 |
+| **Total** | **20** | **14** | **5** | **8** | **14** | **1** |
+
+**47 elemen board menampilkan angka.** Semuanya berubah nilainya.
+
+### 8.1 Wajib diperbarui — rusak kalau tidak
+
+| Fitur | Kenapa | Bobot |
+|---|---|---|
+| 47 elemen board | seluruh angka acuan berganti | Besar |
+| 14 lever simulator | baseline dan batas atas/bawah berubah (mis. `hold` maks = fraud 3.800 → 6.250) | Sedang |
+| Panel penjelas rumus (`infoRegistry.js`) | rumusnya sendiri berubah — `price = −disc`, bukan lagi driver dari workbook | Sedang |
+| 4 tool snapshot untuk chat | harus sadar filter, kalau tidak chat akan berbeda dari dashboard lagi | Sedang |
+| Alert | ambang batasnya berbasis angka lama | Sedang |
+| 62 test | nilai fixture-nya berubah semua | Kecil, tapi wajib |
+
+### 8.2 Baru jadi mungkin — ini keuntungan yang sering terlewat
+
+Beberapa temuan QC selama ini **mustahil dikerjakan bukan karena sulit, tapi karena datanya tidak ada.** Dataset baru membukanya:
+
+| Fitur | QC | Kenapa dulu mustahil | Kenapa sekarang bisa |
+|---|---|---|---|
+| **Sparkline di KPI** | QC-054 | data cuma 1 bulan — tidak ada garis untuk digambar | 21 bulan. Sekarang 1 dari 20 KPI punya sparkline; bisa jadi 20 dari 20 |
+| **Filter** | QC-043 | tidak ada dimensi entitas/periode | 22 filter, semuanya sudah ada kolom sumbernya |
+| **Label periode** | QC-035 | tidak ada periode untuk ditulis | periode jadi dimensi |
+| **Banding tahun lalu** | — | hanya ada Agustus 2026 | 2025 **sengaja** disertakan untuk YoY (kata README dataset) |
+| **Drill-down** | — | 3 produk | 3 entitas → 24 store → 12 kategori → 120 item |
+| **Vendor risk radar** | QC-046 | sedikit vendor | 30 vendor, ada `spend_category` dan `payment_terms` |
+
+Ini penting untuk keputusan: **Opsi D (tidak merombak) berarti QC-054, QC-043, QC-035 permanen tertutup**, bukan tertunda. Tidak ada cara mengerjakannya di atas data 1 bulan.
+
+### 8.3 Kehilangan sumber data
+
+| Fitur | Kondisi |
+|---|---|
+| Action card (47 buah) | dataset baru **tidak punya** sheet Action/Recommendation |
+| Alert | idem |
+| Batas lever simulator | hanya ada `43_FX_Assumptions` (khusus FX) |
+
+Ini yang harus disiapkan sendiri, bukan diminta ke tim data — lihat §6 catatan tentang Action.
+
+### 8.4 Konsekuensi untuk urutan kerja
+
+Karena 47 elemen board bergantung pada bentuk data, **filter harus dibangun lebih dulu, bukan belakangan.** Kalau dashboard ditulis ulang dengan asumsi "satu irisan tetap", lalu filter ditambahkan kemudian, keempat builder harus ditulis ulang dua kali.
+
+Urutan yang benar: skema → filter → builder → chat → action.
+
+---
+
+## 9. Catatan untuk file QC
 
 Setelah dataset diganti, sebagian besar dari 62 temuan **tidak bisa diuji ulang apa adanya** — objek yang diujinya sudah tidak ada. QC-014 misalnya: di dataset baru tidak ada `items_flagged` maupun 22 anomali. Temuan itu bukan lulus, bukan gagal — **tidak berlaku lagi**.
 
