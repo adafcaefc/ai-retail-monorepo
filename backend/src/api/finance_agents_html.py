@@ -105,6 +105,9 @@ class FinanceSimulationRequest(BaseModel):
     fx: float = 0
     opex: float = 0
     scope: str = "all"
+    # Forwarded from the dashboard baseline so the gauge measures against the
+    # same EBITDA margin target the KPI card shows.
+    target: float = Field(default=0.15, gt=0, le=1)
 
 
 class LeakageSimulationRequest(BaseModel):
@@ -579,6 +582,7 @@ async def recalculate_finance_simulation(
         fx=payload.fx,
         opex=payload.opex,
         scope=payload.scope,
+        target=payload.target,
     )
     return result
 

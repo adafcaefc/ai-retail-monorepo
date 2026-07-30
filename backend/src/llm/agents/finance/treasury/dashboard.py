@@ -69,6 +69,18 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
     def _premium(usd: float) -> float:
         return abs(usd) * forward_points / 1_000_000.0
 
+    # One scale for every USD figure in the KPI row. Mixing "3.3 M USD" with
+    # "2,000,000 USD" made two comparable numbers look unrelated.
+    _usd_millions = max(abs(net_usd), abs(recommended_hedge)) >= 1_000_000
+    _usd_unit = "M USD" if _usd_millions else "USD"
+    _usd_suffix = "M" if _usd_millions else ""
+
+    def _usd(value: float) -> str:
+        return f"{value / 1_000_000:.1f}" if _usd_millions else _fmt(value)
+
+    # What the adverse move still costs after the recommended forward cover.
+    residual_fx_loss = _avoided(max(0.0, abs(net_usd) - abs(recommended_hedge)))
+
     half_hedge = recommended_hedge / 2
     option_rows = [
         [
@@ -123,11 +135,11 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             "id": "usd",
             "view": "exposure",
             "label": "Net USD exposure",
-            "value": f"{net_usd / 1_000_000:.1f}"
-            if abs(net_usd) >= 1000
-            else _fmt(net_usd, 0),
-            "unit": "M USD" if abs(net_usd) >= 1000 else "USD",
-            "delta": f"recommended hedge {_fmt(recommended_hedge)}",
+            "value": _usd(net_usd),
+            "unit": _usd_unit,
+            "delta": (
+                f"recommended hedge {_usd(recommended_hedge)}{_usd_suffix}"
+            ),
             "alert": False,
         },
         {
@@ -143,8 +155,8 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
             "id": "hedge",
             "view": "options",
             "label": "Recommended hedge",
-            "value": _fmt(recommended_hedge),
-            "unit": "USD",
+            "value": _usd(recommended_hedge),
+            "unit": _usd_unit,
             "delta": "forward-cover",
             "alert": False,
         },
@@ -177,15 +189,26 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
                 tag="currency",
             ),
         },
+        # A zero "Base" bar next to a value bar reads as a failed render and
+        # says nothing. The live comparison is unhedged loss vs the loss left
+        # over after the recommended forward cover.
         "fx": {
             **_bar_chart(
-                "FX impact if we do nothing",
+                "FX loss at the adverse rate",
                 [
-                    {"label": "Base", "value": 0},
-                    {"label": "Adverse", "value": round(fx_loss, 2)},
+                    {"label": "Do nothing", "value": round(fx_loss, 2)},
+                    {
+                        "label": f"Hedge {_usd(recommended_hedge)}{_usd_suffix}",
+                        "value": round(residual_fx_loss, 2),
+                    },
                 ],
                 tag="currency",
-                note="Derived from net USD exposure and adverse vs spot rate.",
+                note=(
+                    f"Net exposure {_usd(net_usd)}{_usd_suffix} at "
+                    f"{_fmt(adverse)} vs spot {_fmt(spot)}. Forward cover "
+                    f"leaves {_usd(max(0.0, net_usd - recommended_hedge))}"
+                    f"{_usd_suffix} open."
+                ),
             ),
         },
         "options": _table_view(
@@ -198,20 +221,31 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
                 + (
                     ""
                     if premium_is_live
-                    else " Premium uses an illustrative 170 IDR/USD forward "
-                    "spread — no forward points on this baseline."
+                    else " Premium assumes a 170 IDR/USD forward spread; this "
+                    "baseline stores no forward points."
                 )
             ),
         ),
     }
 
     side = {
+        # Not `views:exposure` with shorter labels — that chart already pairs
+        # net against hedge. This splits the same exposure into the part the
+        # forward covers and the part still open, so the two bars add to net.
         "top": {
             **_bar_chart(
-                "Exposure vs hedge",
+                "Exposure covered vs still open",
                 [
-                    {"label": "Net", "value": round(net_usd, 2)},
-                    {"label": "Hedge", "value": round(recommended_hedge, 2)},
+                    {
+                        "label": "Covered",
+                        "value": round(min(recommended_hedge, net_usd), 2),
+                    },
+                    {
+                        "label": "Open",
+                        "value": round(
+                            max(0.0, net_usd - recommended_hedge), 2
+                        ),
+                    },
                 ],
                 y_axis_title="USD",
                 tag="currency",

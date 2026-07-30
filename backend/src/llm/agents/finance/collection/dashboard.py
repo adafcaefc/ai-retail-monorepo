@@ -100,6 +100,8 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             got += amount * rates.get(tier, 0.85)
         return got
 
+    expected_recovery = _expected(worklist) if worklist else overdue * 0.85
+
     short_name = customer_name.split("(")[0].strip()[:14]
     if worklist:
         levels = [
@@ -154,6 +156,7 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "",
             "delta": f"target {target_dso:.0f}",
             "alert": dso > target_dso,
+            "lower_is_better": True,
         },
         {
             "id": "prize",
@@ -258,15 +261,25 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             aging_rows,
             tag="aging",
         ),
+        # `views:prize` already puts DSO now against target; repeating it here
+        # in the opposite order read as a data change. This answers the next
+        # question instead: of what is overdue, how much do we expect back.
         "bottom": {
             **_bar_chart(
-                "DSO vs target",
+                "Overdue vs expected recovery",
                 [
-                    {"label": "Target", "value": round(target_dso, 2)},
-                    {"label": "Now", "value": round(dso, 2)},
+                    {"label": "Overdue", "value": round(overdue, 2)},
+                    {
+                        "label": "Expected recovery",
+                        "value": round(expected_recovery, 2),
+                    },
                 ],
-                y_axis_title="days",
                 tag="impact",
+                note=(
+                    f"{_pct(expected_recovery / overdue) if overdue else '—'}"
+                    " of the overdue book, at the recovery rates on the "
+                    "worklist."
+                ),
             ),
         },
     }

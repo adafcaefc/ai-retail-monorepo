@@ -130,6 +130,8 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
           fx: Number(values.fx || 0),
           opex: Number(values.opex || 0),
           scope,
+          // Same EBITDA margin target the KPI card shows.
+          target: dashboard.simulator.baseline?.target ?? 0.15,
         };
       } else if (action === "simulate_leakage") {
         const baseline = dashboard.simulator.baseline || {};

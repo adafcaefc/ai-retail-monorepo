@@ -12,9 +12,9 @@ from __future__ import annotations
 
 ENABLED_MODULES: tuple[str, ...] = (
     "finance.finance",
-    "finance.leakage",
-    "finance.collection",
     "finance.treasury",
+    "finance.collection",
+    "finance.leakage",
 )
 
 __all__ = ["ENABLED_MODULES"]

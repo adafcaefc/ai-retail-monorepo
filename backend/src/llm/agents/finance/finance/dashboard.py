@@ -13,6 +13,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _line_chart,
     _num,
     _pct,
+    _round_half_up,
     _row_get,
     _table_view,
     _waterfall_chart,
@@ -51,7 +52,14 @@ def _metric_name(row: dict[str, Any]) -> str:
     )
 
 
-def _finance_live_metrics(kpis_rows: list[dict[str, Any]]) -> dict[str, float]:
+_ACTUAL_COLUMNS = ("actual_value", "kpi_value", "value", "actual")
+_BUDGET_COLUMNS = ("budget_value", "budget_idr_mn", "budget", "plan")
+
+
+def _finance_live_metrics(
+    kpis_rows: list[dict[str, Any]],
+    columns: tuple[str, ...] = _ACTUAL_COLUMNS,
+) -> dict[str, float]:
     """Resolve the five headline metrics from the stored KPI rows.
 
     Ranked rather than first-wins so a more specific alias always beats a
@@ -61,7 +69,7 @@ def _finance_live_metrics(kpis_rows: list[dict[str, Any]]) -> dict[str, float]:
     ranked: dict[str, tuple[int, float]] = {}
     for row in kpis_rows:
         name = _metric_name(row)
-        value = _row_get(row, "actual_value", "kpi_value", "value", "actual")
+        value = _row_get(row, *columns)
         if not name or value is None:
             continue
         num = _num(value, default=float("nan"))
@@ -83,20 +91,25 @@ def simulate_finance_scenario(
     fx: float = 0,
     opex: float = 0,
     scope: str = "all",
+    target: float = _FINANCE_TARGET,
 ) -> dict[str, Any]:
-    """Deterministic what-if from mockup product model (illustrative)."""
+    """Deterministic what-if from the product cost model.
+
+    `target` is the EBITDA margin the gauge measures against. It is passed in
+    rather than read from the module constant so the simulator cannot quote a
+    different target than the KPI card.
+    """
 
     base = _finance_comp(0, 0, 0, 0, 0, "all")
     scen = _finance_comp(price, cost, vol, fx, opex, scope)
     return {
         "success": True,
-        "illustrative": True,
         "baseline": base,
         "scenario": scen,
         "stats": {
             "scenario_margin_pct": round(scen["margin"] * 100, 2),
             "ebitda_idr_mn": round(scen["ebitda"], 2),
-            "vs_target_pts": round((scen["margin"] - _FINANCE_TARGET) * 100, 2),
+            "vs_target_pts": round((scen["margin"] - target) * 100, 2),
             "delta_ebitda_idr_mn": round(scen["ebitda"] - base["ebitda"], 2),
             "delta_margin_pts": round(
                 (scen["margin"] - base["margin"]) * 100,
@@ -104,13 +117,11 @@ def simulate_finance_scenario(
             ),
         },
         "gauge": {
-            "ratio": scen["margin"] / _FINANCE_TARGET
-            if _FINANCE_TARGET
-            else 0,
-            "center": f"{scen['margin'] * 100:.1f}%",
+            "ratio": scen["margin"] / target if target else 0,
+            "center": _pct(scen["margin"]),
             "txt": (
-                f"{round(scen['margin'] / _FINANCE_TARGET * 100)}% of target"
-                f" · gap {( _FINANCE_TARGET - scen['margin']) * 100:.1f} pts"
+                f"{_fmt(scen['margin'] / target * 100) if target else 0}% of "
+                f"target · gap {_fmt((target - scen['margin']) * 100, 1)} pts"
             ),
         },
     }
@@ -253,14 +264,18 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         opex_rev = _as_fraction(live["opex_rev"])
 
     # Budget EBITDA opens the waterfall; the drivers table stores only steps.
-    ebitda_budget = 0.0
-    for row in list(kpis_rows) + list(profit):
-        if _metric_name(row) in _FINANCE_KPI_METRICS["ebitda"]:
-            ebitda_budget = _num(
-                _row_get(row, "budget_value", "budget_idr_mn", "budget")
-            )
-            if ebitda_budget:
-                break
+    # The same budget row also carries the margin target, so the gauge, the
+    # card caption and the waterfall all reference one number: two surfaces
+    # quoting 15% and 15.7% was formula check #15.
+    budget = _finance_live_metrics(
+        list(kpis_rows) + list(profit), _BUDGET_COLUMNS
+    )
+    ebitda_budget = budget.get("ebitda", 0.0)
+    target = (
+        _as_fraction(budget["margin"])
+        if budget.get("margin")
+        else _FINANCE_TARGET
+    )
 
     waterfall_rows: list[dict[str, Any]] = []
     for row in variance:
@@ -307,7 +322,9 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     product_bars = [
         {
             "label": line["name"][:3],
-            "value": round(line["gm_pct"] * 100, 1),
+            # Half-up: Precision is exactly 4,930/13,600 = 36.25%, which
+            # Python's banker's rounding would print as 36.2.
+            "value": _round_half_up(line["gm_pct"] * 100, 1),
         }
         for line in base["lines"]
     ]
@@ -319,16 +336,16 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "id": "margin",
             "view": "drivers",
             "label": "EBITDA margin",
-            "value": f"{margin * 100:.1f}%",
+            "value": _pct(margin),
             "unit": "",
-            "delta": f"target {_FINANCE_TARGET * 100:.0f}%",
-            "alert": margin < _FINANCE_TARGET,
+            "delta": f"target {_pct(target)}",
+            "alert": margin < target,
             # Three-tier RAG: at/above target = good, within 20% below = warn.
             "status": (
                 "good"
-                if margin >= _FINANCE_TARGET
+                if margin >= target
                 else "warn"
-                if margin >= _FINANCE_TARGET * 0.8
+                if margin >= target * 0.8
                 else "bad"
             ),
         },
@@ -398,7 +415,7 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
         "fx": {
             **_bar_chart(
-                "FX sensitivity (illustrative)",
+                "FX sensitivity · margin at weaker IDR",
                 [
                     {"label": "Now", "value": round(margin * 100, 1)},
                     {
@@ -435,19 +452,25 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             note=(
                 "Worst variance first — the repeatable saving is at the top."
                 if opex_is_live
-                else "Illustrative breakdown; profit_summary has no opex "
-                "line columns in this batch."
+                else "Indicative split — this batch stores only the operating "
+                "expenses total, and that total row is actual."
             ),
         ),
     }
 
     side = {
+        # Not `views:product` again — that one is the margin *rate*. This is
+        # the margin *pool*, which is where the profit actually comes from: a
+        # high-rate product on low volume contributes little.
         "top": {
             **_bar_chart(
-                "Margin by product",
-                product_bars,
-                y_axis_title="GM %",
-                tag="GM %",
+                "Gross margin pool by product",
+                [
+                    {"label": line["name"], "value": round(line["gm"], 2)}
+                    for line in base["lines"]
+                ],
+                tag="GM mn",
+                note="Rate is in the main chart; this is the IDR it earns.",
             ),
         },
         "bottom": {
@@ -458,7 +481,10 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                     {"label": "Local", "value": 45},
                 ],
                 tag="currency",
-                note="Illustrative 55% import share from mockup model.",
+                note=(
+                    f"{_FINANCE_IMP * 100:.0f}% of COGS is imported, so that "
+                    "share carries the IDR/USD move."
+                ),
             ),
         },
     }
@@ -534,14 +560,10 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         "side": side,
         "simulator": {
             "action": "simulate_finance",
-            "gauge_label": "Path to 15% target",
+            "gauge_label": f"Path to {_pct(target)} target",
             "scope_options": ["all", "fx"],
             "inputs": inputs,
-            "baseline": base,
-            "illustrative": True,
-            "db_kpis_count": len(kpis_rows),
-            "db_profit_count": len(profit),
-            "db_variance_count": len(variance),
+            "baseline": {**base, "target": target},
         },
     }
 

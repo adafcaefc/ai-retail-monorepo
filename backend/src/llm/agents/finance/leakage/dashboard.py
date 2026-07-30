@@ -1,4 +1,4 @@
-"""Leakage dashboard payload + illustrative scenario simulation."""
+"""Leakage dashboard payload + scenario simulation."""
 
 from __future__ import annotations
 
@@ -45,7 +45,6 @@ def simulate_leakage_scenario(
     total = blocked + recovered
     return {
         "success": True,
-        "illustrative": True,
         "blocked": round(blocked, 2),
         "recovered": round(recovered, 2),
         "total_protected": round(total, 2),
@@ -57,6 +56,18 @@ def simulate_leakage_scenario(
             "txt": f"{round(total / at_risk * 100) if at_risk else 0}% of at risk",
         },
     }
+
+
+_SEVERITY_WEIGHT = {"high": 1.0, "critical": 1.0, "medium": 0.6, "low": 0.25}
+
+# Exposure dominates, but a High-severity flag on a small amount still has to
+# outrank a Low-severity one, and a repeat offender outranks a one-off.
+_SCORE_WEIGHTS = {"amount": 0.5, "severity": 0.35, "flags": 0.15}
+
+
+def _severity_weight(row: dict[str, Any]) -> float:
+    label = str(_row_get(row, "severity", "risk_level") or "").strip().lower()
+    return _SEVERITY_WEIGHT.get(label, 0.0)
 
 
 def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
@@ -89,18 +100,23 @@ def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
             _row_get(row, "anomaly_type", "type", "category") or ""
         ).strip()
 
-        try:
-            score = float(_row_get(row, "risk_score", "score") or 0)
-        except (TypeError, ValueError):
-            score = 0.0
-
         bucket = grouped.setdefault(
             name,
-            {"amount": 0.0, "flags": 0, "kinds": set(), "score": 0.0},
+            {
+                "amount": 0.0,
+                "flags": 0,
+                "kinds": set(),
+                "score": 0.0,
+                "severity": 0.0,
+            },
         )
         bucket["amount"] += amount
         bucket["flags"] += 1
-        bucket["score"] = max(bucket["score"], score)
+        bucket["score"] = max(
+            bucket["score"], _num(_row_get(row, "risk_score", "score"))
+        )
+        # A vendor is as risky as its worst flag, not its average.
+        bucket["severity"] = max(bucket["severity"], _severity_weight(row))
         if kind:
             bucket["kinds"].add(kind)
 
@@ -108,19 +124,30 @@ def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
         grouped.items(), key=lambda kv: kv[1]["amount"], reverse=True
     )
 
+    # Scored relative to the worst vendor in the batch, so the column reads as
+    # "how bad is this one compared with our worst" rather than an absolute.
+    top_amount = max((a["amount"] for _, a in ordered), default=0.0)
+    top_flags = max((a["flags"] for _, a in ordered), default=0)
+
     out: list[list[Any]] = []
     for name, agg in ordered[:10]:
         kinds = ", ".join(sorted(agg["kinds"])) or "—"
-        # No stored score: fall back to an exposure-weighted proxy so the
-        # column still ranks. Flagged as illustrative in the view note.
-        score = agg["score"] or min(99.0, agg["flags"] * 20 + agg["amount"] / 100)
+        score = agg["score"]
+        if not score:
+            score = 100.0 * (
+                _SCORE_WEIGHTS["amount"]
+                * (agg["amount"] / top_amount if top_amount else 0.0)
+                + _SCORE_WEIGHTS["severity"] * agg["severity"]
+                + _SCORE_WEIGHTS["flags"]
+                * (agg["flags"] / top_flags if top_flags else 0.0)
+            )
         out.append(
             [
                 name,
                 agg["flags"],
                 kinds,
                 _fmt(agg["amount"]),
-                str(round(score)),
+                str(round(min(100.0, score))),
             ]
         )
     return out
@@ -375,8 +402,8 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 
     if not cat_is_live:
         cat_note = (
-            "Illustrative breakdown; category_breakdowns has no resolvable "
-            "amount column in this batch."
+            "Indicative breakdown — no category amounts resolved for this "
+            "batch."
         )
     else:
         cat_note = (
@@ -442,7 +469,11 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             ["Vendor", "Flags", "Types", "At risk", "Score"],
             vendor_rows,
             tag="risk",
-            note="Flags clustered by vendor. Score is illustrative (0–100).",
+            note=(
+                "Flags clustered by vendor. Score 0–100 weights at-risk "
+                "amount 50%, worst severity 35%, flag count 15%, relative to "
+                "the worst vendor this cycle."
+            ),
         ),
     }
 
@@ -506,7 +537,6 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 "at_risk": at_risk,
                 "fraud": fraud,
             },
-            "illustrative": True,
         },
     }
 

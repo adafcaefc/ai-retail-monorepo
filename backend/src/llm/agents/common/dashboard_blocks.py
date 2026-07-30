@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 from concurrent.futures import ThreadPoolExecutor
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Callable
 
 _DB_TIMEOUT_SEC = 15.0
@@ -60,9 +61,15 @@ def _enrich_kpis(kpis: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if target_num is not None:
             kpi["target_num"] = target_num
             if value_num is not None and target_num:
-                kpi["progress"] = round(
-                    max(0.0, min(1.2, value_num / target_num)), 4
+                # On a lower-is-better metric (DSO, cycle time) the ratio has
+                # to invert, or missing the target by 10 days renders as 120%
+                # complete instead of 82%.
+                ratio = (
+                    target_num / value_num
+                    if kpi.get("lower_is_better") and value_num
+                    else value_num / target_num
                 )
+                kpi["progress"] = round(max(0.0, min(1.2, ratio)), 4)
 
         if "status" not in kpi:
             kpi["status"] = "bad" if kpi.get("alert") else "good"
@@ -76,14 +83,27 @@ def _enriched(payload: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def _round_half_up(value: float, digits: int = 0) -> float:
+    """Round .5 away from zero, the way finance reporting does.
+
+    Python and IEEE round half to even, so `round(36.25, 1)` is 36.2. A product
+    gross margin of exactly 4,930/13,600 = 36.25% therefore printed as 36.2
+    where the workbook reconciliation says 36.3.
+    """
+    quantum = Decimal(1).scaleb(-digits)
+    return float(Decimal(str(value)).quantize(quantum, rounding=ROUND_HALF_UP))
+
+
 def _fmt(n: float, digits: int = 0) -> str:
+    """Grouped number for display. Always carries a thousands separator."""
     if digits <= 0:
-        return f"{round(n):,}"
-    return f"{n:,.{digits}f}"
+        return f"{int(_round_half_up(n)):,}"
+    return f"{_round_half_up(n, digits):,.{digits}f}"
 
 
 def _pct(n: float, digits: int = 1) -> str:
-    return f"{n * 100:.{digits}f}%" if abs(n) <= 2 else f"{n:.{digits}f}%"
+    scaled = n * 100 if abs(n) <= 2 else n
+    return f"{_round_half_up(scaled, digits):,.{digits}f}%"
 
 
 def _bar_chart(

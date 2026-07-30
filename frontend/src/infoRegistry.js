@@ -79,9 +79,9 @@ export const INFO_REGISTRY = {
     },
 
     "side:top": {
-      el: "Side · Margin by product",
-      x: "Gross-margin rate per line, showing where the mix hurt.",
-      f: "GM% = (Price − Cost) / Price per product"
+      el: "Side · Gross margin pool by product",
+      x: "The IDR each line actually earns, not its rate. A high-margin product on low volume contributes little, which is what the rate chart cannot show.",
+      f: "GM pool = (Price − Cost) × Volume per product; Σ = Gross margin"
     },
     "side:bottom": {
       el: "Side · Imported COGS share",
@@ -154,9 +154,9 @@ export const INFO_REGISTRY = {
       f: "Uncovered = Net exposure − Recommended hedge"
     },
     "view:fx": {
-      el: "Chart · FX impact if we do nothing",
-      x: "Cash cost of leaving the exposure open, base case against the adverse rate.",
-      f: "FX impact = Net exposure × (Adverse rate − Spot)"
+      el: "Chart · FX loss at the adverse rate",
+      x: "What the adverse move costs if we do nothing, against what it still costs after the recommended forward cover — the difference is what hedging buys.",
+      f: "Loss = Open exposure × (Adverse rate − Spot); open = Net − Hedge"
     },
     "view:options": {
       el: "Table · Agent option comparison",
@@ -165,9 +165,9 @@ export const INFO_REGISTRY = {
     },
 
     "side:top": {
-      el: "Side · Exposure vs hedge",
-      x: "Net USD at risk against the recommended cover, showing how much of the position the hedge actually protects.",
-      f: "Coverage% = Hedge / Net exposure"
+      el: "Side · Exposure covered vs still open",
+      x: "The net position split into the part the recommended forward covers and the part left open. The two bars add back to net exposure.",
+      f: "Covered = min(Hedge, Net); Open = Net − Hedge"
     },
     "side:bottom": {
       el: "Side · Week 5 vs buffer",
@@ -261,9 +261,9 @@ export const INFO_REGISTRY = {
       f: "Bucket share = Bucket / Total AR"
     },
     "side:bottom": {
-      el: "Side · DSO vs target",
-      x: "Current DSO against the target, and against the scenario once you run one.",
-      f: "Gap = DSO − Target"
+      el: "Side · Overdue vs expected recovery",
+      x: "Of the overdue book, how much we actually expect back at the recovery rates on the worklist. The gap is the part that needs a decision, not a phone call.",
+      f: "Expected recovery = Σ(overdue × recovery rate per customer)"
     },
 
     "stat:dso": {
@@ -343,7 +343,7 @@ export const INFO_REGISTRY = {
     "view:vendors": {
       el: "Table · Vendor risk radar",
       x: "The same flags clustered by vendor rather than by item, so repeat offenders and duplicated vendor masters surface instead of hiding as one-offs. Ranked by total exposure.",
-      f: "Vendor at-risk = Σ that vendor's flagged amounts; score is illustrative 0–100"
+      f: "Vendor at-risk = Σ that vendor's flagged amounts; score = 50%·(amount / worst vendor) + 35%·worst severity + 15%·(flags / most flags)"
     },
 
     "side:top": {

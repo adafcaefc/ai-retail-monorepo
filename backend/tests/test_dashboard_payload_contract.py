@@ -17,6 +17,7 @@ from pathlib import Path
 
 import pytest
 
+from src.llm.agents.common.dashboard_blocks import _enrich_kpis
 from src.llm.agents.finance.collection.dashboard import _collections_dashboard
 from src.llm.agents.finance.finance.dashboard import _finance_dashboard
 from src.llm.agents.finance.leakage.dashboard import (
@@ -502,7 +503,7 @@ def test_leakage_says_so_when_category_amounts_do_not_resolve() -> None:
         row["renamed_column_idr_mn"] = row.pop("amount_at_risk_idr_mn")
 
     view = _leakage_dashboard(snapshot)["views"]["categories"]
-    assert "Illustrative" in view["note"]
+    assert "Indicative" in view["note"]
 
 
 def test_leakage_flag_count_comes_from_the_summary() -> None:
@@ -633,6 +634,202 @@ def test_collections_aging_and_tiers_both_partition_the_ar_card() -> None:
     ) == pytest.approx(total_ar, abs=0.5)
 
 
+_UNGROUPED = re.compile(r"(?<![\d,.])\d{4,}(?![\d,])")
+
+
+def _display_strings(payload: dict) -> list[tuple[str, str]]:
+    """Every string the board renders as a number, with where it came from."""
+
+    out: list[tuple[str, str]] = []
+    for kpi in payload["kpis"]:
+        out.append((f"tile:{kpi['id']}", str(kpi["value"])))
+        out.append((f"tile:{kpi['id']}.delta", str(kpi.get("delta") or "")))
+    charts_and_tables = [(f"view:{k}", v) for k, v in payload["views"].items()]
+    charts_and_tables += [
+        (f"side:{k}", v) for k, v in (payload.get("side") or {}).items()
+    ]
+    for key, block in charts_and_tables:
+        out.append((f"{key}.note", str(block.get("note") or "")))
+        out.append((f"{key}.target_label", str(block.get("target_label") or "")))
+        if block.get("table"):
+            for row in block["table"]["rows"]:
+                out.extend((f"{key}.cell", str(cell)) for cell in row)
+            continue
+        for point in chart_points(block):
+            out.append((f"{key}.label", str(point.get("label") or "")))
+    simulator = payload.get("simulator") or {}
+    out.append(("gauge_label", str(simulator.get("gauge_label") or "")))
+    return out
+
+
+@pytest.mark.parametrize("agent", sorted(PAYLOADS))
+def test_every_rendered_number_carries_a_thousands_separator(agent: str) -> None:
+    payload = PAYLOADS[agent]()
+    offenders = [
+        (where, text)
+        for where, text in _display_strings(payload)
+        if _UNGROUPED.search(text)
+    ]
+    assert not offenders, f"{agent}: ungrouped 4+ digit numbers: {offenders}"
+
+
+@pytest.mark.parametrize("agent", sorted(PAYLOADS))
+def test_no_kpi_or_table_cell_renders_empty(agent: str) -> None:
+    payload = _enriched_payload(agent)
+
+    for kpi in payload["kpis"]:
+        assert str(kpi["value"]).strip() not in ("", "—", "-", "None"), kpi["id"]
+
+    for key, block in payload["views"].items():
+        if not block.get("table"):
+            continue
+        for index, row in enumerate(block["table"]["rows"]):
+            for position, cell in enumerate(row):
+                assert str(cell).strip() not in ("", "None"), (
+                    f"{agent}: view:{key} row {index} cell {position} is empty"
+                )
+
+
+def _enriched_payload(agent: str) -> dict:
+    payload = PAYLOADS[agent]()
+    payload["kpis"] = _enrich_kpis(payload["kpis"])
+    return payload
+
+
+@pytest.mark.parametrize("agent", sorted(PAYLOADS))
+def test_no_debug_wording_reaches_the_payload(agent: str) -> None:
+    """QC-039: 'illustrative' and db_*_count are developer notes, not UI copy."""
+
+    payload = PAYLOADS[agent]()
+    blob = json.dumps(payload).lower()
+
+    assert "illustrative" not in blob, f"{agent}: debug wording in payload"
+    assert "db_kpis_count" not in blob
+    assert "db_profit_count" not in blob
+    assert "db_variance_count" not in blob
+
+
+@pytest.mark.parametrize("agent", sorted(PAYLOADS))
+def test_no_side_panel_restates_a_view(agent: str) -> None:
+    """QC-036: a side chart restating a main chart wastes the only two slots.
+
+    Compared by value sequence rather than by label, so renaming "Recommended
+    hedge" to "Hedge" does not count as a different chart. A donut beside a bar
+    is fine: one reads as share, the other as level.
+    """
+
+    payload = PAYLOADS[agent]()
+    for slot, side in (payload.get("side") or {}).items():
+        if side.get("table"):
+            continue
+        for key, view in payload["views"].items():
+            if view.get("table") or view.get("chart_type") != side.get(
+                "chart_type"
+            ):
+                continue
+            side_values = [p.get("value") for p in chart_points(side)]
+            view_values = [p.get("value") for p in chart_points(view)]
+            assert side_values != view_values, (
+                f"{agent}: side:{slot} restates view:{key} — same "
+                f"{side.get('chart_type')} values {side_values}"
+            )
+
+
+@pytest.mark.parametrize("agent", sorted(PAYLOADS))
+def test_no_chart_pairs_the_same_labels_in_opposite_order(agent: str) -> None:
+    """QC-033: the same pair flipped between two charts reads as a data change."""
+
+    payload = PAYLOADS[agent]()
+    seen: dict[frozenset[str], tuple[str, list[str]]] = {}
+    charts_to_check = [
+        (f"view:{k}", v) for k, v in payload["views"].items()
+    ] + [(f"side:{k}", v) for k, v in (payload.get("side") or {}).items()]
+
+    for key, chart in charts_to_check:
+        if chart.get("table"):
+            continue
+        labels = [str(p["label"]) for p in chart_points(chart)]
+        if len(labels) != 2:
+            continue
+        fingerprint = frozenset(labels)
+        if fingerprint in seen:
+            other_key, other_labels = seen[fingerprint]
+            assert labels == other_labels, (
+                f"{agent}: {key} orders {labels} but {other_key} orders "
+                f"{other_labels}"
+            )
+        else:
+            seen[fingerprint] = (key, labels)
+
+
+def test_lower_is_better_kpi_does_not_report_over_100_percent() -> None:
+    """QC-028: DSO 10 days past target is 82% of goal, not 120% complete."""
+
+    payload = _collections_dashboard(collections_snapshot())
+    dso = next(
+        k for k in _enrich_kpis(payload["kpis"]) if k["id"] == "dso"
+    )
+
+    assert dso["lower_is_better"] is True
+    assert dso["progress"] < 1.0, dso["progress"]
+    # Enrichment reads the formatted card value ("57d"), not the raw 57.357.
+    assert dso["progress"] == pytest.approx(47 / 57, abs=0.001)
+    assert dso["status"] == "bad"
+
+
+def test_treasury_usd_row_uses_one_number_format() -> None:
+    """QC-029: '3.3 M USD' beside '2,000,000 USD' hides that 2.0 < 3.3."""
+
+    payload = _treasury_dashboard(treasury_baseline())
+    usd_kpis = [k for k in payload["kpis"] if k["id"] in ("usd", "hedge")]
+
+    assert len({k["unit"] for k in usd_kpis}) == 1, [k["unit"] for k in usd_kpis]
+    assert all("," not in str(k["value"]) for k in usd_kpis), (
+        "one KPI is still grouped in thousands while the other is in millions"
+    )
+
+
+def test_treasury_fx_chart_compares_two_real_options() -> None:
+    """QC-034: a zero bar beside a value bar reads as a failed render."""
+
+    payload = _treasury_dashboard(treasury_baseline())
+    data = payload["views"]["fx"]["data"]
+    fx_card = card(payload, "fx_loss")
+
+    assert all(p["value"] > 0 for p in data), data
+    # The unhedged bar is the card; the second is what cover leaves open.
+    assert data[0]["value"] == pytest.approx(fx_card, abs=0.5)
+    assert data[1]["value"] < data[0]["value"]
+
+
+def test_leakage_vendor_score_uses_amount_and_severity() -> None:
+    """QC-046: the old proxy read only flag count and amount."""
+
+    snapshot = leakage_snapshot()
+    for row, severity in zip(
+        snapshot["action_worklist"],
+        ["High", "Medium", "High", "High", "Medium"],
+    ):
+        row["severity"] = severity
+
+    rows = _leakage_dashboard(snapshot)["views"]["vendors"]["table"]["rows"]
+    scores = {r[0]: int(r[4]) for r in rows}
+
+    # Worst vendor by exposure and severity anchors the scale.
+    assert scores["Osaka Precision KK"] == 100
+    # Taipei (400, Medium) must rank below Shenzhen (1,850, High).
+    assert scores["Taipei Semicon Co"] < scores["Shenzhen Micro Ltd"]
+    assert all(0 <= s <= 100 for s in scores.values())
+
+    # Severity has to move the score on its own: same amount, worse flag.
+    softened = leakage_snapshot()
+    for row in softened["action_worklist"]:
+        row["severity"] = "Low"
+    soft_rows = _leakage_dashboard(softened)["views"]["vendors"]["table"]["rows"]
+    soft = {r[0]: int(r[4]) for r in soft_rows}
+    assert soft["Shenzhen Micro Ltd"] < scores["Shenzhen Micro Ltd"]
+
+
 def test_finance_opex_uses_live_lines_and_ranks_by_variance() -> None:
     view = _finance_dashboard(finance_snapshot())["views"]["opex"]
     rows = view["table"]["rows"]
@@ -649,7 +846,7 @@ def test_finance_opex_uses_live_lines_and_ranks_by_variance() -> None:
 
 def test_finance_opex_falls_back_when_columns_absent() -> None:
     view = _finance_dashboard({"profit_summary": []})["views"]["opex"]
-    assert "Illustrative" in view["note"]
+    assert "Indicative" in view["note"]
     assert view["table"]["rows"][-1][0] == "Total operating expenses"
 
 
