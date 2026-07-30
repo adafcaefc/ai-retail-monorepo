@@ -364,7 +364,7 @@ def simulate(
 
     if request.hedge_usd > 0:
         warnings.append(
-            "Forward pricing is illustrative and must be refreshed "
+            "Forward pricing is indicative and must be refreshed "
             "with the treasury bank before execution."
         )
 
@@ -385,7 +385,10 @@ def simulate(
             "Forward hedge reduces FX exposure without immediate "
             "Week 5 cash outflow."
         ),
-        "All values are illustrative demo data.",
+        (
+            "Interest, fees and FX settlement timing are outside "
+            "this simulation."
+        ),
     ]
 
     return CashFlowSimulationResponse(

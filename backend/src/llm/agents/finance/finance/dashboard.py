@@ -11,6 +11,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _enriched,
     _fmt,
     _line_chart,
+    _num,
     _pct,
     _row_get,
     _table_view,
@@ -29,6 +30,50 @@ _FINANCE_PROD = [
 _FINANCE_OPEX = 7480.0
 _FINANCE_IMP = 0.55
 _FINANCE_TARGET = 0.15
+
+# Exact `metric_name` values from financial_performance.kpis, best match first.
+# Substring matching cannot be used here: "revenue" also hits "Revenue growth
+# vs budget" and "Opex to revenue %", and whichever row was scanned last won.
+_FINANCE_KPI_METRICS = {
+    "margin": ("ebitda %", "ebitda margin %", "ebitda margin"),
+    "ebitda": ("ebitda (idr mn)", "ebitda"),
+    "revenue": ("revenue (idr mn)", "revenue"),
+    "gm_pct": ("gross margin %",),
+    "opex_rev": ("opex to revenue %", "opex/revenue %"),
+}
+
+
+def _metric_name(row: dict[str, Any]) -> str:
+    return (
+        str(_row_get(row, "metric_name", "kpi_name", "name", "metric", "label") or "")
+        .strip()
+        .lower()
+    )
+
+
+def _finance_live_metrics(kpis_rows: list[dict[str, Any]]) -> dict[str, float]:
+    """Resolve the five headline metrics from the stored KPI rows.
+
+    Ranked rather than first-wins so a more specific alias always beats a
+    looser one regardless of row order.
+    """
+
+    ranked: dict[str, tuple[int, float]] = {}
+    for row in kpis_rows:
+        name = _metric_name(row)
+        value = _row_get(row, "actual_value", "kpi_value", "value", "actual")
+        if not name or value is None:
+            continue
+        num = _num(value, default=float("nan"))
+        if num != num:  # NaN — unparseable
+            continue
+        for slot, candidates in _FINANCE_KPI_METRICS.items():
+            if name not in candidates:
+                continue
+            rank = candidates.index(name)
+            if slot not in ranked or rank < ranked[slot][0]:
+                ranked[slot] = (rank, num)
+    return {slot: value for slot, (_, value) in ranked.items()}
 
 
 def simulate_finance_scenario(
@@ -191,32 +236,40 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     gm_pct = base["gm"] / base["rev"] if base["rev"] else 0
     opex_rev = base["opex"] / base["rev"] if base["rev"] else 0
 
-    for row in kpis_rows:
-        name = str(_row_get(row, "kpi_name", "name", "metric", "label") or "").lower()
-        value = _row_get(row, "kpi_value", "value", "actual", "actual_value")
-        if value is None:
-            continue
-        try:
-            num = float(value)
-        except (TypeError, ValueError):
-            continue
-        if "ebitda margin" in name or name == "margin":
-            margin = num / 100 if num > 1 else num
-        elif name == "ebitda" or name.endswith(" ebitda"):
-            ebitda = num
-        elif "revenue" in name:
-            revenue = num
-        elif "gross margin" in name:
-            gm_pct = num / 100 if num > 1 else num
-        elif "opex" in name:
-            opex_rev = num / 100 if num > 1 else num
+    def _as_fraction(num: float) -> float:
+        """Percentages are stored as fractions in some batches, points in others."""
+        return num / 100 if num > 1 else num
+
+    live = _finance_live_metrics(kpis_rows)
+    if "margin" in live:
+        margin = _as_fraction(live["margin"])
+    if "ebitda" in live:
+        ebitda = live["ebitda"]
+    if "revenue" in live:
+        revenue = live["revenue"]
+    if "gm_pct" in live:
+        gm_pct = _as_fraction(live["gm_pct"])
+    if "opex_rev" in live:
+        opex_rev = _as_fraction(live["opex_rev"])
+
+    # Budget EBITDA opens the waterfall; the drivers table stores only steps.
+    ebitda_budget = 0.0
+    for row in list(kpis_rows) + list(profit):
+        if _metric_name(row) in _FINANCE_KPI_METRICS["ebitda"]:
+            ebitda_budget = _num(
+                _row_get(row, "budget_value", "budget_idr_mn", "budget")
+            )
+            if ebitda_budget:
+                break
 
     waterfall_rows: list[dict[str, Any]] = []
     for row in variance:
         label = str(
             _row_get(row, "driver_name", "name", "label", "step_name") or ""
         )
-        value = _row_get(row, "amount_idr_mn", "value", "amount", "variance")
+        value = _row_get(
+            row, "impact_idr_mn", "amount_idr_mn", "value", "amount", "variance"
+        )
         step_type = str(_row_get(row, "step_type", "type") or "step").lower()
         if not label or value is None:
             continue
@@ -228,6 +281,17 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         if step_type in {"total", "base", "end"}:
             point["type"] = "total"
         waterfall_rows.append(point)
+
+    # Bookend the live steps with the budget and actual totals so the closing
+    # bar is the same EBITDA the card shows.
+    if waterfall_rows and ebitda_budget and not any(
+        p.get("type") == "total" for p in waterfall_rows
+    ):
+        waterfall_rows = (
+            [{"label": "Budget", "value": round(ebitda_budget, 2), "type": "total"}]
+            + waterfall_rows
+            + [{"label": "Actual", "value": round(ebitda, 2), "type": "total"}]
+        )
 
     if not waterfall_rows:
         waterfall_rows = [

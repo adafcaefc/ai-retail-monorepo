@@ -33,12 +33,19 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     dso = float(summary.get("current_dso_days") or 0)
     target_dso = float(summary.get("target_dso_days") or 47)
     cash_freed = float(summary.get("cash_freed_at_target_idr_mn") or 0)
-    high_risk = float(summary.get("high_risk_provision_idr_mn") or 0)
+    # The card is labelled "exposure" and opens the by-tier chart, so it has to
+    # carry the High tier's exposure. The provision is a different, smaller
+    # number — what we set aside against that exposure — and goes in the
+    # caption. Showing the provision under an "exposure" label made the card
+    # read 2,500 against a chart bar of 5,000.
+    high_risk_provision = float(summary.get("high_risk_provision_idr_mn") or 0)
+    high_risk = 0.0
+    for tier in risk_tiers:
+        if str(tier.get("risk_tier", "")).lower() == "high":
+            high_risk = float(tier.get("exposure_idr_mn") or 0)
+            break
     if not high_risk:
-        for tier in risk_tiers:
-            if str(tier.get("risk_tier", "")).lower() == "high":
-                high_risk = float(tier.get("exposure_idr_mn") or 0)
-                break
+        high_risk = high_risk_provision
 
     aging = {
         "Current": 0.0,
@@ -163,7 +170,11 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "label": "High-risk exposure",
             "value": _fmt(high_risk),
             "unit": "mn",
-            "delta": "provision / high tier",
+            "delta": (
+                f"provision {_fmt(high_risk_provision)}"
+                if high_risk_provision
+                else "high tier"
+            ),
             "alert": high_risk > 0,
         },
     ]

@@ -11,6 +11,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _enriched,
     _fmt,
     _line_chart,
+    _num,
     _pct,
     _row_get,
     _table_view,
@@ -19,6 +20,11 @@ from src.llm.agents.common.dashboard_blocks import (
 from src.llm.agents.finance.leakage.tools.leakage_data import (
     get_payment_leakage_snapshot,
 )
+
+# Baseline claw-back rates the workbook assumes. Kept as module constants so
+# the KPI cards, the recovery chart and the simulator defaults cannot drift.
+_DUP_REC = 95.0
+_OV_REC = 90.0
 
 
 def simulate_leakage_scenario(
@@ -69,12 +75,15 @@ def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
         if not name:
             continue
 
-        try:
-            amount = float(
-                _row_get(row, "amount_idr_mn", "amount", "value") or 0
+        amount = _num(
+            _row_get(
+                row,
+                "amount_at_risk_idr_mn",
+                "amount_idr_mn",
+                "amount",
+                "value",
             )
-        except (TypeError, ValueError):
-            amount = 0.0
+        )
 
         kind = str(
             _row_get(row, "anomaly_type", "type", "category") or ""
@@ -125,32 +134,79 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     summary = summary_rows[0] if summary_rows else {}
 
     def cat_amount(row: dict[str, Any]) -> float:
-        val = _row_get(row, "amount_idr_mn", "amount", "value", "exposure_idr_mn")
-        try:
-            return float(val or 0)
-        except (TypeError, ValueError):
-            return 0.0
+        return _num(
+            _row_get(
+                row,
+                "amount_at_risk_idr_mn",
+                "amount_idr_mn",
+                "amount",
+                "value",
+                "exposure_idr_mn",
+            )
+        )
 
     def cat_name(row: dict[str, Any]) -> str:
         return str(
             _row_get(row, "category_name", "category", "name", "label") or "Other"
         )
 
-    cat_rows = [
-        {"label": cat_name(c), "value": cat_amount(c)}
-        for c in categories
-    ]
-    at_risk = float(
-        _row_get(
-            summary,
-            "total_at_risk_idr_mn",
-            "flagged_idr_mn",
-            "total_idr_mn",
-            "amount_idr_mn",
+    def cat_is_direct_loss(row: dict[str, Any]) -> bool:
+        """Split/threshold flags are control weaknesses, not lost cash.
+
+        The workbook keeps them out of the at-risk total, so the category
+        charts have to as well — otherwise the bars stop adding up to the
+        "Flagged this cycle" card.
+        """
+        val = _row_get(row, "is_direct_loss", "direct_loss")
+        if val is None:
+            return True
+        if isinstance(val, str):
+            return val.strip().lower() in {"true", "t", "yes", "y", "1"}
+        return bool(val)
+
+    direct_rows: list[dict[str, Any]] = []
+    control_rows: list[dict[str, Any]] = []
+    for category in categories:
+        row = {"label": cat_name(category), "value": cat_amount(category)}
+        if not row["value"]:
+            continue
+        target = direct_rows if cat_is_direct_loss(category) else control_rows
+        target.append(row)
+
+    # A batch with no resolvable amounts still has to render something, but it
+    # must say so — an unannounced fallback is how the previous column-name
+    # miss stayed hidden behind numbers that looked right.
+    cat_is_live = bool(direct_rows)
+    if not cat_is_live:
+        direct_rows = [
+            {"label": "Bank-change fraud", "value": 3800.0},
+            {"label": "Duplicate payment", "value": 3050.0},
+            {"label": "Overbilling (3-way)", "value": 900.0},
+            {"label": "Lost discount", "value": 95.0},
+        ]
+    cat_rows = direct_rows
+
+    # Everything below is derived from `summary` when the batch has it and
+    # from the category rows otherwise, so a single number backs each figure.
+    at_risk = (
+        _num(
+            _row_get(
+                summary,
+                "total_amount_at_risk_idr_mn",
+                "total_at_risk_idr_mn",
+                "flagged_idr_mn",
+                "total_idr_mn",
+            )
         )
         or sum(r["value"] for r in cat_rows)
-        or 7845
+        or 7845.0
     )
+    items_flagged = int(
+        _num(_row_get(summary, "items_flagged", "flagged_count"))
+        or len(anomalies)
+        or len(worklist)
+    )
+
     fraud = 0.0
     duplicates = 0.0
     for row in cat_rows:
@@ -164,12 +220,40 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     if not duplicates:
         duplicates = 3050.0
 
+    blocked_db = _num(
+        _row_get(summary, "blocked_before_payment_idr_mn", "blocked_idr_mn")
+    )
+    recoverable_db = _num(
+        _row_get(summary, "recoverable_already_paid_idr_mn", "recoverable_idr_mn")
+    )
+    protected_db = _num(
+        _row_get(summary, "total_cash_protected_idr_mn", "protected_idr_mn")
+    )
+    lost_db = _row_get(summary, "lost_this_cycle_idr_mn", "lost_idr_mn")
+
+    # Hold + other-blocked and duplicates + overbill are the two splits the
+    # simulator works on; back them out of the stored totals so a zero-delta
+    # run reproduces the cards exactly.
+    other_blocked = max(0.0, blocked_db - fraud) if blocked_db else 500.0
+    overbill = max(0.0, recoverable_db - duplicates) if recoverable_db else 400.0
+
     base_sim = simulate_leakage_scenario(
         hold=fraud,
-        dup_rec=95,
-        ov_rec=90,
+        dup_rec=_DUP_REC,
+        ov_rec=_OV_REC,
         duplicates_amount=duplicates,
+        overbill_amount=overbill,
+        other_blocked=other_blocked,
         at_risk=at_risk,
+    )
+
+    blocked = blocked_db or base_sim["blocked"]
+    protected = protected_db or base_sim["total_protected"]
+    recoverable = recoverable_db or (duplicates + overbill)
+    lost = (
+        _num(lost_db)
+        if lost_db is not None
+        else max(0.0, at_risk - blocked - recoverable)
     )
 
     kpis = [
@@ -179,7 +263,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "label": "Flagged this cycle",
             "value": _fmt(at_risk),
             "unit": "mn",
-            "delta": f"{len(anomalies) or len(worklist)} flags",
+            "delta": f"{items_flagged} flags",
             "alert": True,
         },
         {
@@ -204,7 +288,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "id": "blocked",
             "view": "blockvs",
             "label": "Blocked",
-            "value": _fmt(base_sim["blocked"]),
+            "value": _fmt(blocked),
             "unit": "mn",
             "delta": "before payment",
             "alert": False,
@@ -213,20 +297,12 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "id": "protected",
             "view": "recovery",
             "label": "Total protected",
-            "value": _fmt(base_sim["total_protected"]),
+            "value": _fmt(protected),
             "unit": "mn",
             "delta": "this cycle",
             "alert": False,
         },
     ]
-
-    if not cat_rows:
-        cat_rows = [
-            {"label": "Bank-change fraud", "value": fraud},
-            {"label": "Duplicate pay", "value": duplicates},
-            {"label": "Overbilling", "value": 900},
-            {"label": "Lost discount", "value": 95},
-        ]
 
     wl_headers = ["#", "Item", "Type", "Amount"]
     wl_rows: list[list[Any]] = []
@@ -240,8 +316,14 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 ),
                 str(_row_get(row, "anomaly_type", "type", "category") or ""),
                 _fmt(
-                    float(
-                        _row_get(row, "amount_idr_mn", "amount", "value") or 0
+                    _num(
+                        _row_get(
+                            row,
+                            "amount_at_risk_idr_mn",
+                            "amount_idr_mn",
+                            "amount",
+                            "value",
+                        )
                     )
                 ),
             ]
@@ -254,9 +336,14 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                     str(_row_get(row, "vendor_name", "name") or ""),
                     str(_row_get(row, "anomaly_type", "type") or ""),
                     _fmt(
-                        float(
-                            _row_get(row, "amount_idr_mn", "amount", "value")
-                            or 0
+                        _num(
+                            _row_get(
+                                row,
+                                "amount_at_risk_idr_mn",
+                                "amount_idr_mn",
+                                "amount",
+                                "value",
+                            )
                         )
                     ),
                 ]
@@ -264,27 +351,44 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 
     vendor_rows = _leakage_vendor_rollup(worklist or anomalies)
 
-    # Everything at risk that is neither held nor clawable — currently the
-    # lost early-payment discounts.
-    lost = max(0.0, at_risk - base_sim["blocked"] - (duplicates + 400))
+    def _protected_at(dup_rate: float, ov_rate: float) -> float:
+        return simulate_leakage_scenario(
+            hold=fraud,
+            dup_rec=dup_rate,
+            ov_rec=ov_rate,
+            duplicates_amount=duplicates,
+            overbill_amount=overbill,
+            other_blocked=other_blocked,
+            at_risk=at_risk,
+        )["total_protected"]
 
     recovery_rows = [
+        {"label": "Pessimistic 60%", "value": _protected_at(60, 60)},
+        {"label": "Base 80%", "value": _protected_at(80, 80)},
+        # The current point is the KPI card's number, not a re-derivation of
+        # it, so the bar and the card can never disagree.
         {
-            "label": label,
-            "value": simulate_leakage_scenario(
-                hold=fraud,
-                dup_rec=rate,
-                ov_rec=rate,
-                duplicates_amount=duplicates,
-                at_risk=at_risk,
-            )["total_protected"],
-        }
-        for label, rate in (
-            ("Pessimistic 60%", 60),
-            ("Base 80%", 80),
-            ("Current 95%", 95),
-        )
+            "label": f"Current {_DUP_REC:.0f}/{_OV_REC:.0f}%",
+            "value": round(protected, 2),
+        },
     ]
+
+    if not cat_is_live:
+        cat_note = (
+            "Illustrative breakdown; category_breakdowns has no resolvable "
+            "amount column in this batch."
+        )
+    else:
+        cat_note = (
+            f"Direct-loss categories; they add up to the {_fmt(at_risk)} at risk."
+        )
+    if control_rows:
+        control_total = sum(r["value"] for r in control_rows)
+        control_names = ", ".join(r["label"] for r in control_rows)
+        cat_note += (
+            f" {control_names} adds {_fmt(control_total)} more as a control"
+            " weakness — flagged, but not counted as lost cash."
+        )
 
     views = {
         "categories": {
@@ -292,14 +396,17 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 "Leakage & fraud by category",
                 cat_rows,
                 tag="breakdown",
+                target=at_risk,
+                target_label=f"At risk {_fmt(at_risk)}",
+                note=cat_note,
             ),
         },
         "blockvs": {
             **_bar_chart(
                 "Blocked vs recoverable vs lost",
                 [
-                    {"label": "Blocked", "value": base_sim["blocked"]},
-                    {"label": "Recoverable", "value": duplicates + 400},
+                    {"label": "Blocked", "value": round(blocked, 2)},
+                    {"label": "Recoverable", "value": round(recoverable, 2)},
                     {"label": "Lost", "value": round(lost, 2)},
                 ],
                 tag="money",
@@ -319,8 +426,8 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 target=at_risk,
                 target_label=f"At risk {_fmt(at_risk)}",
                 note=(
-                    f"Blocked {_fmt(base_sim['blocked'])} is certain; the rest "
-                    "moves with the recovery rate you assume."
+                    f"Blocked {_fmt(blocked)} is certain; the rest moves with "
+                    "the recovery rate you assume."
                 ),
             ),
         },
@@ -345,11 +452,8 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             **_bar_chart(
                 "Protected vs at risk",
                 [
-                    {"label": "At risk", "value": at_risk},
-                    {
-                        "label": "Protected",
-                        "value": base_sim["total_protected"],
-                    },
+                    {"label": "At risk", "value": round(at_risk, 2)},
+                    {"label": "Protected", "value": round(protected, 2)},
                 ],
                 tag="recovery",
             ),
@@ -382,7 +486,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                     "min": 0,
                     "max": 100,
                     "step": 1,
-                    "default": 95,
+                    "default": _DUP_REC,
                     "unit": "%",
                 },
                 {
@@ -391,14 +495,14 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                     "min": 0,
                     "max": 100,
                     "step": 1,
-                    "default": 90,
+                    "default": _OV_REC,
                     "unit": "%",
                 },
             ],
             "baseline": {
                 "duplicates_amount": duplicates,
-                "overbill_amount": 400,
-                "other_blocked": 500,
+                "overbill_amount": overbill,
+                "other_blocked": other_blocked,
                 "at_risk": at_risk,
                 "fraud": fraud,
             },

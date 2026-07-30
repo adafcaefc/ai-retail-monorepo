@@ -195,6 +195,14 @@ def _table_view(
         },
     }
 
+def _num(value: Any, default: float = 0.0) -> float:
+    """Coerce a DB cell to float; `default` when it is null or unparseable."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _row_get(row: dict[str, Any], *names: str) -> Any:
     lowered = {str(k).lower(): v for k, v in row.items()}
     for name in names:
