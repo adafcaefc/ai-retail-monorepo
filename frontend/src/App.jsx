@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import { fetchConversations, streamChat } from "./api/chatStream.js";
+import { streamChat } from "./api/chatStream.js";
 
 import ChatMessage from "./components/ChatMessage.jsx";
 import Workboard from "./components/Workboard.jsx";
@@ -83,8 +83,6 @@ export default function App() {
 
   const [sidebarOpen, setSidebarOpen] = useState(readStoredSidebarOpen);
 
-  const [conversationList, setConversationList] = useState([]);
-
   const [clearOpen, setClearOpen] = useState(false);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -139,20 +137,6 @@ export default function App() {
       current && agentIds.includes(current) ? current : agentIds[0],
     );
   }, [agentIds]);
-
-  useEffect(() => {
-    async function loadConversations() {
-      try {
-        const result = await fetchConversations();
-
-        setConversationList(Array.isArray(result.items) ? result.items : []);
-      } catch (error) {
-        console.error("Unable to load conversations:", error);
-      }
-    }
-
-    loadConversations();
-  }, []);
 
   useEffect(() => {
     const element = transcriptRef.current;
@@ -849,10 +833,6 @@ export default function App() {
                 );
               })}
             </nav>
-
-            <footer className="sidebar-footer">
-              {conversationList.length} saved conversation(s)
-            </footer>
           </aside>
         ) : null}
 

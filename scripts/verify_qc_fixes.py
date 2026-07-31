@@ -27,7 +27,12 @@ from pathlib import Path
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
-from src.llm.agents.common.dashboard_blocks import _enrich_kpis  # noqa: E402
+from src.actions import service as action_service  # noqa: E402
+from src.db.db import session_scope  # noqa: E402
+from src.llm.agents.common.dashboard_blocks import (  # noqa: E402
+    _enriched,
+    _options_of,
+)
 from src.llm.agents.common.tools.db import _read_connection, _rows  # noqa: E402
 from src.llm.agents.finance.collection.dashboard import (  # noqa: E402
     _collections_dashboard,
@@ -70,10 +75,49 @@ def points(view: dict) -> list[dict]:
     return data
 
 
-def charts(payload: dict) -> list[tuple[str, dict]]:
+def _elements(payload: dict) -> list[tuple[str, dict]]:
     out = [(f"view:{k}", v) for k, v in payload["views"].items()]
-    out += [(f"side:{k}", v) for k, v in (payload.get("side") or {}).items()]
-    return [(k, v) for k, v in out if not v.get("table")]
+    return out + [
+        (f"side:{k}", v) for k, v in (payload.get("side") or {}).items()
+    ]
+
+
+def charts(payload: dict) -> list[tuple[str, dict]]:
+    return [(k, v) for k, v in _elements(payload) if not v.get("table")]
+
+
+def _tables(payload: dict) -> list[tuple[str, dict]]:
+    return [(k, v) for k, v in _elements(payload) if v.get("table")]
+
+
+LEG = re.compile(
+    r"Week (\d+) headroom: (-?[\d,]+\.\d) ([+-][\d,]+\.\d) -> ([+-][\d,]+\.\d)"
+)
+
+
+def legs(line: str) -> dict[int, tuple[float, float, float]]:
+    """Parse 'Week N headroom: before +delta -> after' back into numbers."""
+    return {
+        int(m.group(1)): tuple(
+            float(m.group(i).replace(",", "")) for i in (2, 3, 4)
+        )
+        for m in LEG.finditer(line or "")
+    }
+
+
+def legs_text(line: str) -> str:
+    return " / ".join(
+        f"W{week} {before:,.1f}{delta:+,.1f} -> {after:,.1f}"
+        for week, (before, delta, after) in legs(line).items()
+    )
+
+
+def frontend_source() -> str:
+    """Every frontend source file as one string, for wiring checks."""
+    return "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in list(FRONTEND.rglob("*.jsx")) + list(FRONTEND.rglob("*.js"))
+    )
 
 
 def card(payload: dict, kpi_id: str) -> float:
@@ -88,12 +132,12 @@ def build() -> dict[str, dict]:
         "collection": (_collections_dashboard, get_collections_snapshot),
         "leakage": (_leakage_dashboard, get_payment_leakage_snapshot),
     }
-    built = {}
-    for name, (builder, fetch) in sources.items():
-        payload = builder(fetch())
-        payload["kpis"] = _enrich_kpis(payload["kpis"])
-        built[name] = payload
-    return built
+    # _enriched is what build() runs in production: KPI enrichment plus the
+    # period stamp. Calling it here keeps the script measuring the real payload.
+    return {
+        name: _enriched(builder(fetch()))
+        for name, (builder, fetch) in sources.items()
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +327,167 @@ def check_fixed(P: dict[str, dict]) -> None:
         ", ".join(f"{k.split()[0]}={v}" for k, v in list(scores.items())[:4]),
     )
 
+    # The action-layer checks all read through the API path the frontend uses,
+    # so they measure what a reviewer would see rather than what the modules
+    # can do in isolation.
+    with session_scope() as session:
+        actions = action_service.list_actions(session, agent="finance.treasury")
+        every_action = action_service.list_actions(session)
+        with _read_connection() as conn:
+            stored_keys = [
+                r["agent"] for r in _rows(
+                    conn, "SELECT DISTINCT agent FROM chat.actions ORDER BY 1", {}
+                )
+            ]
+            stored_rows = _rows(
+                conn, "SELECT count(*) n FROM chat.actions", {}
+            )[0]["n"]
+
+    # QC-020 — the same agent answered to two names depending on the endpoint
+    served_keys = sorted({a["agent"] for a in every_action})
+    ok = len(served_keys) == 4 and all("." in k for k in served_keys)
+    record(
+        "QC-020", PASS if ok else OPEN,
+        "One agent key per agent, whichever key the row was stored under",
+        f"{len(stored_keys)} keys stored -> {len(served_keys)} served: "
+        f"{served_keys}",
+    )
+
+    # QC-021 — every action existed twice, once under each key
+    pairs = [(a["agent"], a["action"]) for a in every_action]
+    dupes = len(pairs) - len(set(pairs))
+    record(
+        "QC-021", PASS if not dupes else OPEN,
+        "Action cards deduplicated",
+        f"{stored_rows} rows stored -> {len(pairs)} served, "
+        f"{dupes} duplicate cards",
+    )
+
+    computed = [a for a in actions if a.get("impact_source") == "computed"]
+    deferrals = [a for a in computed if "defer AP-" in a["impact"]]
+    wrong_way = [
+        a["action"] for a in deferrals
+        if not any(
+            week == 6 and delta < 0 for week, (_, delta, _) in legs(a["impact"]).items()
+        )
+    ]
+    record(
+        "QC-004", PASS if deferrals and not wrong_way else OPEN,
+        "Deferral shows the week it costs, not only the week it helps",
+        f"{len(deferrals)} deferral cards, all state Week 6 falling: "
+        + (
+            legs_text(deferrals[0]["impact"])
+            if deferrals and not wrong_way
+            else str(wrong_way or "no deferral card found")
+        ),
+    )
+
+    unclosed = [
+        f"{a['action']}: W{week} {before:,.1f} {delta:+,.1f} != {after:,.1f}"
+        for a in computed
+        for week, (before, delta, after) in legs(a["impact"]).items()
+        if abs(before + delta - after) > 0.05
+    ]
+    mixed = [
+        a["action"] for a in computed
+        if "headroom" in a["impact"] and "cash" in a["impact"].lower()
+    ]
+    ok = bool(computed) and not unclosed and not mixed
+    record(
+        "QC-005", PASS if ok else OPEN,
+        "Impact lines keep one unit and close arithmetically",
+        f"{len(computed)} of {len(actions)} cards recomputed, "
+        f"{sum(len(legs(a['impact'])) for a in computed)} legs all balance"
+        if ok else str(unclosed + mixed),
+    )
+
+    # QC-035 — every chart states the span it covers. Tables included: a
+    # worklist without a period is as ambiguous as a bar without one.
+    total = sum(len(charts(p)) + len(_tables(p)) for p in P.values())
+    unlabelled = [
+        f"{n}:{k}" for n, p in P.items()
+        for k, v in charts(p) + _tables(p)
+        if not str(v.get("period") or "").strip()
+    ]
+    record(
+        "QC-035", PASS if not unlabelled else OPEN,
+        "Every chart states its period",
+        " | ".join(f"{n}: {p.get('period')}" for n, p in P.items())
+        if not unlabelled else f"{len(unlabelled)} unlabelled: {unlabelled[:4]}",
+    )
+
+    # QC-043 — a filter must name real options and real targets. An option the
+    # charts do not contain would filter the board down to nothing.
+    broken = []
+    for name, payload in P.items():
+        lookup = dict(_elements(payload))
+        for spec in payload.get("filters") or []:
+            if len(spec["options"]) < 2 or not spec["applies_to"]:
+                broken.append(f"{name}:{spec['id']} is empty")
+            for key in spec["applies_to"]:
+                element = lookup.get(key)
+                if element is None:
+                    broken.append(f"{name}:{spec['id']} targets missing {key}")
+                    continue
+                available = set(_options_of(element, spec.get("column", 0)))
+                if not available & set(spec["options"]):
+                    broken.append(f"{name}:{spec['id']} matches nothing in {key}")
+    counts = {n: len(p.get("filters") or []) for n, p in P.items()}
+    record(
+        "QC-043", PASS if sum(counts.values()) and not broken else OPEN,
+        "Payload declares the dimensions it can be sliced by",
+        f"{sum(counts.values())} filters: " + ", ".join(
+            f"{n} {c}" for n, c in counts.items()
+        ) if not broken else str(broken[:4]),
+    )
+
+    # QC-054 — sparklines, but only where a real series exists. Treasury has a
+    # 13-week forecast and Leakage has invoice dates; Finance and Collection
+    # hold no date column at all, so a sparkline there would be drawn, not
+    # measured. Those two wait for the dataset that carries a period.
+    DATED = {"treasury", "leakage"}
+    missing = [
+        f"{n}:{k['id']}" for n, p in P.items() if n in DATED
+        for k in p["kpis"]
+        if not k.get("trend") and k["id"] in {"w5", "flagged", "fraud", "dup", "blocked"}
+    ]
+    with_trend = [
+        f"{n}:{k['id']}" for n, p in P.items() for k in p["kpis"] if k.get("trend")
+    ]
+    total_kpis = sum(len(p["kpis"]) for p in P.values())
+    lengths = {
+        len(k["trend"]) for p in P.values() for k in p["kpis"] if k.get("trend")
+    }
+    record(
+        "QC-054", PASS if not missing else OPEN,
+        "Sparklines on every KPI with a dated series behind it",
+        f"{len(with_trend)} of {total_kpis} KPIs, series lengths {sorted(lengths)}; "
+        f"finance and collection hold no date column"
+        if not missing else f"missing: {missing}",
+    )
+
+    # QC-006 — the developer transcript history was on screen during the demo.
+    # Resolved the way the tracker's second option allows: the panel is gone,
+    # the rows are untouched. This checks the panel, not the row count.
+    sources = "\n".join(
+        f.read_text(encoding="utf-8", errors="replace")
+        for f in FRONTEND.rglob("*.jsx")
+    )
+    leftovers = [
+        needle for needle in ("conversationList", "saved conversation")
+        if needle in sources
+    ]
+    with _read_connection() as conn:
+        kept = _rows(
+            conn, "SELECT count(*) n FROM chat.conversations", {}
+        )[0]["n"]
+    record(
+        "QC-006", PASS if not leftovers else OPEN,
+        "Conversation history panel not shown",
+        f"no history panel in frontend/src; {kept} rows kept in the database"
+        if not leftovers else f"still rendered: {leftovers}",
+    )
+
     # Cross-cutting guarantees the fixes rest on
     zeros = [
         f"{n}:{k}" for n, p in P.items() for k, v in charts(p)
@@ -337,66 +542,60 @@ def check_open(P: dict[str, dict]) -> None:
         f"(one year); x12 = {fin_rev * 12:,.0f}, gap {base / (fin_rev * 12):.2f}x",
     )
 
-    with _read_connection() as conn:
-        conv = _rows(conn, "SELECT count(*) n FROM chat.conversations", {})[0]["n"]
-        acts = _rows(conn, "SELECT count(*) n FROM chat.actions", {})[0]["n"]
-        keys = _rows(
-            conn, "SELECT DISTINCT agent FROM chat.actions ORDER BY 1", {}
+    # These four were matched on a loose keyword before, which is how QC-059
+    # passed on the word "reset" inside the alerts provider — nothing to do
+    # with the simulator. Each now has to name the control it claims to be.
+    blob = frontend_source()
+    # QC-058 — a toggle is only worth having if the wording behind it exists.
+    # Every string the payload puts on screen must have a dictionary entry;
+    # an untranslated label is the failure this checks for.
+    i18n = (FRONTEND / "i18n.js").read_text(encoding="utf-8")
+    translated = set(re.findall(r'"([^"\\]+)":\s*"[^"\\]+"', i18n))
+    translated |= set(re.findall(r'^\s{2}(\w+):\s*"[^"\\]+",', i18n, re.M))
+    on_screen: set[str] = set()
+    for payload in P.values():
+        on_screen |= {k["label"] for k in payload["kpis"]}
+        on_screen |= {v.get("title", "") for _, v in _elements(payload)}
+        on_screen |= {f["label"] for f in payload.get("filters") or []}
+        sim = payload.get("simulator") or {}
+        on_screen |= {p["label"] for p in sim.get("presets") or []}
+        on_screen |= {i["label"] for i in sim.get("inputs") or []}
+    # A generated label ("Price +4.0% alone") cannot be a dictionary key, so
+    # i18n.js declares patterns for those. Honour the same two mechanisms the
+    # runtime uses, or the check would demand an impossible entry.
+    rules = [
+        re.compile(pattern)
+        for pattern in re.findall(
+            r"^\s*\[/(.+?)/,\s*\"", i18n.split("LABEL_RULES = [", 1)[-1], re.M
         )
-    record("QC-006", OPEN, "Developer conversation history still present",
-           f"chat.conversations = {conv}")
-    record("QC-021", OPEN, "Action cards not deduplicated",
-           f"chat.actions = {acts}")
-    agent_keys = [k["agent"] for k in keys]
-    record(
-        "QC-020", OPEN,
-        "Agent keys inconsistent between endpoints",
-        f"{len(agent_keys)} keys for 4 agents: {agent_keys}",
-    )
-
-    with_period = [
-        f"{n}:{k}" for n, p in P.items() for k, v in charts(p)
-        if re.search(r"\b(20\d\d|W\d|Q[1-4]|Jan|Feb|Aug|Sep)\b",
-                     f"{v.get('title', '')} {v.get('note', '')}")
     ]
+    untranslated = sorted(
+        s for s in on_screen
+        if s and s not in translated and not any(r.search(s) for r in rules)
+    )
+    has_toggle = 'data-testid="language-toggle"' in blob
     record(
-        "QC-035", OPEN,
-        "Charts do not state their period",
-        f"{len(with_period)} of {sum(len(charts(p)) for p in P.values())} "
-        f"charts mention any period",
+        "QC-058", PASS if has_toggle and not untranslated else OPEN,
+        "Bahasa Indonesia toggle, with the wording behind it",
+        f"toggle wired; {len(on_screen - {''})} payload strings all translated"
+        if has_toggle and not untranslated
+        else f"toggle={has_toggle}, untranslated={untranslated[:5]}",
     )
 
-    has_filter = any(
-        "filter" in (p.get("simulator") or {}) or "filters" in p
-        for p in P.values()
-    )
-    record(
-        "QC-043", OPEN,
-        "No filter parameters in any payload",
-        "no entity / period / category key in any of the 4 payloads"
-        if not has_filter else "found something",
-    )
-
-    trends = [k["id"] for p in P.values() for k in p["kpis"] if k.get("trend")]
-    total_kpis = sum(len(p["kpis"]) for p in P.values())
-    record(
-        "QC-054", OPEN,
-        "KPI tiles have no trend sparkline",
-        f"{len(trends)} of {total_kpis} KPIs carry a trend series: {trends}",
-    )
-
-    for qc, name, needle in (
-        ("QC-059", "reset to baseline", r"reset"),
-        ("QC-052", "simulator presets", r"preset"),
-        ("QC-051", "save / compare a scenario", r"saveScenario|compareScenario"),
-        ("QC-058", "Bahasa Indonesia toggle", r"i18n|useTranslation|languageToggle"),
+    for qc, name, needles in (
+        ("QC-059", "reset the simulator to baseline",
+         ('data-testid="reset-to-baseline"', "function resetLevers")),
+        ("QC-052", "simulator presets",
+         ("simulator.presets", "onPreset", "preset-btn")),
+        # QC-051 was built and then withdrawn at the owner's request; it is
+        # reported below as open work rather than silently dropped.
     ):
-        hit = any(
-            re.search(needle, f.read_text(encoding="utf-8", errors="replace"), re.I)
-            for f in FRONTEND.rglob("*.jsx")
+        absent = [n for n in needles if n not in blob]
+        record(
+            qc, PASS if not absent else OPEN, f"Feature: {name}",
+            f"wired: {', '.join(needles)}" if not absent
+            else f"missing: {absent}",
         )
-        record(qc, PASS if hit else OPEN, f"Feature: {name}",
-               "found in frontend" if hit else "not present in frontend/src")
 
 
 # ---------------------------------------------------------------------------
@@ -456,8 +655,6 @@ def check_manual(P: dict[str, dict]) -> None:
         or "no actions stored",
     )
     for qc, title in (
-        ("QC-004", "Deferral moves headroom the wrong way"),
-        ("QC-005", "Action mixes headroom with closing cash"),
         ("QC-017", "Combined action shows part of its effect"),
         ("QC-019", "Credit line action anchored to the wrong week"),
         ("QC-022", "Impacts stack with no double-count guard"),
@@ -490,8 +687,10 @@ def main() -> int:
 
     # A fix that stops holding is a regression; open work is not a failure.
     expected_pass = {
-        "QC-001", "QC-007", "QC-009", "QC-013", "QC-014", "QC-015", "QC-024",
-        "QC-027", "QC-028", "QC-029", "QC-033", "QC-034", "QC-036", "QC-039",
+        "QC-001", "QC-004", "QC-005", "QC-006", "QC-007", "QC-009", "QC-013",
+        "QC-014", "QC-015", "QC-020", "QC-021", "QC-024", "QC-027", "QC-028",
+        "QC-029", "QC-033", "QC-034", "QC-035", "QC-036", "QC-039", "QC-043",
+        "QC-052", "QC-054", "QC-058", "QC-059",
         "QC-046",
     }
     regressed = [
@@ -500,7 +699,7 @@ def main() -> int:
     if regressed:
         print(f"REGRESSION: {regressed}")
         return 1
-    print("No regression in the 15 fixes.")
+    print(f"No regression in the {len(expected_pass)} fixes.")
     return 0
 
 

@@ -12,6 +12,7 @@ from src.llm.agents.common.tools.db import (
     _read_connection,
     _rows,
 )
+from src.llm.agents.common.tools.period import collection_period
 
 
 def get_collections_snapshot() -> dict[str, Any]:
@@ -82,6 +83,7 @@ def get_collections_snapshot() -> dict[str, Any]:
         )
         return {
             "import_batch_id": import_batch_id,
+            "period": collection_period(connection, import_batch_id),
             "summary": summary[0] if summary else {},
             "customers": customers,
             "risk_tiers": risk_tiers,

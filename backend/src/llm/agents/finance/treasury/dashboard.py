@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _filters,
     _fmt,
     _line_chart,
     _pct,
@@ -263,14 +264,46 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    # QC-043 — the forecast is weekly, so the week is the dimension.
+    filters = _filters(views, side, (
+        ("week", "Week", "view:forecast", ("view:forecast",), 0),
+        ("option", "Hedge option", "view:options", ("view:options",), 0),
+    ))
+
     return {
         "agent": "treasury",
+        # QC-035: the span these figures cover, stamped onto every
+        # chart by _enriched().
+        "period": baseline.get("period"),
+        "filters": filters,
         "import_batch_id": baseline.get("import_batch_id"),
         "default_view": "forecast",
         "kpis": kpis,
         "views": views,
         "side": side,
         "simulator": {
+            # QC-052: named scenarios, so a presenter reaches the point
+            # without dragging four sliders live.
+            "presets": [
+                {
+                    "id": "close_the_gap",
+                    "label": "Close the Week 5 gap",
+                    "note": "Defer the one deferrable payable into Week 6.",
+                    "values": {"defer_payment_idr_mn": max_defer},
+                },
+                {
+                    "id": "collect_early",
+                    "label": "Collect AR-012 early",
+                    "note": "Pull the delayed receivable back into Week 5.",
+                    "values": {"accelerate_collection_idr_mn": max_accel},
+                },
+                {
+                    "id": "full_cover",
+                    "label": "Cover the exposure in full",
+                    "note": "Hedge every open USD, not just the recommendation.",
+                    "values": {"hedge_usd": net_usd},
+                },
+            ],
             "action": "simulate_cashflow",
             "gauge_label": "% of USD exposure covered",
             "inputs": [

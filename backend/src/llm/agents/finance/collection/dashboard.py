@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _filters,
     _fmt,
     _line_chart,
     _pct,
@@ -284,14 +285,42 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    # QC-043 — ageing bucket, risk tier and customer are all present here;
+    # they are three of the tracker's "must have" lenses.
+    filters = _filters(views, side, (
+        ("bucket", "Ageing bucket", "view:aging",
+         ("view:aging", "side:top"), 0),
+        ("tier", "Risk tier", "view:tiers", ("view:tiers",), 0),
+        ("customer", "Customer", "view:worklist", ("view:worklist",), 0),
+    ))
+
     return {
         "agent": "collections",
+        # QC-035: the span these figures cover, stamped onto every
+        # chart by _enriched().
+        "period": snap.get("period"),
+        "filters": filters,
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "aging",
         "kpis": kpis,
         "views": views,
         "side": side,
         "simulator": {
+            # QC-052: the two ends of the discount-for-speed trade.
+            "presets": [
+                {
+                    "id": "no_discount",
+                    "label": "Collect without a discount",
+                    "note": "Full overdue balance, no early-settlement offer.",
+                    "values": {"discount_pct": 0},
+                },
+                {
+                    "id": "settle_fast",
+                    "label": "Buy speed with 2%",
+                    "note": "Early-settlement discount across the worklist.",
+                    "values": {"discount_pct": 2},
+                },
+            ],
             "action": "calculate_collection_scenario",
             "gauge_label": f"DSO vs {target_dso:.0f}-day target",
             "submit_data": {"customer_name": customer_name},

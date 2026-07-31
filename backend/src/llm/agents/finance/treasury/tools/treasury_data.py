@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.llm.agents.common.tools.db import _read_connection
+from src.llm.agents.common.tools.period import treasury_period
 from src.llm.agents.finance.treasury.cashflow import service as cashflow_service
 from src.llm.agents.finance.treasury.cashflow.models import CashFlowSimulationRequest
 
@@ -11,7 +13,15 @@ from src.llm.agents.finance.treasury.cashflow.models import CashFlowSimulationRe
 def get_cashflow_baseline() -> dict[str, Any]:
     """Return the latest verified cash-flow forecast, assumptions, and drivers."""
 
-    return cashflow_service.get_baseline().model_dump(mode="json")
+    baseline = cashflow_service.get_baseline().model_dump(mode="json")
+    # The forecast model carries week numbers but no dates (QC-035), so the
+    # span is read from the weeks themselves rather than added to the model.
+    with _read_connection() as connection:
+        baseline["period"] = treasury_period(
+            connection,
+            baseline.get("import_batch_id"),
+        )
+    return baseline
 
 
 def simulate_cashflow(

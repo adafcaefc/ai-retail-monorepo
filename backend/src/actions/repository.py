@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -50,19 +51,39 @@ def _dump_json(value: Any) -> str | None:
     return json.dumps(value, default=str)
 
 
+def _agent_filter(
+    agent: str | Sequence[str] | None,
+    filters: list[str],
+    params: dict[str, Any],
+) -> None:
+    """Filter on one agent key or on a set of keys that mean the same agent.
+
+    QC-020: the same agent is stored under both its canonical id and its older
+    short key ('finance.treasury' and 'cashflow'). Callers pass every key an
+    agent answers to, so one query returns its whole history.
+    """
+    if not agent:
+        return
+    keys = [agent] if isinstance(agent, str) else list(agent)
+    if len(keys) == 1:
+        filters.append("agent = :agent")
+        params["agent"] = keys[0]
+    else:
+        filters.append("agent = ANY(:agents)")
+        params["agents"] = keys
+
+
 def get_alerts(
     session: Session,
     *,
-    agent: str | None = None,
+    agent: str | Sequence[str] | None = None,
     subagent: str | None = None,
     name: str | None = None,
 ) -> list[dict[str, Any]]:
     filters: list[str] = []
     params: dict[str, Any] = {}
 
-    if agent:
-        filters.append("agent = :agent")
-        params["agent"] = agent
+    _agent_filter(agent, filters, params)
     if subagent:
         filters.append("subagent = :subagent")
         params["subagent"] = subagent
@@ -232,16 +253,14 @@ def delete_alert(
 def get_actions(
     session: Session,
     *,
-    agent: str | None = None,
+    agent: str | Sequence[str] | None = None,
     status: str | None = None,
     alert_id: str | None = None,
 ) -> list[dict[str, Any]]:
     filters: list[str] = []
     params: dict[str, Any] = {}
 
-    if agent:
-        filters.append("agent = :agent")
-        params["agent"] = agent
+    _agent_filter(agent, filters, params)
     if status:
         filters.append("status = :status")
         params["status"] = _normalize_status(status)
@@ -504,27 +523,31 @@ def delete_action(
 def clear_alerts(
     session: Session,
     *,
-    agent: str | None = None,
+    agent: str | Sequence[str] | None = None,
 ) -> dict[str, int]:
     """
     Delete alerts and their related actions.
 
     When agent is set, only that domain is cleared. Actions are removed first
     so orphaned rows cannot remain if CASCADE is absent.
+
+    The agent may be given as every key it answers to (QC-020). Clearing has to
+    cover the same rows the list shows, or a reset leaves the older short-key
+    rows on screen and appears to do nothing.
     """
     params: dict[str, Any] = {}
     action_sql = "DELETE FROM chat.actions"
     alert_sql = "DELETE FROM chat.alerts"
 
     if agent:
-        params["agent"] = agent
+        params["agents"] = [agent] if isinstance(agent, str) else list(agent)
         action_sql += """
-            WHERE agent = :agent
+            WHERE agent = ANY(:agents)
                OR alert_id IN (
-                    SELECT id FROM chat.alerts WHERE agent = :agent
+                    SELECT id FROM chat.alerts WHERE agent = ANY(:agents)
                )
         """
-        alert_sql += " WHERE agent = :agent"
+        alert_sql += " WHERE agent = ANY(:agents)"
 
     actions_deleted = session.execute(
         text(action_sql),

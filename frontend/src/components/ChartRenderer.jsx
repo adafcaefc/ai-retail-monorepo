@@ -276,6 +276,12 @@ function BarChartView({
 
         margin={{
           ...margin,
+          // A value label sits 8px above the tallest bar in 10px type, so it
+          // needs ~26px of headroom. The compact variant's 12px top margin
+          // clipped the label in half ("7,845" losing its upper row).
+          top: payload.showValues
+            ? Math.max(margin.top || 0, 26)
+            : margin.top,
           bottom:
             hasLongLabels
               ? Math.max(
@@ -524,6 +530,11 @@ function WaterfallChartView({
         data={waterfallRows}
         margin={{
           ...margin,
+          // Same headroom rule as BarChartView: the fill/compact variants
+          // pass a 12-18px top margin, which clips the value labels.
+          top: payload.showValues
+            ? Math.max(margin.top || 0, 26)
+            : margin.top,
           bottom:
             hasLongLabels
               ? Math.max(
@@ -862,8 +873,20 @@ function LineChartView({
     series,
     target,
     targetLabel,
-    unit
+    unit,
+    highlight
   } = payload;
+
+  // The filter layer sends `highlight` instead of dropping points: a curve
+  // filtered to one week is one stranded dot, but a marked week keeps its
+  // whole context around it.
+  const highlightRow =
+    highlight
+      ? rows.find(
+          (row) =>
+            row.name === highlight
+        )
+      : null;
 
   const chartHeight =
     size.mode === "fill"
@@ -981,6 +1004,28 @@ function LineChartView({
                 "insideTopRight",
 
               fill: "#666666",
+              fontSize: 10,
+              fontWeight: 700
+            }}
+          />
+        )}
+
+        {highlightRow && (
+          <ReferenceLine
+            x={highlightRow.name}
+            stroke="#7a52b3"
+            strokeWidth={1.6}
+            strokeDasharray="4 3"
+
+            label={{
+              value:
+                `${highlightRow.name} · ${formatChartValue(
+                  highlightRow.value
+                )}`,
+
+              position: "top",
+
+              fill: "#7a52b3",
               fontSize: 10,
               fontWeight: 700
             }}
@@ -1272,11 +1317,15 @@ function CircularChartView({
                 }
 
                 fill={
-                  row.color ||
-                  DEFAULT_COLORS[
-                    index %
-                      DEFAULT_COLORS.length
-                  ]
+                  // "Others" is the aggregated remainder a filter leaves
+                  // behind; it recedes so the chosen slice carries the chart.
+                  row.muted
+                    ? "#d8dee9"
+                    : row.color ||
+                      DEFAULT_COLORS[
+                        index %
+                          DEFAULT_COLORS.length
+                      ]
                 }
               />
             )
@@ -1526,9 +1575,12 @@ function normalizeChartPayload(
       payload.title ||
       "Financial chart",
 
+    // QC-035: the period is the subtitle unless the chart states its own, so
+    // every chart says which span its numbers cover.
     subtitle:
       payload.subtitle ||
       payload.description ||
+      payload.period ||
       "",
 
     tag:
@@ -1557,6 +1609,12 @@ function normalizeChartPayload(
     showValues:
       payload.show_values !==
       false,
+
+    // Set by the filter layer on line charts: the point to call out on the
+    // intact curve, instead of filtering 12 of 13 weeks away.
+    highlight:
+      payload.highlight ||
+      null,
 
     rows:
       normalized.rows,
@@ -1627,6 +1685,11 @@ function normalizeSingleSeries(
           name: label,
 
           value,
+
+          // Set by the filter layer: the "Others" remainder a narrowed
+          // donut aggregates its unselected slices into.
+          muted:
+            Boolean(point.muted),
 
           color:
             resolvePointColor({

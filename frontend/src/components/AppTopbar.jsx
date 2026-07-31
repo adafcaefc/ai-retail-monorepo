@@ -1,4 +1,6 @@
 import EyLogo from "./EyLogo.jsx";
+import { LANGUAGES } from "../i18n.js";
+import { useLanguage } from "../LanguageProvider.jsx";
 
 /**
  * The application's single header.
@@ -15,6 +17,7 @@ export default function AppTopbar({
   title = "",
   children = null,
 }) {
+  const { language, setLanguage } = useLanguage();
   const toggleLabel = sidebarOpen ? "Hide agent list" : "Show agent list";
 
   return (
@@ -47,6 +50,27 @@ export default function AppTopbar({
         </div>
 
         {children}
+
+        {/* QC-058 */}
+        <div
+          className="language-toggle"
+          role="group"
+          aria-label="Language"
+          data-testid="language-toggle"
+        >
+          {LANGUAGES.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={"lang-btn" + (language === option.id ? " on" : "")}
+              aria-pressed={language === option.id}
+              title={option.title}
+              onClick={() => setLanguage(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
       </div>
     </header>
   );

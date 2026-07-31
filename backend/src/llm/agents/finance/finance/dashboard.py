@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _filters,
     _fmt,
     _line_chart,
     _num,
@@ -82,6 +83,68 @@ def _finance_live_metrics(
             if slot not in ranked or rank < ranked[slot][0]:
                 ranked[slot] = (rank, num)
     return {slot: value for slot, (_, value) in ranked.items()}
+
+
+def _finance_presets(levers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Lever settings the Finance simulator can jump to.
+
+    The figures come from `financial_performance.simulator_levers`, so a preset
+    can never quote a number the dataset does not hold — that is the mistake
+    QC-009 records for the EBITDA target.
+
+    Each preset is named after what it *does*, not after where it came from. A
+    button labelled "recommendation" asks to be trusted; one labelled with its
+    own levers can be checked against the sliders it moves.
+
+    Percentages are stored as fractions in some batches and points in others.
+    """
+    row = levers[0] if levers else {}
+
+    def pct(*names: str) -> float:
+        value = _num(_row_get(row, *names))
+        return round(value * 100 if abs(value) <= 1 else value, 2)
+
+    price = pct("selling_price_change_percentage")
+    cost = pct("material_cost_change_percentage")
+    fx = pct("usd_idr_change_percentage")
+
+    if not any((price, cost, fx)):
+        # No stored scenario: offer nothing rather than invent a number. An
+        # empty preset row is honest; a made-up one is what this fixes.
+        return []
+
+    moved = {"price": price, "cost": cost, "fx": fx}
+    stated = ", ".join(
+        f"{name} {value:+.1f}%" for name, value in moved.items() if value
+    )
+
+    presets = [
+        {
+            "id": "combined",
+            "label": "All levers together",
+            "note": f"Every stored lever at once: {stated}.",
+            "values": moved,
+        }
+    ]
+    if price:
+        presets.append(
+            {
+                "id": "price_only",
+                "label": f"Price {price:+.1f}% alone",
+                "note": "Price moves; cost and FX stay where they are.",
+                "values": {"price": price},
+            }
+        )
+    if fx:
+        presets.append(
+            {
+                "id": "fx_only",
+                "label": f"IDR weakens {fx:.1f}%",
+                "note": "Imported share of COGS reprices; nothing else moves.",
+                "values": {"fx": fx},
+            }
+        )
+    return presets
 
 
 def simulate_finance_scenario(
@@ -322,6 +385,9 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     product_bars = [
         {
             "label": line["name"][:3],
+            # QC-043: the bar is abbreviated to fit, so the product filter has
+            # nothing to match on unless the full name travels with the point.
+            "key": line["name"],
             # Half-up: Precision is exactly 4,930/13,600 = 36.25%, which
             # Python's banker's rounding would print as 36.2.
             "value": _round_half_up(line["gm_pct"] * 100, 1),
@@ -551,14 +617,28 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 if default is not None:
                     inp["default"] = float(default)
 
+    # QC-043 — the product mix is the only dimension this dataset carries.
+    # Entity, store, channel and month arrive with the new dataset.
+    filters = _filters(views, side, (
+        ("product", "Product", "view:revenue",
+         ("view:revenue", "view:product", "side:top"), 0),
+        ("cost_line", "Cost line", "view:opex", ("view:opex",), 0),
+    ))
+
     return {
         "agent": "finance",
+        # QC-035: the span these figures cover, stamped onto every
+        # chart by _enriched().
+        "period": snap.get("period"),
+        "filters": filters,
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "drivers",
         "kpis": kpis,
         "views": views,
         "side": side,
         "simulator": {
+            # QC-052: the three levers a CFO actually reaches for first.
+            "presets": _finance_presets(levers),
             "action": "simulate_finance",
             "gauge_label": f"Path to {_pct(target)} target",
             "scope_options": ["all", "fx"],

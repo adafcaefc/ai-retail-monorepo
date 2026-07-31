@@ -9,6 +9,7 @@ from src.llm.agents.common.tools.db import (
     _read_connection,
     _rows,
 )
+from src.llm.agents.common.tools.period import finance_period
 
 
 def get_financial_performance_snapshot() -> dict[str, Any]:
@@ -22,6 +23,7 @@ def get_financial_performance_snapshot() -> dict[str, Any]:
         parameters = {"import_batch_id": import_batch_id}
         return {
             "import_batch_id": import_batch_id,
+            "period": finance_period(connection, import_batch_id),
             "kpis": _rows(
                 connection,
                 "SELECT * FROM financial_performance.kpis "

@@ -1518,10 +1518,28 @@ img.ey-logo {
 
 /* Composer */
 
+/*
+ * The composer is the panel's last `auto` grid row, so it took whatever height
+ * its contents asked for. With a full suggestion list plus a grown textarea it
+ * outgrew the panel, and `.chat-panel { overflow: hidden }` cut the bottom off
+ * — the disclaimer lost its last line. It now has a ceiling: past that the
+ * composer scrolls internally instead of eating the transcript above it.
+ */
 .composer-wrap {
-  padding: 16px clamp(18px, 4vw, 54px) 22px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 12px clamp(18px, 4vw, 54px) 14px;
   border-top: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.48);
+}
+
+/* The composer itself must never be the part that scrolls away. */
+.composer-wrap > .composer,
+.composer-wrap > .composer-note {
+  flex: 0 0 auto;
 }
 
 .composer {
@@ -1536,8 +1554,10 @@ img.ey-logo {
 .composer textarea {
   display: block;
   width: 100%;
-  min-height: 50px;
-  max-height: 168px;
+  min-height: 48px;
+  /* A chat input that can grow to 168px swallows the panel on a short
+     window. Four lines is the working ceiling; past that it scrolls. */
+  max-height: 120px;
   padding: 13px 15px;
   resize: none;
   overflow-y: auto;
@@ -2226,14 +2246,36 @@ img.ey-logo {
    * `min-content` restores a floor that tracks the real content height at
    * every breakpoint, while `1fr` still absorbs spare height when there is
    * some. Anything taller than the board scrolls (see overflow-y below).
+   *
+   * Rows are assigned explicitly below. The filter bar (QC-043) added a
+   * fourth child, and by position alone it landed on the `1fr` track — so the
+   * filter row absorbed the spare height and the charts collapsed to their
+   * content. Naming the rows keeps the stretch on the charts whatever else
+   * the board grows.
    */
-  grid-template-rows: auto minmax(min-content, 1fr) auto;
+  grid-template-rows: auto auto minmax(min-content, 1fr) auto;
   gap: 10px;
   padding: 12px 14px 14px;
   overflow-x: hidden;
   overflow-y: auto;
   container-type: inline-size;
   container-name: board;
+}
+
+.workboard > .kpi-row {
+  grid-row: 1;
+}
+
+.workboard > .board-controls {
+  grid-row: 2;
+}
+
+.workboard > .workboard-mid {
+  grid-row: 3;
+}
+
+.workboard > .whatif-bar {
+  grid-row: 4;
 }
 
 /* Loading / error stand-ins fill the rows the real board would occupy. */
@@ -2282,6 +2324,24 @@ img.ey-logo {
   color: #8e2e27;
   background: var(--danger-soft);
   border-radius: 12px;
+}
+
+/*
+ * The empty state inside a panel: "No view data", and the message a filter
+ * shows when it matches nothing. It had no rule at all, so it rendered as a
+ * bare paragraph jammed against the panel's top-left corner — the one place a
+ * user only ever looks when something has already gone wrong.
+ */
+.workboard-empty {
+  display: grid;
+  place-content: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 18px;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-align: center;
 }
 
 /*
@@ -2476,11 +2536,45 @@ img.ey-logo {
   }
 }
 
+/*
+ * Main chart | resize handle | side panels. `--board-main` is set inline by
+ * the Workboard and clamped in JS (42-74%), so a drag can widen the charts
+ * but can never crush either column into uselessness.
+ */
 .workboard-mid {
   display: grid;
-  grid-template-columns: 1.55fr 1fr;
-  gap: 10px;
+  grid-template-columns: minmax(0, var(--board-main, 60%)) 8px minmax(0, 1fr);
+  gap: 6px;
   min-height: 240px;
+}
+
+.board-resize-handle {
+  align-self: stretch;
+  border-radius: 4px;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+
+/* The visible grip: a slim bar that appears on approach. */
+.board-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 12% 2px;
+  border-radius: 4px;
+  background: #dbe4f6;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.board-resize-handle:hover::after,
+.board-resize-handle:focus-visible::after {
+  opacity: 1;
+}
+
+.board-resize-handle:focus-visible {
+  outline: 2px solid #7a52b3;
+  outline-offset: 1px;
 }
 
 .focus-card,
@@ -2495,11 +2589,43 @@ img.ey-logo {
   padding: 8px 10px;
 }
 
+/*
+ * Upper chart | resize handle | lower chart. `--side-top` is set inline by the
+ * Workboard and clamped in JS (28-72%), so neither card can be dragged flat.
+ */
 .side-col {
   display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 10px;
+  grid-template-rows: minmax(0, var(--side-top, 50%)) 8px minmax(0, 1fr);
+  gap: 6px;
   min-height: 0;
+}
+
+.side-resize-handle {
+  justify-self: stretch;
+  border-radius: 4px;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+}
+
+.side-resize-handle::after {
+  content: "";
+  position: absolute;
+  inset: 2px 12%;
+  border-radius: 4px;
+  background: #dbe4f6;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.side-resize-handle:hover::after,
+.side-resize-handle:focus-visible::after {
+  opacity: 1;
+}
+
+.side-resize-handle:focus-visible {
+  outline: 2px solid #7a52b3;
+  outline-offset: 1px;
 }
 
 .focus-chart,
@@ -2565,6 +2691,114 @@ img.ey-logo {
 
 .focus-table td.num {
   text-align: right;
+}
+
+/* The row above the charts: filters on the left, mode and simulator right. */
+.board-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+/* QC-058: EN / ID toggle in the header. */
+.language-toggle {
+  display: inline-flex;
+  margin-left: auto;
+  border: 1px solid #d9e4fb;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.lang-btn {
+  padding: 4px 10px;
+  border: 0;
+  background: #fff;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #5b6b8c;
+  cursor: pointer;
+}
+
+.lang-btn.on {
+  background: #1f2a44;
+  color: #fff;
+}
+
+/* QC-052 presets and QC-059 reset to baseline. */
+.preset-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid #e6edfa;
+}
+
+.preset-btn {
+  padding: 5px 10px;
+  border: 1px solid #d9e4fb;
+  border-radius: 999px;
+  background: #eff4ff;
+  font-size: 0.7rem;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
+.preset-btn--quiet {
+  background: #fff;
+}
+
+.preset-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* QC-043: narrow the board to one product, week, tier or vendor. */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  /* No bottom margin: the board grid already supplies the row gap. */
+  margin: 0;
+}
+
+.filter-control {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.68rem;
+  color: #5b6b8c;
+}
+
+.filter-control select {
+  min-width: 132px;
+  max-width: 210px;
+  padding: 5px 7px;
+  border: 1px solid #d9e4fb;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.74rem;
+  color: #1f2a44;
+}
+
+.filter-clear {
+  padding: 6px 10px;
+  border: 1px solid #d9e4fb;
+  border-radius: 8px;
+  background: #eff4ff;
+  font-size: 0.7rem;
+  color: #1f2a44;
+  cursor: pointer;
+}
+
+/* QC-035: the span a table's figures cover, under its title. */
+.focus-period {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
+  color: #5b6b8c;
 }
 
 .focus-note {
@@ -2752,7 +2986,9 @@ img.ey-logo {
 
 @container board (max-width: 1080px) {
   .workboard-mid {
-    grid-template-columns: 1.25fr 1fr;
+    /* Same three tracks as the base rule; only the default share narrows.
+       A user-set --board-main (inline) still wins over the fallback. */
+    grid-template-columns: minmax(0, var(--board-main, 55%)) 8px minmax(0, 1fr);
   }
 
   /* Tighten the three simulator columns rather than stacking them — the
@@ -2796,8 +3032,18 @@ img.ey-logo {
     grid-auto-rows: minmax(250px, auto);
   }
 
+  /* Panels are stacked here, so there is no split to drag. */
+  .board-resize-handle {
+    display: none;
+  }
+
   .side-col {
-    grid-template-rows: minmax(210px, auto) minmax(210px, auto);
+    grid-template-rows: minmax(210px, auto) 0 minmax(210px, auto);
+  }
+
+  /* Panels get a fixed floor here, so there is no ratio left to drag. */
+  .side-resize-handle {
+    display: none;
   }
 
   .whatif-grid {
@@ -2866,13 +3112,21 @@ img.ey-logo {
   }
 }
 
+/*
+ * Suggestions are the variable-height part above the input. Left unbounded a
+ * long list pushed the composer up the panel; capped, the list scrolls and the
+ * input stays where the hand expects it.
+ */
 .prompt-suggestions {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   width: 100%;
   min-width: 0;
+  min-height: 0;
   max-width: 1120px;
+  max-height: 116px;
   gap: 7px;
-  margin: 0 auto 10px;
+  margin: 0 auto 8px;
 }
 
 .prompt-suggestions-heading {
@@ -2896,6 +3150,9 @@ img.ey-logo {
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
+  /* Scrolls inside its capped row rather than pushing the input up. */
+  min-height: 0;
+  overflow-y: auto;
   gap: 7px;
 }
 
@@ -3119,7 +3376,14 @@ img.ey-logo {
   color: var(--ink);
 }
 
+/*
+ * A flex child defaults to `min-height: auto`, so it refuses to shrink below
+ * its content. Without the override the list grew past the popover's
+ * max-height and `overflow: hidden` on the parent cut the last alerts off
+ * with no way to scroll to them.
+ */
 .alerts-popover-list {
+  min-height: 0;
   padding: 10px 12px 12px;
   overflow: auto;
 }
@@ -3614,6 +3878,18 @@ img.ey-logo {
   padding: 18px 20px 20px;
 }
 
+/*
+ * A sticky footer resolves `bottom: 0` against the scrollport, which sits
+ * inside this element's own bottom padding. The footer then had to be pulled
+ * back out with `margin-bottom: -20px`, which put its lower edge below the
+ * scrollport — so the white bar stopped short of the modal's bottom and left
+ * a strip of background under it. Hand the bottom padding to the footer
+ * instead, and the two edges coincide.
+ */
+.alerts-modal:has(.action-step-footer) {
+  padding-bottom: 0;
+}
+
 .alerts-modal-wide {
   width: min(760px, 100%);
 }
@@ -3876,8 +4152,11 @@ img.ey-logo {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  margin: 4px -20px -20px;
-  padding: 12px 20px 20px;
+  /* No negative bottom margin: the modal gives up its bottom padding for us
+     (see .alerts-modal:has), so the footer sits flush on the scrollport edge
+     and carries the breathing room itself. */
+  margin: 4px -20px 0;
+  padding: 12px 20px 18px;
   border-top: 1px solid #eef1f7;
   background: #fff;
   box-shadow: 0 -8px 16px -12px rgba(23, 32, 51, 0.35);

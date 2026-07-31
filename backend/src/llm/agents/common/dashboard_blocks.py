@@ -77,10 +77,101 @@ def _enrich_kpis(kpis: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return kpis
 
 
-def _enriched(payload: dict[str, Any]) -> dict[str, Any]:
-    """Run a finished dashboard payload through KPI enrichment."""
-    payload["kpis"] = _enrich_kpis(payload.get("kpis") or [])
+def _stamp_period(payload: dict[str, Any]) -> dict[str, Any]:
+    """Copy the payload's period onto every chart in it.
+
+    QC-035: no chart said what span it covered, so a monthly figure and an
+    annual one could sit side by side and look comparable. Stamped centrally
+    rather than at each of the twenty-two chart definitions, so a chart added
+    later cannot arrive unlabelled.
+    """
+    period = str(payload.get("period") or "")
+    if not period:
+        return payload
+    for group in ("views", "side"):
+        for chart in (payload.get(group) or {}).values():
+            if isinstance(chart, dict):
+                chart.setdefault("period", period)
     return payload
+
+
+def _chart_points(chart: dict[str, Any]) -> list[dict[str, Any]]:
+    """A chart's rows. Line charts nest theirs one level deeper, under series."""
+    data = chart.get("data") or []
+    if data and isinstance(data[0], dict) and "values" in data[0]:
+        return [point for series in data for point in (series.get("values") or [])]
+    return [point for point in data if isinstance(point, dict)]
+
+
+def _options_of(
+    element: dict[str, Any],
+    column: int = 0,
+) -> list[str]:
+    """The distinct values one chart or table is keyed by, in display order."""
+    if element.get("table"):
+        raw = [
+            str(row[column])
+            for row in element["table"]["rows"]
+            if len(row) > column
+        ]
+    else:
+        # A chart may abbreviate its label to fit; `key` carries the full value
+        # a filter matches on.
+        raw = [
+            str(point.get("key") or point.get("label", ""))
+            for point in _chart_points(element)
+        ]
+
+    seen: set[str] = set()
+    return [
+        value for value in raw
+        if value and not (value in seen or seen.add(value))
+    ]
+
+
+def _filters(
+    views: dict[str, Any],
+    side: dict[str, Any],
+    specs: tuple[tuple[str, str, str, tuple[str, ...], int], ...],
+) -> list[dict[str, Any]]:
+    """Declare the dimensions this payload can actually be sliced by.
+
+    QC-043: no payload carried a filter parameter, so nothing on the board
+    could be narrowed. Options are read back off the built charts rather than
+    re-queried, which guarantees a filter can only offer values that are really
+    plotted — an option that filters everything away is worse than no filter.
+
+    Each spec is (id, label, source element, elements it applies to, column).
+    Element keys are `view:<k>` / `side:<k>`, the same shape the info registry
+    uses. A spec whose source is empty is dropped: this dataset predates the
+    entity, store and month dimensions the tracker also asks for, and offering
+    an empty control would imply otherwise.
+    """
+    lookup = {f"view:{k}": v for k, v in views.items()}
+    lookup |= {f"side:{k}": v for k, v in side.items()}
+
+    built = []
+    for filter_id, label, source, applies_to, column in specs:
+        element = lookup.get(source)
+        options = _options_of(element, column) if element else []
+        if len(options) < 2:
+            continue
+        built.append(
+            {
+                "id": filter_id,
+                "label": label,
+                "options": options,
+                "applies_to": [k for k in applies_to if k in lookup],
+                "column": column,
+            }
+        )
+    return built
+
+
+def _enriched(payload: dict[str, Any]) -> dict[str, Any]:
+    """Run a finished dashboard payload through KPI enrichment and stamping."""
+    payload["kpis"] = _enrich_kpis(payload.get("kpis") or [])
+    return _stamp_period(payload)
 
 
 def _round_half_up(value: float, digits: int = 0) -> float:

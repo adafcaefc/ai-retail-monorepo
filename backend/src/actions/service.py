@@ -8,7 +8,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from src.actions import repository
+from src.actions import impact, repository
 from src.llm.agents import AGENT_REGISTRY, AgentDescriptor, MonitoringPass, get_agent
 from src.llm.agents.common.tools.freeform_query import (
     reset_simulation_domain,
@@ -66,13 +66,69 @@ def list_monitoring_agents(
     }
 
 
+def agent_keys(agent_id: str) -> list[str]:
+    """Every key one agent is stored under, canonical first.
+
+    QC-020: `chat.alerts` and `chat.actions` hold eight agent values for four
+    agents, because rows written before the registry moved to canonical ids
+    kept the short domain key ('cashflow' for 'finance.treasury'). The short
+    key is the descriptor's own `db_domain`, so the pairing is derived, never
+    hand-maintained.
+    """
+    descriptor = get_agent(agent_id)
+    keys = [descriptor.id]
+    if descriptor.db_domain and descriptor.db_domain != descriptor.id:
+        keys.append(descriptor.db_domain)
+    return keys
+
+
+CANONICAL_AGENT: dict[str, str] = {
+    key: descriptor.id
+    for descriptor in AGENT_REGISTRY.values()
+    for key in (descriptor.id, descriptor.db_domain)
+    if key
+}
+
+
+def _canonicalize(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Report one id per agent, whichever key the row was written under."""
+    for item in items:
+        raw = str(item.get("agent") or "")
+        item["agent"] = CANONICAL_AGENT.get(raw, raw)
+    return items
+
+
+def _dedupe(
+    items: list[dict[str, Any]],
+    field: str,
+) -> list[dict[str, Any]]:
+    """Keep the newest row per agent and title.
+
+    QC-021: canonicalizing the keys makes the duplication visible — the same
+    alert and the same action exist twice, once under each key. Rows arrive
+    newest first, so the first occurrence is the one to keep.
+    """
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for item in items:
+        key = (str(item.get("agent") or ""), str(item.get(field) or ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def list_alerts(
     session: Session,
     *,
     agent: str | None = None,
 ) -> list[dict[str, Any]]:
-    normalized = get_agent(agent).id if agent else None
-    return repository.get_alerts(session, agent=normalized)
+    keys = agent_keys(agent) if agent else None
+    return _dedupe(
+        _canonicalize(repository.get_alerts(session, agent=keys)),
+        "name",
+    )
 
 
 def clear_alerts(
@@ -81,11 +137,66 @@ def clear_alerts(
     agent: str | None = None,
 ) -> dict[str, Any]:
     normalized = get_agent(agent).id if agent else None
-    deleted = repository.clear_alerts(session, agent=normalized)
+    deleted = repository.clear_alerts(
+        session,
+        agent=agent_keys(agent) if agent else None,
+    )
     return {
         "agent": normalized,
         **deleted,
     }
+
+
+def _recompute_impacts(
+    session: Session,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replace stored Treasury impact lines with simulator-derived ones.
+
+    QC-004 / QC-005. The correction lives here rather than in the table because
+    a monitoring run rewrites `chat.actions` wholesale — a one-off UPDATE would
+    survive until the next populate and no longer. See `actions/impact.py`.
+
+    Anything that goes wrong loading the forecast leaves the stored wording in
+    place: a stale impact line is a smaller failure than a broken action list.
+    """
+    if not any(
+        str(item.get("agent") or "") in impact.TREASURY_AGENTS for item in items
+    ):
+        return items
+
+    try:
+        from src.llm.agents.finance.treasury.cashflow.service import (
+            get_baseline,
+            simulate,
+        )
+
+        baseline = get_baseline(session)
+    except Exception:  # noqa: BLE001 - never break the list over a KPI line
+        return items
+
+    # Most actions pull the same lever, and each simulate() is a round trip.
+    cache: dict[tuple[float, ...], Any] = {}
+
+    def cached_simulate(request):
+        key = (
+            request.accelerate_collection_idr_mn,
+            request.defer_payment_idr_mn,
+            request.credit_line_draw_idr_mn,
+            request.hedge_usd,
+        )
+        if key not in cache:
+            cache[key] = simulate(request, session)
+        return cache[key]
+
+    try:
+        return impact.apply_computed_impact(
+            items,
+            baseline=baseline,
+            simulate=cached_simulate,
+        )
+    except Exception:  # noqa: BLE001
+        return items
 
 
 def list_actions(
@@ -95,11 +206,18 @@ def list_actions(
     status: str | None = None,
 ) -> list[dict[str, Any]]:
     """List stored actions (history), optionally filtered by domain or status."""
-    normalized = get_agent(agent).id if agent else None
-    return repository.get_actions(
+    return _recompute_impacts(
         session,
-        agent=normalized,
-        status=status,
+        _dedupe(
+            _canonicalize(
+                repository.get_actions(
+                    session,
+                    agent=agent_keys(agent) if agent else None,
+                    status=status,
+                )
+            ),
+            "action",
+        ),
     )
 
 
@@ -110,7 +228,13 @@ def list_actions_for_alert(
     alert = repository.get_alert(session, alert_id)
     if alert is None:
         raise LookupError(f"Alert {alert_id!r} was not found.")
-    return repository.get_actions(session, alert_id=alert_id)
+    return _recompute_impacts(
+        session,
+        _dedupe(
+            _canonicalize(repository.get_actions(session, alert_id=alert_id)),
+            "action",
+        ),
+    )
 
 
 def approve_action(
@@ -127,7 +251,8 @@ def approve_action(
     )
     if updated is None:
         raise LookupError(f"Action {action_id!r} was not found.")
-    return updated
+    # The approval card restates the impact, so it has to agree with the list.
+    return _recompute_impacts(session, [updated])[0]
 
 
 def _dump_output(output: Any) -> dict[str, Any]:

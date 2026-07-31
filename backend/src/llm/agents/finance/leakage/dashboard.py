@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _filters,
     _fmt,
     _line_chart,
     _num,
@@ -159,6 +160,38 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     anomalies = snap.get("anomalies") or []
     worklist = snap.get("action_worklist") or []
     summary = summary_rows[0] if summary_rows else {}
+    daily = snap.get("daily_at_risk") or []
+
+    def _trend(match: Any = None) -> list[float]:
+        """Flagged amount per invoice date, for one KPI's slice of the cycle.
+
+        QC-054: a KPI tile carried no trend anywhere. This is a real series —
+        one point per day the scan covers — not a shape drawn to fill the
+        space. Days with nothing flagged still get a zero so the spacing stays
+        honest.
+        """
+        buckets: dict[str, float] = {}
+        for row in daily:
+            on_date = str(_row_get(row, "on_date", "invoice_date") or "")
+            if not on_date:
+                continue
+            buckets.setdefault(on_date, 0.0)
+            if match is None or match(row):
+                buckets[on_date] += _num(_row_get(row, "amount"))
+        series = [buckets[key] for key in sorted(buckets)]
+        return [round(value, 2) for value in series] if len(series) >= 2 else []
+
+    def _is_type(*names: str):
+        wanted = {name.lower() for name in names}
+        return lambda row: str(
+            _row_get(row, "anomaly_type") or ""
+        ).lower() in wanted
+
+    def _is_status(*names: str):
+        wanted = {name.lower() for name in names}
+        return lambda row: str(
+            _row_get(row, "payment_status") or ""
+        ).lower() in wanted
 
     def cat_amount(row: dict[str, Any]) -> float:
         return _num(
@@ -292,6 +325,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": f"{items_flagged} flags",
             "alert": True,
+            "trend": _trend(),
         },
         {
             "id": "fraud",
@@ -301,6 +335,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": "bank change",
             "alert": fraud > 0,
+            "trend": _trend(_is_type("Bank-change fraud")),
         },
         {
             "id": "dup",
@@ -310,6 +345,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": "recoverable",
             "alert": False,
+            "trend": _trend(_is_type("Duplicate payment")),
         },
         {
             "id": "blocked",
@@ -319,6 +355,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": "before payment",
             "alert": False,
+            "trend": _trend(_is_status("Pending")),
         },
         {
             "id": "protected",
@@ -491,14 +528,48 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
     }
 
+    # QC-043 — leakage type, status and vendor, the three lenses the tracker
+    # calls "must have" for this agent.
+    filters = _filters(views, side, (
+        ("leakage_type", "Leakage type", "view:categories",
+         ("view:categories", "side:top"), 0),
+        ("status", "Status", "view:blockvs", ("view:blockvs",), 0),
+        ("vendor", "Vendor", "view:vendors", ("view:vendors",), 0),
+    ))
+
     return {
         "agent": "leakage",
+        # QC-035: the span these figures cover, stamped onto every
+        # chart by _enriched().
+        "period": snap.get("period"),
+        "filters": filters,
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "categories",
         "kpis": kpis,
         "views": views,
         "side": side,
         "simulator": {
+            # QC-052: the recovery band the workbook brackets its case with.
+            "presets": [
+                {
+                    "id": "pessimistic",
+                    "label": "Pessimistic recovery",
+                    "note": "60% claw-back on both duplicate and overbilling.",
+                    "values": {"dupRec": 60, "ovRec": 60},
+                },
+                {
+                    "id": "workbook",
+                    "label": "Workbook rates",
+                    "note": "95% on duplicates, 90% on overbilling.",
+                    "values": {"dupRec": _DUP_REC, "ovRec": _OV_REC},
+                },
+                {
+                    "id": "release_hold",
+                    "label": "Release the hold",
+                    "note": "Nothing blocked before payment.",
+                    "values": {"hold": 0},
+                },
+            ],
             "action": "simulate_leakage",
             "gauge_label": f"Total protected vs {_fmt(at_risk)}",
             "inputs": [

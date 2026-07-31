@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import ChartRenderer from "./ChartRenderer.jsx";
 import InfoCard from "./InfoCard.jsx";
@@ -8,14 +8,57 @@ import {
   WhatIfStatsSkeleton,
 } from "./Skeleton.jsx";
 import { findInfo } from "../infoRegistry.js";
+import { applyFilters, focusFor, isEmptyAfterFilter } from "../filters.js";
+import { translatePayload } from "../i18n.js";
+import { useLanguage } from "../LanguageProvider.jsx";
 import {
   fetchDashboard,
   recalculateDashboardSimulation,
 } from "../api/dashboard.js";
 
+// How much of the middle row the main chart takes, as a percentage. Clamped:
+// below the floor the main chart cannot label its axes, above the ceiling the
+// side panels collapse into slivers. The default mirrors the old 1.55fr/1fr.
+const BOARD_SPLIT_KEY = "ledgerline.boardMainPct";
+const BOARD_SPLIT_DEFAULT = 60;
+const BOARD_SPLIT_MIN = 42;
+const BOARD_SPLIT_MAX = 74;
+
+// How much of the side column the upper card takes. Same idea, one axis over:
+// on every agent that upper card is a chart worth more or less room depending
+// on the question — the GM pool by product, the ageing mix, the leakage mix.
+const SIDE_SPLIT_KEY = "ledgerline.sideTopPct";
+const SIDE_SPLIT_DEFAULT = 50;
+const SIDE_SPLIT_MIN = 28;
+const SIDE_SPLIT_MAX = 72;
+
+function clamp(value, min, max, fallback) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampSplit(value) {
+  return clamp(value, BOARD_SPLIT_MIN, BOARD_SPLIT_MAX, BOARD_SPLIT_DEFAULT);
+}
+
+function clampSideSplit(value) {
+  return clamp(value, SIDE_SPLIT_MIN, SIDE_SPLIT_MAX, SIDE_SPLIT_DEFAULT);
+}
+
+function readStored(key, clampFn, fallback) {
+  try {
+    return clampFn(Number(window.localStorage.getItem(key)) || fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 // The board toolbar (Agent Action, Recalculate, alerts, Ask <agent>) lives in
 // the app header now, so this component renders data only.
 export default function Workboard({ agentId, agentName, onAskInsight, insightBusy = false }) {
+  const { language, t } = useLanguage();
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
   const [loading, setLoading] = useState(true);
@@ -26,6 +69,16 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
   const [simBusy, setSimBusy] = useState(false);
   const [simError, setSimError] = useState("");
   const [info, setInfo] = useState(null);
+  // QC-043: filterId -> chosen option. Empty string means "all".
+  const [picked, setPicked] = useState({});
+  // Width of the main chart as % of the middle row. Persisted per user, not
+  // per agent: a hand that finds the split it likes keeps it everywhere.
+  const [split, setSplit] = useState(() =>
+    readStored(BOARD_SPLIT_KEY, clampSplit, BOARD_SPLIT_DEFAULT)
+  );
+  const [sideSplit, setSideSplit] = useState(() =>
+    readStored(SIDE_SPLIT_KEY, clampSideSplit, SIDE_SPLIT_DEFAULT)
+  );
 
   // Open the info card for a clicked element. Elements with no
   // registry mapping stay inert rather than opening an empty card.
@@ -92,19 +145,209 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
     };
   }, [agentId]);
 
+  // Filter selections belong to the agent that offered them.
+  useEffect(() => {
+    setPicked({});
+  }, [agentId]);
+
+  // QC-059: back to the levers the payload shipped with, in one click.
+  function resetLevers() {
+    setValues({});
+    setSimResult(null);
+    setSimError("");
+  }
+
+  // QC-052: a named scenario replaces the levers it names and leaves the
+  // rest at baseline, so two presets can never silently compound.
+  function applyPreset(preset) {
+    setValues({ ...preset.values });
+    setSimResult(null);
+    setSimError("");
+  }
+
+  function persist(key, value) {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // Private mode: the split still works for this session.
+    }
+  }
+
+  function saveSplit(value) {
+    const next = clampSplit(value);
+    setSplit(next);
+    persist(BOARD_SPLIT_KEY, next);
+    return next;
+  }
+
+  function saveSideSplit(value) {
+    const next = clampSideSplit(value);
+    setSideSplit(next);
+    persist(SIDE_SPLIT_KEY, next);
+    return next;
+  }
+
+  /**
+   * Drag a grid separator. The pointer is tracked across the whole row or
+   * column, and the clamp is the guarantee that neither panel can be dragged
+   * out of usefulness — a chart with no room to label its axes is worse than
+   * one that is slightly too small.
+   */
+  function startResize(startEvent, { axis, set, save }) {
+    startEvent.preventDefault();
+    const container = startEvent.currentTarget.parentElement;
+    if (!container) {
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+
+    const pctAt = (event) =>
+      axis === "x"
+        ? ((event.clientX - rect.left) / rect.width) * 100
+        : ((event.clientY - rect.top) / rect.height) * 100;
+
+    const onMove = (moveEvent) => set(pctAt(moveEvent));
+    const onUp = (upEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      save(pctAt(upEvent));
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function resizeKeyHandler(current, save, [less, more]) {
+    return (event) => {
+      const step = event.shiftKey ? 5 : 2;
+      if (event.key === less) {
+        event.preventDefault();
+        save(current - step);
+      } else if (event.key === more) {
+        event.preventDefault();
+        save(current + step);
+      }
+    };
+  }
+
+  function persist(key, value) {
+    try {
+      window.localStorage.setItem(key, String(value));
+    } catch {
+      // Private mode: the split still works for this session.
+    }
+  }
+
+  function saveSplit(value) {
+    const next = clampSplit(value);
+    setSplit(next);
+    persist(BOARD_SPLIT_KEY, next);
+    return next;
+  }
+
+  function saveSideSplit(value) {
+    const next = clampSideSplit(value);
+    setSideSplit(next);
+    persist(SIDE_SPLIT_KEY, next);
+    return next;
+  }
+
+  /**
+   * Drag a grid separator. The pointer is tracked across the whole row or
+   * column, and the clamp is the guarantee that neither panel can be dragged
+   * out of usefulness — a chart with no room to label its axes is worse than
+   * one that is slightly too small.
+   */
+  function startResize(startEvent, { axis, set, save }) {
+    startEvent.preventDefault();
+    const container = startEvent.currentTarget.parentElement;
+    if (!container) {
+      return;
+    }
+    const rect = container.getBoundingClientRect();
+
+    const pctAt = (event) =>
+      axis === "x"
+        ? ((event.clientX - rect.left) / rect.width) * 100
+        : ((event.clientY - rect.top) / rect.height) * 100;
+
+    const onMove = (moveEvent) => set(pctAt(moveEvent));
+    const onUp = (upEvent) => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      save(pctAt(upEvent));
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function resizeKeyHandler(current, save, [less, more]) {
+    return (event) => {
+      const step = event.shiftKey ? 5 : 2;
+      if (event.key === less) {
+        event.preventDefault();
+        save(current - step);
+      } else if (event.key === more) {
+        event.preventDefault();
+        save(current + step);
+      }
+    };
+  }
+
+  // QC-058: the payload is translated once, here, so every chart, KPI,
+  // filter and preset below reads in the chosen language without each
+  // component knowing about it.
+  const board = useMemo(
+    () => translatePayload(dashboard, language),
+    [dashboard, language]
+  );
+
+  const activeKey = view || board?.default_view || "";
+
   const activeView = useMemo(() => {
-    if (!dashboard) {
+    if (!board) {
       return null;
     }
-    return (
-      dashboard.views?.[view] ||
-      dashboard.views?.[dashboard.default_view] ||
-      null
+    const raw =
+      board.views?.[view] ||
+      board.views?.[board.default_view] ||
+      null;
+    return applyFilters(
+      raw,
+      `view:${activeKey}`,
+      board.filters,
+      picked,
+      t("Others")
     );
-  }, [dashboard, view]);
+  }, [board, view, activeKey, picked, t]);
+
+  const sideTop = useMemo(
+    () =>
+      applyFilters(
+        board?.side?.top,
+        "side:top",
+        board?.filters,
+        picked,
+        t("Others")
+      ),
+    [board, picked, t]
+  );
+
+  const sideBottom = useMemo(
+    () =>
+      applyFilters(
+        board?.side?.bottom,
+        "side:bottom",
+        board?.filters,
+        picked,
+        t("Others")
+      ),
+    [board, picked, t]
+  );
 
   async function runSimulation() {
-    if (!dashboard?.simulator?.action || simBusy) {
+    if (!board?.simulator?.action || simBusy) {
       return;
     }
 
@@ -112,13 +355,13 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
     setSimError("");
 
     try {
-      const action = dashboard.simulator.action;
+      const action = board.simulator.action;
       let body = { ...values };
 
       if (action === "calculate_collection_scenario") {
         body = {
           customer_name:
-            dashboard.simulator.submit_data?.customer_name || "Customer A",
+            board.simulator.submit_data?.customer_name || "Customer A",
           cash_to_collect_idr_mn: Number(values.cash_to_collect_idr_mn || 0),
           discount_pct: Number(values.discount_pct || 0),
         };
@@ -131,10 +374,10 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
           opex: Number(values.opex || 0),
           scope,
           // Same EBITDA margin target the KPI card shows.
-          target: dashboard.simulator.baseline?.target ?? 0.15,
+          target: board.simulator.baseline?.target ?? 0.15,
         };
       } else if (action === "simulate_leakage") {
-        const baseline = dashboard.simulator.baseline || {};
+        const baseline = board.simulator.baseline || {};
         body = {
           hold: Number(values.hold || 0),
           dupRec: Number(values.dupRec || 0),
@@ -168,14 +411,14 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
     <section className="workboard" data-testid="workboard">
       {loading ? (
         <DashboardSkeleton label={`Loading ${agentName} dashboard`} />
-      ) : error || !dashboard ? (
+      ) : error || !board ? (
         <div className="workboard-status error" role="alert">
           {error || "Dashboard unavailable."}
         </div>
       ) : (
         <>
           <div className="kpi-row" data-testid="kpi-row">
-            {(dashboard.kpis || []).map((kpi) => {
+            {(board.kpis || []).map((kpi) => {
               const status = kpi.status || (kpi.alert ? "bad" : "good");
               const hasProgress = typeof kpi.progress === "number";
               const hasTrend =
@@ -244,19 +487,78 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
             })}
           </div>
 
-          <div className="workboard-mid">
+          <div className="board-controls">
+            <FilterBar
+              t={t}
+              definitions={board.filters}
+              picked={picked}
+              onPick={(id, value) => {
+                setPicked((current) => ({ ...current, [id]: value }));
+                // Bring the panel the filter acts on into focus, or the
+                // control appears to do nothing. Clearing does not move the
+                // board — that would yank the view away mid-read.
+                if (value) {
+                  const definition = (board.filters || []).find(
+                    (item) => item.id === id
+                  );
+                  const target = focusFor(definition, `view:${activeKey}`);
+                  if (target) {
+                    setView(target);
+                  }
+                }
+              }}
+              onClear={() => setPicked({})}
+            />
+
+          </div>
+
+          <div
+            className="workboard-mid"
+            style={{ "--board-main": `${split}%` }}
+          >
             <InfoTarget
               as="article"
               className="focus-card"
               testId="focus-panel"
-              infoKey={`view:${view || dashboard.default_view}`}
+              infoKey={`view:${view || board.default_view}`}
               agentId={agentId}
               onOpen={openInfo}
             >
-              <FocusBody view={activeView} />
+              <FocusBody view={activeView} t={t} />
             </InfoTarget>
 
-            <div className="side-col" data-testid="side-panels">
+            {/* Slide to trade main-chart width against the side panels.
+                Double-click restores the default split. */}
+            <div
+              className="board-resize-handle"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize charts"
+              aria-valuenow={Math.round(split)}
+              aria-valuemin={BOARD_SPLIT_MIN}
+              aria-valuemax={BOARD_SPLIT_MAX}
+              tabIndex={0}
+              title="Drag to resize · double-click to reset"
+              data-testid="board-resize-handle"
+              onMouseDown={(event) =>
+                startResize(event, {
+                  axis: "x",
+                  set: (pct) => setSplit(clampSplit(pct)),
+                  save: saveSplit,
+                })
+              }
+              onKeyDown={resizeKeyHandler(split, saveSplit, [
+                "ArrowLeft",
+                "ArrowRight",
+              ])}
+              onDoubleClick={() => saveSplit(BOARD_SPLIT_DEFAULT)}
+            />
+
+            <div
+              className="side-col"
+              data-testid="side-panels"
+              style={{ "--side-top": `${sideSplit}%` }}
+            >
               <InfoTarget
                 as="article"
                 className="side-card"
@@ -264,8 +566,37 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
                 agentId={agentId}
                 onOpen={openInfo}
               >
-                <FocusBody view={dashboard.side?.top} compact />
+                <FocusBody view={sideTop} t={t} compact />
               </InfoTarget>
+
+              {/* Same slider, one axis over: trade height between the two
+                  side charts. Every agent puts a chart worth resizing up
+                  there — the GM pool, the ageing mix, the leakage mix. */}
+              <div
+                className="side-resize-handle"
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize side charts"
+                aria-valuenow={Math.round(sideSplit)}
+                aria-valuemin={SIDE_SPLIT_MIN}
+                aria-valuemax={SIDE_SPLIT_MAX}
+                tabIndex={0}
+                title="Drag to resize · double-click to reset"
+                data-testid="side-resize-handle"
+                onMouseDown={(event) =>
+                  startResize(event, {
+                    axis: "y",
+                    set: (pct) => setSideSplit(clampSideSplit(pct)),
+                    save: saveSideSplit,
+                  })
+                }
+                onKeyDown={resizeKeyHandler(sideSplit, saveSideSplit, [
+                  "ArrowUp",
+                  "ArrowDown",
+                ])}
+                onDoubleClick={() => saveSideSplit(SIDE_SPLIT_DEFAULT)}
+              />
+
               <InfoTarget
                 as="article"
                 className="side-card"
@@ -273,13 +604,14 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
                 agentId={agentId}
                 onOpen={openInfo}
               >
-                <FocusBody view={dashboard.side?.bottom} compact />
+                <FocusBody view={sideBottom} t={t} compact />
               </InfoTarget>
             </div>
           </div>
 
           <WhatIfBar
-            simulator={dashboard.simulator}
+            t={t}
+            simulator={board.simulator}
             values={values}
             scope={scope}
             setScope={setScope}
@@ -293,6 +625,8 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
             busy={simBusy}
             error={simError}
             result={simResult}
+            onPreset={applyPreset}
+            onReset={resetLevers}
             agentId={agentId}
             onOpenInfo={openInfo}
           />
@@ -428,16 +762,33 @@ function KpiSparkline({ points }) {
   );
 }
 
-function FocusBody({ view, compact = false }) {
+function FocusBody({ view, t, compact = false }) {
   if (!view) {
-    return <p className="workboard-empty">No view data.</p>;
+    return <p className="workboard-empty">{t("No view data.")}</p>;
+  }
+
+  // QC-043: say the filter emptied it. An all-zero chart is what QC-024
+  // reported, and a filter must not be able to recreate that reading.
+  if (isEmptyAfterFilter(view)) {
+    return (
+      <p className="workboard-empty">
+        {t("No rows match the current filter.")}
+      </p>
+    );
   }
 
   if (view.table) {
     return (
       <div className="focus-table-wrap">
         <div className="focus-title-row">
-          <h3>{view.title}</h3>
+          <div>
+            <h3>{view.title}</h3>
+            {/* QC-035: a worklist without a period is as ambiguous as a bar
+                without one. */}
+            {view.period ? (
+              <p className="focus-period">{view.period}</p>
+            ) : null}
+          </div>
           {view.tag ? <span className="focus-tag">{view.tag}</span> : null}
         </div>
         <table className="focus-table">
@@ -475,7 +826,85 @@ function FocusBody({ view, compact = false }) {
   );
 }
 
+// QC-043. Only the dimensions the payload says it can be sliced by appear —
+// this dataset has no entity, store or month column, and an empty control
+// would imply it did.
+function FilterBar({ t, definitions, picked, onPick, onClear }) {
+  if (!definitions?.length) {
+    return null;
+  }
+
+  const activeCount = definitions.filter((d) => picked?.[d.id]).length;
+
+  return (
+    <div className="filter-bar" data-testid="filter-bar">
+      {definitions.map((definition) => (
+        <label key={definition.id} className="filter-control">
+          <span>{definition.label}</span>
+          <select
+            value={picked?.[definition.id] || ""}
+            onChange={(event) => onPick(definition.id, event.target.value)}
+          >
+            <option value="">{t("All")}</option>
+            {definition.options.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+
+      {activeCount > 0 ? (
+        <button type="button" className="filter-clear" onClick={onClear}>
+          Clear {activeCount} filter{activeCount > 1 ? "s" : ""}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+// QC-052 presets and QC-059 reset to baseline.
+//
+// Presets come from the payload, not from here: only the agent knows which
+// lever settings are worth a button.
+function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset }) {
+  if (!presets?.length && atBaseline) {
+    return null;
+  }
+
+  return (
+    <div className="preset-bar" data-testid="preset-bar">
+      <span className="whatif-label">{t("Presets")}</span>
+
+      {(presets || []).map((preset) => (
+        <button
+          key={preset.id}
+          type="button"
+          className="preset-btn"
+          title={preset.note}
+          disabled={busy}
+          onClick={() => onPreset(preset)}
+        >
+          {t(preset.label)}
+        </button>
+      ))}
+
+      <button
+        type="button"
+        className="preset-btn preset-btn--quiet"
+        data-testid="reset-to-baseline"
+        disabled={busy || atBaseline}
+        onClick={onReset}
+      >
+        {t("Reset to baseline")}
+      </button>
+    </div>
+  );
+}
+
 function WhatIfBar({
+  t,
   simulator,
   values,
   scope,
@@ -485,6 +914,8 @@ function WhatIfBar({
   busy,
   error,
   result,
+  onPreset,
+  onReset,
   agentId,
   onOpenInfo,
 }) {
@@ -493,11 +924,17 @@ function WhatIfBar({
   }
 
   const summary = summarizeResult(simulator.action, result, simulator);
+  const inputs = simulator.inputs || [];
+  const atBaseline = inputs.every(
+    (input) =>
+      Number(values[input.id] ?? input.default ?? 0) ===
+      Number(input.default ?? 0)
+  );
 
   return (
     <section className="whatif-bar" data-testid="whatif-bar">
       <div className="whatif-top">
-        <strong>What-if simulator</strong>
+        <strong>{t("What-if simulator")}</strong>
         <div className="whatif-controls">
           {Array.isArray(simulator.scope_options) &&
             simulator.scope_options.map((option) => (
@@ -507,7 +944,7 @@ function WhatIfBar({
                 className={"scope-btn" + (scope === option ? " on" : "")}
                 onClick={() => setScope(option)}
               >
-                {option === "all" ? "All lines" : "FX lines"}
+                {t(option === "all" ? "All lines" : "FX lines")}
               </button>
             ))}
           <button
@@ -517,14 +954,23 @@ function WhatIfBar({
             disabled={busy}
             onClick={onCalculate}
           >
-            {busy ? "Running scenario…" : "Calculate simulation"}
+            {t(busy ? "Running scenario…" : "Calculate simulation")}
           </button>
         </div>
       </div>
 
+      <PresetBar
+        t={t}
+        presets={simulator.presets}
+        busy={busy}
+        atBaseline={atBaseline}
+        onPreset={onPreset}
+        onReset={onReset}
+      />
+
       <div className={"whatif-grid" + (busy ? " is-loading" : "")}>
         <div className="whatif-levers">
-          <div className="whatif-label">Levers</div>
+          <div className="whatif-label">{t("Levers")}</div>
           {(simulator.inputs || []).map((input) => (
             <label key={input.id} className="lever">
               <span>
@@ -586,6 +1032,10 @@ function WhatIfBar({
               </InfoTarget>
             ))}
 
+            {/* This is where a run gets drawn. It was removed when the board's
+                own charts redrew on the scenario — but that feature is gone,
+                so without this a calculation produced numbers and no picture
+                at all. */}
             {summary.chart ? (
               <InfoTarget
                 className="whatif-mini-chart"

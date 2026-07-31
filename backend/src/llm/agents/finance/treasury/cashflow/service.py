@@ -230,8 +230,19 @@ def simulate(
         with session_scope() as managed_session:
             return simulate(request, managed_session)
 
-    baseline = get_baseline(session)
+    return simulate_with_baseline(request, get_baseline(session))
 
+
+def simulate_with_baseline(
+    request: CashFlowSimulationRequest,
+    baseline: CashFlowBaselineResponse,
+) -> CashFlowSimulationResponse:
+    """The simulation arithmetic, with the forecast already loaded.
+
+    Split out from `simulate` so the Week 5 / Week 6 trade-off can be checked
+    against a fixture forecast without a database — see
+    tests/test_action_impact.py, which covers QC-004 and QC-005.
+    """
     week5 = get_week_position(baseline, 5)
     week6 = get_week_position(baseline, 6)
     week7 = get_week_position(baseline, 7)
