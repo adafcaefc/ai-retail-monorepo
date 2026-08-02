@@ -28,19 +28,32 @@ SqlType = Literal[
 
 _SQL_DIALECT = "postgres"
 
+# Finance reads the `newdata` star schema. The allow-list has to move with it:
+# a chat agent free-querying `financial_performance.*` while the board is built
+# from `newdata` is QC-002 returning through a different door — same screen, two
+# datasets, no way for the reader to tell which is which.
+#
+# `simulator_levers` is the deliberate exception. The new dataset defines no
+# levers, so that one table is still the old schema's, exactly as
+# `performance_data._simulator_levers` reads it.
 FINANCE_ALLOWED_TABLES = (
     "audit.import_batches",
-    "financial_performance.assumptions",
-    "financial_performance.kpis",
-    "financial_performance.operating_expenses",
-    "financial_performance.product_margins",
-    "financial_performance.product_performance",
-    "financial_performance.profit_summary",
-    "financial_performance.variance_drivers",
-    "financial_performance.recommendations",
+    "newdata.dim_legal_entity",
+    "newdata.dim_store",
+    "newdata.dim_category",
+    "newdata.dim_item",
+    "newdata.fact_sales",
+    "newdata.fact_budget",
+    "newdata.fact_opex",
+    "newdata.finance_pl",
+    "newdata.finance_ebitda_bridge",
+    "newdata.finance_by_entity",
+    "newdata.finance_by_category",
+    "newdata.finance_by_store",
+    "newdata.finance_by_item",
+    "newdata.finance_by_month",
+    "newdata.agent_kpis",
     "financial_performance.simulator_levers",
-    "financial_performance.simulator_product_results",
-    "financial_performance.simulator_summary",
 )
 
 CASHFLOW_ALLOWED_TABLES = (
@@ -414,14 +427,20 @@ def query_financial_performance(
     queries: list[str],
 ) -> dict[str, Any]:
     """
-    Run free-form SELECT queries against financial_performance tables.
+    Run free-form SELECT queries against the newdata finance tables.
 
     Accepts a list of SQL SELECT statements (one statement per list item).
     Each result set is capped at 100 rows (truncated=true when more matched).
-    Allowed tables: audit.import_batches and all financial_performance.* tables.
+    Allowed tables: the newdata dimensions (dim_*), facts (fact_sales,
+    fact_budget, fact_opex) and derived Finance packs (finance_*).
     Prefer get_financial_performance_snapshot for a standard overview; use this
     when you need custom filters, joins, or columns beyond the snapshot.
-    Always scope domain rows with the latest completed import_batch_id.
+
+    Do NOT filter by import_batch_id: the newdata tables do not have that
+    column. The whole workbook is one batch, so there is nothing to
+    discriminate. Scope a query by legal_entity_id and by month or
+    month_index instead. The snapshot covers month_index >= 202510, the twelve
+    months to September 2026; use the same window to agree with the dashboard.
     """
 
     return _domain_query(
