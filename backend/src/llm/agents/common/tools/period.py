@@ -100,17 +100,22 @@ def finance_period(connection, import_batch_id: int | None) -> str:
 def treasury_period(connection, import_batch_id: int | None) -> str:
     rows = _rows(
         connection,
-        "SELECT min(week_start) AS opens, max(week_end) AS closes, "
-        "count(*) AS weeks FROM cashflow.weekly_forecast "
-        "WHERE import_batch_id = :id",
-        {"id": import_batch_id},
+        """
+        SELECT
+            MIN(CAST(regexp_replace(week, '\\D', '', 'g') AS INT)) AS lo,
+            MAX(CAST(regexp_replace(week, '\\D', '', 'g') AS INT)) AS hi,
+            COUNT(*) AS weeks
+        FROM newdata.fact_cashflow_weekly
+        """,
+        {},
     )
     row = rows[0] if rows else {}
-    span = _span(_as_date(row.get("opens")), _as_date(row.get("closes")))
     weeks = int(row.get("weeks") or 0)
-    if span and weeks:
-        return f"{weeks}-week forecast · {span}"
-    return span or "rolling weekly forecast"
+    lo = row.get("lo")
+    hi = row.get("hi")
+    if lo is not None and hi is not None and weeks:
+        return f"{weeks}-week forecast · W{lo}–W{hi}"
+    return "rolling weekly forecast"
 
 
 def leakage_period(connection, import_batch_id: int | None) -> str:

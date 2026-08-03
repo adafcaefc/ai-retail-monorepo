@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
+from sqlalchemy import text
 
-from . import repository
+from src.llm.agents.common.tools.db import _latest_batch_id, _read_connection
 from .models import (
     CashFlowBaselineResponse,
     CashFlowDriver,
@@ -10,136 +10,153 @@ from .models import (
     CashFlowSimulationResponse,
     WeeklyCashPosition,
 )
-from src.db.db import session_scope
+
+BATCH_NAME = "new_dataset"
 
 
-def get_baseline(
-    session: Session | None = None,
-) -> CashFlowBaselineResponse:
-    if session is None:
-        with session_scope() as managed_session:
-            return get_baseline(managed_session)
+class CashFlowDataError(RuntimeError):
+    """Raised when a required forecast row is missing."""
 
-    import_batch = repository.get_latest_import_batch(
-        session
-    )
-    import_batch_id = int(import_batch.id)
 
-    weekly_rows = repository.get_weekly_positions(
-        session,
-        import_batch_id,
-    )
+def _week_number(label: object) -> int:
+    """'W5' -> 5. The forecast keeps the week as text in newdata."""
+    digits = "".join(ch for ch in str(label) if ch.isdigit())
+    return int(digits) if digits else 0
 
-    weekly_positions = [
-        WeeklyCashPosition(
-            week_number=int(row.week_number),
-            opening_cash_idr_mn=float(
-                row.opening_cash_idr_mn
+
+def _fx_assumptions(connection) -> dict[str, float]:
+    return {
+        str(row["metric"]): float(row["value"] or 0)
+        for row in connection.execute(
+            text("SELECT metric, value FROM newdata.fx_assumptions")
+        ).mappings()
+    }
+
+
+def get_baseline(session=None) -> CashFlowBaselineResponse:
+    """The verified forecast, assumptions and drivers, read from newdata.
+
+    `session` is accepted and ignored so callers that still pass one keep
+    working; the read now uses a bounded read-only connection instead.
+    """
+    with _read_connection() as connection:
+        import_batch_id = _latest_batch_id(connection, BATCH_NAME)
+
+        weekly_rows = connection.execute(
+            text(
+                """
+                SELECT week, opening_cash_idr_mn, closing_cash_idr_mn,
+                       min_buffer_idr_mn, headroom_idr_mn, status
+                FROM newdata.fact_cashflow_weekly
+                """
+            )
+        ).mappings().all()
+
+        weekly_positions = sorted(
+            (
+                WeeklyCashPosition(
+                    week_number=_week_number(row["week"]),
+                    opening_cash_idr_mn=float(row["opening_cash_idr_mn"] or 0),
+                    closing_cash_idr_mn=float(row["closing_cash_idr_mn"] or 0),
+                    minimum_buffer_idr_mn=float(row["min_buffer_idr_mn"] or 0),
+                    headroom_idr_mn=float(row["headroom_idr_mn"] or 0),
+                    status=str(row["status"] or "OK"),
+                )
+                for row in weekly_rows
             ),
-            closing_cash_idr_mn=float(
-                row.closing_cash_idr_mn
-            ),
-            minimum_buffer_idr_mn=float(
-                row.minimum_buffer_idr_mn
-            ),
-            headroom_idr_mn=float(
-                row.headroom_idr_mn
-            ),
-            status=str(row.status),
+            key=lambda p: p.week_number,
         )
-        for row in weekly_rows
-    ]
 
-    minimum_buffer = repository.get_numeric_assumption(
-        session,
-        import_batch_id,
-        "Minimum cash buffer (IDR mn)",
-    )
+        available = {p.week_number for p in weekly_positions}
+        if not {5, 6, 7}.issubset(available):
+            raise CashFlowDataError(
+                "Week 5, Week 6, and Week 7 forecast rows must be available."
+            )
 
-    spot_rate = repository.get_numeric_assumption(
-        session,
-        import_batch_id,
-        "Spot USD/IDR",
-    )
-
-    forward_rate = repository.get_numeric_assumption(
-        session,
-        import_batch_id,
-        "13-week forward USD/IDR",
-    )
-
-    adverse_rate = repository.get_numeric_assumption(
-        session,
-        import_batch_id,
-        "Adverse rate  = spot x (1+adverse)",
-    )
-
-    net_usd_exposure = repository.get_net_usd_exposure(
-        session,
-        import_batch_id,
-    )
-
-    customer_driver_row = (
-        repository.get_customer_delay_driver(
-            session,
-            import_batch_id,
+        minimum_buffer = (
+            weekly_positions[0].minimum_buffer_idr_mn if weekly_positions else 0.0
         )
+
+        # Every FX figure is already computed on 43_FX_Assumptions.
+        fx = _fx_assumptions(connection)
+        spot = fx.get("Spot rate (IDR/USD)", 0.0)
+        adverse = fx.get("Adverse scenario rate (IDR/USD)", 0.0)
+        forward_points = fx.get("Forward points (IDR/USD)", 0.0)
+        net_usd_exposure = fx.get("Net USD exposure (USD)", 0.0)
+        recommended_hedge = fx.get("Recommended hedge (USD)", 0.0)
+        forward_rate = spot + forward_points
+
+        # Simulator caps. The old code pinned these to two demo rows
+        # (AR-012 / AP-015). newdata carries the cash lines, so the caps are
+        # the largest movable inflow and the largest deferrable outflow.
+        accel = connection.execute(
+            text(
+                """
+                SELECT reference, counterparty, amount_idr_mn, week
+                FROM newdata.fact_cashflow_lines
+                WHERE direction = 'Inflow'
+                ORDER BY amount_idr_mn DESC
+                LIMIT 1
+                """
+            )
+        ).mappings().first()
+
+        defer = connection.execute(
+            text(
+                """
+                SELECT reference, counterparty, amount_idr_mn, week
+                FROM newdata.fact_cashflow_lines
+                WHERE direction = 'Outflow'
+                  AND commitment_type ILIKE '%flex%'
+                ORDER BY amount_idr_mn DESC
+                LIMIT 1
+                """
+            )
+        ).mappings().first()
+        if defer is None:  # no line tagged flexible -> largest outflow, capped
+            defer = connection.execute(
+                text(
+                    """
+                    SELECT reference, counterparty, amount_idr_mn, week
+                    FROM newdata.fact_cashflow_lines
+                    WHERE direction = 'Outflow'
+                    ORDER BY amount_idr_mn DESC
+                    LIMIT 1
+                    """
+                )
+            ).mappings().first()
+
+    customer_driver = CashFlowDriver(
+        reference_number=str((accel or {}).get("reference") or "AR"),
+        counterparty_name=str((accel or {}).get("counterparty") or "Top customer"),
+        amount_idr_mn=float((accel or {}).get("amount_idr_mn") or 8000),
+        original_week=_week_number((accel or {}).get("week")) or None,
+        expected_week=_week_number((accel or {}).get("week")) or None,
+        description="Largest movable customer receipt (simulator cap).",
     )
 
-    payment_driver_row = (
-        repository.get_deferrable_payment_driver(
-            session,
-            import_batch_id,
-        )
+    payment_driver = CashFlowDriver(
+        reference_number=str((defer or {}).get("reference") or "AP"),
+        counterparty_name=str((defer or {}).get("counterparty") or "Vendor"),
+        amount_idr_mn=float((defer or {}).get("amount_idr_mn") or 3000),
+        payment_week=_week_number((defer or {}).get("week")) or None,
+        is_deferrable=True,
+        description="Largest deferrable vendor payment (simulator cap).",
     )
 
     return CashFlowBaselineResponse(
         import_batch_id=import_batch_id,
-        workbook_name=str(import_batch.workbook_name),
-        workbook_version=import_batch.workbook_version,
+        workbook_name="new_dataset",
+        workbook_version=None,
         weekly_positions=weekly_positions,
         minimum_buffer_idr_mn=minimum_buffer,
         net_usd_exposure=net_usd_exposure,
-        recommended_hedge_usd=2_000_000.0,
-        spot_rate_idr_per_usd=spot_rate,
+        recommended_hedge_usd=recommended_hedge,
+        spot_rate_idr_per_usd=spot,
         forward_rate_idr_per_usd=forward_rate,
-        adverse_rate_idr_per_usd=adverse_rate,
-        customer_delay_driver=CashFlowDriver(
-            reference_number=str(
-                customer_driver_row.invoice_number
-            ),
-            counterparty_name=str(
-                customer_driver_row.customer_name
-            ),
-            amount_idr_mn=float(
-                customer_driver_row.idr_value_mn
-            ),
-            original_week=int(
-                customer_driver_row.original_week
-            ),
-            expected_week=int(
-                customer_driver_row.expected_week
-            ),
-            description=customer_driver_row.notes,
-        ),
-        deferrable_payment_driver=CashFlowDriver(
-            reference_number=str(
-                payment_driver_row.bill_number
-            ),
-            counterparty_name=str(
-                payment_driver_row.vendor_name
-            ),
-            amount_idr_mn=float(
-                payment_driver_row.amount_idr_mn
-            ),
-            payment_week=int(
-                payment_driver_row.payment_week
-            ),
-            is_deferrable=bool(
-                payment_driver_row.is_deferrable
-            ),
-            description=payment_driver_row.notes,
-        ),
+        adverse_rate_idr_per_usd=adverse,
+        customer_delay_driver=customer_driver,
+        deferrable_payment_driver=payment_driver,
     )
 
 
@@ -151,7 +168,7 @@ def get_week_position(
         if position.week_number == week_number:
             return position
 
-    raise repository.CashFlowDataError(
+    raise CashFlowDataError(
         f"Week {week_number} baseline is unavailable."
     )
 
@@ -224,13 +241,9 @@ def build_recommendation(
 
 def simulate(
     request: CashFlowSimulationRequest,
-    session: Session | None = None,
 ) -> CashFlowSimulationResponse:
-    if session is None:
-        with session_scope() as managed_session:
-            return simulate(request, managed_session)
-
-    return simulate_with_baseline(request, get_baseline(session))
+    """Recalculate Weeks 5-7. get_baseline() manages its own connection."""
+    return simulate_with_baseline(request, get_baseline())
 
 
 def simulate_with_baseline(
@@ -247,18 +260,10 @@ def simulate_with_baseline(
     week6 = get_week_position(baseline, 6)
     week7 = get_week_position(baseline, 7)
 
-    maximum_collection = (
-        baseline.customer_delay_driver.amount_idr_mn
-    )
+    maximum_collection = baseline.customer_delay_driver.amount_idr_mn
+    maximum_deferral = baseline.deferrable_payment_driver.amount_idr_mn
 
-    maximum_deferral = (
-        baseline.deferrable_payment_driver.amount_idr_mn
-    )
-
-    if (
-        request.accelerate_collection_idr_mn
-        > maximum_collection
-    ):
+    if request.accelerate_collection_idr_mn > maximum_collection:
         raise ValueError(
             "Accelerated collection cannot exceed "
             f"IDR {maximum_collection:,.2f} million."
@@ -282,16 +287,8 @@ def simulate_with_baseline(
         + request.defer_payment_idr_mn
         + request.credit_line_draw_idr_mn
     )
-
-    week6_cash = (
-        week6.closing_cash_idr_mn
-        - request.defer_payment_idr_mn
-    )
-
-    week7_cash = (
-        week7.closing_cash_idr_mn
-        - request.accelerate_collection_idr_mn
-    )
+    week6_cash = week6.closing_cash_idr_mn - request.defer_payment_idr_mn
+    week7_cash = week7.closing_cash_idr_mn - request.accelerate_collection_idr_mn
 
     minimum_buffer = baseline.minimum_buffer_idr_mn
 
@@ -299,173 +296,91 @@ def simulate_with_baseline(
     week6_headroom = week6_cash - minimum_buffer
     week7_headroom = week7_cash - minimum_buffer
 
-    headrooms = [
-        week5_headroom,
-        week6_headroom,
-        week7_headroom,
-    ]
-
-    weeks_below_buffer = sum(
-        headroom < 0
-        for headroom in headrooms
-    )
+    headrooms = [week5_headroom, week6_headroom, week7_headroom]
+    weeks_below_buffer = sum(headroom < 0 for headroom in headrooms)
 
     status = determine_status(
-        week5_cash,
-        week6_cash,
-        week7_cash,
-        minimum_buffer,
+        week5_cash, week6_cash, week7_cash, minimum_buffer
     )
 
     hedge_coverage = 0.0
-
     if baseline.net_usd_exposure > 0:
         hedge_coverage = (
-            request.hedge_usd
-            / baseline.net_usd_exposure
-            * 100
+            request.hedge_usd / baseline.net_usd_exposure * 100
         )
 
     adverse_rate_difference = (
-        baseline.adverse_rate_idr_per_usd
-        - baseline.spot_rate_idr_per_usd
+        baseline.adverse_rate_idr_per_usd - baseline.spot_rate_idr_per_usd
     )
-
     forward_rate_difference = (
-        baseline.forward_rate_idr_per_usd
-        - baseline.spot_rate_idr_per_usd
+        baseline.forward_rate_idr_per_usd - baseline.spot_rate_idr_per_usd
     )
 
     downside_avoided = (
-        request.hedge_usd
-        * adverse_rate_difference
-        / 1_000_000
+        request.hedge_usd * adverse_rate_difference / 1_000_000
     )
-
     forward_premium = (
-        request.hedge_usd
-        * forward_rate_difference
-        / 1_000_000
+        request.hedge_usd * forward_rate_difference / 1_000_000
     )
-
-    residual_exposure = (
-        baseline.net_usd_exposure
-        - request.hedge_usd
-    )
+    residual_exposure = baseline.net_usd_exposure - request.hedge_usd
 
     warnings: list[str] = []
-
     if request.accelerate_collection_idr_mn > 0:
         warnings.append(
-            "Accelerated collection depends on Customer A "
-            "agreeing to pay earlier."
+            "Accelerated collection depends on the customer agreeing to "
+            "pay earlier."
         )
-
     if request.defer_payment_idr_mn > 0:
         warnings.append(
-            "Payment deferral requires confirmation that the "
-            "revised date remains within vendor terms."
+            "Payment deferral requires confirmation that the revised date "
+            "remains within vendor terms."
         )
-
     if request.credit_line_draw_idr_mn > 0:
         warnings.append(
-            "Credit-line utilization creates interest cost and "
-            "uses committed facility headroom."
+            "Credit-line utilization creates interest cost and uses "
+            "committed facility headroom."
         )
-
     if request.hedge_usd > 0:
         warnings.append(
-            "Forward pricing is indicative and must be refreshed "
-            "with the treasury bank before execution."
+            "Forward pricing is indicative and must be refreshed with the "
+            "treasury bank before execution."
         )
 
     assumptions = [
-        (
-            "Accelerated collection moves cash from Week 7 "
-            "into Week 5."
-        ),
-        (
-            "Deferred vendor payment moves cash from Week 5 "
-            "into Week 6."
-        ),
-        (
-            "Credit-line draw increases Week 5 liquidity without "
-            "including interest expense in this simulation."
-        ),
-        (
-            "Forward hedge reduces FX exposure without immediate "
-            "Week 5 cash outflow."
-        ),
-        (
-            "Interest, fees and FX settlement timing are outside "
-            "this simulation."
-        ),
+        "Accelerated collection moves cash from Week 7 into Week 5.",
+        "Deferred vendor payment moves cash from Week 5 into Week 6.",
+        "Credit-line draw increases Week 5 liquidity without including "
+        "interest expense in this simulation.",
+        "Forward hedge reduces FX exposure without immediate Week 5 cash "
+        "outflow.",
+        "Interest, fees and FX settlement timing are outside this "
+        "simulation.",
     ]
 
     return CashFlowSimulationResponse(
         import_batch_id=baseline.import_batch_id,
         accelerate_collection_idr_mn=round(
-            request.accelerate_collection_idr_mn,
-            2,
+            request.accelerate_collection_idr_mn, 2
         ),
-        defer_payment_idr_mn=round(
-            request.defer_payment_idr_mn,
-            2,
-        ),
-        credit_line_draw_idr_mn=round(
-            request.credit_line_draw_idr_mn,
-            2,
-        ),
+        defer_payment_idr_mn=round(request.defer_payment_idr_mn, 2),
+        credit_line_draw_idr_mn=round(request.credit_line_draw_idr_mn, 2),
         hedge_usd=round(request.hedge_usd, 2),
         week5_cash_idr_mn=round(week5_cash, 2),
         week6_cash_idr_mn=round(week6_cash, 2),
         week7_cash_idr_mn=round(week7_cash, 2),
-        week5_headroom_idr_mn=round(
-            week5_headroom,
-            2,
-        ),
-        week6_headroom_idr_mn=round(
-            week6_headroom,
-            2,
-        ),
-        week7_headroom_idr_mn=round(
-            week7_headroom,
-            2,
-        ),
-        minimum_buffer_idr_mn=round(
-            minimum_buffer,
-            2,
-        ),
-        lowest_headroom_idr_mn=round(
-            min(headrooms),
-            2,
-        ),
+        week5_headroom_idr_mn=round(week5_headroom, 2),
+        week6_headroom_idr_mn=round(week6_headroom, 2),
+        week7_headroom_idr_mn=round(week7_headroom, 2),
+        minimum_buffer_idr_mn=round(minimum_buffer, 2),
+        lowest_headroom_idr_mn=round(min(headrooms), 2),
         weeks_below_buffer=weeks_below_buffer,
-        net_usd_exposure=round(
-            baseline.net_usd_exposure,
-            2,
-        ),
-        residual_usd_exposure=round(
-            residual_exposure,
-            2,
-        ),
-        hedge_coverage_pct=round(
-            hedge_coverage,
-            2,
-        ),
-        fx_downside_avoided_idr_mn=round(
-            downside_avoided,
-            2,
-        ),
-        forward_premium_idr_mn=round(
-            forward_premium,
-            2,
-        ),
+        net_usd_exposure=round(baseline.net_usd_exposure, 2),
+        residual_usd_exposure=round(residual_exposure, 2),
+        hedge_coverage_pct=round(hedge_coverage, 2),
+        fx_downside_avoided_idr_mn=round(downside_avoided, 2),
+        forward_premium_idr_mn=round(forward_premium, 2),
         status=status,
-        recommendation=build_recommendation(
-            status,
-            request,
-        ),
+        recommendation=build_recommendation(status, request),
         assumptions=assumptions,
         warnings=warnings,
     )
