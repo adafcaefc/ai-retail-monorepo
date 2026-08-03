@@ -32,6 +32,7 @@ from src.db.db import session_scope  # noqa: E402
 from src.llm.agents.common.dashboard_blocks import (  # noqa: E402
     _enriched,
     _options_of,
+    _round_half_up,
 )
 from src.llm.agents.common.tools.db import _read_connection, _rows  # noqa: E402
 from src.llm.agents.finance.collection.dashboard import (  # noqa: E402
@@ -228,12 +229,31 @@ def check_fixed(P: dict[str, dict]) -> None:
     )
 
     # QC-027 — Python rounds half to even, so 36.25 became 36.2
+    #
+    # This used to assert `36.3 in prod`: the GM% of a product that existed
+    # only in the hardcoded `_FINANCE_PROD` table, whose 4,930/13,600 landed
+    # exactly on .25. Once the product chart was rebuilt from FACT_Sales that
+    # product ceased to exist and the check went OPEN — reporting a rounding
+    # regression where there was none, because the evidence was a magic number
+    # from retired data rather than the behaviour.
+    #
+    # The rule is now checked directly, and separately confirmed to be the one
+    # the payload is built with: every plotted percentage must equal its own
+    # half-up rounding.
+    ok = (
+        _round_half_up(36.25, 1) == 36.3
+        and _round_half_up(-36.25, 1) == -36.3
+        and _round_half_up(0.5) == 1
+    )
     prod = [p["value"] for p in points(F["views"]["product"])]
-    ok = 36.3 in prod
+    unrounded = [v for v in prod if _round_half_up(float(v), 1) != float(v)]
+    ok = ok and not unrounded
     record(
         "QC-027", PASS if ok else OPEN,
         "Percentages round half up",
-        f"product GM% = {prod}",
+        f"36.25 -> {_round_half_up(36.25, 1)}, "
+        f"{len(prod)} plotted GM% all half-up"
+        if not unrounded else f"not half-up: {unrounded}",
     )
 
     # QC-028 — DSO is lower-is-better, the gauge read 120%

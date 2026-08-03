@@ -302,6 +302,44 @@ def finance_snapshot() -> dict:
             # Must be filtered out — not an opex line.
             {"line_item": "Revenue", "actual_idr_mn": 46510, "budget_idr_mn": 46000},
         ],
+        # Unit economics for the simulator, mirroring the shape
+        # `performance_data._cost_model` returns: one line per category, each
+        # with its own imported share, and opex split by type.
+        #
+        # `imported_share` varies deliberately — a wholly local line (0.0) must
+        # stay untouched by an FX move, which a single blanket share could not
+        # express and so was never tested.
+        "cost_model": {
+            "lines": [
+                {
+                    "name": "Industrial Components",
+                    "qty": 130,
+                    "price": 147,
+                    "cost": 112,
+                    "imported_share": 0.8,
+                },
+                {
+                    "name": "Precision Instruments",
+                    "qty": 34,
+                    "price": 400,
+                    "cost": 255,
+                    "imported_share": 0.5,
+                },
+                {
+                    "name": "Standard Fasteners",
+                    "qty": 230,
+                    "price": 60,
+                    "cost": 50,
+                    "imported_share": 0.0,
+                },
+            ],
+            "opex_by_type": {
+                "Fixed": 4220.0,
+                "Variable": 1650.0,
+                "Discretionary": 1610.0,
+            },
+            "opex_total": 7480.0,
+        },
     }
 
 
