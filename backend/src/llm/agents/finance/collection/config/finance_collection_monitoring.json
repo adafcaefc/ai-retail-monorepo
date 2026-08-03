@@ -112,7 +112,7 @@
                 "domain_snapshot.derived is precomputed: total_overdue_idr_mn, top_1/2/3/5_overdue_share_pct, overdue_by_customer (ranked with share and cumulative share), portfolio_aging_idr_mn (per bucket plus overdue_61_plus), credit_utilization_ranked (limit, headroom, utilization), settlement_scenarios (full-balance collection at 0% and 1% with dso_before/after/change), expected_recovery_total_idr_mn.",
                 "Cite derived values directly. Only call calculate_collection_scenario for an amount or discount that settlement_scenarios does not already cover.",
                 "query_collections(queries) runs read-only SELECTs against collections tables (max 100 rows).",
-                "Scope domain rows with the latest completed import_batch_id.",
+                "Do NOT filter by import_batch_id: newdata tables do not have that column. Scope by legal_entity_id or month where relevant.",
                 "{{constants.SCHEMA_TOOLS_PROMPT}}",
                 "{{constants.MONITORING_OUTPUT_PROMPT}}"
             ]

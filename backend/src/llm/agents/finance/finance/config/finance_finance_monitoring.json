@@ -22,7 +22,7 @@
                 "TOOLS:",
                 "domain_snapshot already holds KPIs, profit summary, variance drivers, and simulator levers. Read it instead of calling get_financial_performance_snapshot.",
                 "query_financial_performance(queries) runs read-only SELECTs against financial_performance tables (max 100 rows).",
-                "Scope domain rows with the latest completed import_batch_id.",
+                "Do NOT filter by import_batch_id: newdata tables do not have that column. Scope by legal_entity_id or month where relevant.",
                 "{{constants.SCHEMA_TOOLS_PROMPT}}",
                 "{{constants.MONITORING_OUTPUT_PROMPT}}"
             ]
