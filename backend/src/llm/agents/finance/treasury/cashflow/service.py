@@ -1,3 +1,12 @@
+"""Treasury cash-flow service — reads the `newdata` star schema.
+
+get_baseline() reads newdata.fact_cashflow_weekly, newdata.fact_cashflow_lines
+and newdata.fx_assumptions by raw SQL. Simulator caps use ABS() (outflows are
+stored negative in newdata) and pick the deferrable payment by
+commitment_type = 'Deferrable'. All arithmetic below get_baseline() is
+unchanged from the pre-migration logic.
+"""
+
 from __future__ import annotations
 
 from sqlalchemy import text
@@ -37,7 +46,7 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
     """The verified forecast, assumptions and drivers, read from newdata.
 
     `session` is accepted and ignored so callers that still pass one keep
-    working; the read now uses a bounded read-only connection instead.
+    working; the read uses a bounded read-only connection instead.
     """
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
@@ -86,16 +95,18 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
         recommended_hedge = fx.get("Recommended hedge (USD)", 0.0)
         forward_rate = spot + forward_points
 
-        # Simulator caps. The old code pinned these to two demo rows
-        # (AR-012 / AP-015). newdata carries the cash lines, so the caps are
-        # the largest movable inflow and the largest deferrable outflow.
+        # Simulator caps. Outflows are stored NEGATIVE in newdata, so ABS() is
+        # used both to sort and to return a positive cap. The deferrable
+        # payment is the largest one tagged commitment_type = 'Deferrable'
+        # (tax and other 'Committed' outflows cannot be deferred).
         accel = connection.execute(
             text(
                 """
-                SELECT reference, counterparty, amount_idr_mn, week
+                SELECT reference, counterparty,
+                       ABS(amount_idr_mn) AS amount_idr_mn, week
                 FROM newdata.fact_cashflow_lines
                 WHERE direction = 'Inflow'
-                ORDER BY amount_idr_mn DESC
+                ORDER BY ABS(amount_idr_mn) DESC
                 LIMIT 1
                 """
             )
@@ -104,23 +115,25 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
         defer = connection.execute(
             text(
                 """
-                SELECT reference, counterparty, amount_idr_mn, week
+                SELECT reference, counterparty,
+                       ABS(amount_idr_mn) AS amount_idr_mn, week
                 FROM newdata.fact_cashflow_lines
                 WHERE direction = 'Outflow'
-                  AND commitment_type ILIKE '%flex%'
-                ORDER BY amount_idr_mn DESC
+                  AND commitment_type = 'Deferrable'
+                ORDER BY ABS(amount_idr_mn) DESC
                 LIMIT 1
                 """
             )
         ).mappings().first()
-        if defer is None:  # no line tagged flexible -> largest outflow, capped
+        if defer is None:  # no deferrable line -> largest outflow as fallback
             defer = connection.execute(
                 text(
                     """
-                    SELECT reference, counterparty, amount_idr_mn, week
+                    SELECT reference, counterparty,
+                           ABS(amount_idr_mn) AS amount_idr_mn, week
                     FROM newdata.fact_cashflow_lines
                     WHERE direction = 'Outflow'
-                    ORDER BY amount_idr_mn DESC
+                    ORDER BY ABS(amount_idr_mn) DESC
                     LIMIT 1
                     """
                 )
@@ -129,7 +142,7 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
     customer_driver = CashFlowDriver(
         reference_number=str((accel or {}).get("reference") or "AR"),
         counterparty_name=str((accel or {}).get("counterparty") or "Top customer"),
-        amount_idr_mn=float((accel or {}).get("amount_idr_mn") or 8000),
+        amount_idr_mn=float((accel or {}).get("amount_idr_mn") or 0),
         original_week=_week_number((accel or {}).get("week")) or None,
         expected_week=_week_number((accel or {}).get("week")) or None,
         description="Largest movable customer receipt (simulator cap).",
@@ -138,7 +151,7 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
     payment_driver = CashFlowDriver(
         reference_number=str((defer or {}).get("reference") or "AP"),
         counterparty_name=str((defer or {}).get("counterparty") or "Vendor"),
-        amount_idr_mn=float((defer or {}).get("amount_idr_mn") or 3000),
+        amount_idr_mn=float((defer or {}).get("amount_idr_mn") or 0),
         payment_week=_week_number((defer or {}).get("week")) or None,
         is_deferrable=True,
         description="Largest deferrable vendor payment (simulator cap).",
@@ -250,12 +263,6 @@ def simulate_with_baseline(
     request: CashFlowSimulationRequest,
     baseline: CashFlowBaselineResponse,
 ) -> CashFlowSimulationResponse:
-    """The simulation arithmetic, with the forecast already loaded.
-
-    Split out from `simulate` so the Week 5 / Week 6 trade-off can be checked
-    against a fixture forecast without a database — see
-    tests/test_action_impact.py, which covers QC-004 and QC-005.
-    """
     week5 = get_week_position(baseline, 5)
     week6 = get_week_position(baseline, 6)
     week7 = get_week_position(baseline, 7)
