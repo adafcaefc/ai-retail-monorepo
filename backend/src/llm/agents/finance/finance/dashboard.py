@@ -24,14 +24,27 @@ from src.llm.agents.finance.finance.tools.performance_data import (
 )
 
 
-_FINANCE_PROD = [
-    {"n": "Industrial", "qty": 130, "price": 147, "cost": 112, "fx": 1},
-    {"n": "Precision", "qty": 34, "price": 400, "cost": 255, "fx": 1},
-    {"n": "Standard", "qty": 230, "price": 60, "cost": 50, "fx": 0},
-]
-_FINANCE_OPEX = 7480.0
-_FINANCE_IMP = 0.55
+# The unit economics the simulator runs on now come from the snapshot's
+# `cost_model`, measured per category from FACT_Sales and FACT_Opex. What used
+# to sit here was three invented products — Industrial, Precision, Standard —
+# with typed-in quantities and prices, driving real sliders beside real KPI
+# tiles with nothing marking the difference.
+#
+# This fallback exists only for callers that supply no cost model: the test
+# fixtures, and `_finance_dashboard({"profit_summary": []})`. It is deliberately
+# empty rather than plausible, so a missing model shows up as an empty chart
+# instead of quietly resurrecting invented figures.
+_EMPTY_MODEL: dict[str, Any] = {"lines": [], "opex_by_type": {}, "opex_total": 0.0}
+
+# Policy fallback for the EBITDA gauge when the snapshot carries no budget
+# margin. The real target is read from budget (15.5%); this is the last resort.
 _FINANCE_TARGET = 0.15
+
+# Opex lines that a cost lever can actually move. Payroll and rent do not flex
+# with a slider in the period the board covers; marketing and freight do. The
+# dataset states the type per line, so the simulator no longer has to treat
+# them alike.
+_FLEXIBLE_OPEX = ("Variable", "Discretionary")
 
 # Exact `metric_name` values from financial_performance.kpis, best match first.
 # Substring matching cannot be used here: "revenue" also hits "Revenue growth
@@ -88,9 +101,12 @@ def _finance_live_metrics(
 def _finance_presets(levers: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Lever settings the Finance simulator can jump to.
 
-    The figures come from `financial_performance.simulator_levers`, so a preset
-    can never quote a number the dataset does not hold — that is the mistake
-    QC-009 records for the EBITDA target.
+    The figures come from the snapshot's `simulator_levers`, so a preset can
+    never quote a number the dataset does not hold — that is the mistake QC-009
+    records for the EBITDA target. Finance now derives that row from newdata:
+    the FX move is treasury's own adverse rate, and the price move is the rise
+    that reaches budget margin. The column shape is unchanged, so this function
+    did not have to be.
 
     Each preset is named after what it *does*, not after where it came from. A
     button labelled "recommendation" asks to be trusted; one labelled with its
@@ -163,8 +179,11 @@ def simulate_finance_scenario(
     different target than the KPI card.
     """
 
-    base = _finance_comp(0, 0, 0, 0, 0, "all")
-    scen = _finance_comp(price, cost, vol, fx, opex, scope)
+    model = _call_with_timeout(get_financial_performance_snapshot).get(
+        "cost_model"
+    ) or _EMPTY_MODEL
+    base = _finance_comp(0, 0, 0, 0, 0, "all", model)
+    scen = _finance_comp(price, cost, vol, fx, opex, scope, model)
     return {
         "success": True,
         "baseline": base,
@@ -197,32 +216,59 @@ def _finance_comp(
     fx: float,
     opex: float,
     scope: str,
+    model: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Recompute the P&L under a set of lever settings.
+
+    `model` carries the measured unit economics — one line per category, with
+    the quantity, realised price, realised unit cost and imported share each
+    actually has. With every lever at zero this reproduces the ledger, which
+    is what makes a scenario comparable to the board beside it.
+    """
+    model = model or _EMPTY_MODEL
+    # Puts line revenue into the same unit as opex (IDR mn). The model states
+    # its own scale; a caller that omits it is already in one unit.
+    scale = float(model.get("revenue_scale") or 1.0)
+
     rev = 0.0
     gm = 0.0
     lines: list[dict[str, Any]] = []
-    for product in _FINANCE_PROD:
-        apply = scope == "all" or bool(product["fx"])
-        qty = product["qty"] * (1 + (vol / 100 if apply else 0))
-        unit_price = product["price"] * (1 + (price / 100 if apply else 0))
+    for product in model.get("lines") or []:
+        imported_share = float(product.get("imported_share") or 0.0)
+        # "imported" scope moves only the lines that carry imported cost.
+        apply = scope == "all" or imported_share > 0
+        qty = float(product["qty"]) * (1 + (vol / 100 if apply else 0))
+        unit_price = float(product["price"]) * (1 + (price / 100 if apply else 0))
+        # FX reaches a line only through the share of its cost that is
+        # imported. A wholly local line is untouched by an IDR/USD move.
         unit_cost = (
-            product["cost"]
+            float(product["cost"])
             * (1 + cost / 100)
-            * (1 + fx / 100 * _FINANCE_IMP)
+            * (1 + fx / 100 * imported_share)
         )
-        line_rev = qty * unit_price
-        line_cost = qty * unit_cost
+        line_rev = qty * unit_price / scale
+        line_cost = qty * unit_cost / scale
         rev += line_rev
         gm += line_rev - line_cost
         lines.append(
             {
-                "name": product["n"],
+                "name": product["name"],
                 "rev": line_rev,
                 "gm": line_rev - line_cost,
                 "gm_pct": (line_rev - line_cost) / line_rev if line_rev else 0,
             }
         )
-    op = _FINANCE_OPEX * (1 + opex / 100)
+
+    # The lever moves Variable and Discretionary opex. Fixed lines hold: a
+    # 10% operating-cost cut does not cut payroll 10% within the period.
+    by_type = model.get("opex_by_type") or {}
+    if by_type:
+        flexible = sum(v for k, v in by_type.items() if k in _FLEXIBLE_OPEX)
+        fixed = sum(v for k, v in by_type.items() if k not in _FLEXIBLE_OPEX)
+        op = fixed + flexible * (1 + opex / 100)
+    else:
+        op = float(model.get("opex_total") or 0.0) * (1 + opex / 100)
+
     ebitda = gm - op
     return {
         "rev": rev,
@@ -297,11 +343,32 @@ def _finance_opex_rows(
 
 
 def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
-    base = _finance_comp(0, 0, 0, 0, 0, "all")
+    model = snap.get("cost_model") or _EMPTY_MODEL
+    base = _finance_comp(0, 0, 0, 0, 0, "all", model)
     kpis_rows = snap.get("kpis") or []
     variance = snap.get("variance_drivers") or []
     profit = snap.get("profit_summary") or []
     levers = snap.get("simulator_levers") or []
+
+    # Measured from `fact_sales.import_flag`. Where the snapshot carries no
+    # `cogs_mix`, it is recomputed from the cost model's per-line imported
+    # shares, weighted by each line's cost — which gives the same answer. What
+    # it is never taken from is a constant: this figure is printed as a claim
+    # about the company, and it used to read 55% against a ledger saying 65.2%.
+    mix = snap.get("cogs_mix") or {}
+    if "imported_pct" in mix:
+        imported = float(mix["imported_pct"])
+    else:
+        line_costs = [
+            (float(line["qty"]) * float(line["cost"]),
+             float(line.get("imported_share") or 0.0))
+            for line in (model.get("lines") or [])
+        ]
+        total_cost = sum(cost for cost, _ in line_costs)
+        imported = (
+            sum(cost * share for cost, share in line_costs) / total_cost * 100
+            if total_cost else 0.0
+        )
 
     # Prefer live KPI values when recognizable; else illustrative base
     margin = base["margin"]
@@ -543,12 +610,12 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             **_donut_chart(
                 "Imported COGS share",
                 [
-                    {"label": "Imported", "value": 55},
-                    {"label": "Local", "value": 45},
+                    {"label": "Imported", "value": _round_half_up(imported, 1)},
+                    {"label": "Local", "value": _round_half_up(100 - imported, 1)},
                 ],
                 tag="currency",
                 note=(
-                    f"{_FINANCE_IMP * 100:.0f}% of COGS is imported, so that "
+                    f"{imported:.1f}% of COGS is imported, so that "
                     "share carries the IDR/USD move."
                 ),
             ),

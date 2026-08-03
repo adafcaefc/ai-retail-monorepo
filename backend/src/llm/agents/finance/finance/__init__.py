@@ -54,7 +54,11 @@ DESCRIPTOR = AgentDescriptor(
     db_domain="finance",
     snapshot_tool="get_financial_performance_snapshot",
     schema_tool="describe_financial_performance_tables",
-    import_agent_name="financial_performance_agent",
+    # The newdata import, not the retired financial_performance_agent one.
+    # This id is stamped into the chat's action-simulation context, so leaving
+    # it on the old importer told the model it was looking at batch 19 while
+    # its snapshot came from batch 26.
+    import_agent_name="new_dataset",
     allowed_tables=FINANCE_ALLOWED_TABLES,
     tools=TOOLS,
     build_dashboard=dashboard.build,

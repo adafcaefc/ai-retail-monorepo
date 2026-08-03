@@ -173,7 +173,7 @@
                     "type": "int",
                     "optional": true,
                     "default": null,
-                    "description": "Latest completed import batch for this domain. Scope every query and where_clause with it; do not query audit.import_batches to find it."
+                    "description": "Legacy scoping key. newdata tables have no import_batch_id column, so do not add it to where_clause for newdata tables."
                 },
                 "previous_error": {
                     "type": "str",
@@ -307,16 +307,16 @@
         ],
         "SIMULATION_TOOLS_PROMPT": [
             "PRE-FETCHED CONTEXT",
-            "Your input already carries domain_snapshot (the current per-record rows for this domain), table_schema (columns and check_constraints for every allowed table), and import_batch_id (the latest completed batch). All three are freshly read from the live database.",
+            "Your input already carries domain_snapshot (the current per-record rows for this domain)and table_schema (columns and check_constraints for every allowed table). Both are freshly read from the live database.",
             "Read them FIRST. Resolve which records the spec targets from domain_snapshot: it already lists the customers, accounts, transactions, or line items with their current values, ranked where ranking matters.",
             "Do NOT call describe_*_tables, do NOT query audit.import_batches, and do NOT re-query rows that are already in domain_snapshot. That only costs time.",
-            "Scope every where_clause with import_batch_id when the table has that column.",
+            "newdata tables have no import_batch_id column; scope by legal_entity_id or month where relevant instead.",
             "TOOLS",
             "INPUT includes allowed_tables: the exact tables you may touch. Never invent other table names.",
             "If previous_error is present, treat it as mandatory feedback from the last failed attempt. Fix only the named problem (missing column, illegal value, bad table) using table_schema, and retry simulate_impact. Never invent substitute column names.",
             "1) Read table_schema for the table you intend to update, and domain_snapshot for the records it targets.",
             "2) Call query_* ONLY when you need something neither of them covers, such as the legal values of a categorical column you are about to set. Pick the real column name from table_schema (for example payment_status, not a guessed status). Batch every such SELECT into ONE query_* call. Example:",
-            "SELECT DISTINCT payment_status FROM payment_leakage.ap_transactions WHERE payment_status IS NOT NULL LIMIT 50",
+            "SELECT DISTINCT payment_status FROM newdata.fact_ap_invoices WHERE payment_status IS NOT NULL LIMIT 50",
             "Only use values that appear in DISTINCT results and/or check_constraints definitions.",
             "3) Then call simulate_impact(table_name, where_clause, update_expression, metric_expressions). The allow-list is resolved server-side from table_name, so never pass schema or column lists as arguments.",
             "simulate_impact temporarily applies an UPDATE inside a transaction, measures metrics before/after, then rolls back.",

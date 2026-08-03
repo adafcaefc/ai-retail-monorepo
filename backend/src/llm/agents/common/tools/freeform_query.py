@@ -28,52 +28,64 @@ SqlType = Literal[
 
 _SQL_DIALECT = "postgres"
 
+# Finance reads the `newdata` star schema. The allow-list has to move with it:
+# a chat agent free-querying `financial_performance.*` while the board is built
+# from `newdata` is QC-002 returning through a different door — same screen, two
+# datasets, no way for the reader to tell which is which.
+#
+# `simulator_levers` is the deliberate exception. The new dataset defines no
+# levers, so that one table is still the old schema's, exactly as
+# `performance_data._simulator_levers` reads it.
 FINANCE_ALLOWED_TABLES = (
     "audit.import_batches",
-    "financial_performance.assumptions",
-    "financial_performance.kpis",
-    "financial_performance.operating_expenses",
-    "financial_performance.product_margins",
-    "financial_performance.product_performance",
-    "financial_performance.profit_summary",
-    "financial_performance.variance_drivers",
-    "financial_performance.recommendations",
+    "newdata.dim_legal_entity",
+    "newdata.dim_store",
+    "newdata.dim_category",
+    "newdata.dim_item",
+    "newdata.fact_sales",
+    "newdata.fact_budget",
+    "newdata.fact_opex",
+    "newdata.finance_pl",
+    "newdata.finance_ebitda_bridge",
+    "newdata.finance_by_entity",
+    "newdata.finance_by_category",
+    "newdata.finance_by_store",
+    "newdata.finance_by_item",
+    "newdata.finance_by_month",
+    "newdata.agent_kpis",
     "financial_performance.simulator_levers",
-    "financial_performance.simulator_product_results",
-    "financial_performance.simulator_summary",
 )
 
 CASHFLOW_ALLOWED_TABLES = (
     "audit.import_batches",
-    "cashflow.assumptions",
-    "cashflow.ar_collections",
-    "cashflow.ap_payables",
-    "cashflow.other_outflows",
-    "cashflow.weekly_forecast",
-    "cashflow.fx_scenarios",
-    "cashflow.recommendations",
+    "newdata.fact_cashflow_weekly",
+    "newdata.fact_cashflow_lines",
+    "newdata.fact_fx_exposure",
+    "newdata.fx_assumptions",
+    "newdata.dim_customer",
+    "newdata.dim_vendor",
+    "newdata.dim_legal_entity",
+    "newdata.fact_ar_invoices",
+    "newdata.fact_ap_invoices",
 )
 
 COLLECTIONS_ALLOWED_TABLES = (
     "audit.import_batches",
-    "collections.assumptions",
-    "collections.customer_credit_aging",
-    "collections.risk_scores",
-    "collections.dso_cash_impact",
-    "collections.risk_tier_exposure",
-    "collections.worklist",
-    "collections.recommendations",
+    "newdata.collection_worklist",
+    "newdata.fact_ar_invoices",
+    "newdata.dim_customer",
+    "newdata.dim_legal_entity",
+    "newdata.fact_sales",
+    "newdata.agent_kpis",
 )
 
 LEAKAGE_ALLOWED_TABLES = (
     "audit.import_batches",
-    "payment_leakage.assumptions",
-    "payment_leakage.ap_transactions",
-    "payment_leakage.anomaly_detections",
-    "payment_leakage.category_breakdowns",
-    "payment_leakage.summary",
-    "payment_leakage.action_worklist",
-    "payment_leakage.recommendations",
+    "newdata.leakage_cases",
+    "newdata.fact_ap_invoices",
+    "newdata.dim_vendor",
+    "newdata.dim_legal_entity",
+    "newdata.agent_kpis",
 )
 
 DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
@@ -414,14 +426,20 @@ def query_financial_performance(
     queries: list[str],
 ) -> dict[str, Any]:
     """
-    Run free-form SELECT queries against financial_performance tables.
+    Run free-form SELECT queries against the newdata finance tables.
 
     Accepts a list of SQL SELECT statements (one statement per list item).
     Each result set is capped at 100 rows (truncated=true when more matched).
-    Allowed tables: audit.import_batches and all financial_performance.* tables.
+    Allowed tables: the newdata dimensions (dim_*), facts (fact_sales,
+    fact_budget, fact_opex) and derived Finance packs (finance_*).
     Prefer get_financial_performance_snapshot for a standard overview; use this
     when you need custom filters, joins, or columns beyond the snapshot.
-    Always scope domain rows with the latest completed import_batch_id.
+
+    Do NOT filter by import_batch_id: the newdata tables do not have that
+    column. The whole workbook is one batch, so there is nothing to
+    discriminate. Scope a query by legal_entity_id and by month or
+    month_index instead. The snapshot covers month_index >= 202510, the twelve
+    months to September 2026; use the same window to agree with the dashboard.
     """
 
     return _domain_query(
@@ -430,24 +448,27 @@ def query_financial_performance(
     )
 
 
-def query_cashflow(
-    queries: list[str],
-) -> dict[str, Any]:
+def query_cashflow(queries: list[str]) -> dict[str, Any]:
     """
-    Run free-form SELECT queries against cashflow tables.
+    Run free-form SELECT queries against the newdata cashflow tables.
 
-    Accepts a list of SQL SELECT statements (one statement per list item).
-    Each result set is capped at 100 rows (truncated=true when more matched).
-    Allowed tables: audit.import_batches and all cashflow.* tables.
-    Prefer get_cashflow_baseline for the standard forecast view; use this when
-    you need custom filters, joins, or columns beyond the baseline.
-    Always scope domain rows with the latest completed import_batch_id.
+    Allowed tables: audit.import_batches and the newdata cashflow tables
+    (newdata.fact_cashflow_weekly, newdata.fact_cashflow_lines,
+    newdata.fact_fx_exposure, newdata.fx_assumptions, newdata.fact_ar_invoices,
+    newdata.fact_ap_invoices, newdata.dim_customer, newdata.dim_vendor).
+
+    Key columns (call describe_cashflow_tables first if unsure):
+      fact_cashflow_lines: week (text 'W1'..'W13'), date, legal_entity_id,
+        direction ('Inflow'/'Outflow'), cash_line, counterparty, reference,
+        amount_idr_mn, currency, commitment_type
+      fact_cashflow_weekly: week, opening_cash_idr_mn, closing_cash_idr_mn,
+        min_buffer_idr_mn, headroom_idr_mn, status
+
+    Do NOT invent column names like customer_name, week_label,
+    net_cashflow_idr_mn, or line_category — they do not exist.
+    Do NOT filter by import_batch_id: newdata tables do not have that column.
     """
-
-    return _domain_query(
-        queries,
-        allowed_tables=CASHFLOW_ALLOWED_TABLES,
-    )
+    return _domain_query(queries, allowed_tables=CASHFLOW_ALLOWED_TABLES)
 
 
 def query_collections(
@@ -458,10 +479,12 @@ def query_collections(
 
     Accepts a list of SQL SELECT statements (one statement per list item).
     Each result set is capped at 100 rows (truncated=true when more matched).
-    Allowed tables: audit.import_batches and all collections.* tables.
-    Prefer get_collections_snapshot for the standard portfolio view; use this
-    when you need custom filters, joins, or columns beyond the snapshot.
-    Always scope domain rows with the latest completed import_batch_id.
+    Allowed tables: audit.import_batches and the newdata collections tables
+    (newdata.collection_worklist, newdata.fact_ar_invoices,
+    newdata.dim_customer, newdata.fact_sales, newdata.agent_kpis).
+    ...
+    Do NOT filter by import_batch_id: newdata tables do not have that column.
+    Scope by legal_entity_id and by month where relevant.
     """
 
     return _domain_query(
@@ -478,10 +501,11 @@ def query_payment_leakage(
 
     Accepts a list of SQL SELECT statements (one statement per list item).
     Each result set is capped at 100 rows (truncated=true when more matched).
-    Allowed tables: audit.import_batches and all payment_leakage.* tables.
-    Prefer get_payment_leakage_snapshot for the standard overview; use this
-    when you need custom filters, joins, or columns beyond the snapshot.
-    Always scope domain rows with the latest completed import_batch_id.
+    Allowed tables: audit.import_batches and the newdata leakage tables
+    (newdata.leakage_cases, newdata.fact_ap_invoices, newdata.dim_vendor,
+    newdata.agent_kpis).
+    Do NOT filter by import_batch_id: newdata tables do not have that column.
+    Scope by legal_entity_id and by month where relevant.
     """
 
     return _domain_query(
