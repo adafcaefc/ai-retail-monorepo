@@ -19,7 +19,7 @@ name: build-and-push-acr
 # (requires the Logic App to read these from the request body, see notes below):
 #   ACA_SUBSCRIPTION_ID       Azure subscription ID of the target Container Apps
 #   ACA_CONTAINERS            Container Apps to roll out -- a JSON array like
-#                             [{"name":"ai-finance-forum-backend"}] OR "name1,name2,name3"
+#                             [{"name":"aca-ai-finance-forum-backend"}] OR "name1,name2,name3"
 
 on:
   push:
@@ -30,7 +30,7 @@ env:
   # Repository/path of the image inside the registry.
   IMAGE_NAME: ai-finance-forum-backend
   # Used when ACA_CONTAINERS secret is not set.
-  DEFAULT_CONTAINER_NAME: ai-finance-forum-backend
+  DEFAULT_CONTAINER_NAME: aca-ai-finance-forum-backend
 
 jobs:
   build-and-push-to-acr:
