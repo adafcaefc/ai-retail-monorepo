@@ -308,19 +308,25 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         "simulator": {
             # QC-052: the two ends of the discount-for-speed trade.
             "presets": [
-                {
-                    "id": "no_discount",
-                    "label": "Collect without a discount",
-                    "note": "Full overdue balance, no early-settlement offer.",
-                    "values": {"discount_pct": 0},
-                },
-                {
-                    "id": "settle_fast",
-                    "label": "Buy speed with 2%",
-                    "note": "Early-settlement discount across the worklist.",
-                    "values": {"discount_pct": 2},
-                },
-            ],
+    {
+        "id": "no_discount",
+        "label": "Collect without a discount",
+        "note": "Full overdue balance, no early-settlement offer.",
+        "values": {
+            "cash_to_collect_idr_mn": min(5000, max_pull) if max_pull else 0,
+            "discount_pct": 0,
+        },
+    },
+    {
+        "id": "settle_fast",
+        "label": "Buy speed with 2%",
+        "note": "Early-settlement discount across the worklist.",
+        "values": {
+            "cash_to_collect_idr_mn": min(5000, max_pull) if max_pull else 0,
+            "discount_pct": 2,
+        },
+    },
+    ],
             "action": "calculate_collection_scenario",
             "gauge_label": f"DSO vs {target_dso:.0f}-day target",
             "submit_data": {"customer_name": customer_name},

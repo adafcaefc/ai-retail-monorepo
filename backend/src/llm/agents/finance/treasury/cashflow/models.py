@@ -46,39 +46,19 @@ class CashFlowBaselineResponse(BaseModel):
 
 class CashFlowSimulationRequest(BaseModel):
     accelerate_collection_idr_mn: float = Field(
-        default=0,
-        ge=0,
-        le=8000,
-        description=(
-            "Customer A collection moved from Week 7 "
-            "into Week 5, in IDR million."
-        ),
+        default=0, ge=0,
+        description="Customer collection moved into Week 5, in IDR million.",
     )
-
     defer_payment_idr_mn: float = Field(
-        default=0,
-        ge=0,
-        le=3000,
-        description=(
-            "Eligible vendor payment moved from Week 5 "
-            "into Week 6, in IDR million."
-        ),
+        default=0, ge=0,
+        description="Eligible vendor payment deferred, in IDR million.",
     )
-
     credit_line_draw_idr_mn: float = Field(
-        default=0,
-        ge=0,
-        le=5000,
-        description=(
-            "Credit line draw added to Week 5 liquidity, "
-            "in IDR million."
-        ),
+        default=0, ge=0,
+        description="Credit line draw added to Week 5 liquidity, in IDR million.",
     )
-
     hedge_usd: float = Field(
-        default=0,
-        ge=0,
-        le=3300000,
+        default=0, ge=0,
         description="USD exposure covered using a forward contract.",
     )
 
