@@ -4,7 +4,7 @@ import {
 } from "react";
 
 import {
-  recalculateCollectionSimulation
+  recalculateSimulation
 } from "../api/chatStream.js";
 
 import {
@@ -110,33 +110,23 @@ export default function SimulationRenderer({
       return;
     }
 
-    const cashToCollect =
-      getInputValue(
-        values,
-        [
-          "cash_to_collect_idr_mn",
-          "cash_to_collect",
-          "cash_collection_target",
-          "accelerate_collection_idr_mn"
-        ],
-        0
+    /*
+     * Board-agnostic guard. This used to insist on a "cash to collect"
+     * lever, which only the collection simulator has — every other board's
+     * levers read as zero and the run was rejected before a request went
+     * out. A scenario is runnable as soon as one lever has been moved.
+     */
+    const hasScenario =
+      inputs.some((input) =>
+        toFiniteNumber(
+          values[input.id],
+          0
+        ) > 0
       );
 
-    const discountPct =
-      getInputValue(
-        values,
-        [
-          "discount_pct",
-          "early_payment_discount_pct",
-          "early_pay_discount_pct",
-          "discount"
-        ],
-        0
-      );
-
-    if (cashToCollect <= 0) {
+    if (!hasScenario) {
       setError(
-        "Cash to collect must be greater than zero."
+        "Set at least one lever above zero before recalculating."
       );
 
       return;
@@ -151,23 +141,18 @@ export default function SimulationRenderer({
 
     try {
       const simulationResult =
-        await recalculateCollectionSimulation({
-          customerName:
-            getCustomerName(data),
+        await recalculateSimulation({
+          action: data?.action,
 
-          cashToCollectIdrMn:
-            cashToCollect,
+          values,
 
-          discountPct,
+          submitData:
+            data?.submit_data,
 
           signal:
             controller.signal
         });
-      
-      console.log(
-        "SIMULATION BACKEND RESULTS",
-        simulationResult
-      );  
+
       setResult(
         simulationResult
       );
@@ -690,16 +675,44 @@ function findResultValue(
    * "Gross Cash Collected"
    * menjadi:
    * "gross_cash_collected"
+   *
+   * Satu tingkat sarang ikut diratakan: simulator Finance mengembalikan
+   * angkanya di dalam `stats`, sedangkan Collection, Treasury, dan Leakage
+   * rata di tingkat atas. Meratakannya membuat keempat board dibaca sama.
    */
-  const normalizedResult =
-    Object.fromEntries(
-      Object.entries(result).map(
-        ([key, value]) => [
-          normalizeKey(key),
-          value
-        ]
-      )
-    );
+  const normalizedResult = {};
+
+  // Yang tersarang dulu, supaya field tingkat atas dengan nama sama menang.
+  for (
+    const value
+    of Object.values(result)
+  ) {
+    if (!isPlainObject(value)) {
+      continue;
+    }
+
+    for (
+      const [nestedKey, nestedValue]
+      of Object.entries(value)
+    ) {
+      normalizedResult[
+        normalizeKey(nestedKey)
+      ] = nestedValue;
+    }
+  }
+
+  for (
+    const [key, value]
+    of Object.entries(result)
+  ) {
+    if (isPlainObject(value)) {
+      continue;
+    }
+
+    normalizedResult[
+      normalizeKey(key)
+    ] = value;
+  }
 
   const aliasMap = {
     cash_recovered: [
@@ -795,6 +808,33 @@ function findResultValue(
       "dso_improvement_days",
       "dso_reduction",
       "dso_reduction_days"
+    ],
+
+    /*
+     * Legacy fallback only.
+     *
+     * Output cards now carry an explicit `id` that already matches the
+     * backend field, so nothing below is needed for new answers. Chats saved
+     * before that instruction existed have title-derived keys instead, and
+     * these keep those histories readable rather than showing "—".
+     *
+     * Do not extend this for new outputs — give the output an `id` in the
+     * agent's chat config instead.
+     */
+    week_5_closing_cash: [
+      "week5_cash_idr_mn"
+    ],
+
+    week_5_headroom_versus_buffer: [
+      "week5_headroom_idr_mn"
+    ],
+
+    weeks_below_buffer: [
+      "weeks_below_buffer"
+    ],
+
+    minimum_buffer: [
+      "minimum_buffer_idr_mn"
     ]
   };
 
@@ -896,12 +936,18 @@ function isNetCashOutput(
   );
 }
 
+/*
+ * No hardcoded fallback. This used to default to a named customer, so a
+ * Treasury cashflow scenario — which is not tied to any customer at all —
+ * displayed "PT Anugerah Prima (Customer A)" as though the figures belonged
+ * to them. The row is only rendered when a name is actually present.
+ */
 function getCustomerName(data) {
   return (
     data?.customer_name ||
     data?.submit_data
       ?.customer_name ||
-    "PT Anugerah Prima (Customer A)"
+    ""
   );
 }
 
@@ -1003,6 +1049,15 @@ function isDisplayableValue(value) {
   return (
     typeof value === "number" ||
     typeof value === "string"
+  );
+}
+
+
+function isPlainObject(value) {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value)
   );
 }
 

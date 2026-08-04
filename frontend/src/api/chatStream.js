@@ -164,15 +164,48 @@ export async function fetchConversation(
   return response.json();
 }
 
+/*
+ * Each board has its own simulator behind its own endpoint. The simulation
+ * block carries the `action` that produced it, so that is what picks the
+ * route — this used to post every scenario to the collection endpoint no
+ * matter which board it came from, which is why Treasury, Finance and Leakage
+ * could never recalculate.
+ */
+const SIMULATION_ENDPOINTS = {
+  calculate_collection_scenario:
+    "collection",
+
+  simulate_cashflow:
+    "treasury",
+
+  simulate_finance:
+    "finance",
+
+  simulate_leakage:
+    "leakage"
+};
+
+
 export async function
-recalculateCollectionSimulation({
-  customerName,
-  cashToCollectIdrMn,
-  discountPct,
+recalculateSimulation({
+  action,
+  values,
+  submitData,
   signal
 }) {
+  const board =
+    SIMULATION_ENDPOINTS[action];
+
+  if (!board) {
+    throw new Error(
+      "This simulation is not " +
+      "connected to a simulator " +
+      `(action: ${action || "missing"}).`
+    );
+  }
+
   const response = await fetch(
-    "/api/html/simulations/collections/recalculate",
+    `/api/html/simulations/${board}/recalculate`,
     {
       method: "POST",
 
@@ -181,19 +214,15 @@ recalculateCollectionSimulation({
           "application/json"
       },
 
+      /*
+       * Slider ids already match the field names their endpoint expects, so
+       * the values are sent as they are. The old code remapped everything
+       * into the collection request shape, which silently dropped every
+       * lever the collection simulator does not have.
+       */
       body: JSON.stringify({
-        customer_name:
-          customerName,
-
-        cash_to_collect_idr_mn:
-          Number(
-            cashToCollectIdrMn
-          ),
-
-        discount_pct:
-          Number(
-            discountPct
-          )
+        ...(submitData || {}),
+        ...values
       }),
 
       signal
