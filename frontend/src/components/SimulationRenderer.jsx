@@ -7,10 +7,19 @@ import {
   recalculateCollectionSimulation
 } from "../api/chatStream.js";
 
+import {
+  numberLocale,
+  translateUnit
+} from "../format.js";
+import { useLanguage } from "../LanguageProvider.jsx";
+
 
 export default function SimulationRenderer({
   data
 }) {
+  const { language } =
+    useLanguage();
+
   const inputs = useMemo(() => {
     return Array.isArray(data?.inputs)
       ? data.inputs
@@ -253,6 +262,8 @@ export default function SimulationRenderer({
                 getInitialValue(input)
               }
 
+              language={language}
+
               onChange={(newValue) =>
                 updateValue(
                   input.id,
@@ -282,6 +293,7 @@ export default function SimulationRenderer({
                 <OutputCard
                   key={output.id}
                   output={output}
+                  language={language}
                 />
               )
             )}
@@ -344,6 +356,7 @@ export default function SimulationRenderer({
 function SimulationInput({
   input,
   value,
+  language,
   onChange
 }) {
   const minimum =
@@ -389,7 +402,7 @@ function SimulationInput({
 
         {input.unit && (
           <span>
-            {input.unit}
+            {translateUnit(input.unit, language)}
           </span>
         )}
       </div>
@@ -456,11 +469,11 @@ function SimulationInput({
 
       <div className="control-scale">
         <span>
-          {formatNumber(minimum)}
+          {formatNumber(minimum, language)}
         </span>
 
         <span>
-          {formatNumber(maximum)}
+          {formatNumber(maximum, language)}
         </span>
       </div>
     </div>
@@ -469,7 +482,8 @@ function SimulationInput({
 
 
 function OutputCard({
-  output
+  output,
+  language
 }) {
   const hasValue =
     output.value !== null &&
@@ -485,14 +499,15 @@ function OutputCard({
       <strong className="output-value">
         {hasValue
           ? formatNumber(
-              output.value
+              output.value,
+              language
             )
           : "—"}
       </strong>
 
       {output.unit && (
         <small>
-          {output.unit}
+          {translateUnit(output.unit, language)}
         </small>
       )}
     </article>
@@ -1022,7 +1037,7 @@ function clamp(
 }
 
 
-function formatNumber(value) {
+function formatNumber(value, language) {
   const numericValue =
     Number(value);
 
@@ -1036,8 +1051,10 @@ function formatNumber(value) {
     );
   }
 
+  // Locale-aware rather than implicit — see format.js. A simulated figure and
+  // the KPI it is compared against must not be formatted two different ways.
   return numericValue.toLocaleString(
-    undefined,
+    numberLocale(language),
     {
       maximumFractionDigits: 2
     }

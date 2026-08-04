@@ -7,7 +7,13 @@
 //
 // Lookup is by exact English string. Anything absent renders in English, which
 // keeps a missing entry a visibly untranslated label rather than a blank one
-// or a crash. Figures are never touched: a number is the same in both.
+// or a crash.
+//
+// A figure's magnitude is never touched by language — 53,685.5 and 53.685,5
+// name the same EBITDA. What does move with the toggle is the separator
+// convention (comma/period roles swap) and the "mn" -> "juta" unit word;
+// see format.js. That happens on the number the payload already carries
+// (`value_num`, `delta_num`), not through this dictionary.
 
 export const LANGUAGES = [
   { id: "en", label: "EN", title: "English" },
@@ -74,7 +80,11 @@ const PAYLOAD = {
     "Perbandingan opsi agent · lindung nilai eksposur",
   "Exposure covered vs still open": "Eksposur tertutup vs masih terbuka",
   "Week 5 vs buffer": "Minggu 5 vs buffer",
-  "Receivables aging (IDR mn)": "Umur piutang (IDR jt)",
+  // The scale suffix stays "mn" in both languages — it is a unit of measure
+  // alongside the ISO 4217 code, not prose. Translating it here while the KPI
+  // tiles rendered `kpi.unit` untranslated put "IDR jt" and "mn" on the same
+  // screen. Only the words move. See format.js.
+  "Receivables aging (IDR mn)": "Umur piutang (IDR mn)",
   "Who to chase first · ranked worklist":
     "Siapa dikejar dulu · daftar kerja terurut",
   "The prize · DSO to cash": "Hasilnya · DSO menjadi kas",
@@ -128,11 +138,25 @@ const PAYLOAD = {
   "Defer payment": "Tunda pembayaran",
   "Credit line draw": "Penarikan fasilitas kredit",
   "Forward-cover USD": "Lindung nilai forward USD",
-  "Pull from customer (mn)": "Tarik dari pelanggan (jt)",
+  "Pull from customer (mn)": "Tarik dari pelanggan (mn)",
   "Discount %": "Diskon %",
-  "Hold amount mn": "Jumlah ditahan jt",
+  "Hold amount mn": "Jumlah ditahan mn",
   "Dup recovery %": "Pemulihan duplikat %",
   "Overbill rec %": "Pemulihan overbilling %",
+
+  // KPI delta templates. The backend splits a caption like "target 15.5%"
+  // into a number (reformatted per-language by format.js) and this template,
+  // with "{v}" marking where the number goes back in — see
+  // `_extract_delta_number` in dashboard_blocks.py. Only the words move;
+  // "{v}" must survive untouched, and finance jargon that is already kept as
+  // an English loanword elsewhere in this dictionary (buffer, hedge, target,
+  // vs) stays a loanword here too, for the same reason.
+  "target {v}": "target {v}",
+  "headroom {v} vs buffer": "headroom {v} vs buffer",
+  "recommended hedge {v}M": "lindung nilai disarankan {v}M",
+  "{v} of AR": "{v} dari piutang",
+  "provision {v}": "provisi {v}",
+  "{v} flags": "{v} temuan",
 };
 
 const DICTIONARY = { ...CHROME, ...PAYLOAD };

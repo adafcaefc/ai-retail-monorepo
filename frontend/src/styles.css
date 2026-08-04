@@ -1547,13 +1547,23 @@ img.ey-logo {
   flex: 0 0 auto;
 }
 
+/*
+ * `margin: 0 auto` centred this correctly under a block parent, but
+ * `.composer-wrap` is a flex column — and an auto cross-axis margin cancels
+ * `stretch`, so the composer was sized to fit-content instead of the panel.
+ * That pinned it to the textarea's intrinsic `cols=20` width (~200px) plus the
+ * button, and dragging the drawer wider moved nothing. `align-self` centres it
+ * without touching the margins, so `width: 100%` still resolves against the
+ * panel and the 1120px ceiling still applies on a very wide drawer.
+ */
 .composer {
   display: grid;
+  width: 100%;
   max-width: 1120px;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
+  align-self: center;
   gap: 10px;
-  margin: 0 auto;
 }
 
 .composer textarea {
@@ -1594,9 +1604,12 @@ img.ey-logo {
   opacity: 0.5;
 }
 
+/* Same flex-column caveat as `.composer` above. */
 .composer-note {
+  width: 100%;
   max-width: 1120px;
-  margin: 8px auto 0;
+  align-self: center;
+  margin: 8px 0 0;
   color: var(--muted);
   font-size: 0.69rem;
   text-align: center;

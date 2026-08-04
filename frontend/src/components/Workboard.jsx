@@ -8,6 +8,12 @@ import {
   WhatIfStatsSkeleton,
 } from "./Skeleton.jsx";
 import { findInfo } from "../infoRegistry.js";
+import {
+  numberLocale,
+  formatKpiValue,
+  fillDeltaTemplate,
+  translateUnit,
+} from "../format.js";
 import { applyFilters, focusFor, isEmptyAfterFilter } from "../filters.js";
 import { translatePayload } from "../i18n.js";
 import { useLanguage } from "../LanguageProvider.jsx";
@@ -424,6 +430,40 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
               const hasTrend =
                 Array.isArray(kpi.trend) && kpi.trend.length >= 2;
 
+              /*
+               * `value`/`delta` are en-US strings straight from the backend
+               * (`_fmt`/`_pct`) — kept as-is so anything still reading them
+               * verbatim (Teams cards, the QC verifier, the test suite) sees
+               * no change. Where `_enrich_kpis` also attached the number
+               * behind that string (`value_num` + `value_kind`), re-render it
+               * in the active language's convention instead; a KPI without
+               * those fields (none currently, but a future one might arrive
+               * before this is wired up) falls back to the raw string rather
+               * than disappearing. See dashboard_blocks.py and format.js.
+               */
+              const displayValue =
+                typeof kpi.value_num === "number" && kpi.value_kind
+                  ? formatKpiValue(
+                      kpi.value_num,
+                      kpi.value_kind,
+                      kpi.value_digits,
+                      language,
+                    )
+                  : kpi.value;
+
+              const displayUnit = translateUnit(kpi.unit, language);
+
+              const displayDelta =
+                typeof kpi.delta_num === "number" && kpi.delta_template
+                  ? fillDeltaTemplate(
+                      t(kpi.delta_template),
+                      kpi.delta_num,
+                      kpi.delta_kind,
+                      kpi.delta_digits,
+                      language,
+                    )
+                  : t(kpi.delta);
+
               return (
                 <button
                   key={kpi.id}
@@ -438,7 +478,7 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
                   onClick={(event) => {
                     setView(kpi.view);
                     openInfo(`tile:${kpi.id}`, event, {
-                      context: [kpi.value, kpi.unit, kpi.delta]
+                      context: [displayValue, displayUnit, displayDelta]
                         .filter(Boolean)
                         .join(" "),
                       payload: kpi,
@@ -459,13 +499,13 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
                     className="kpi-value"
                     data-testid={`kpi-${kpi.id}-value`}
                   >
-                    {kpi.value}
-                    {kpi.unit ? (
-                      <span className="kpi-unit"> {kpi.unit}</span>
+                    {displayValue}
+                    {displayUnit ? (
+                      <span className="kpi-unit"> {displayUnit}</span>
                     ) : null}
                   </strong>
 
-                  <span className="kpi-delta">{kpi.delta}</span>
+                  <span className="kpi-delta">{displayDelta}</span>
 
                   {hasTrend ? (
                     <KpiSparkline points={kpi.trend} />
@@ -611,6 +651,7 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
 
           <WhatIfBar
             t={t}
+            language={language}
             simulator={board.simulator}
             values={values}
             scope={scope}
@@ -905,6 +946,7 @@ function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset }) {
 
 function WhatIfBar({
   t,
+  language,
   simulator,
   values,
   scope,
@@ -923,7 +965,7 @@ function WhatIfBar({
     return null;
   }
 
-  const summary = summarizeResult(simulator.action, result, simulator);
+  const summary = summarizeResult(simulator.action, result, simulator, language);
   const inputs = simulator.inputs || [];
   const atBaseline = inputs.every(
     (input) =>
@@ -1085,7 +1127,7 @@ function WhatIfBar({
   );
 }
 
-function summarizeResult(action, result, simulator) {
+function summarizeResult(action, result, simulator, language) {
   const empty = {
     stats: [
       {
@@ -1137,8 +1179,8 @@ function summarizeResult(action, result, simulator) {
         {
           id: "ebitda",
           label: "EBITDA",
-          value: formatNumber(stats.ebitda_idr_mn),
-          delta: `${stats.delta_ebitda_idr_mn >= 0 ? "+" : ""}${formatNumber(stats.delta_ebitda_idr_mn)} mn`,
+          value: formatNumber(stats.ebitda_idr_mn, language),
+          delta: `${stats.delta_ebitda_idr_mn >= 0 ? "+" : ""}${formatNumber(stats.delta_ebitda_idr_mn, language)} ${translateUnit("mn", language)}`,
           tone: stats.delta_ebitda_idr_mn >= 0 ? "good" : "bad",
         },
         {
@@ -1178,21 +1220,21 @@ function summarizeResult(action, result, simulator) {
         {
           id: "dso",
           label: "Scenario DSO",
-          value: `${formatNumber(payload.dso_after_days)}d`,
-          delta: `${formatNumber(payload.dso_change_days)}d change`,
+          value: `${formatNumber(payload.dso_after_days, language)}d`,
+          delta: `${formatNumber(payload.dso_change_days, language)}d change`,
           tone: payload.dso_change_days <= 0 ? "good" : "bad",
         },
         {
           id: "cash",
           label: "Cash collected",
-          value: formatNumber(payload.cash_collected_idr_mn),
-          delta: "IDR mn",
+          value: formatNumber(payload.cash_collected_idr_mn, language),
+          delta: `IDR ${translateUnit("mn", language)}`,
           tone: "good",
         },
         {
           id: "discount",
           label: "Discount cost",
-          value: formatNumber(payload.discount_cost_idr_mn),
+          value: formatNumber(payload.discount_cost_idr_mn, language),
           delta: `${payload.discount_pct}%`,
           tone: "",
         },
@@ -1212,7 +1254,7 @@ function summarizeResult(action, result, simulator) {
         ],
       },
       gauge: {
-        center: `${formatNumber(payload.dso_after_days)}d`,
+        center: `${formatNumber(payload.dso_after_days, language)}d`,
         txt: `Target ${baseline.target_dso}d`,
       },
     };
@@ -1226,22 +1268,22 @@ function summarizeResult(action, result, simulator) {
         {
           id: "w5",
           label: "Week 5 cash",
-          value: formatNumber(payload.week5_cash_idr_mn),
-          delta: `was ${formatNumber(baseline.week5_cash)}`,
+          value: formatNumber(payload.week5_cash_idr_mn, language),
+          delta: `was ${formatNumber(baseline.week5_cash, language)}`,
           tone: payload.week5_headroom_idr_mn >= 0 ? "good" : "bad",
         },
         {
           id: "below",
           label: "Weeks below buffer",
           value: String(payload.weeks_below_buffer),
-          delta: `buffer ${formatNumber(payload.minimum_buffer_idr_mn)}`,
+          delta: `buffer ${formatNumber(payload.minimum_buffer_idr_mn, language)}`,
           tone: payload.weeks_below_buffer === 0 ? "good" : "bad",
         },
         {
           id: "fx",
           label: "FX downside avoided",
-          value: formatNumber(payload.fx_downside_avoided_idr_mn),
-          delta: `premium ${formatNumber(payload.forward_premium_idr_mn)}`,
+          value: formatNumber(payload.fx_downside_avoided_idr_mn, language),
+          delta: `premium ${formatNumber(payload.forward_premium_idr_mn, language)}`,
           tone: "good",
         },
       ],
@@ -1259,7 +1301,7 @@ function summarizeResult(action, result, simulator) {
         ],
       },
       gauge: {
-        center: `${formatNumber(payload.hedge_coverage_pct)}%`,
+        center: `${formatNumber(payload.hedge_coverage_pct, language)}%`,
         txt: "Hedge coverage",
       },
     };
@@ -1271,21 +1313,21 @@ function summarizeResult(action, result, simulator) {
         {
           id: "total",
           label: "Total protected",
-          value: formatNumber(result.total_protected),
+          value: formatNumber(result.total_protected, language),
           delta: `${result.pct_of_at_risk}% of at risk`,
           tone: "good",
         },
         {
           id: "blocked",
           label: "Blocked",
-          value: formatNumber(result.blocked),
+          value: formatNumber(result.blocked, language),
           delta: "never leaves",
           tone: "good",
         },
         {
           id: "recovered",
           label: "Recovered",
-          value: formatNumber(result.recovered),
+          value: formatNumber(result.recovered, language),
           delta: "clawed back",
           tone: "good",
         },
@@ -1308,12 +1350,16 @@ function summarizeResult(action, result, simulator) {
   return empty;
 }
 
-function formatNumber(value) {
+function formatNumber(value, language) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
     return "—";
   }
-  return numeric.toLocaleString(undefined, {
+  // Locale-aware, not implicit `undefined` — see format.js. `language` is
+  // threaded in by each caller below rather than read from the browser, so
+  // which convention a reader sees follows the toggle, not whichever laptop
+  // is driving the demo.
+  return numeric.toLocaleString(numberLocale(language), {
     maximumFractionDigits: 2,
   });
 }
