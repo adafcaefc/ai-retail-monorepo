@@ -18,6 +18,12 @@ import {
   YAxis
 } from "recharts";
 
+import {
+  numberLocale,
+  translateUnit
+} from "../format.js";
+import { useLanguage } from "../LanguageProvider.jsx";
+
 
 const DEFAULT_COLORS = [
   "#7a52b3",
@@ -34,6 +40,9 @@ export default function ChartRenderer({
   data,
   variant = "default"
 }) {
+  const { language } =
+    useLanguage();
+
   const chartPayload =
     normalizeChartPayload(data);
 
@@ -74,6 +83,7 @@ export default function ChartRenderer({
         <ChartByType
           payload={chartPayload}
           size={size}
+          language={language}
         />
       </div>
 
@@ -176,7 +186,8 @@ function ChartHeader({
 
 function ChartByType({
   payload,
-  size
+  size,
+  language
 }) {
   switch (payload.chartType) {
     case "line":
@@ -184,6 +195,7 @@ function ChartByType({
         <LineChartView
           payload={payload}
           size={size}
+          language={language}
         />
       );
 
@@ -192,6 +204,7 @@ function ChartByType({
         <AreaChartView
           payload={payload}
           size={size}
+          language={language}
         />
       );
 
@@ -201,6 +214,7 @@ function ChartByType({
         <CircularChartView
           payload={payload}
           size={size}
+          language={language}
         />
       );
 
@@ -209,6 +223,7 @@ function ChartByType({
         <WaterfallChartView
           payload={payload}
           size={size}
+          language={language}
         />
       );
 
@@ -218,6 +233,7 @@ function ChartByType({
         <BarChartView
           payload={payload}
           size={size}
+          language={language}
         />
       );
   }
@@ -226,7 +242,8 @@ function ChartByType({
 
 function BarChartView({
   payload,
-  size
+  size,
+  language
 }) {
   const {
     rows,
@@ -354,7 +371,8 @@ function BarChartView({
           }}
 
           tickFormatter={
-            formatAxisNumber
+            (value) =>
+              formatAxisNumber(value, language)
           }
         />
 
@@ -367,6 +385,7 @@ function BarChartView({
           content={
             <CustomTooltip
               unit={unit}
+              language={language}
             />
           }
         />
@@ -396,7 +415,8 @@ function BarChartView({
               value:
                 targetLabel ||
                 `Target ${formatFullNumber(
-                  target
+                  target,
+                  language
                 )}`,
 
               position:
@@ -471,7 +491,7 @@ function BarChartView({
                   position="top"
 
                   content={
-                    <ChartValueLabel />
+                    <ChartValueLabel language={language} />
                   }
                 />
               )}
@@ -485,7 +505,8 @@ function BarChartView({
 
 function WaterfallChartView({
   payload,
-  size
+  size,
+  language
 }) {
   const {
     unit
@@ -605,10 +626,11 @@ function WaterfallChartView({
           }}
 
           tickFormatter={
-            formatAxisNumber
+            (value) =>
+              formatAxisNumber(value, language)
           }
         />
-        
+
         <ReferenceLine
           y={0}
           stroke="#98a2b3"
@@ -623,6 +645,7 @@ function WaterfallChartView({
           content={
             <WaterfallTooltip
               unit={unit}
+              language={language}
             />
           }
         />
@@ -663,7 +686,7 @@ function WaterfallChartView({
               position="top"
               formatter={
                 (value) =>
-                  formatChartValue(value)
+                  formatChartValue(value, language)
               }
               fill="#344054"
               fontSize={10}
@@ -783,7 +806,8 @@ function WaterfallTooltip({
   active,
   payload,
   label,
-  unit
+  unit,
+  language
 }) {
   if (
     !active ||
@@ -829,11 +853,12 @@ function WaterfallTooltip({
 
         <b>
           {formatFullNumber(
-            row.displayValue
+            row.displayValue,
+            language
           )}
 
           {unit
-            ? ` ${unit}`
+            ? ` ${translateUnit(unit, language)}`
             : ""}
         </b>
       </div>
@@ -866,7 +891,8 @@ function getWaterfallTooltipLabel(
 
 function LineChartView({
   payload,
-  size
+  size,
+  language
 }) {
   const {
     rows,
@@ -958,7 +984,8 @@ function LineChartView({
               )
           ]}
           tickFormatter={
-            formatAxisNumber
+            (value) =>
+              formatAxisNumber(value, language)
           }
           tick={{
             fontSize: 10,
@@ -970,6 +997,7 @@ function LineChartView({
           content={
             <CustomTooltip
               unit={unit}
+              language={language}
             />
           }
         />
@@ -997,7 +1025,8 @@ function LineChartView({
               value:
                 targetLabel ||
                 `Target ${formatFullNumber(
-                  target
+                  target,
+                  language
                 )}`,
 
               position:
@@ -1020,7 +1049,8 @@ function LineChartView({
             label={{
               value:
                 `${highlightRow.name} · ${formatChartValue(
-                  highlightRow.value
+                  highlightRow.value,
+                  language
                 )}`,
 
               position: "top",
@@ -1084,7 +1114,8 @@ function LineChartView({
 
 function AreaChartView({
   payload,
-  size
+  size,
+  language
 }) {
   const {
     rows,
@@ -1144,7 +1175,8 @@ function AreaChartView({
               : 64
           }
           tickFormatter={
-            formatAxisNumber
+            (value) =>
+              formatAxisNumber(value, language)
           }
         />
 
@@ -1152,6 +1184,7 @@ function AreaChartView({
           content={
             <CustomTooltip
               unit={unit}
+              language={language}
             />
           }
         />
@@ -1179,7 +1212,8 @@ function AreaChartView({
               value:
                 targetLabel ||
                 `Target ${formatFullNumber(
-                  target
+                  target,
+                  language
                 )}`,
 
               position:
@@ -1237,7 +1271,8 @@ function AreaChartView({
 
 function CircularChartView({
   payload,
-  size
+  size,
+  language
 }) {
   const {
     rows,
@@ -1278,6 +1313,7 @@ function CircularChartView({
           content={
             <CustomTooltip
               unit={unit}
+              language={language}
             />
           }
         />
@@ -1341,7 +1377,8 @@ function ChartValueLabel({
   x,
   y,
   width,
-  value
+  value,
+  language
 }) {
   const numericX =
     Number(x);
@@ -1375,7 +1412,7 @@ function ChartValueLabel({
       fontSize={10}
       fontWeight={700}
     >
-      {formatChartValue(value)}
+      {formatChartValue(value, language)}
     </text>
   );
 }
@@ -1385,7 +1422,8 @@ function CustomTooltip({
   active,
   payload,
   label,
-  unit
+  unit,
+  language
 }) {
   if (
     !active ||
@@ -1430,11 +1468,12 @@ function CustomTooltip({
 
             <b>
               {formatFullNumber(
-                item.value
+                item.value,
+                language
               )}
 
               {unit
-                ? ` ${unit}`
+                ? ` ${translateUnit(unit, language)}`
                 : ""}
             </b>
           </div>
@@ -2107,7 +2146,7 @@ function toFiniteNumber(
 }
 
 
-function formatAxisNumber(value) {
+function formatAxisNumber(value, language) {
   const numericValue =
     Number(value);
 
@@ -2142,7 +2181,7 @@ function formatAxisNumber(value) {
 
   return numericValue
     .toLocaleString(
-      "en-US",
+      numberLocale(language),
       {
         maximumFractionDigits:
           Number.isInteger(
@@ -2155,7 +2194,7 @@ function formatAxisNumber(value) {
 }
 
 
-function formatChartValue(value) {
+function formatChartValue(value, language) {
   const numericValue =
     Number(value);
 
@@ -2169,7 +2208,7 @@ function formatChartValue(value) {
 
   return numericValue
     .toLocaleString(
-      "en-US",
+      numberLocale(language),
       {
         maximumFractionDigits:
           Number.isInteger(
@@ -2182,7 +2221,7 @@ function formatChartValue(value) {
 }
 
 
-function formatFullNumber(value) {
+function formatFullNumber(value, language) {
   const numericValue =
     Number(value);
 
@@ -2196,7 +2235,7 @@ function formatFullNumber(value) {
 
   return numericValue
     .toLocaleString(
-      "en-US",
+      numberLocale(language),
       {
         maximumFractionDigits: 2
       }
