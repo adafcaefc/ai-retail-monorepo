@@ -30,6 +30,9 @@ export async function streamChat({
   agent,
   message,
   conversationId,
+  legalEntityId,
+  period,
+  categoryGroup,
   signal,
   onEvent
 }) {
@@ -47,7 +50,15 @@ export async function streamChat({
         agent,
         message,
         conversation_id:
-          conversationId
+          conversationId,
+        // The board's active server_filters selections, so a question asked
+        // while the board is scoped is answered about that same slice
+        // rather than the whole ledger — see scope.py server-side.
+        legal_entity_id:
+          legalEntityId,
+        period,
+        category_group:
+          categoryGroup
       }),
 
       signal

@@ -5,11 +5,15 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from src.llm.agents.common.dashboard_blocks import _scoped_where
 from src.llm.agents.common.tools.db import (
+    _available_months,
     _latest_batch_id,
+    _legal_entities,
     _read_connection,
     _rows,
 )
+from src.llm.agents.common.tools.scope import active_legal_entity_id, active_period
 
 # Same twelve-month window Finance uses (to September 2026), read off the
 # case's own month so leakage and performance cover the same span.
@@ -44,6 +48,7 @@ def _num(value: Any) -> float:
 def _summary_row(
     connection: Connection,
     window: str,
+    params: dict[str, Any],
 ) -> dict[str, Any]:
     """One summary row in the shape `leakage.py` reads from `summary[0]`."""
     row = connection.execute(
@@ -63,7 +68,8 @@ def _summary_row(
             WHERE {window}
               AND leakage_type IS NOT NULL
             """
-        )
+        ),
+        params,
     ).mappings().one()
 
     at_risk = _num(row["at_risk"])
@@ -84,7 +90,7 @@ def _summary_row(
     }
 
 
-def _period(connection: Connection, window: str) -> str:
+def _period(connection: Connection, window: str, params: dict[str, Any]) -> str:
     """The span these cases cover, read from the case month."""
     row = connection.execute(
         text(
@@ -93,20 +99,50 @@ def _period(connection: Connection, window: str) -> str:
             FROM newdata.leakage_cases
             WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
     first, last = row["first_month"], row["last_month"]
     if first is None or last is None:
         return "No period recorded"
+    if first == last:
+        return f"invoices scanned {first:%b %Y}"
     return f"invoices scanned {first:%b %Y} – {last:%b %Y}"
 
 
-def get_payment_leakage_snapshot() -> dict[str, Any]:
-    """Return the latest bounded leakage summary, anomalies, and action data."""
+def get_payment_leakage_snapshot(
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+) -> dict[str, Any]:
+    """Return the latest bounded leakage summary, anomalies, and action data.
+
+    `legal_entity_id` and `period`, when given, scope every query below to
+    one entity and/or one month. `leakage_cases` and `fact_ap_invoices` both
+    carry `legal_entity_id` and `month`, so this is a real slice of the
+    ledger, not a client-side re-filter of an already aggregated total. Bound
+    as query parameters, never spliced into the SQL text, since the values
+    now arrive from an HTTP query string.
+
+    No `category_group` parameter: `leakage_cases`/`fact_ap_invoices` carry
+    no `category_id` — only `spend_category`, a different, AP-specific
+    classification. See `_category_group_filter`'s docstring.
+
+    Falls back to the live chat turn's scoped entity/period when called with
+    no argument -- see common/tools/scope.py.
+    """
+    if legal_entity_id is None:
+        legal_entity_id = active_legal_entity_id()
+    if period is None:
+        period = active_period()
 
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
-        window = f"month >= '{WINDOW_START}'"
+        window, params = _scoped_where(
+            "month >= :window_start",
+            {"window_start": WINDOW_START},
+            legal_entity_id=legal_entity_id,
+            month=period,
+        )
 
         categories = _rows(
             connection,
@@ -121,11 +157,12 @@ def get_payment_leakage_snapshot() -> dict[str, Any]:
             GROUP BY leakage_type
             ORDER BY SUM(leakage_amount_idr_mn) DESC
             """,
-            {},
+            params,
         )
         for row in categories:
             row["is_direct_loss"] = _is_direct_loss(row["category_name"])
 
+        anomalies_where = f"{window} AND leakage_amount_idr_mn > 0"
         cases = _rows(
             connection,
             f"""
@@ -138,16 +175,22 @@ def get_payment_leakage_snapshot() -> dict[str, Any]:
                 bank_account_changed,
                 approval_level
             FROM newdata.leakage_cases
-            WHERE {window}
-              AND leakage_amount_idr_mn > 0
+            WHERE {anomalies_where}
             ORDER BY leakage_amount_idr_mn DESC
             LIMIT 40
             """,
-            {},
+            params,
         )
 
         # QC-054 kept: a real per-day series. `leakage_cases` carries only a
         # month, so the daily date comes from the AP invoice it joins to.
+        # Aliased separately from `window` above: this query joins two tables,
+        # so the bare column names in `window` would be ambiguous here.
+        daily_window, daily_params = _scoped_where(
+            "c.month >= :window_start",
+            {"window_start": WINDOW_START},
+            **{"c.legal_entity_id": legal_entity_id, "c.month": period},
+        )
         daily = _rows(
             connection,
             f"""
@@ -158,22 +201,31 @@ def get_payment_leakage_snapshot() -> dict[str, Any]:
                 c.leakage_amount_idr_mn AS amount
             FROM newdata.leakage_cases c
             JOIN newdata.fact_ap_invoices f USING (ap_invoice_id)
-            WHERE c.month >= '{WINDOW_START}'
+            WHERE {daily_window}
               AND c.leakage_amount_idr_mn > 0
               AND f.issue_date IS NOT NULL
             ORDER BY f.issue_date
             """,
-            {},
+            daily_params,
         )
 
         return {
             "import_batch_id": import_batch_id,
-            "period": _period(connection, window),
-            "summary": [_summary_row(connection, window)],
+            "period": _period(connection, window, params),
+            "summary": [_summary_row(connection, window, params)],
             "category_breakdowns": categories,
             "anomalies": cases,
             "action_worklist": cases[:20],
             "daily_at_risk": daily,
+            "legal_entity_id": legal_entity_id,
+            "legal_entities": _legal_entities(connection),
+            "period_value": period,
+            "available_months": _available_months(
+                connection,
+                "leakage_cases",
+                "month >= :window_start",
+                {"window_start": WINDOW_START},
+            ),
         }
 
 

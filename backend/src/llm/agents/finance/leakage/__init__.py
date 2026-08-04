@@ -14,9 +14,11 @@ DESCRIPTOR = AgentDescriptor(
     display="Leakage",
     description="Review billing gaps and revenue leakage.",
     prompt="Ask Leakage about revenue exposure...",
+    # QC-042 — see the note in finance/finance/__init__.py.
     starter_prompts=(
-        "Summarize the largest leakage risks.",
+        "Does the blocked fraud change the cash forecast?",
         "Which leakage issues should be investigated first?",
+        "Which vendor is riskiest, and why does it rank first?",
     ),
     chat_agent="finance.leakage.chat",
     simulation_agent="finance.leakage.simulation",

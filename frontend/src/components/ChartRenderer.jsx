@@ -25,14 +25,23 @@ import {
 import { useLanguage } from "../LanguageProvider.jsx";
 
 
+// Categorical fallback for series/slices with no business meaning attached
+// (an arbitrary 4th product, an unlabelled pie slice). Sourced from the same
+// ramps as styles.css's --blue-*/--gray-* tokens rather than an unrelated
+// palette, and deliberately leaves out --green-500/--amber-500/--red-500 —
+// those already mean "good/warn/bad" on every KPI tile, so reusing them here
+// would fake a status signal on a category that isn't one. "Scenario" purple
+// and the indigo below are the two accents this app already treats as
+// meaning-free chart colour (see resolvePointColor's "scenario" match and
+// getBusinessColor's "top 5"/"customer a" entries further down).
 const DEFAULT_COLORS = [
-  "#7a52b3",
-  "#5b5fc7",
-  "#2e8b57",
-  "#ed7d31",
-  "#c4314b",
-  "#1f3864",
-  "#06aed4"
+  "#175cd3", // --blue-500
+  "#7a52b3", // scenario purple
+  "#12469e", // --blue-600
+  "#3b4a68", // --gray-700
+  "#0f3b85", // --blue-700
+  "#5b5fc7", // indigo
+  "#0e7490"  // teal — chart-only, sits between blue and green without touching --green-500
 ];
 
 
@@ -700,6 +709,16 @@ function WaterfallChartView({
 }
 
 
+// Opening and closing bars are anchors, not drivers — neither is a "good" or
+// "bad" movement, so both share one neutral colour instead of the previous
+// purple/cyan pair, which spent two extra hues on values that carry the same
+// meaning. Only the bars in between are positive/negative, and those now use
+// the app's real --green-500/--red-500 instead of an unrelated green/red.
+const WATERFALL_ANCHOR_COLOR = "#3b4a68"; // --gray-700
+const WATERFALL_POSITIVE_COLOR = "#18794e"; // --green-500
+const WATERFALL_NEGATIVE_COLOR = "#d92d20"; // --red-500
+const WATERFALL_EMPTY_COLOR = "#9aa7bd"; // --gray-400
+
 function buildWaterfallRows(
   rows
 ) {
@@ -727,7 +746,7 @@ function buildWaterfallRows(
           base: 0,
           change: 0,
           displayValue: 0,
-          color: "#98a2b3",
+          color: WATERFALL_EMPTY_COLOR,
           kind: "empty"
         };
       }
@@ -742,7 +761,7 @@ function buildWaterfallRows(
           change: numericValue,
           displayValue:
             numericValue,
-          color: "#7a52b3",
+          color: WATERFALL_ANCHOR_COLOR,
           kind: "opening"
         };
       }
@@ -754,7 +773,7 @@ function buildWaterfallRows(
           change: numericValue,
           displayValue:
             numericValue,
-          color: "#3aaed8",
+          color: WATERFALL_ANCHOR_COLOR,
           kind: "closing"
         };
       }
@@ -789,8 +808,8 @@ function buildWaterfallRows(
 
         color:
           numericValue >= 0
-            ? "#2e8b57"
-            : "#c4314b",
+            ? WATERFALL_POSITIVE_COLOR
+            : WATERFALL_NEGATIVE_COLOR,
 
         kind:
           numericValue >= 0
@@ -841,7 +860,7 @@ function WaterfallTooltip({
           style={{
             background:
               row.color ||
-              "#7a52b3"
+              WATERFALL_ANCHOR_COLOR
           }}
         />
 
@@ -1356,7 +1375,7 @@ function CircularChartView({
                   // "Others" is the aggregated remainder a filter leaves
                   // behind; it recedes so the chosen slice carries the chart.
                   row.muted
-                    ? "#d8dee9"
+                    ? "#d7dee9" // --gray-200
                     : row.color ||
                       DEFAULT_COLORS[
                         index %
@@ -1883,7 +1902,7 @@ function resolvePointColor({
     Number.isFinite(target)
   ) {
     return value <= target
-      ? "#2e8b57"
+      ? "#18794e" // --green-500
       : "#7a52b3";
   }
 
@@ -1894,6 +1913,17 @@ function resolvePointColor({
 }
 
 
+// Business-term → colour lookup. Chart row labels are always plain English
+// here by design — i18n.js's translatePayload explicitly leaves chart `data`
+// untouched ("Numbers, chart data and ids are untouched — only wording
+// changes"), so this matching is stable across the EN/ID toggle already.
+// What it lacked was any connection to the app's real palette: every hex
+// below now traces to the same --green-500/--amber-500/--amber-600/--red-500/
+// --gray-900/--gray-500/--blue-200 tokens the KPI tiles and rest of the UI
+// use, in the same hue family as before (red stays red, amber stays amber),
+// so a receivables aging ramp (1-30 → 90+) now reads as a real green→amber→
+// red escalation instead of three shades of orange that were hard to tell
+// apart.
 function getBusinessColor(
   label,
   index
@@ -1902,28 +1932,28 @@ function getBusinessColor(
     normalizeLabel(label);
 
   const exactColors = {
-    current: "#1f3864",
+    current: "#172033", // --gray-900
 
-    "1-30": "#5b7aa8",
-    "31-60": "#ed7d31",
-    "61-90": "#d1603a",
-    "90+": "#c4314b",
+    "1-30": "#18794e", // --green-500
+    "31-60": "#b54708", // --amber-500
+    "61-90": "#9a3d12", // --amber-600
+    "90+": "#d92d20", // --red-500
 
-    high: "#c4314b",
-    medium: "#ed7d31",
-    low: "#2e8b57",
+    high: "#d92d20", // --red-500
+    medium: "#b54708", // --amber-500
+    low: "#18794e", // --green-500
 
-    now: "#c4314b",
-    scenario: "#7a52b3",
-    target: "#9aa0d6",
+    now: "#d92d20", // --red-500
+    scenario: "#7a52b3", // chart-only accent, see DEFAULT_COLORS above
+    target: "#bcd2f4", // --blue-200
 
-    "cash freed": "#2e8b57",
-    "cash recovered": "#2e8b57",
+    "cash freed": "#18794e", // --green-500
+    "cash recovered": "#18794e", // --green-500
     "gross cash collected":
-      "#2e8b57",
+      "#18794e", // --green-500
 
     "discount cost":
-      "#c4314b",
+      "#d92d20", // --red-500
 
     "customer a":
       "#7a52b3",
@@ -1932,7 +1962,7 @@ function getBusinessColor(
       "#5b5fc7",
 
     "all overdue":
-      "#2e8b57"
+      "#18794e" // --green-500
   };
 
   if (
@@ -1954,31 +1984,31 @@ function getBusinessColor(
     ],
     [
       "all overdue",
-      "#2e8b57"
+      "#18794e"
     ],
     [
       "cash freed",
-      "#2e8b57"
+      "#18794e"
     ],
     [
       "cash recovered",
-      "#2e8b57"
+      "#18794e"
     ],
     [
       "discount cost",
-      "#c4314b"
+      "#d92d20"
     ],
     [
       "high",
-      "#c4314b"
+      "#d92d20"
     ],
     [
       "medium",
-      "#ed7d31"
+      "#b54708"
     ],
     [
       "low",
-      "#2e8b57"
+      "#18794e"
     ]
   ];
 

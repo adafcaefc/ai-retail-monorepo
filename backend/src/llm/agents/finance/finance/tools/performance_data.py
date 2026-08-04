@@ -24,10 +24,18 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+from src.llm.agents.common.dashboard_blocks import _scoped_where
 from src.llm.agents.common.tools.db import (
+    _available_months,
     _latest_batch_id,
+    _legal_entities,
     _read_connection,
     _rows,
+)
+from src.llm.agents.common.tools.scope import (
+    active_category_group,
+    active_legal_entity_id,
+    active_period,
 )
 
 # The reporting window: the twelve months to September 2026. It is the window
@@ -43,9 +51,29 @@ def _ratio(numerator: float, denominator: float) -> float:
     return numerator / denominator if denominator else 0.0
 
 
-def _totals(connection: Connection) -> dict[str, float]:
-    """The nine aggregates every Finance figure below is built from."""
-    window = f"month_index >= {WINDOW_START}"
+def _totals(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+) -> dict[str, float]:
+    """The nine aggregates every Finance figure below is built from.
+
+    `fact_sales`, `fact_budget` and `fact_opex` all carry `legal_entity_id`
+    and `month`, so an entity or period slice here is a real re-aggregation
+    of the ledger, not a client-side re-filter of an already-summed total.
+
+    `category_group` deliberately has no parameter here: `fact_opex` carries
+    no `category_id`, so narrowing revenue and COGS by category while opex
+    stayed whole-company would make EBITDA compare two different scopes and
+    call the mismatch a number. `_cost_model` takes `category_group` instead,
+    where it only ever narrows figures that share one category dimension.
+    """
+    window, params = _scoped_where(
+        "month_index >= :window_start",
+        {"window_start": WINDOW_START},
+        legal_entity_id=legal_entity_id,
+        month=period,
+    )
 
     sales = connection.execute(
         text(
@@ -60,7 +88,8 @@ def _totals(connection: Connection) -> dict[str, float]:
             FROM newdata.fact_sales
             WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
 
     budget = connection.execute(
@@ -73,7 +102,8 @@ def _totals(connection: Connection) -> dict[str, float]:
             FROM newdata.fact_budget
             WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
 
     opex = connection.execute(
@@ -85,7 +115,8 @@ def _totals(connection: Connection) -> dict[str, float]:
             FROM newdata.fact_opex
             WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
 
     return {
@@ -279,6 +310,14 @@ def _driver_rows(
     description a CFO reads is the dataset's own account of the number rather
     than prose written beside it. The two `total` rows — opening Budget EBITDA
     and closing Actual EBITDA — are endpoints, not drivers, and are excluded.
+
+    Deliberately takes no `legal_entity_id`: `finance_ebitda_bridge` has no
+    such column — it is one precomputed global bridge, not five per-entity
+    ones, and Volume/Mix/Price/Cost&FX are not columns of `fact_sales` that a
+    WHERE clause can slice; they are derived quantities the dataset computed
+    once for the whole ledger. Rebuilding that derivation per entity is real
+    analysis work, not a query change — see the `bridge_scope` note this
+    snapshot carries back to the caller instead of a silent stale chart.
     """
     rows = _rows(
         connection,
@@ -310,7 +349,12 @@ def _driver_rows(
     return drivers
 
 
-def _cost_model(connection: Connection) -> dict[str, Any]:
+def _cost_model(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+    category_group: str | None = None,
+) -> dict[str, Any]:
     """The unit economics the what-if simulator runs on, measured per category.
 
     This replaces `_FINANCE_PROD` — three invented products with typed-in
@@ -326,8 +370,19 @@ def _cost_model(connection: Connection) -> dict[str, Any]:
     Opex is split by `opex_type`. A CFO cutting operating cost 10% cannot cut
     payroll 10%, and the dataset says which lines are Fixed, Variable or
     Discretionary. The simulator no longer has to pretend they are alike.
+
+    `category_group` only narrows the per-category `lines` below, never the
+    `opex` query beneath it: `fact_opex` carries no `category_id`, so there is
+    no honest way to say "this much opex belongs to Manufacturing".
     """
-    window = f"month_index >= {WINDOW_START}"
+    line_window, line_params = _scoped_where(
+        "s.month_index >= :window_start",
+        {"window_start": WINDOW_START},
+        **{"s.legal_entity_id": legal_entity_id, "s.month": period},
+    )
+    if category_group:
+        line_window += " AND c.category_group = :category_group"
+        line_params["category_group"] = category_group
 
     lines = _rows(
         connection,
@@ -341,12 +396,19 @@ def _cost_model(connection: Connection) -> dict[str, Any]:
                 WHERE s.import_flag = 'Imported'), 0) AS cogs_imported
         FROM newdata.fact_sales s
         JOIN newdata.dim_category c USING (category_id)
-        WHERE {window}
+        WHERE {line_window}
         GROUP BY c.category_name
         HAVING SUM(s.qty) > 0
         ORDER BY SUM(s.net_revenue_idr_mn) DESC
         """,
-        {},
+        line_params,
+    )
+
+    window, params = _scoped_where(
+        "month_index >= :window_start",
+        {"window_start": WINDOW_START},
+        legal_entity_id=legal_entity_id,
+        month=period,
     )
 
     model_lines = []
@@ -374,7 +436,7 @@ def _cost_model(connection: Connection) -> dict[str, Any]:
         WHERE {window}
         GROUP BY opex_type
         """,
-        {},
+        params,
     )
 
     return {
@@ -477,44 +539,91 @@ def _simulator_levers(
     ]
 
 
-def _period(connection: Connection) -> str:
+def _period(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+) -> str:
     """The span this snapshot covers, read from the month dimension.
 
     QC-035 asked every chart to state its period. On the old dataset that had
     to be reverse-engineered from workbook filenames because no row carried a
     date — see the docstring on `common/tools/period.py`. `fact_sales.month`
     carries one, so the label is now a column read and cannot drift from the
-    figures beside it.
+    figures beside it. Narrowed to one month, MIN and MAX collapse to the
+    same value, so the label says that month once rather than repeating it.
     """
+    window, params = _scoped_where(
+        "month_index >= :window_start",
+        {"window_start": WINDOW_START},
+        legal_entity_id=legal_entity_id,
+        month=period,
+    )
+
     row = connection.execute(
         text(
             f"""
             SELECT MIN(month) AS first_month, MAX(month) AS last_month
             FROM newdata.fact_sales
-            WHERE month_index >= {WINDOW_START}
+            WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
 
     first, last = row["first_month"], row["last_month"]
     if first is None or last is None:
         return "No period recorded"
+    if first == last:
+        return f"{first:%B %Y} — actual vs budget"
     return f"{first:%B %Y} – {last:%B %Y} — actual vs budget"
 
 
-def get_financial_performance_snapshot() -> dict[str, Any]:
-    """Return the latest bounded KPI, profit, variance, and simulator data."""
+def get_financial_performance_snapshot(
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+    category_group: str | None = None,
+) -> dict[str, Any]:
+    """Return the latest bounded KPI, profit, variance, and simulator data.
+
+    `legal_entity_id` and `period`, when given, re-aggregate revenue, COGS,
+    opex and the cost model from the raw facts for one entity and/or one
+    month. The KPI tiles, P&L ladder and simulator therefore genuinely
+    narrow. `category_group` only narrows `cost_model` — see its own
+    docstring for why it cannot honestly reach the headline KPIs.
+
+    The EBITDA bridge narrows for none of the three: `_driver_rows` has no
+    parameters, because `finance_ebitda_bridge` has no `legal_entity_id`,
+    `month` or `category_id` to slice by — see its docstring. It keeps
+    reporting the whole-ledger bridge, and `bridge_scope` on the returned
+    payload says so explicitly, so a caller filtering the rest of the board
+    gets a chart that plainly states it has not followed, rather than one
+    that looks like it has.
+
+    When called with no argument — which is how the chat agent calls every
+    tool, since the model is never told about these filters — each falls
+    back to whatever the live chat turn is scoped to (see
+    common/tools/scope.py), so a question asked while the board is filtered
+    is answered about that same slice, not the whole ledger.
+    """
+    if legal_entity_id is None:
+        legal_entity_id = active_legal_entity_id()
+    if period is None:
+        period = active_period()
+    if category_group is None:
+        category_group = active_category_group()
 
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
-        totals = _totals(connection)
+        totals = _totals(connection, legal_entity_id, period)
 
         return {
             "import_batch_id": import_batch_id,
-            "period": _period(connection),
+            "period": _period(connection, legal_entity_id, period),
             "kpis": _kpi_rows(totals, import_batch_id),
             "profit_summary": _profit_rows(totals, import_batch_id),
             "variance_drivers": _driver_rows(connection, import_batch_id),
+            "bridge_scope": "all_entities",
             "simulator_levers": _simulator_levers(connection, totals),
             # The imported/local COGS split, measured rather than assumed.
             # `fact_sales.import_flag` makes this a fact; before the migration
@@ -522,7 +631,28 @@ def get_financial_performance_snapshot() -> dict[str, Any]:
             "cogs_mix": _cogs_mix(totals),
             # Unit economics for the what-if simulator, replacing the three
             # invented products it used to run on.
-            "cost_model": _cost_model(connection),
+            "cost_model": _cost_model(
+                connection, legal_entity_id, period, category_group
+            ),
+            "legal_entity_id": legal_entity_id,
+            "legal_entities": _legal_entities(connection),
+            "period_value": period,
+            "available_months": _available_months(
+                connection,
+                "fact_sales",
+                "month_index >= :window_start",
+                {"window_start": WINDOW_START},
+            ),
+            "category_group": category_group,
+            "available_category_groups": [
+                row["category_group"]
+                for row in _rows(
+                    connection,
+                    "SELECT DISTINCT category_group FROM newdata.dim_category "
+                    "ORDER BY category_group",
+                    {},
+                )
+            ],
         }
 
 

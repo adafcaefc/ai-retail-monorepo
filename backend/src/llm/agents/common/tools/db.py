@@ -46,6 +46,64 @@ def _rows(
     return [_row(row) for row in result]
 
 
+def _legal_entities(connection: Connection) -> list[dict[str, Any]]:
+    """The three legal entities every fact table in `newdata` can be sliced
+    by, for the entity dropdown every agent's dashboard payload carries.
+
+    Read live rather than hardcoded: `dim_legal_entity` is dimension data, and
+    a fourth entity added to the dataset later should not need a matching
+    code change here to appear in the dropdown.
+    """
+    return _rows(
+        connection,
+        """
+        SELECT legal_entity_id, legal_entity_name, country
+        FROM newdata.dim_legal_entity
+        ORDER BY legal_entity_id
+        """,
+        {},
+    )
+
+
+def _available_months(
+    connection: Connection,
+    table: str,
+    window_clause: str,
+    window_params: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Distinct months a table's window covers, as `{month_key, month_label}`
+    pairs for a Period dropdown.
+
+    `month_key` is the table's own `month` date, ISO-formatted ("2026-03-01")
+    — the same column every fact table's window clause already filters on, so
+    a caller narrowing to one of these values needs no new column and a month
+    can never appear in the dropdown with no data behind it.
+
+    `table` is interpolated, never a bound parameter — SQL does not allow
+    binding an identifier — so this must only ever be called with a literal
+    table name from source, never a value that reached this process from an
+    HTTP request.
+    """
+    rows = connection.execute(
+        text(
+            f"""
+            SELECT DISTINCT month
+            FROM newdata.{table}
+            WHERE {window_clause}
+            ORDER BY month
+            """
+        ),
+        window_params,
+    ).mappings().all()
+    return [
+        {
+            "month_key": row["month"].isoformat(),
+            "month_label": row["month"].strftime("%B %Y"),
+        }
+        for row in rows
+    ]
+
+
 def _latest_batch_id(
     connection: Connection,
     agent_name: str,
@@ -88,6 +146,8 @@ __all__ = [
     "_json_value",
     "_row",
     "_rows",
+    "_legal_entities",
+    "_available_months",
     "_latest_batch_id",
     "latest_import_batch_id",
     "_read_connection",

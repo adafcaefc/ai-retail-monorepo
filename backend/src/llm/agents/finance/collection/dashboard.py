@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _entity_filter,
     _filters,
     _fmt,
     _line_chart,
@@ -107,7 +108,7 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     if worklist:
         levels = [
             (short_name, _expected(worklist[:1])),
-            ("Top 5", _expected(worklist[:5])),
+            ("Top 5 by priority", _expected(worklist[:5])),
             ("All overdue", _expected(worklist)),
         ]
     else:
@@ -117,7 +118,7 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         blended = 0.85
         levels = [
             (short_name, min(max_pull, overdue) * blended),
-            ("Top 5", min(max_pull * 3.5, overdue) * blended),
+            ("Top 5 by priority", min(max_pull * 3.5, overdue) * blended),
             ("All overdue", overdue * blended),
         ]
 
@@ -197,7 +198,11 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             [
                 "Customer",
                 "Overdue",
-                "Bucket",
+                # QC-038 — the column carries `oldest_aging_bucket`, so the
+                # whole balance sits under one bucket while the ageing chart
+                # splits the same money across five. "Bucket" read as a
+                # contradiction; "Oldest bucket" is what it actually is.
+                "Oldest bucket",
                 "Tier",
                 "Exp rec",
             ],
@@ -250,7 +255,13 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 tag="decision",
                 note=(
                     "Bar is cash freed; the label carries the DSO it buys. "
-                    "Wider reach frees more but costs more effort."
+                    "Wider reach frees more but costs more effort. "
+                    # QC-008 — three surfaces each ranked their own "Top 5"
+                    # (priority, overdue amount, expected recovery) and none
+                    # said which. This one names its ranking; the reader can
+                    # then tell it apart from a top 5 drawn another way.
+                    "'Top 5 by priority' is the worklist's own priority rank, "
+                    "not the five largest balances."
                 ),
             ),
         },
@@ -300,6 +311,16 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         # chart by _enriched().
         "period": snap.get("period"),
         "filters": filters,
+        # Period and category group are not offered here — Collection's AR
+        # balance is deliberately unwindowed (see the comment beside
+        # `_annual_credit_sales` in collection_data.py); narrowing it by
+        # issue month would change what the figure means, not just narrow
+        # it, and `dim_category` has no join target from AR at all.
+        "server_filters": [
+            _entity_filter(
+                snap.get("legal_entities"), snap.get("legal_entity_id")
+            ),
+        ],
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "aging",
         "kpis": kpis,
@@ -366,7 +387,15 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build() -> dict[str, Any]:
+def build(
+    legal_entity_id: str | None = None,
+    period: str | None = None,  # noqa: ARG001 - not applicable; see get_collections_snapshot's docstring
+    category_group: str | None = None,  # noqa: ARG001 - not applicable
+) -> dict[str, Any]:
     return _enriched(
-        _collections_dashboard(_call_with_timeout(get_collections_snapshot))
+        _collections_dashboard(
+            _call_with_timeout(
+                lambda: get_collections_snapshot(legal_entity_id)
+            )
+        )
     )

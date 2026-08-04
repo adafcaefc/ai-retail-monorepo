@@ -14,6 +14,7 @@ import {
 } from "./components/Skeleton.jsx";
 import { buildInfoPrompt } from "./infoRegistry.js";
 import { useAgents } from "./agents/AgentsProvider.jsx";
+import { useLanguage } from "./LanguageProvider.jsx";
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
 const CHAT_WIDTH_MIN = 320;
@@ -73,7 +74,32 @@ export default function App() {
     error: agentsError,
   } = useAgents();
 
+  // The starter prompts are the first words a CFO reads in the chat panel, so
+  // they have to follow the language toggle like the board does (QC-042 with
+  // QC-058). Model-written follow-ups pass through untouched: translate()
+  // returns anything it has no entry for unchanged.
+  const { t } = useLanguage();
+
   const [activeAgent, setActiveAgent] = useState(null);
+
+  // The board's server_filters selections (Legal entity, Period, Category
+  // group — whichever ones the active agent offers). Lives here, not inside
+  // Workboard, because chat also needs the same values: a question asked
+  // while the board is scoped should be answered about that same slice, not
+  // the whole ledger (see streamChat's legalEntityId/period/categoryGroup
+  // and scope.py server-side). Not reset on an agent switch — see the note
+  // beside Workboard's own copy of this reasoning. A flat object keyed by
+  // `server_filters[].id` rather than one state variable per filter, so a
+  // fifth filter someday needs no new `useState` here.
+  const [serverFilters, setServerFilters] = useState({
+    legal_entity_id: "ALL",
+    period: "ALL",
+    category_group: "ALL",
+  });
+
+  function setServerFilter(id, value) {
+    setServerFilters((current) => ({ ...current, [id]: value }));
+  }
 
   const [chats, setChats] = useState({});
 
@@ -552,6 +578,9 @@ export default function App() {
         agent: agentId,
         message: text,
         conversationId,
+        legalEntityId: serverFilters.legal_entity_id,
+        period: serverFilters.period,
+        categoryGroup: serverFilters.category_group,
 
         signal: controller.signal,
 
@@ -698,7 +727,20 @@ export default function App() {
         <div className="app-body">
           {sidebarOpen ? (
             <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
-              <p className="section-label">Agent chats</p>
+              {/* Mirrors the loaded sidebar's header so the skeleton and the
+                  real list share a top edge — otherwise the whole agent list
+                  jumps once the modules arrive. Keep the two in sync. */}
+              <div className="brand">
+                <div className="brand-mark">
+                  <img className="brand-mark-svg" src={UserIcon} alt="User" />
+                </div>
+
+                <div className="brand-copy">
+                  <strong>User</strong>
+
+                  <span>user@id.ey.com</span>
+                </div>
+              </div>
 
               {agentsError ? (
                 <p className="sidebar-notice" role="alert">
@@ -840,6 +882,8 @@ export default function App() {
           agentName={currentAgent.name}
           onAskInsight={askKpiInsight}
           insightBusy={currentChat.busy}
+          serverFilterValues={serverFilters}
+          onServerFilterChange={setServerFilter}
         />
 
         {isChatOpen ? (
@@ -944,32 +988,42 @@ export default function App() {
                   <SparkleIcon className="prompt-suggestions-spark" />
 
                   <span>
-                    {currentChat.messages.length > 0
-                      ? "Suggested follow-ups"
-                      : "Suggested prompts"}
+                    {t(
+                      currentChat.messages.length > 0
+                        ? "Suggested follow-ups"
+                        : "Suggested prompts"
+                    )}
                   </span>
                 </div>
 
                 <div className="prompt-suggestions-list">
-                  {visibleSuggestions.map((suggestion) => (
-                    <button
-                      key={suggestion}
-                      type="button"
-                      className="prompt-chip"
-                      disabled={currentChat.busy}
-                      onClick={() => {
-                        setCurrentDraft(suggestion);
+                  {visibleSuggestions.map((suggestion) => {
+                    // Shown and sent as the same words. Filling the composer
+                    // with English after the reader clicked a Bahasa chip
+                    // would be a visible mismatch, and asking in Bahasa is
+                    // the point of the toggle. `key` stays the original so a
+                    // chip keeps its identity across a language switch.
+                    const label = t(suggestion);
+                    return (
+                      <button
+                        key={suggestion}
+                        type="button"
+                        className="prompt-chip"
+                        disabled={currentChat.busy}
+                        onClick={() => {
+                          setCurrentDraft(label);
 
-                        requestAnimationFrame(() => {
-                          composerRef.current?.focus();
-                        });
-                      }}
-                    >
-                      <SparkleIcon className="prompt-chip-spark" />
+                          requestAnimationFrame(() => {
+                            composerRef.current?.focus();
+                          });
+                        }}
+                      >
+                        <SparkleIcon className="prompt-chip-spark" />
 
-                      <span className="prompt-chip-text">{suggestion}</span>
-                    </button>
-                  ))}
+                        <span className="prompt-chip-text">{label}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </section>
             )}

@@ -242,6 +242,136 @@ def _filters(
     return built
 
 
+def _scoped_where(
+    base_clause: str,
+    base_params: dict[str, Any],
+    **conditions: str | None,
+) -> tuple[str, dict[str, Any]]:
+    """A WHERE clause plus its bound parameters, built from a base condition
+    and any number of optional `column=value` equality filters.
+
+    A filter left `None` (the caller didn't ask to narrow by it) is skipped
+    entirely rather than bound as NULL, so `legal_entity_id=None` means "any
+    entity", not "rows where the column is null". Every value is bound, never
+    spliced into `base_clause`, since these arrive from an HTTP query string.
+
+    A `column` may be table-qualified ("s.legal_entity_id") for a query that
+    joins more than one table — the bind-parameter name strips the dot
+    (Postgres does not allow one in a parameter name), keyed by position so
+    two qualified conditions can never collide on the same bind name.
+    """
+    clause = base_clause
+    params = dict(base_params)
+    for index, (column, value) in enumerate(conditions.items()):
+        if value is not None:
+            bind_name = f"scoped_{index}_{column.replace('.', '_')}"
+            clause += f" AND {column} = :{bind_name}"
+            params[bind_name] = value
+    return clause, params
+
+
+def _server_filter(
+    filter_id: str,
+    label: str,
+    options: list[tuple[str, str]],
+    active: str | None,
+    *,
+    all_label: str = "All",
+) -> dict[str, Any]:
+    """One entry of `server_filters` — a dropdown that round-trips to the
+    query rather than narrowing chart rows already on the wire.
+
+    Deliberately a top-level `server_filters` list, not appended to
+    `filters`: entries in `filters` are narrowed client-side against chart
+    rows already delivered (`frontend/src/filters.js`). These change what the
+    *query* aggregated, so picking one has to round-trip to
+    `GET .../dashboard/{agent}?<id>=...` — a different frontend code path
+    needs to tell the two kinds apart, which a shared shape would hide.
+
+    `options` is `(id, display name)` pairs; the "show everything" option is
+    prepended here so every caller gets it for free rather than repeating it.
+    """
+    built_options = [{"id": "ALL", "name": all_label}] + [
+        {"id": option_id, "name": name} for option_id, name in options
+    ]
+    return {
+        "id": filter_id,
+        "label": label,
+        "options": built_options,
+        "active": active or "ALL",
+    }
+
+
+def _entity_filter(
+    legal_entities: list[dict[str, Any]] | None,
+    active_legal_entity_id: str | None,
+) -> dict[str, Any]:
+    """The Legal entity dropdown — every agent carries this one."""
+    options = [
+        (
+            row["legal_entity_id"],
+            f"{row['legal_entity_id']} · {row['legal_entity_name']}",
+        )
+        for row in (legal_entities or [])
+    ]
+    return _server_filter(
+        "legal_entity_id",
+        "Legal entity",
+        options,
+        active_legal_entity_id,
+        all_label="All entities",
+    )
+
+
+def _period_filter(
+    months: list[dict[str, Any]] | None,
+    active_period: str | None,
+) -> dict[str, Any]:
+    """The Period dropdown — Finance and Leakage only.
+
+    Not offered on Collection (its AR balance is deliberately unwindowed —
+    see `_annual_credit_sales`'s neighbouring comment in collection_data.py;
+    filtering it by issue month would change what the figure means, not just
+    narrow it) or Treasury (no month column on its forecast tables; `Week`
+    already serves the equivalent role there).
+
+    `months` rows carry `month_key` ("2026-03") and `month_label`
+    ("March 2026"), read from the fact table itself so this can never name a
+    month with no data behind it.
+    """
+    options = [
+        (row["month_key"], row["month_label"]) for row in (months or [])
+    ]
+    return _server_filter(
+        "period",
+        "Period",
+        options,
+        active_period,
+        all_label="All months",
+    )
+
+
+def _category_group_filter(
+    groups: list[str] | None,
+    active_group: str | None,
+) -> dict[str, Any]:
+    """The Category group dropdown — Finance only.
+
+    `filter_requirements` also names Leakage, but `fact_ap_invoices` carries
+    no `category_id` — only `spend_category`, a different, AP-specific
+    classification (Logistics/Packaging/Raw Material/...). The spec conflates
+    the two; this follows the schema that actually exists, not the sheet.
+    """
+    options = [(group, group) for group in (groups or [])]
+    return _server_filter(
+        "category_group",
+        "Category group",
+        options,
+        active_group,
+        all_label="All categories",
+    )
+
+
 def _enriched(payload: dict[str, Any]) -> dict[str, Any]:
     """Run a finished dashboard payload through KPI enrichment and stamping."""
     payload["kpis"] = _enrich_kpis(payload.get("kpis") or [])

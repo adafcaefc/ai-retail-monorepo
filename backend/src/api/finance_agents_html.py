@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import (
     APIRouter,
     HTTPException,
+    Query,
 )
 
 from fastapi.responses import (
@@ -34,6 +35,15 @@ from src.db.db import session_scope
 from src.llm.tool_events import (
     set_tool_event_queue,
     reset_tool_event_queue,
+)
+
+from src.llm.agents.common.tools.scope import (
+    set_active_legal_entity_id,
+    reset_active_legal_entity_id,
+    set_active_period,
+    reset_active_period,
+    set_active_category_group,
+    reset_active_category_group,
 )
 
 from src.llm.pipeline import (
@@ -75,6 +85,13 @@ class ChatRequest(BaseModel):
     agent: str
     message: str
     conversation_id: str | None = None
+    # The board's currently selected server_filters values, so a question
+    # asked while the dashboard is scoped gets answered about that same
+    # slice — see common/tools/scope.py. "ALL" and omitted both mean
+    # unfiltered, matching how the dashboard route treats the same value.
+    legal_entity_id: str | None = None
+    period: str | None = None
+    category_group: str | None = None
 
 class CollectionSimulationRequest(
     BaseModel
@@ -200,6 +217,28 @@ async def run_chat_stream(
         event_queue
     )
 
+    # Same "ALL" normalisation as GET /dashboard/{agent}: the dropdowns'
+    # "clear" option round-trips as the literal string "ALL", not as a value
+    # a chat tool would try to match against a real column.
+    scoped_entity_id = (
+        request.legal_entity_id
+        if request.legal_entity_id and request.legal_entity_id != "ALL"
+        else None
+    )
+    scoped_period = (
+        request.period
+        if request.period and request.period != "ALL"
+        else None
+    )
+    scoped_category_group = (
+        request.category_group
+        if request.category_group and request.category_group != "ALL"
+        else None
+    )
+    entity_token = set_active_legal_entity_id(scoped_entity_id)
+    period_token = set_active_period(scoped_period)
+    category_group_token = set_active_category_group(scoped_category_group)
+
     yield sse(
         "status",
         {
@@ -263,6 +302,15 @@ async def run_chat_stream(
     finally:
         reset_tool_event_queue(
             token
+        )
+        reset_active_legal_entity_id(
+            entity_token
+        )
+        reset_active_period(
+            period_token
+        )
+        reset_active_category_group(
+            category_group_token
         )
 
     suggestion_task: asyncio.Task[list[str]] | None = None
@@ -453,8 +501,46 @@ async def list_agents() -> dict[str, Any]:
     }
 
 
+def _scoped_query_value(value: str | None) -> str | None:
+    """The dropdowns' own "clear" option round-trips as the literal string
+    "ALL" (see `_server_filter` in dashboard_blocks.py) — treated as no
+    filter here, not as a value the query layer would try to match against a
+    real column, where it would silently match nothing.
+    """
+    return value if value and value != "ALL" else None
+
+
 @router.get("/dashboard/{agent}")
-async def get_agent_dashboard(agent: str) -> dict[str, Any]:
+async def get_agent_dashboard(
+    agent: str,
+    legal_entity_id: str | None = Query(
+        default=None,
+        description=(
+            "Narrow the dashboard to one legal entity "
+            "(see server_filters on any dashboard response). "
+            "Omitted or 'ALL' returns every entity."
+        ),
+    ),
+    period: str | None = Query(
+        default=None,
+        description=(
+            "Narrow the dashboard to one month ('2026-03-01'). Finance and "
+            "Leakage only — other agents accept and ignore it, since their "
+            "underlying data has no month to narrow by. Omitted or 'ALL' "
+            "returns the full reporting window."
+        ),
+    ),
+    category_group: str | None = Query(
+        default=None,
+        description=(
+            "Narrow the dashboard to one product category group. Finance "
+            "only. Omitted or 'ALL' returns every category."
+        ),
+    ),
+) -> dict[str, Any]:
+    scoped_entity_id = _scoped_query_value(legal_entity_id)
+    scoped_period = _scoped_query_value(period)
+    scoped_category_group = _scoped_query_value(category_group)
     try:
         descriptor = get_agent(agent)
     except ValueError as error:
@@ -463,7 +549,9 @@ async def get_agent_dashboard(agent: str) -> dict[str, Any]:
             detail=str(error),
         ) from error
     try:
-        return descriptor.build_dashboard()
+        return descriptor.build_dashboard(
+            scoped_entity_id, scoped_period, scoped_category_group
+        )
     except ValueError as error:
         raise HTTPException(
             status_code=400,

@@ -47,7 +47,13 @@ class AgentDescriptor:
 
     # Callables
     tools: dict[str, Callable]    # domain-specific tools (merged into LOCAL_TOOLS)
-    build_dashboard: Callable[[], dict]
+    # (legal_entity_id, period, category_group) — every `build()` accepts all
+    # three positionally so the route can call any agent uniformly, even
+    # though not every agent's data supports every filter (an agent that
+    # doesn't just ignores the ones it was passed; see each build()'s
+    # docstring for which). All three default to `None` ("everything"), so
+    # every existing zero-arg call site keeps working unchanged.
+    build_dashboard: Callable[[str | None, str | None, str | None], dict]
 
 
 __all__ = ["AgentDescriptor", "MonitoringPass"]

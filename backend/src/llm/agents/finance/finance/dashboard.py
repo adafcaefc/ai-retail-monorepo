@@ -7,13 +7,16 @@ from typing import Any
 from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
+    _category_group_filter,
     _donut_chart,
     _enriched,
+    _entity_filter,
     _filters,
     _fmt,
     _line_chart,
     _num,
     _pct,
+    _period_filter,
     _round_half_up,
     _row_get,
     _table_view,
@@ -520,12 +523,28 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         },
     ]
 
+    # The bridge cannot be recomputed per entity, period or category group
+    # (see get_financial_performance_snapshot's docstring), so a reader who
+    # just scoped every other chart is told this one did not follow, instead
+    # of silently reading a stale whole-ledger bridge as if it had.
+    drivers_note = "Largest negative steps are the margin culprits."
+    if (
+        snap.get("legal_entity_id")
+        or snap.get("period_value")
+        or snap.get("category_group")
+    ):
+        drivers_note += (
+            " Shows the full reporting window across all entities — this "
+            "bridge cannot be split by entity, period or category in the "
+            "current dataset."
+        )
+
     views = {
         "drivers": {
             **_waterfall_chart(
                 "EBITDA drivers · budget to actual",
                 waterfall_rows,
-                note="Largest negative steps are the margin culprits.",
+                note=drivers_note,
             ),
         },
         "revenue": {
@@ -684,8 +703,11 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
                 if default is not None:
                     inp["default"] = float(default)
 
-    # QC-043 — the product mix is the only dimension this dataset carries.
-    # Entity, store, channel and month arrive with the new dataset.
+    # QC-043 — product and cost line are the two client-side lenses: they
+    # narrow chart rows already on the wire. Entity, period and category
+    # group are server-side filters instead (see `server_filters` below)
+    # because they change what the query aggregated, not just which bars are
+    # shown from an already-fetched set.
     filters = _filters(views, side, (
         ("product", "Product", "view:revenue",
          ("view:revenue", "view:product", "side:top"), 0),
@@ -698,6 +720,23 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         # chart by _enriched().
         "period": snap.get("period"),
         "filters": filters,
+        "server_filters": [
+            _entity_filter(
+                snap.get("legal_entities"), snap.get("legal_entity_id")
+            ),
+            _period_filter(
+                snap.get("available_months"), snap.get("period_value")
+            ),
+            _category_group_filter(
+                snap.get("available_category_groups"),
+                snap.get("category_group"),
+            ),
+        ],
+        # QC-010-adjacent honesty: the EBITDA bridge cannot be entity-sliced
+        # with the current dataset (see `_driver_rows`'s docstring) — the
+        # frontend reads this to say so on the chart rather than showing a
+        # stale whole-ledger bridge next to KPI tiles that did narrow.
+        "bridge_scope": snap.get("bridge_scope", "all_entities"),
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "drivers",
         "kpis": kpis,
@@ -718,7 +757,17 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def build() -> dict[str, Any]:
+def build(
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+    category_group: str | None = None,
+) -> dict[str, Any]:
     return _enriched(
-        _finance_dashboard(_call_with_timeout(get_financial_performance_snapshot))
+        _finance_dashboard(
+            _call_with_timeout(
+                lambda: get_financial_performance_snapshot(
+                    legal_entity_id, period, category_group
+                )
+            )
+        )
     )

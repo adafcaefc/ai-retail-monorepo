@@ -14,9 +14,15 @@ DESCRIPTOR = AgentDescriptor(
     display="Finance",
     description="Explore financial performance and plan variances.",
     prompt="Ask Finance about performance...",
+    # QC-042. The openers used to restate the board ("Explain the main finance
+    # performance risks"), which asks the agent for what the CFO is already
+    # looking at. One opener per agent now crosses into another agent's book,
+    # because a question no single dashboard can answer is the only thing here
+    # a spreadsheet could not already do.
     starter_prompts=(
-        "Explain the main finance performance risks.",
+        "Which agent should fix the margin problem?",
         "What are the largest EBITDA variance drivers?",
+        "Is the price decline or the cost overrun hurting margin more?",
     ),
     chat_agent="finance.finance.chat",
     simulation_agent="finance.finance.simulation",

@@ -2791,50 +2791,74 @@ img.ey-logo {
   flex-direction: column;
   gap: 3px;
   font-size: 0.68rem;
-  color: #5b6b8c;
+  color: var(--muted);
 }
 
 .filter-control select {
   min-width: 132px;
   max-width: 210px;
   padding: 5px 7px;
-  border: 1px solid #d9e4fb;
+  border: 1px solid var(--blue-100);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   font-size: 0.74rem;
-  color: #1f2a44;
+  color: var(--gray-900);
 }
 
 .filter-clear {
   padding: 6px 10px;
-  border: 1px solid #d9e4fb;
+  border: 1px solid var(--blue-100);
   border-radius: 8px;
-  background: #eff4ff;
+  background: var(--accent-info-soft);
   font-size: 0.7rem;
-  color: #1f2a44;
+  color: var(--gray-900);
   cursor: pointer;
+}
+
+/*
+ * Same control shape as `.filter-control`, deliberately set apart: these
+ * round-trip to the server and re-aggregate the whole board, where the
+ * filters beside them only narrow the chart already on screen. The
+ * right-hand divider is what visually says "this group is different", drawn
+ * once on the group rather than once per control — Entity, Period and
+ * Category group sit inside one bordered cluster, not three separately
+ * fenced ones.
+ */
+.server-filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  padding-right: 12px;
+  margin-right: 2px;
+  border-right: 1px solid var(--blue-100);
+}
+
+.server-filter-control select {
+  border-color: var(--blue-200);
+  font-weight: 600;
 }
 
 /* QC-035: the span a table's figures cover, under its title. */
 .focus-period {
   margin: 2px 0 0;
   font-size: 0.7rem;
-  color: #5b6b8c;
+  color: var(--muted);
 }
 
 .focus-note {
   margin: 8px 0 0;
   padding: 7px 9px;
   border-radius: 8px;
-  background: #eff4ff;
-  border: 1px solid #d9e4fb;
+  background: var(--accent-info-soft);
+  border: 1px solid var(--blue-100);
   font-size: 0.72rem;
 }
 
 .whatif-bar {
-  border: 1px solid #e2e9fb;
+  border: 1px solid var(--blue-100);
   border-radius: 12px;
-  background: #f7f9ff;
+  background: var(--accent-info-soft);
   padding: 10px 12px;
 }
 
@@ -2854,11 +2878,79 @@ img.ey-logo {
   flex-wrap: wrap;
 }
 
+/* Collapse toggle — same shape as .folder-toggle/.folder-chevron in the
+   sidebar, so "click to expand" reads the same way everywhere in the app. */
+.whatif-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.whatif-toggle-chevron {
+  width: 0;
+  height: 0;
+  flex: 0 0 auto;
+  border-top: 5px solid var(--ink);
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  transition: transform 160ms var(--ease-standard);
+}
+
+.whatif-toggle[aria-expanded="false"] .whatif-toggle-chevron {
+  transform: rotate(-90deg);
+}
+
+/* A one-line reading so closing the panel doesn't hide the scenario entirely
+   — the number that matters stays visible next to the title. */
+.whatif-collapsed-reading {
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--primary-deep);
+}
+
+/*
+ * Height-animated via grid-template-rows (0fr <-> 1fr) rather than
+ * max-height: the content's real height varies with the simulator payload,
+ * so a fixed max-height either clips a tall one or leaves a gap under a
+ * short one. The inner wrapper supplies the overflow:hidden a grid-row
+ * transition needs to actually clip.
+ */
+.whatif-body {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 220ms var(--ease-standard);
+}
+
+.whatif-bar.is-collapsed .whatif-body {
+  grid-template-rows: 0fr;
+}
+
+.whatif-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.whatif-bar:not(.is-collapsed) .whatif-body-inner {
+  padding-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .whatif-body,
+  .whatif-toggle-chevron {
+    transition: none;
+  }
+}
+
 .scope-btn,
 .calc-btn {
   border-radius: 8px;
-  border: 1px solid #cfd5e6;
-  background: #fff;
+  border: 1px solid var(--line);
+  background: var(--surface-strong);
   padding: 6px 10px;
   font-size: 0.75rem;
   font-weight: 700;

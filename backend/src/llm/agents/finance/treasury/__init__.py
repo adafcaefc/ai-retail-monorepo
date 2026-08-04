@@ -14,9 +14,11 @@ DESCRIPTOR = AgentDescriptor(
     display="Treasury",
     description="Review liquidity and cash-flow forecasts.",
     prompt="Ask Treasury about liquidity...",
+    # QC-042 — see the note in finance/finance/__init__.py.
     starter_prompts=(
-        "Explain the current cash and liquidity risks.",
+        "If Collection pulls cash in earlier, what happens to Week 5?",
         "Which action restores the minimum cash buffer fastest?",
+        "What does deferring the vendor payment cost us in Week 6?",
     ),
     chat_agent="finance.treasury.chat",
     simulation_agent="finance.treasury.simulation",

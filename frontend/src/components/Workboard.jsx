@@ -15,7 +15,7 @@ import {
   translateUnit,
 } from "../format.js";
 import { applyFilters, focusFor, isEmptyAfterFilter } from "../filters.js";
-import { translatePayload } from "../i18n.js";
+import { translatePayload, translatePeriod } from "../i18n.js";
 import { useLanguage } from "../LanguageProvider.jsx";
 import {
   fetchDashboard,
@@ -61,9 +61,30 @@ function readStored(key, clampFn, fallback) {
   }
 }
 
+// Whether the what-if panel is expanded, remembered the same way the split
+// positions are: a hand that closes it once (it competes with the charts for
+// vertical room) keeps it closed everywhere, without hiding the feature.
+const WHATIF_OPEN_KEY = "ledgerline.whatifOpen";
+
+function readStoredOpen(key, fallback) {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? fallback : raw === "1";
+  } catch {
+    return fallback;
+  }
+}
+
 // The board toolbar (Agent Action, Recalculate, alerts, Ask <agent>) lives in
 // the app header now, so this component renders data only.
-export default function Workboard({ agentId, agentName, onAskInsight, insightBusy = false }) {
+export default function Workboard({
+  agentId,
+  agentName,
+  onAskInsight,
+  insightBusy = false,
+  serverFilterValues,
+  onServerFilterChange,
+}) {
   const { language, t } = useLanguage();
   const [dashboard, setDashboard] = useState(null);
   const [view, setView] = useState("");
@@ -77,6 +98,13 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
   const [info, setInfo] = useState(null);
   // QC-043: filterId -> chosen option. Empty string means "all".
   const [picked, setPicked] = useState({});
+  // `serverFilterValues` ({legal_entity_id, period, category_group}, each
+  // "ALL" or an id) is a prop, not local state: App.jsx owns it, because
+  // chat needs the same values to scope its own tool calls to what the
+  // board is showing — see streamChat's legalEntityId/period/categoryGroup.
+  // They are query parameters, never a client-side re-filter: each changes
+  // what the backend aggregated, not which rows of an already-delivered
+  // payload are shown.
   // Width of the main chart as % of the middle row. Persisted per user, not
   // per agent: a hand that finds the split it likes keeps it everywhere.
   const [split, setSplit] = useState(() =>
@@ -120,7 +148,7 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
       setSimError("");
 
       try {
-        const payload = await fetchDashboard(agentId);
+        const payload = await fetchDashboard(agentId, serverFilterValues);
         if (cancelled) {
           return;
         }
@@ -149,7 +177,15 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
     return () => {
       cancelled = true;
     };
-  }, [agentId]);
+    // Depend on the individual primitives, not the `serverFilterValues`
+    // object reference — a parent re-render that happens to build a new
+    // object with the same values must not refetch the whole dashboard.
+  }, [
+    agentId,
+    serverFilterValues?.legal_entity_id,
+    serverFilterValues?.period,
+    serverFilterValues?.category_group,
+  ]);
 
   // Filter selections belong to the agent that offered them.
   useEffect(() => {
@@ -507,6 +543,18 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
 
                   <span className="kpi-delta">{displayDelta}</span>
 
+                  {/*
+                   * RAG status word: the coloured rail/dot above carry the
+                   * same "good/warn/bad" state by colour alone, which a
+                   * colour-blind reader or a screen reader gets nothing from.
+                   * This line repeats it as a shape (StatusIcon) + a word, so
+                   * the state survives without colour.
+                   */}
+                  <span className="kpi-status-word">
+                    <StatusIcon status={status} />
+                    {t(STATUS_WORD[status] || STATUS_WORD.good)}
+                  </span>
+
                   {hasTrend ? (
                     <KpiSparkline points={kpi.trend} />
                   ) : hasProgress ? (
@@ -528,6 +576,14 @@ export default function Workboard({ agentId, agentName, onAskInsight, insightBus
           </div>
 
           <div className="board-controls">
+            <ServerFilterBar
+              t={t}
+              language={language}
+              filters={board.server_filters}
+              values={serverFilterValues}
+              onChange={onServerFilterChange}
+            />
+
             <FilterBar
               t={t}
               definitions={board.filters}
@@ -709,6 +765,7 @@ function InfoTarget({
   agentId,
   onOpen,
   children,
+  focusable = true,
 }) {
   const entry = findInfo(agentId, infoKey);
 
@@ -725,7 +782,7 @@ function InfoTarget({
       className={`${className} has-info`}
       data-testid={testId}
       role="button"
-      tabIndex={0}
+      tabIndex={focusable ? 0 : -1}
       title={`What "${entry.el}" means`}
       onClick={(event) => onOpen(infoKey, event)}
       onKeyDown={(event) => {
@@ -740,6 +797,66 @@ function InfoTarget({
         ⓘ
       </span>
     </Tag>
+  );
+}
+
+// RAG status word shown next to StatusIcon — keys match the "good" | "warn" |
+// "bad" values backend agents already send (see dashboard_blocks.py /
+// finance/dashboard.py). Routed through t() so it follows the EN/ID toggle.
+const STATUS_WORD = {
+  good: "Good",
+  warn: "Warning",
+  bad: "Critical",
+};
+
+// Three shapes chosen to mirror real-world hazard signage (circle / triangle
+// / octagon), so status reads by outline alone even with colour removed —
+// not just three coloured dots of the same shape.
+function StatusIcon({ status }) {
+  if (status === "warn") {
+    return (
+      <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" focusable="false">
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinejoin="round"
+          d="M12 3.2l9.3 16.6H2.7L12 3.2z"
+        />
+        <path stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M12 9.6v4.3" />
+        <circle cx="12" cy="17.1" r="1.05" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  if (status === "bad") {
+    return (
+      <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" focusable="false">
+        <path
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinejoin="round"
+          d="M8 2.6h8l5.4 5.4v8L16 21.4H8L2.6 16V8L8 2.6z"
+        />
+        <path stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" d="M12 7.9v5.3" />
+        <circle cx="12" cy="16.2" r="1.05" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true" focusable="false">
+      <circle cx="12" cy="12" r="9.4" fill="none" stroke="currentColor" strokeWidth="2.2" />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M7.7 12.2l2.7 2.7 5.9-6.1"
+      />
+    </svg>
   );
 }
 
@@ -868,8 +985,70 @@ function FocusBody({ view, t, compact = false }) {
 }
 
 // QC-043. Only the dimensions the payload says it can be sliced by appear —
-// this dataset has no entity, store or month column, and an empty control
-// would imply it did.
+// an agent whose data has no month or category column to narrow by (see
+// each build()'s docstring for which) simply never puts that entry in
+// `server_filters`, and an empty control would otherwise imply it did.
+/*
+ * A different control from `FilterBar` on purpose. Its options round-trip to
+ * the server (`fetchDashboard(agent, serverFilterValues)`) instead of
+ * narrowing chart rows already on the page — see the note on
+ * `serverFilterValues` above and `_server_filter` in dashboard_blocks.py.
+ * Renders one dropdown per entry of `board.server_filters` — Legal entity
+ * today, Period and Category group on the agents that support them — rather
+ * than one hard-coded Entity control, so a fourth filter needs no new
+ * component here, only a fourth entry on the backend payload. None of them
+ * reset on an agent switch, so `values` is a prop from the parent, not local
+ * state here.
+ */
+function ServerFilterBar({ t, language, filters, values, onChange }) {
+  const visible = (filters || []).filter(
+    (filter) => filter?.options?.length
+  );
+  if (!visible.length) {
+    return null;
+  }
+
+  // The "period" filter's non-ALL options are month labels ("October
+  // 2025") — a shape `t()`'s flat dictionary was never meant to cover.
+  // `translatePeriod` is the same month-name translator the chart subtitle
+  // beside it already uses, so "Oktober 2025" here can never drift from
+  // "Oktober 2025" there. Category group names (Manufacturing, Trading, ...)
+  // and entity names are left as-is, same as the entity dropdown always was
+  // — proper nouns and business classifications, not prose.
+  function optionLabel(filter, option) {
+    if (option.id === "ALL") {
+      return t(option.name);
+    }
+    if (filter.id === "period") {
+      return translatePeriod(option.name, language);
+    }
+    return option.name;
+  }
+
+  return (
+    <div className="server-filter-group">
+      {visible.map((filter) => (
+        <label
+          key={filter.id}
+          className="filter-control server-filter-control"
+        >
+          <span>{t(filter.label)}</span>
+          <select
+            value={values?.[filter.id] ?? "ALL"}
+            onChange={(event) => onChange(filter.id, event.target.value)}
+          >
+            {filter.options.map((option) => (
+              <option key={option.id} value={option.id}>
+                {optionLabel(filter, option)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ))}
+    </div>
+  );
+}
+
 function FilterBar({ t, definitions, picked, onPick, onClear }) {
   if (!definitions?.length) {
     return null;
@@ -909,7 +1088,7 @@ function FilterBar({ t, definitions, picked, onPick, onClear }) {
 //
 // Presets come from the payload, not from here: only the agent knows which
 // lever settings are worth a button.
-function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset }) {
+function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset, open = true }) {
   if (!presets?.length && atBaseline) {
     return null;
   }
@@ -924,7 +1103,8 @@ function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset }) {
           type="button"
           className="preset-btn"
           title={preset.note}
-          disabled={busy}
+          disabled={busy || !open}
+          tabIndex={open ? 0 : -1}
           onClick={() => onPreset(preset)}
         >
           {t(preset.label)}
@@ -935,7 +1115,8 @@ function PresetBar({ t, presets, busy, atBaseline, onPreset, onReset }) {
         type="button"
         className="preset-btn preset-btn--quiet"
         data-testid="reset-to-baseline"
-        disabled={busy || atBaseline}
+        disabled={busy || atBaseline || !open}
+        tabIndex={open ? 0 : -1}
         onClick={onReset}
       >
         {t("Reset to baseline")}
@@ -961,6 +1142,16 @@ function WhatIfBar({
   agentId,
   onOpenInfo,
 }) {
+  const [open, setOpen] = useState(() => readStoredOpen(WHATIF_OPEN_KEY, true));
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(WHATIF_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      // Private-mode storage block: the toggle still works for this session.
+    }
+  }, [open]);
+
   if (!simulator) {
     return null;
   }
@@ -972,157 +1163,189 @@ function WhatIfBar({
       Number(values[input.id] ?? input.default ?? 0) ===
       Number(input.default ?? 0)
   );
+  const hasReading = !busy && summary.gauge.center !== "—";
 
   return (
-    <section className="whatif-bar" data-testid="whatif-bar">
+    <section
+      className={"whatif-bar" + (open ? "" : " is-collapsed")}
+      data-testid="whatif-bar"
+    >
       <div className="whatif-top">
-        <strong>{t("What-if simulator")}</strong>
-        <div className="whatif-controls">
-          {Array.isArray(simulator.scope_options) &&
-            simulator.scope_options.map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={"scope-btn" + (scope === option ? " on" : "")}
-                onClick={() => setScope(option)}
-              >
-                {t(option === "all" ? "All lines" : "FX lines")}
-              </button>
-            ))}
-          <button
-            type="button"
-            className={"calc-btn" + (busy ? " is-busy" : "")}
-            data-testid="calculate-simulation"
-            disabled={busy}
-            onClick={onCalculate}
-          >
-            {t(busy ? "Running scenario…" : "Calculate simulation")}
-          </button>
-        </div>
-      </div>
-
-      <PresetBar
-        t={t}
-        presets={simulator.presets}
-        busy={busy}
-        atBaseline={atBaseline}
-        onPreset={onPreset}
-        onReset={onReset}
-      />
-
-      <div className={"whatif-grid" + (busy ? " is-loading" : "")}>
-        <div className="whatif-levers">
-          <div className="whatif-label">{t("Levers")}</div>
-          {(simulator.inputs || []).map((input) => (
-            <label key={input.id} className="lever">
-              <span>
-                {input.label}
-                {input.unit ? ` (${input.unit})` : ""}
-              </span>
-              <div className="lever-controls">
-                <input
-                  type="range"
-                  min={input.min}
-                  max={input.max}
-                  step={input.step}
-                  value={values[input.id] ?? input.default ?? 0}
-                  data-testid={`lever-${input.id}`}
-                  disabled={busy}
-                  onInput={(event) =>
-                    onChange(input.id, Number(event.currentTarget.value))
-                  }
-                />
-                <input
-                  type="number"
-                  className="lever-number"
-                  min={input.min}
-                  max={input.max}
-                  step={input.step}
-                  value={values[input.id] ?? input.default ?? 0}
-                  data-testid={`lever-${input.id}-number`}
-                  disabled={busy}
-                  onChange={(event) =>
-                    onChange(input.id, Number(event.currentTarget.value))
-                  }
-                />
-              </div>
-            </label>
-          ))}
-        </div>
-
-        {busy ? (
-          <WhatIfStatsSkeleton />
-        ) : (
-          <div className="whatif-stats" data-testid="whatif-stats">
-            {summary.stats.map((stat) => (
-              <InfoTarget
-                key={stat.label}
-                className="whatif-stat"
-                infoKey={`stat:${stat.id}`}
-                agentId={agentId}
-                onOpen={(key, event) =>
-                  onOpenInfo(key, event, {
-                    context: [stat.value, stat.delta]
-                      .filter(Boolean)
-                      .join(" · "),
-                  })
-                }
-              >
-                <span>{stat.label}</span>
-                <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
-                <small className={stat.tone}>{stat.delta}</small>
-              </InfoTarget>
-            ))}
-
-            {/* This is where a run gets drawn. It was removed when the board's
-                own charts redrew on the scenario — but that feature is gone,
-                so without this a calculation produced numbers and no picture
-                at all. */}
-            {summary.chart ? (
-              <InfoTarget
-                className="whatif-mini-chart"
-                infoKey="simchart"
-                agentId={agentId}
-                onOpen={onOpenInfo}
-              >
-                <ChartRenderer data={summary.chart} variant="compact" />
-              </InfoTarget>
-            ) : null}
-          </div>
-        )}
-
-        <InfoTarget
-          className="whatif-gauge"
-          testId="whatif-gauge"
-          infoKey="gauge"
-          agentId={agentId}
-          onOpen={(key, event) =>
-            onOpenInfo(key, event, {
-              context: busy ? "" : summary.gauge.center,
-            })
-          }
+        <button
+          type="button"
+          className="whatif-toggle"
+          aria-expanded={open}
+          aria-controls="whatif-body"
+          onClick={() => setOpen((value) => !value)}
         >
-          <div className="whatif-label">
-            {simulator.gauge_label || "Scenario"}
+          <span className="whatif-toggle-chevron" aria-hidden="true" />
+          <strong>{t("What-if simulator")}</strong>
+        </button>
+
+        {!open && hasReading ? (
+          <span className="whatif-collapsed-reading">
+            {simulator.gauge_label || "Scenario"}: {summary.gauge.center}
+          </span>
+        ) : null}
+
+        {open ? (
+          <div className="whatif-controls">
+            {Array.isArray(simulator.scope_options) &&
+              simulator.scope_options.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  className={"scope-btn" + (scope === option ? " on" : "")}
+                  onClick={() => setScope(option)}
+                >
+                  {t(option === "all" ? "All lines" : "FX lines")}
+                </button>
+              ))}
+            <button
+              type="button"
+              className={"calc-btn" + (busy ? " is-busy" : "")}
+              data-testid="calculate-simulation"
+              disabled={busy}
+              onClick={onCalculate}
+            >
+              {t(busy ? "Running scenario…" : "Calculate simulation")}
+            </button>
           </div>
-          {busy ? (
-            <WhatIfGaugeSkeleton />
-          ) : (
-            <>
-              <div className="gauge-center" data-testid="gauge-center">
-                {summary.gauge.center}
-              </div>
-              <p data-testid="gauge-txt">{summary.gauge.txt}</p>
-            </>
-          )}
-        </InfoTarget>
+        ) : null}
       </div>
 
-      {error ? (
-        <div className="workboard-status error" role="alert">
-          {error}
+      <div className="whatif-body" id="whatif-body">
+        <div className="whatif-body-inner" aria-hidden={!open}>
+          <PresetBar
+            t={t}
+            presets={simulator.presets}
+            busy={busy}
+            atBaseline={atBaseline}
+            onPreset={onPreset}
+            onReset={onReset}
+            open={open}
+          />
+
+          <div className={"whatif-grid" + (busy ? " is-loading" : "")}>
+            <div className="whatif-levers">
+              <div className="whatif-label">{t("Levers")}</div>
+              {(simulator.inputs || []).map((input) => (
+                <label key={input.id} className="lever">
+                  <span>
+                    {input.label}
+                    {input.unit ? ` (${input.unit})` : ""}
+                  </span>
+                  <div className="lever-controls">
+                    <input
+                      type="range"
+                      min={input.min}
+                      max={input.max}
+                      step={input.step}
+                      value={values[input.id] ?? input.default ?? 0}
+                      data-testid={`lever-${input.id}`}
+                      disabled={busy || !open}
+                      tabIndex={open ? 0 : -1}
+                      onInput={(event) =>
+                        onChange(input.id, Number(event.currentTarget.value))
+                      }
+                    />
+                    <input
+                      type="number"
+                      className="lever-number"
+                      min={input.min}
+                      max={input.max}
+                      step={input.step}
+                      value={values[input.id] ?? input.default ?? 0}
+                      data-testid={`lever-${input.id}-number`}
+                      disabled={busy || !open}
+                      tabIndex={open ? 0 : -1}
+                      onChange={(event) =>
+                        onChange(input.id, Number(event.currentTarget.value))
+                      }
+                    />
+                  </div>
+                </label>
+              ))}
+            </div>
+
+            {busy ? (
+              <WhatIfStatsSkeleton />
+            ) : (
+              <div className="whatif-stats" data-testid="whatif-stats">
+                {summary.stats.map((stat) => (
+                  <InfoTarget
+                    key={stat.label}
+                    className="whatif-stat"
+                    infoKey={`stat:${stat.id}`}
+                    agentId={agentId}
+                    focusable={open}
+                    onOpen={(key, event) =>
+                      onOpenInfo(key, event, {
+                        context: [stat.value, stat.delta]
+                          .filter(Boolean)
+                          .join(" · "),
+                      })
+                    }
+                  >
+                    <span>{stat.label}</span>
+                    <strong data-testid={`stat-${stat.id}`}>{stat.value}</strong>
+                    <small className={stat.tone}>{stat.delta}</small>
+                  </InfoTarget>
+                ))}
+
+                {/* This is where a run gets drawn. It was removed when the board's
+                    own charts redrew on the scenario — but that feature is gone,
+                    so without this a calculation produced numbers and no picture
+                    at all. */}
+                {summary.chart ? (
+                  <InfoTarget
+                    className="whatif-mini-chart"
+                    infoKey="simchart"
+                    agentId={agentId}
+                    focusable={open}
+                    onOpen={onOpenInfo}
+                  >
+                    <ChartRenderer data={summary.chart} variant="compact" />
+                  </InfoTarget>
+                ) : null}
+              </div>
+            )}
+
+            <InfoTarget
+              className="whatif-gauge"
+              testId="whatif-gauge"
+              infoKey="gauge"
+              agentId={agentId}
+              focusable={open}
+              onOpen={(key, event) =>
+                onOpenInfo(key, event, {
+                  context: busy ? "" : summary.gauge.center,
+                })
+              }
+            >
+              <div className="whatif-label">
+                {simulator.gauge_label || "Scenario"}
+              </div>
+              {busy ? (
+                <WhatIfGaugeSkeleton />
+              ) : (
+                <>
+                  <div className="gauge-center" data-testid="gauge-center">
+                    {summary.gauge.center}
+                  </div>
+                  <p data-testid="gauge-txt">{summary.gauge.txt}</p>
+                </>
+              )}
+            </InfoTarget>
+          </div>
+
+          {error ? (
+            <div className="workboard-status error" role="alert">
+              {error}
+            </div>
+          ) : null}
         </div>
-      ) : null}
+      </div>
     </section>
   );
 }

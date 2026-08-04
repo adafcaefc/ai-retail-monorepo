@@ -150,14 +150,28 @@ def check_fixed(P: dict[str, dict]) -> None:
     L, F, C, T = P["leakage"], P["finance"], P["collection"], P["treasury"]
 
     # QC-001 / QC-024 — the chart that opened as five zeros
+    #
+    # This used to assert `sum(bars) == card`, which QC-015 then made
+    # impossible: its sanctioned fix takes the control-weakness categories out
+    # of the bars, so the bars total less than the card by exactly that
+    # amount. Demanding equality would force one of the two fixes to fail
+    # whichever way the code went. What actually has to hold is that the bars
+    # carry real amounts and the gap between them and the card is stated on
+    # screen rather than left for the reader to guess.
     cat = points(L["views"]["categories"])
     total = sum(p["value"] for p in cat)
-    ok = all(p["value"] for p in cat) and abs(total - card(L, "flagged")) <= 0.5
+    flagged = card(L, "flagged")
+    note = L["views"]["categories"].get("note", "")
+    reconciled = f"{total:,.0f}" in note and f"{flagged:,.0f}" in note
+    ok = bool(cat) and all(p["value"] for p in cat) and reconciled
     record(
         "QC-001", PASS if ok else OPEN,
         "Leakage category chart shows real amounts",
-        f"{len(cat)} bars, all non-zero, sum {total:,.0f} = "
-        f"card {card(L, 'flagged'):,.0f}",
+        f"{len(cat)} bars, all non-zero, sum {total:,.0f}; card {flagged:,.0f} "
+        f"and the {flagged - total:,.0f} gap both named in the note"
+        if ok else
+        f"{len(cat)} bars, sum {total:,.0f} vs card {flagged:,.0f}, "
+        f"reconciled in note: {reconciled}",
     )
     dv = L["views"][L["default_view"]]
     ok = any(p["value"] for p in points(dv))

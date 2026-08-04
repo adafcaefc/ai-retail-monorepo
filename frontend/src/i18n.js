@@ -38,6 +38,48 @@ const CHROME = {
   "No rows match the current filter.":
     "Tidak ada baris yang cocok dengan filter saat ini.",
   Others: "Lainnya",
+
+  // Chat starter prompts (QC-042). These are the first words in the chat
+  // panel, and clicking a chip puts these exact words in the composer, so a
+  // missing entry here would send English on behalf of a Bahasa reader.
+  // Follow-ups the model writes at runtime have no entry and pass through.
+  // Agent Action modal: the ranked recommendation cards (QC-061, QC-055).
+  "Next best action": "Aksi terbaik berikutnya",
+  "High confidence": "Keyakinan tinggi",
+  "Medium confidence": "Keyakinan sedang",
+  "Low confidence": "Keyakinan rendah",
+  "Select recommendations": "Pilih rekomendasi",
+
+  "Suggested prompts": "Saran pertanyaan",
+  "Suggested follow-ups": "Saran pertanyaan lanjutan",
+
+  "Which agent should fix the margin problem?":
+    "Agent mana yang harus memperbaiki masalah margin?",
+  "What are the largest EBITDA variance drivers?":
+    "Apa penyebab terbesar selisih EBITDA?",
+  "Is the price decline or the cost overrun hurting margin more?":
+    "Mana yang lebih menggerus margin: penurunan harga atau pembengkakan biaya?",
+
+  "If Collection pulls cash in earlier, what happens to Week 5?":
+    "Kalau Collection menarik kas lebih awal, apa dampaknya ke Minggu 5?",
+  "Which action restores the minimum cash buffer fastest?":
+    "Aksi mana yang paling cepat memulihkan buffer kas minimum?",
+  "What does deferring the vendor payment cost us in Week 6?":
+    "Berapa biayanya di Minggu 6 kalau pembayaran vendor ditunda?",
+
+  "How much of the Week 5 cash shortfall can collections close?":
+    "Berapa banyak kekurangan kas Minggu 5 yang bisa ditutup penagihan?",
+  "Which customers should Collection prioritize?":
+    "Pelanggan mana yang harus diprioritaskan Collection?",
+  "Where is our overdue AR most concentrated?":
+    "Di mana piutang jatuh tempo kita paling terkonsentrasi?",
+
+  "Does the blocked fraud change the cash forecast?":
+    "Apakah fraud yang berhasil diblokir mengubah proyeksi kas?",
+  "Which leakage issues should be investigated first?":
+    "Masalah kebocoran mana yang harus diselidiki lebih dahulu?",
+  "Which vendor is riskiest, and why does it rank first?":
+    "Vendor mana yang paling berisiko, dan kenapa ia di peringkat pertama?",
 };
 
 // Payload wording: KPI labels, chart titles, filter and preset labels, levers.
@@ -114,6 +156,12 @@ const PAYLOAD = {
   "Leakage type": "Jenis kebocoran",
   Status: "Status",
   Vendor: "Vendor",
+  "Legal entity": "Entitas hukum",
+  "All entities": "Semua entitas",
+  Period: "Periode",
+  "All months": "Semua bulan",
+  "Category group": "Grup kategori",
+  "All categories": "Semua kategori",
 
   // Presets
   "Close the Week 5 gap": "Tutup celah Minggu 5",

@@ -3,6 +3,12 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 
+class LegalEntity(BaseModel):
+    legal_entity_id: str
+    legal_entity_name: str
+    country: str
+
+
 class WeeklyCashPosition(BaseModel):
     week_number: int
     opening_cash_idr_mn: float
@@ -42,6 +48,20 @@ class CashFlowBaselineResponse(BaseModel):
 
     customer_delay_driver: CashFlowDriver
     deferrable_payment_driver: CashFlowDriver
+
+    legal_entity_id: str | None = None
+    legal_entities: list[LegalEntity] = Field(default_factory=list)
+    # Which parts of this payload actually narrowed to `legal_entity_id`.
+    # "weekly_positions" and the FX figures stay whole-ledger even when an
+    # entity is requested — see get_baseline()'s docstring for why. A filtered
+    # UI reading this can then say so, instead of implying every number moved.
+    entity_scope: dict[str, str] = Field(
+        default_factory=lambda: {
+            "weekly_positions": "all_entities",
+            "fx": "all_entities",
+            "simulator_caps": "requested_entity",
+        }
+    )
 
 
 class CashFlowSimulationRequest(BaseModel):

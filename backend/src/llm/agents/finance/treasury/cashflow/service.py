@@ -9,9 +9,15 @@ unchanged from the pre-migration logic.
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy import text
 
-from src.llm.agents.common.tools.db import _latest_batch_id, _read_connection
+from src.llm.agents.common.tools.db import (
+    _latest_batch_id,
+    _legal_entities,
+    _read_connection,
+)
 from .models import (
     CashFlowBaselineResponse,
     CashFlowDriver,
@@ -42,14 +48,28 @@ def _fx_assumptions(connection) -> dict[str, float]:
     }
 
 
-def get_baseline(session=None) -> CashFlowBaselineResponse:
+def get_baseline(
+    session=None,
+    legal_entity_id: str | None = None,
+) -> CashFlowBaselineResponse:
     """The verified forecast, assumptions and drivers, read from newdata.
 
     `session` is accepted and ignored so callers that still pass one keep
     working; the read uses a bounded read-only connection instead.
+
+    `legal_entity_id` narrows the simulator's caps (`customer_delay_driver`,
+    `deferrable_payment_driver`) to one entity — `fact_cashflow_lines` carries
+    the column. The 13-week forecast, the buffer/headroom KPIs and the FX
+    figures do not narrow: `fact_cashflow_weekly` has no `legal_entity_id`
+    (it is one already-summed weekly rollup, and no table anywhere states how
+    much of week 1's opening cash belongs to which entity — that split is not
+    a query away, it is missing data), and `fact_fx_exposure` names an entity
+    only inside a free-text description, not in a column a WHERE clause can
+    use. `CashFlowBaselineResponse.entity_scope` says which parts narrowed.
     """
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
+        legal_entities = _legal_entities(connection)
 
         weekly_rows = connection.execute(
             text(
@@ -99,44 +119,58 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
         # used both to sort and to return a positive cap. The deferrable
         # payment is the largest one tagged commitment_type = 'Deferrable'
         # (tax and other 'Committed' outflows cannot be deferred).
+        # `fact_cashflow_lines` (unlike the weekly rollup) carries
+        # `legal_entity_id`, so these two caps do genuinely narrow.
+        entity_clause = ""
+        entity_params: dict[str, Any] = {}
+        if legal_entity_id:
+            entity_clause = "AND legal_entity_id = :legal_entity_id"
+            entity_params["legal_entity_id"] = legal_entity_id
+
         accel = connection.execute(
             text(
-                """
+                f"""
                 SELECT reference, counterparty,
                        ABS(amount_idr_mn) AS amount_idr_mn, week
                 FROM newdata.fact_cashflow_lines
                 WHERE direction = 'Inflow'
+                  {entity_clause}
                 ORDER BY ABS(amount_idr_mn) DESC
                 LIMIT 1
                 """
-            )
+            ),
+            entity_params,
         ).mappings().first()
 
         defer = connection.execute(
             text(
-                """
+                f"""
                 SELECT reference, counterparty,
                        ABS(amount_idr_mn) AS amount_idr_mn, week
                 FROM newdata.fact_cashflow_lines
                 WHERE direction = 'Outflow'
                   AND commitment_type = 'Deferrable'
+                  {entity_clause}
                 ORDER BY ABS(amount_idr_mn) DESC
                 LIMIT 1
                 """
-            )
+            ),
+            entity_params,
         ).mappings().first()
         if defer is None:  # no deferrable line -> largest outflow as fallback
             defer = connection.execute(
                 text(
-                    """
+                    f"""
                     SELECT reference, counterparty,
                            ABS(amount_idr_mn) AS amount_idr_mn, week
                     FROM newdata.fact_cashflow_lines
                     WHERE direction = 'Outflow'
+                      {entity_clause}
                     ORDER BY ABS(amount_idr_mn) DESC
                     LIMIT 1
                     """
-                )
+                ),
+                entity_params,
             ).mappings().first()
 
     customer_driver = CashFlowDriver(
@@ -170,6 +204,8 @@ def get_baseline(session=None) -> CashFlowBaselineResponse:
         adverse_rate_idr_per_usd=adverse,
         customer_delay_driver=customer_driver,
         deferrable_payment_driver=payment_driver,
+        legal_entity_id=legal_entity_id,
+        legal_entities=legal_entities,
     )
 
 

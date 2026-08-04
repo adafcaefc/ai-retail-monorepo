@@ -14,9 +14,11 @@ DESCRIPTOR = AgentDescriptor(
     display="Collection",
     description="Review receivables, aging, and collection priorities.",
     prompt="Ask Collection about receivables...",
+    # QC-042 — see the note in finance/finance/__init__.py.
     starter_prompts=(
-        "Summarize the largest overdue collection risks.",
+        "How much of the Week 5 cash shortfall can collections close?",
         "Which customers should Collection prioritize?",
+        "Where is our overdue AR most concentrated?",
     ),
     chat_agent="finance.collection.chat",
     simulation_agent="finance.collection.simulation",

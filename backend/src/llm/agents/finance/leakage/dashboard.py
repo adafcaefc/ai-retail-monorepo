@@ -9,11 +9,13 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _entity_filter,
     _filters,
     _fmt,
     _line_chart,
     _num,
     _pct,
+    _period_filter,
     _row_get,
     _table_view,
     _waterfall_chart,
@@ -61,14 +63,43 @@ def simulate_leakage_scenario(
 
 _SEVERITY_WEIGHT = {"high": 1.0, "critical": 1.0, "medium": 0.6, "low": 0.25}
 
+# What the flag is, when nothing states how bad it is. The newdata ledger
+# carries `leakage_type` and no severity column at all, so reading only
+# `severity`/`risk_level` scored every row 0.0 and quietly retired the 35%
+# severity term — the whole of QC-046. Ranked by intent and recoverability:
+# deliberate fraud outranks money already paid twice, which outranks a
+# control breach, which outranks a discount nobody claimed.
+_TYPE_SEVERITY = {
+    "bank-change fraud": 1.0,
+    "duplicate payment": 0.8,
+    "overbilling (3-way)": 0.6,
+    "split / threshold": 0.5,
+    "lost discount": 0.25,
+}
+
 # Exposure dominates, but a High-severity flag on a small amount still has to
 # outrank a Low-severity one, and a repeat offender outranks a one-off.
 _SCORE_WEIGHTS = {"amount": 0.5, "severity": 0.35, "flags": 0.15}
 
 
 def _severity_weight(row: dict[str, Any]) -> float:
+    """How serious one flag is, on 0..1.
+
+    An explicit severity column wins when a dataset carries one; otherwise the
+    kind of leakage stands in for it. A flag of an unrecognised type scores as
+    medium rather than 0.0 — unknown is not the same as harmless, and scoring
+    it zero is what let the severity term disappear unnoticed.
+    """
     label = str(_row_get(row, "severity", "risk_level") or "").strip().lower()
-    return _SEVERITY_WEIGHT.get(label, 0.0)
+    if label:
+        return _SEVERITY_WEIGHT.get(label, 0.6)
+
+    kind = str(
+        _row_get(row, "leakage_type", "anomaly_type", "type", "category") or ""
+    ).strip().lower()
+    if kind:
+        return _TYPE_SEVERITY.get(kind, 0.6)
+    return 0.0
 
 
 def _leakage_vendor_rollup(rows: list[dict[str, Any]]) -> list[list[Any]]:
@@ -443,15 +474,22 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "batch."
         )
     else:
+        # QC-001. This used to read "they add up to the {at_risk} at risk",
+        # which was simply untrue once QC-015 took the control-weakness
+        # categories out of the bars: the bars total 7,845 and the card reads
+        # 9,795. Naming all three figures lets the reader close the gap on
+        # screen instead of assuming one of them is wrong.
         cat_note = (
-            f"Direct-loss categories; they add up to the {_fmt(at_risk)} at risk."
+            f"Direct-loss categories add up to "
+            f"{_fmt(sum(r['value'] for r in cat_rows))}."
         )
     if control_rows:
         control_total = sum(r["value"] for r in control_rows)
         control_names = ", ".join(r["label"] for r in control_rows)
         cat_note += (
             f" {control_names} adds {_fmt(control_total)} more as a control"
-            " weakness — flagged, but not counted as lost cash."
+            " weakness — flagged, but not counted as lost cash, which is why"
+            f" 'Flagged this cycle' reads {_fmt(at_risk)}."
         )
 
     views = {
@@ -543,6 +581,14 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         # chart by _enriched().
         "period": snap.get("period"),
         "filters": filters,
+        "server_filters": [
+            _entity_filter(
+                snap.get("legal_entities"), snap.get("legal_entity_id")
+            ),
+            _period_filter(
+                snap.get("available_months"), snap.get("period_value")
+            ),
+        ],
         "import_batch_id": snap.get("import_batch_id"),
         "default_view": "categories",
         "kpis": kpis,
@@ -612,7 +658,15 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build() -> dict[str, Any]:
+def build(
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+    category_group: str | None = None,  # noqa: ARG001 - not applicable; see get_payment_leakage_snapshot's docstring
+) -> dict[str, Any]:
     return _enriched(
-        _leakage_dashboard(_call_with_timeout(get_payment_leakage_snapshot))
+        _leakage_dashboard(
+            _call_with_timeout(
+                lambda: get_payment_leakage_snapshot(legal_entity_id, period)
+            )
+        )
     )

@@ -23,9 +23,11 @@ from sqlalchemy.engine import Connection
 
 from src.llm.agents.common.tools.db import (
     _latest_batch_id,
+    _legal_entities,
     _read_connection,
     _rows,
 )
+from src.llm.agents.common.tools.scope import active_legal_entity_id
 
 BATCH_NAME = "new_dataset"
 
@@ -57,26 +59,48 @@ def _share(part: float, whole: float) -> float:
     return round(part / whole * 100, 2) if whole else 0.0
 
 
-def _annual_credit_sales(connection: Connection) -> float:
+def _annual_credit_sales(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+) -> float:
+    window = SALES_WINDOW
+    params: dict[str, Any] = {}
+    if legal_entity_id:
+        window += " AND legal_entity_id = :legal_entity_id"
+        params["legal_entity_id"] = legal_entity_id
     row = connection.execute(
         text(
             f"""
             SELECT COALESCE(SUM(net_revenue_idr_mn), 0) AS sales
             FROM newdata.fact_sales
-            WHERE {SALES_WINDOW}
+            WHERE {window}
             """
-        )
+        ),
+        params,
     ).mappings().one()
     return _number(row["sales"])
 
 
-def _customer_rows(connection: Connection) -> list[dict[str, Any]]:
+def _customer_rows(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+) -> list[dict[str, Any]]:
     """The receivables book per customer, aged from `days_past_due`.
 
     Buckets are derived from `days_past_due` rather than the stored
     `aging_bucket` string so the split is robust to label spelling. Balance is
     the open invoice amount; paid invoices drop out.
+
+    Filtered on `a.legal_entity_id` (the invoice's own entity) rather than the
+    customer dimension's, so a customer billed from more than one entity still
+    narrows correctly — the invoice, not the customer master, is what actually
+    belongs to an entity.
     """
+    where = _OPEN_PREDICATE
+    params: dict[str, Any] = {}
+    if legal_entity_id:
+        where += " AND a.legal_entity_id = :legal_entity_id"
+        params["legal_entity_id"] = legal_entity_id
     return _rows(
         connection,
         f"""
@@ -105,7 +129,7 @@ def _customer_rows(connection: Connection) -> list[dict[str, Any]]:
                 WHERE a.days_past_due > 0)          AS overdue_idr_mn
         FROM newdata.fact_ar_invoices a
         LEFT JOIN newdata.dim_customer c USING (customer_id)
-        WHERE {_OPEN_PREDICATE}
+        WHERE {where}
         GROUP BY a.customer_id, a.customer_name, c.segment,
                  c.payment_terms_days, c.on_time_payment_pct,
                  c.credit_limit_idr_mn, COALESCE(a.risk_tier, c.risk_tier)
@@ -113,7 +137,7 @@ def _customer_rows(connection: Connection) -> list[dict[str, Any]]:
         ORDER BY SUM(a.invoice_amount_idr_mn) FILTER (
             WHERE a.days_past_due > 0) DESC NULLS LAST, a.customer_name
         """,
-        {},
+        params,
     )
 
 
@@ -127,19 +151,36 @@ def _finalise_customer(row: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
-def get_collections_snapshot() -> dict[str, Any]:
-    """Return the latest exact collections, DSO, aging, risk, and worklist data."""
+def get_collections_snapshot(
+    legal_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Return the latest exact collections, DSO, aging, risk, and worklist data.
+
+    `legal_entity_id`, when given, narrows the AR book, DSO, tiers and
+    worklist to one entity. `fact_ar_invoices` and `dim_customer` both carry
+    `legal_entity_id`; `collection_worklist` does not, so it is joined to
+    `dim_customer` here to inherit the entity of the customer it names — the
+    join was verified 1:1 (21 worklist rows, 21 matches) before relying on it.
+
+    Falls back to the live chat turn's scoped entity when called with no
+    argument -- see common/tools/scope.py.
+    """
+    if legal_entity_id is None:
+        legal_entity_id = active_legal_entity_id()
 
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
 
-        customers = [_finalise_customer(row) for row in _customer_rows(connection)]
+        customers = [
+            _finalise_customer(row)
+            for row in _customer_rows(connection, legal_entity_id)
+        ]
 
         total_ar = sum(_number(r.get("total_ar_idr_mn")) for r in customers)
         current_ar = sum(_number(r.get("current_idr_mn")) for r in customers)
         overdue_ar = sum(_number(r.get("overdue_idr_mn")) for r in customers)
 
-        annual_sales = _annual_credit_sales(connection)
+        annual_sales = _annual_credit_sales(connection, legal_entity_id)
         daily_sales = annual_sales / 365.0 if annual_sales else 0.0
         current_dso = total_ar / daily_sales if daily_sales else 0.0
         dso_gap = current_dso - TARGET_DSO_DAYS
@@ -192,23 +233,32 @@ def get_collections_snapshot() -> dict[str, Any]:
         }
 
         # The worklist is the one collections table that ships finished.
+        # `collection_worklist` itself has no `legal_entity_id`; it is joined
+        # to `dim_customer` to borrow the entity of the customer it names.
+        worklist_where = "1 = 1"
+        worklist_params: dict[str, Any] = {}
+        if legal_entity_id:
+            worklist_where = "c.legal_entity_id = :legal_entity_id"
+            worklist_params["legal_entity_id"] = legal_entity_id
         worklist = _rows(
             connection,
-            """
+            f"""
             SELECT
-                priority_rank,
-                customer_name,
-                risk_tier,
-                overdue_idr_mn,
-                expected_recovery_idr_mn,
-                oldest_dpd,
-                open_invoices,
-                dso_days_released
-            FROM newdata.collection_worklist
-            ORDER BY priority_rank
+                w.priority_rank,
+                w.customer_name,
+                w.risk_tier,
+                w.overdue_idr_mn,
+                w.expected_recovery_idr_mn,
+                w.oldest_dpd,
+                w.open_invoices,
+                w.dso_days_released
+            FROM newdata.collection_worklist w
+            JOIN newdata.dim_customer c USING (customer_id)
+            WHERE {worklist_where}
+            ORDER BY w.priority_rank
             LIMIT 20
             """,
-            {},
+            worklist_params,
         )
         # Backfill the two names the old worklist carried that this table
         # does not, so the dashboard's column reads still resolve.
@@ -228,6 +278,8 @@ def get_collections_snapshot() -> dict[str, Any]:
             "customers": customers[:25],
             "risk_tiers": risk_tiers,
             "worklist": worklist,
+            "legal_entity_id": legal_entity_id,
+            "legal_entities": _legal_entities(connection),
         }
 
 
@@ -349,10 +401,12 @@ def _collections_derived(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def get_collections_monitoring_context() -> dict[str, Any]:
+def get_collections_monitoring_context(
+    legal_entity_id: str | None = None,
+) -> dict[str, Any]:
     """Return the collections snapshot plus precomputed monitoring aggregates."""
 
-    snapshot = get_collections_snapshot()
+    snapshot = get_collections_snapshot(legal_entity_id)
     return {**snapshot, "derived": _collections_derived(snapshot)}
 
 

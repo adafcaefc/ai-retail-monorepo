@@ -9,6 +9,7 @@ from src.llm.agents.common.dashboard_blocks import (
     _call_with_timeout,
     _donut_chart,
     _enriched,
+    _entity_filter,
     _filters,
     _fmt,
     _line_chart,
@@ -163,6 +164,17 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
         },
     ]
 
+    # Neither the 13-week forecast nor the FX position can be split by entity
+    # with the current dataset — see get_baseline()'s docstring. Told plainly
+    # on the chart a reader who scoped everything else to one entity is
+    # looking at, rather than left to notice the numbers did not move.
+    entity_note_suffix = (
+        " Shows all entities — not splittable by entity in the current "
+        "dataset."
+        if baseline.get("legal_entity_id")
+        else ""
+    )
+
     views = {
         "forecast": {
             **_line_chart(
@@ -173,6 +185,7 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
                 target_label=f"Buffer {_fmt(buffer)}",
                 note=(
                     f"Week 5 closing {_fmt(w5_cash)} vs buffer {_fmt(buffer)}."
+                    f"{entity_note_suffix}"
                 ),
             ),
         },
@@ -188,6 +201,12 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
                 ],
                 y_axis_title="USD",
                 tag="currency",
+                note=(
+                    "Shows all entities — not splittable by entity in the "
+                    "current dataset."
+                    if entity_note_suffix
+                    else ""
+                ),
             ),
         },
         # A zero "Base" bar next to a value bar reads as a failed render and
@@ -276,6 +295,21 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
         # chart by _enriched().
         "period": baseline.get("period"),
         "filters": filters,
+        # No period filter: Treasury's forecast has no month column at all —
+        # its time dimension is the week (1-13), which `Week` above already
+        # covers. No category group either: cash lines are not tied to a
+        # product category anywhere in this dataset.
+        "server_filters": [
+            _entity_filter(
+                baseline.get("legal_entities"), baseline.get("legal_entity_id")
+            ),
+        ],
+        # Honesty flag: the 13-week forecast and buffer/headroom KPIs stay
+        # whole-ledger even when `legal_entity_id` is set — see
+        # `get_baseline()`'s docstring for why the data does not support the
+        # split. Only the simulator's caps (deferrable payment, movable
+        # receipt) actually narrow. `entity_scope` names which is which.
+        "entity_scope": baseline.get("entity_scope"),
         "import_batch_id": baseline.get("import_batch_id"),
         "default_view": "forecast",
         "kpis": kpis,
@@ -360,7 +394,15 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def build() -> dict[str, Any]:
+def build(
+    legal_entity_id: str | None = None,
+    period: str | None = None,  # noqa: ARG001 - not applicable; see get_baseline's docstring
+    category_group: str | None = None,  # noqa: ARG001 - not applicable
+) -> dict[str, Any]:
     return _enriched(
-        _treasury_dashboard(_call_with_timeout(get_cashflow_baseline))
+        _treasury_dashboard(
+            _call_with_timeout(
+                lambda: get_cashflow_baseline(legal_entity_id)
+            )
+        )
     )

@@ -6,14 +6,26 @@ from typing import Any
 
 from src.llm.agents.common.tools.db import _read_connection
 from src.llm.agents.common.tools.period import treasury_period
+from src.llm.agents.common.tools.scope import active_legal_entity_id
 from src.llm.agents.finance.treasury.cashflow import service as cashflow_service
 from src.llm.agents.finance.treasury.cashflow.models import CashFlowSimulationRequest
 
 
-def get_cashflow_baseline() -> dict[str, Any]:
-    """Return the latest verified cash-flow forecast, assumptions, and drivers."""
+def get_cashflow_baseline(
+    legal_entity_id: str | None = None,
+) -> dict[str, Any]:
+    """Return the latest verified cash-flow forecast, assumptions, and drivers.
 
-    baseline = cashflow_service.get_baseline().model_dump(mode="json")
+    Falls back to the live chat turn's scoped entity when called with no
+    argument -- see common/tools/scope.py. Only the simulator caps narrow;
+    see get_baseline()'s docstring for what does not and why.
+    """
+    if legal_entity_id is None:
+        legal_entity_id = active_legal_entity_id()
+
+    baseline = cashflow_service.get_baseline(
+        legal_entity_id=legal_entity_id,
+    ).model_dump(mode="json")
     # The forecast model carries week numbers but no dates (QC-035), so the
     # span is read from the weeks themselves rather than added to the model.
     with _read_connection() as connection:
