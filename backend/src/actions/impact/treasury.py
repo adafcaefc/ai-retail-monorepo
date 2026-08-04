@@ -65,7 +65,8 @@ LEVER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         DEFER,
         re.compile(
-            r"defer|reschedul|rephase|re-?time|renegotiat\w*\s+\w*\s*timing"
+            r"defer|reschedul|rephase|reprofil\w+|re-?time"
+            r"|renegotiat\w*\s+\w*\s*timing"
             r"|move\s+\S+\s+.{0,30}payment|week\s*5\s*to\s*week\s*6"
             r"|synchroniz\w+\s+outbound",
             re.I,
@@ -82,7 +83,10 @@ LEVER_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         CREDIT,
         re.compile(
-            r"credit[-\s]?line|standby|revolving|contingent\s+"
+            # "revolver" and "revolving" are the same instrument and the
+            # monitoring model uses both; matching only one left a real draw
+            # action unsized and bottom-ranked.
+            r"credit[-\s]?line|standby|revolv\w+|contingent\s+"
             r"(?:liquidity|credit|capacity)",
             re.I,
         ),
@@ -196,10 +200,23 @@ def _week_headroom(
     raise LookupError(f"Week {week_number} is not in the forecast.")
 
 
-def _leg(week_number: int, before: float, delta: float, after: float) -> str:
+def _leg(week_number: int, before: float, after: float) -> str:
+    """One week's move, printed so that the printed figures add up.
+
+    QC-005. The line is read off a screen at one decimal place. Rounding
+    `before`, the delta and `after` independently lets a fraction in each land
+    them on different sides: -1,387.95 and -4,526.91 print as -1,388.0 and
+    -4,526.9, while the -3,138.96 between them prints as -3,139.0 — so a CFO
+    adding up what is on screen gets -4,527.0 and concludes the card is wrong.
+    The arithmetic has to close at the precision it is shown at, so the delta
+    is derived from the rounded endpoints instead of being rounded on its own.
+    """
+    before_shown = round(before, 1)
+    after_shown = round(after, 1)
+    delta_shown = round(after_shown - before_shown, 1)
     return (
-        f"Week {week_number} headroom: {_plain(before)} "
-        f"{_signed(delta)} -> {_signed(after)}"
+        f"Week {week_number} headroom: {_plain(before_shown)} "
+        f"{_signed(delta_shown)} -> {_signed(after_shown)}"
     )
 
 
@@ -237,9 +254,7 @@ def render(
     week5_before = _week_headroom(baseline, 5)
     week5_delta = result.week5_headroom_idr_mn - week5_before
     if abs(week5_delta) >= 0.05:
-        legs.append(
-            _leg(5, week5_before, week5_delta, result.week5_headroom_idr_mn)
-        )
+        legs.append(_leg(5, week5_before, result.week5_headroom_idr_mn))
 
     # A deferral buys Week 5 relief with Week 6 headroom; an acceleration buys
     # it with Week 7. Naming only the week that improves is QC-004.
@@ -250,16 +265,20 @@ def render(
         before = _week_headroom(baseline, week_number)
         delta = after - before
         if abs(delta) >= 0.05:
-            legs.append(_leg(week_number, before, delta, after))
+            legs.append(_leg(week_number, before, after))
 
     if legs:
         return f"{' · '.join(legs)} (IDR mn · {_provenance(baseline, request)})"
 
     if request.hedge_usd > 0:
-        net = result.fx_downside_avoided_idr_mn - result.forward_premium_idr_mn
+        # Same rule as _leg: the two figures on screen must produce the net
+        # that is printed beside them, so net comes from the rounded pair.
+        avoided_shown = round(result.fx_downside_avoided_idr_mn, 1)
+        premium_shown = round(result.forward_premium_idr_mn, 1)
+        net = round(avoided_shown - premium_shown, 1)
         return (
-            f"FX downside avoided: {_plain(result.fx_downside_avoided_idr_mn)} "
-            f"less premium {_plain(result.forward_premium_idr_mn)} -> "
+            f"FX downside avoided: {_plain(avoided_shown)} "
+            f"less premium {_plain(premium_shown)} -> "
             f"net {_signed(net)} (IDR mn · "
             f"{_provenance(baseline, request)}, "
             f"{result.hedge_coverage_pct:,.0f}% coverage)"
@@ -317,15 +336,105 @@ def apply_computed_impact(
     return items
 
 
+# ---------------------------------------------------------------------------
+# Uniform adapter — the shape every agent answers to (see impact/__init__.py)
+# ---------------------------------------------------------------------------
+
+AGENTS = TREASURY_AGENTS
+
+# A lever is traceable when the forecast sized it from a row someone can look
+# up. `deferrable_payment_driver` points at a real payable (AP-000579);
+# `customer_delay_driver` currently points at "NEWSALES", a rolled-up
+# placeholder standing in for "the largest movable receipt". Both are honest
+# sizes, but only one can be produced when a CFO asks which invoice. Anything
+# without a digit in its reference is treated as the rollup it is.
+_REAL_REFERENCE = re.compile(r"\d")
+
+
+def load_baseline():
+    """The forecast, read fresh. Imported late: `cashflow.service` pulls in the
+    database layer, and `impact` is imported by module-level code in
+    `actions.service`."""
+    from src.llm.agents.finance.treasury.cashflow.service import get_baseline
+
+    return get_baseline()
+
+
+def compute(title: str, spec: str, baseline):
+    """This action's effect on the forecast, or None if it names no lever.
+
+    Shares `build_request`/`render` with the Treasury path above rather than
+    recomputing anything: the number an action is ranked by has to be the same
+    number printed on its card, or the order stops matching what is on screen.
+    """
+    from src.actions.impact import ComputedImpact
+    from src.llm.agents.finance.treasury.cashflow.service import (
+        simulate_with_baseline,
+    )
+
+    request = build_request(title, spec, baseline)
+    if request is None:
+        return None
+
+    result = simulate_with_baseline(request, baseline)
+    line = render(baseline, request, result)
+    if line is None:
+        return None
+
+    levers = tuple(sorted(detect_levers(title, spec)))
+
+    # Rank Treasury actions by how much they lift the week that breaches, which
+    # is the only week the agent is asked about. A hedge moves no cash, so it
+    # is ranked on the downside it removes net of the premium paid for it.
+    week5_before = _week_headroom(baseline, 5)
+    magnitude = abs(result.week5_headroom_idr_mn - week5_before)
+    if not magnitude and request.hedge_usd:
+        magnitude = abs(
+            result.fx_downside_avoided_idr_mn - result.forward_premium_idr_mn
+        )
+
+    traceable = any(
+        (
+            request.defer_payment_idr_mn
+            and _REAL_REFERENCE.search(
+                baseline.deferrable_payment_driver.reference_number or ""
+            ),
+            request.accelerate_collection_idr_mn
+            and _REAL_REFERENCE.search(
+                baseline.customer_delay_driver.reference_number or ""
+            ),
+        )
+    )
+
+    # A hedge the book cannot fully cover, and a draw sized to the shortfall
+    # rather than to a committed facility, are both limited by the book.
+    capped = bool(
+        (request.hedge_usd and baseline.recommended_hedge_usd
+         > baseline.net_usd_exposure)
+        or request.credit_line_draw_idr_mn
+    )
+
+    return ComputedImpact(
+        line=line,
+        magnitude=float(magnitude),
+        traceable=bool(traceable),
+        capped=capped,
+        levers=levers,
+    )
+
+
 __all__ = [
     "ACCELERATE",
+    "AGENTS",
     "CREDIT",
     "DEFER",
     "HEDGE",
     "TREASURY_AGENTS",
     "apply_computed_impact",
     "build_request",
+    "compute",
     "compute_impact",
     "detect_levers",
+    "load_baseline",
     "render",
 ]

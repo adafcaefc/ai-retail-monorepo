@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -15,6 +16,8 @@ from src.llm.agents.common.tools.freeform_query import (
     set_simulation_domain,
 )
 from src.llm.chivon.loader import get_chivon
+
+logger = logging.getLogger(__name__)
 
 # Outer retries when the simulation agent run fails hard. Soft tool errors
 # are recovered inside the agent; previous_error is fed on each outer retry.
@@ -148,55 +151,22 @@ def clear_alerts(
 
 
 def _recompute_impacts(
-    session: Session,
+    session: Session,  # noqa: ARG001 - each adapter opens its own connection
     items: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Replace stored Treasury impact lines with simulator-derived ones.
+    """Recompute every agent's impact, then rank and grade the result.
 
-    QC-004 / QC-005. The correction lives here rather than in the table because
-    a monitoring run rewrites `chat.actions` wholesale — a one-off UPDATE would
-    survive until the next populate and no longer. See `actions/impact.py`.
+    QC-004/QC-005 started this for Treasury; QC-061 and QC-055 extended it to
+    all four agents, because a next best action and a confidence level both
+    need a figure that survives a monitoring run. `impact.enrich_actions`
+    attaches the computed line, a confidence band with its basis, a score and
+    a rank — all on the read path, none of it written back. See
+    `actions/impact/__init__.py`.
 
-    Anything that goes wrong loading the forecast leaves the stored wording in
-    place: a stale impact line is a smaller failure than a broken action list.
+    The ordering it returns is per agent: the magnitudes are in each agent's
+    own unit, so the list is ranked within an agent and never across them.
     """
-    if not any(
-        str(item.get("agent") or "") in impact.TREASURY_AGENTS for item in items
-    ):
-        return items
-
-    try:
-        from src.llm.agents.finance.treasury.cashflow.service import (
-            get_baseline,
-            simulate,
-        )
-
-        baseline = get_baseline(session)
-    except Exception:  # noqa: BLE001 - never break the list over a KPI line
-        return items
-
-    # Most actions pull the same lever, and each simulate() is a round trip.
-    cache: dict[tuple[float, ...], Any] = {}
-
-    def cached_simulate(request):
-        key = (
-            request.accelerate_collection_idr_mn,
-            request.defer_payment_idr_mn,
-            request.credit_line_draw_idr_mn,
-            request.hedge_usd,
-        )
-        if key not in cache:
-            cache[key] = simulate(request, session)
-        return cache[key]
-
-    try:
-        return impact.apply_computed_impact(
-            items,
-            baseline=baseline,
-            simulate=cached_simulate,
-        )
-    except Exception:  # noqa: BLE001
-        return items
+    return impact.enrich_actions(items)
 
 
 def list_actions(
@@ -317,6 +287,10 @@ def _action_rows(
                 "status": repository.ACTION_STATUS_PLANNED,
                 "spec": action.get("spec"),
                 "impact": action.get("impact"),
+                # The model's judgement on why this action goes first. Stored
+                # as written; the figures are stripped on the way out, not on
+                # the way in, so what the agent actually said stays auditable.
+                "reason": action.get("reason"),
             }
         )
     return rows

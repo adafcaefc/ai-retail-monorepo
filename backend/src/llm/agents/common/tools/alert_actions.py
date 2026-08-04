@@ -37,7 +37,7 @@ def get_alert_action_plan(
                 connection,
                 """
                 SELECT id, alert_id, action, agent, routes, status,
-                       spec, impact, simulation_summary, created_at
+                       spec, impact, reason, simulation_summary, created_at
                 FROM chat.actions
                 WHERE alert_id::text = ANY(:alert_ids)
                 ORDER BY created_at
@@ -51,7 +51,7 @@ def get_alert_action_plan(
         unlinked_actions = _rows(
             connection,
             """
-            SELECT id, action, agent, routes, status, spec, impact,
+            SELECT id, action, agent, routes, status, spec, impact, reason,
                    simulation_summary, created_at
             FROM chat.actions
             WHERE alert_id IS NULL

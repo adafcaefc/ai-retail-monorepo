@@ -278,6 +278,7 @@ def get_actions(
             status,
             spec,
             impact,
+            reason,
             simulation_summary,
             created_at
         FROM chat.actions
@@ -422,6 +423,11 @@ def save_actions(
             ),
             "spec": item.get("spec"),
             "impact": item.get("impact"),
+            # The model's own justification for ranking this action first.
+            # Prose only: `impact.clean_reason` strips any figure before it
+            # reaches a screen, so this column never competes with the
+            # computed numbers printed beside it (QC-055/QC-061).
+            "reason": item.get("reason"),
         }
         for item in actions
     ]
@@ -437,6 +443,7 @@ def save_actions(
                 status,
                 spec,
                 impact,
+                reason,
                 created_at
             )
             VALUES (
@@ -448,6 +455,7 @@ def save_actions(
                 :status,
                 :spec,
                 :impact,
+                :reason,
                 NOW()
             )
             """
