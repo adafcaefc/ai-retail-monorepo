@@ -1,12 +1,12 @@
 /**
  * EY mark in the app header.
  *
- * Drop the supplied file at `src/assets/ey-logo.png` (`.jpg`, `.webp` and
- * `.svg` also work) and it is picked up automatically. This file is the
- * light-background variant (dark navy "EY" letters, transparent elsewhere),
- * so `img.ey-logo` in styles.css gives it a white chip to stay legible on
- * the app's dark header/sidebar — it is not meant to sit flush. Vite inlines
- * it as a data URI (`assetsInlineLimit` is effectively unlimited), so the
+ * Drop the supplied file at `src/assets/ey-logo.svg` (`.png`, `.jpg` and
+ * `.webp` also work) and it is picked up automatically. This file is the
+ * dark-background variant (white "EY" letters, yellow beam, transparent
+ * elsewhere), so it sits flush on the app's dark header/sidebar and
+ * `img.ey-logo` in styles.css needs no chip behind it. Vite inlines it as a
+ * data URI (`assetsInlineLimit` is effectively unlimited), so the
  * single-file production build stays self-contained.
  *
  * Until that file exists the glob resolves to nothing and the traced fallback
