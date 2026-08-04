@@ -7,6 +7,7 @@ import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import AppTopbar from "./components/AppTopbar.jsx";
 import AlertsPanel from "./components/AlertsPanel.jsx";
+import UserIcon from "./assets/user-icon.svg";
 import {
   AgentListSkeleton,
   DashboardSkeleton,
@@ -754,16 +755,16 @@ export default function App() {
         {sidebarOpen ? (
           <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
             <div className="brand">
-              <div className="brand-mark">L</div>
+              <div className="brand-mark">
+                <img className="brand-mark-svg" src={UserIcon} alt="User" />
+              </div>
 
               <div className="brand-copy">
-                <strong>Ledgerline</strong>
+                <strong>User</strong>
 
-                <span>Finance forum</span>
+                <span>user@id.ey.com</span>
               </div>
             </div>
-
-            <p className="section-label">Agent chats</p>
 
             <nav className="agent-groups" aria-label="Choose an agent">
               {groups.map((group) => {
@@ -819,8 +820,6 @@ export default function App() {
 
                               <span className="agent-copy">
                                 <strong>{agent.name}</strong>
-
-                                <small>{chat.title || "New conversation"}</small>
                               </span>
 
                               <span className="activity-dot" aria-hidden="true" />
