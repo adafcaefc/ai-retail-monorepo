@@ -60,10 +60,9 @@
   /*
    * Two dark tones, kept close but not identical, so the rail still reads
    * as its own panel rather than a flat continuation of the header.
-   *   --ey-black : #211F22 — the header/toolbar. ey-logo.png is the
-   *                light-background EY mark (dark navy letters), so
-   *                img.ey-logo gives it a white chip rather than sitting
-   *                flush on this dark surface.
+   *   --ey-black : #211F22 — the header/toolbar. ey-logo.svg is the
+   *                dark-background EY mark (white letters), so img.ey-logo
+   *                sits flush on this surface with no chip behind it.
    *   --ey-gray  : #2E2E38 — the left sidebar, matched to the navigation
    *                mockup's rail colour.
    */
@@ -329,10 +328,12 @@ summary:focus-visible {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 12px 18px;
-  flex-wrap: nowrap;       
-  overflow-x: auto;          
-  padding: 8px 16px;
+  /* Tighter column gap and a trimmed right padding pull the toolbar group
+     closer to the header's right edge. */
+  gap: 12px 12px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding: 8px 10px 8px 16px;
 }
 
 .topbar-main > * {
@@ -437,9 +438,9 @@ summary:focus-visible {
   flex: 0 0 auto;
 }
 
-/* ey-logo.png uses dark navy letters (the light-background EY mark), so it
-   needs a light chip behind it to stay legible on the dark header/sidebar —
-   it isn't a transparent-flush mark. */
+/* ey-logo.svg is the dark-background EY mark (white letters, yellow beam), so
+   it sits flush on the dark header/sidebar with no chip behind it. Swapping
+   back to a light-background mark means restoring a light `background` here. */
 img.ey-logo {
   height: 34px;
   padding: 4px 7px;
@@ -581,9 +582,17 @@ img.ey-logo {
 
 /* Agents are grouped by their backend folder (the `folder` in folder.agent). */
 
+/*
+ * The list scrolls rather than the sidebar, so the language footer below it
+ * stays pinned to the bottom instead of being pushed off-screen by a long
+ * agent list. `min-height: 0` is what lets a flex child shrink below its
+ * content and actually scroll.
+ */
 .agent-groups {
   display: grid;
   gap: 14px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .agent-group {
@@ -2741,10 +2750,31 @@ img.ey-logo {
 }
 
 /* QC-058: EN / ID toggle in the header. */
+/*
+ * Pinned to the bottom of the sidebar: `margin-top: auto` in the sidebar's
+ * flex column. It used to sit in the header, where its own `margin-left: auto`
+ * fought the toolbar's — two auto margins in one flex row split the free space
+ * between them, which is why the toolbar never reached the right edge.
+ */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding: 14px 6px 0;
+  border-top: 1px solid var(--line);
+}
+
+.sidebar-footer-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
 .language-toggle {
   display: inline-flex;
-  margin-left: auto;
-  border: 1px solid #d9e4fb;
+  border: 1px solid var(--blue-100);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -3393,10 +3423,10 @@ img.ey-logo {
   margin-left: auto;
 }
 
-/* Bell button with unread badge — the single home for all alerts. */
+/* Bell button — the single home for all alerts. Sizing comes from
+   `.alerts-icon-btn`; this only anchors the dot. */
 .alerts-bell {
   position: relative;
-  padding: 6px 11px;
 }
 
 .alerts-bell-icon {
@@ -3409,45 +3439,35 @@ img.ey-logo {
   color: var(--primary-deep);
 }
 
-.alerts-bell.is-busy {
-  color: var(--muted);
-}
-
-.alerts-bell-spinner {
-  width: 15px;
-  height: 15px;
-  border-width: 2px;
-}
-
-.alerts-bell-badge {
-  display: inline-grid;
-  place-items: center;
-  min-width: 17px;
-  height: 17px;
-  padding: 0 5px;
+/* Presence, not quantity — see the note on the bell button in AlertsPanel. */
+.alerts-bell-dot {
+  position: absolute;
+  top: 7px;
+  right: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   background: var(--danger);
-  color: #fff;
-  font-size: 0.63rem;
-  font-weight: 800;
-  line-height: 1;
 }
 
 /* Popover anchored under the toolbar; alert detail lives here, off the board. */
 .alerts-popover-scrim {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 90;
   border: none;
   background: transparent;
   cursor: default;
 }
 
+/*
+ * Fixed, not absolute: `.topbar-main` scrolls horizontally, so an absolutely
+ * positioned popover was clipped by that scrollport and appeared to open
+ * behind the board. `top` / `right` come from the bell's rect in JS.
+ */
 .alerts-popover {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  z-index: 41;
+  position: fixed;
+  z-index: 91;
   width: min(380px, 88vw);
   max-height: min(64vh, 520px);
   display: flex;
@@ -3736,8 +3756,13 @@ img.ey-logo {
 
 @media (prefers-reduced-motion: reduce) {
   .alerts-popover,
+  .alerts-more-menu,
   .monitoring-toast,
   .problem-toast {
+    animation: none;
+  }
+
+  .alerts-icon-btn.is-busy .alerts-recalc-icon {
     animation: none;
   }
 }
@@ -3762,7 +3787,7 @@ img.ey-logo {
   background: #fff;
   padding: 0 13px;
   font-size: 0.74rem;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
   cursor: pointer;
   white-space: nowrap;
@@ -3796,6 +3821,69 @@ img.ey-logo {
 .alerts-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/*
+ * Supporting controls collapse to a square icon button. Same 34px hit area as
+ * a labelled pill, but they stop competing with the primary action for the
+ * header's limited width — the toolbar used to overflow its own scrollport.
+ */
+.alerts-icon-btn {
+  width: 34px;
+  justify-content: center;
+  padding: 0;
+}
+
+.alerts-icon-btn.is-busy .alerts-recalc-icon {
+  animation: workboard-spin 0.9s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+/* Separates the board's own tools from the chat entry point, so the bar reads
+   as two groups rather than one undifferentiated row of pills. */
+.alerts-toolbar-sep {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: var(--line);
+}
+
+/* Overflow menu — Subagents and Audit History are read-only diagnostics that
+   are opened rarely, so they live one click deeper instead of holding two
+   permanent slots in the header. */
+.alerts-more-menu {
+  position: fixed;
+  z-index: 91;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-strong);
+  box-shadow: 0 18px 44px rgba(23, 32, 51, 0.18);
+  animation: alerts-popover-in 160ms ease;
+}
+
+.alerts-more-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.alerts-more-item:hover {
+  background: #f4f7fc;
 }
 
 .chat-toggle-btn {
@@ -3841,14 +3929,6 @@ img.ey-logo {
 .alerts-badge.muted {
   background: #e0a400;
   color: #1f1a00;
-}
-
-.alerts-badge-text {
-  min-width: auto;
-  height: auto;
-  padding: 2px 8px;
-  white-space: nowrap;
-  font-size: 0.66rem;
 }
 
 .alerts-panel-head {
@@ -5294,14 +5374,19 @@ img.ey-logo {
 }
 
 /* Secondary actions: light outline + off-white text on the dark surface,
-   rather than the light-header assumption of dark ink on a white pill. */
-.topbar-main .alerts-btn:not(.primary) {
+   rather than the light-header assumption of dark ink on a white pill.
+   The chat button is excluded — it gets a filled treatment below so it does
+   not read as one more identical pill. */
+.topbar-main .alerts-btn:not(.primary):not(.chat-toggle-btn) {
   border-color: rgba(234, 234, 236, 0.22);
   background: transparent;
   color: #eaeaec;
 }
 
-.topbar-main .alerts-btn:hover:not(:disabled):not(.primary):not(.on) {
+.topbar-main
+  .alerts-btn:hover:not(:disabled):not(.primary):not(.on):not(
+    .chat-toggle-btn
+  ) {
   border-color: var(--ey-yellow);
   background: rgba(255, 230, 0, 0.1);
 }
@@ -5321,11 +5406,25 @@ img.ey-logo {
   color: var(--ey-yellow);
 }
 
-/* Chat entry point matches the other secondary buttons at rest — it stands
-   out only once the drawer is open, via the shared `.on` yellow state. */
-.topbar-main .chat-toggle-btn:hover:not(:disabled) {
-  border-color: var(--ey-yellow);
-  background: rgba(255, 230, 0, 0.1);
+/*
+ * The agent chat is the product's core interaction, so it gets a filled
+ * surface while its neighbours stay outlines — second in the hierarchy,
+ * clearly above the icon buttons. The sparkle takes the EY yellow; the fill
+ * deliberately does not, so the only fully yellow control on this bar remains
+ * the single primary action.
+ */
+.topbar-main .chat-toggle-btn:not(.on) {
+  border-color: transparent;
+  background: rgba(234, 234, 236, 0.14);
+  color: #fff;
+}
+
+.topbar-main .chat-toggle-btn:not(.on) .chat-toggle-icon {
+  color: var(--ey-yellow);
+}
+
+.topbar-main .chat-toggle-btn:hover:not(:disabled):not(.on) {
+  background: rgba(234, 234, 236, 0.24);
 }
 
 .topbar-main .chat-toggle-btn.on,
@@ -5344,17 +5443,34 @@ img.ey-logo {
  * The planned-action count on Agent Action sits directly on the yellow
  * button, so a bright chip + near-white number there reads as one glaring
  * spot. A dark translucent chip with a softened (not pure-white) number
- * keeps it legible without the glare — the bell badge below gets the same
- * treatment for consistency, since it had the same pure-white-on-bright-red
- * problem.
+ * keeps it legible without the glare.
  */
-.topbar-main .alerts-badge.muted,
-.topbar-main .alerts-bell-badge {
+.topbar-main .alerts-badge.muted {
   background: rgba(20, 20, 24, 0.55);
   color: rgba(255, 255, 255, 0.78);
+}
+
+/* A ring in the header's own colour keeps the dot from smearing into the
+   bell glyph behind it. */
+.topbar-main .alerts-bell-dot {
+  box-shadow: 0 0 0 2px var(--ey-black);
 }
 
 .topbar-main .alerts-btn:focus-visible {
   outline: 3px solid rgba(255, 230, 0, 0.35);
   outline-offset: 2px;
+}
+
+/* Icon-only controls are secondary by definition, so they never take the
+   yellow — that stays reserved for the single primary action. */
+.topbar-main .alerts-icon-btn {
+  color: rgba(234, 234, 236, 0.75);
+}
+
+.topbar-main .alerts-icon-btn:hover:not(:disabled) {
+  color: var(--ey-yellow);
+}
+
+.topbar-main .alerts-toolbar-sep {
+  background: rgba(234, 234, 236, 0.22);
 }

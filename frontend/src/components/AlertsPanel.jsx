@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import {
   approveAction,
@@ -160,19 +167,23 @@ export default function AlertsPanel({
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  // Close the alerts popover on Escape.
+  // Close whichever header layer is open on Escape.
   useEffect(() => {
-    if (!alertsOpen) {
+    if (!alertsOpen && !moreOpen) {
       return;
     }
     const onKey = (event) => {
       if (event.key === "Escape") {
         setAlertsOpen(false);
+        setMoreOpen(false);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [alertsOpen]);
+  }, [alertsOpen, moreOpen]);
+
+  const alertsPos = useAnchoredPosition(alertsOpen, bellRef);
+  const morePos = useAnchoredPosition(moreOpen, moreRef);
 
   const flatActions = useMemo(() => flattenActions(alerts), [alerts]);
 
@@ -218,6 +229,7 @@ export default function AlertsPanel({
   }
 
   async function openHistory() {
+    setMoreOpen(false);
     setHistoryOpen(true);
     setHistoryLoading(true);
     setError("");
@@ -262,6 +274,7 @@ export default function AlertsPanel({
   }
 
   function openSubagentsModal() {
+    setMoreOpen(false);
     setSubagentsOpen(true);
     setError("");
   }
@@ -393,64 +406,81 @@ export default function AlertsPanel({
             <button
               type="button"
               className="alerts-btn primary"
+              title={
+                plannedCount > 0
+                  ? `${plannedCount} issue${plannedCount === 1 ? "" : "s"} found`
+                  : "Review recommended actions"
+              }
               onClick={openActionModal}
             >
               Agent Action
               {plannedCount > 0 ? (
-                <span className="alerts-badge muted alerts-badge-text">
-                  {plannedCount} issue{plannedCount === 1 ? "" : "s"} found
-                </span>
+                <span className="alerts-badge muted">{plannedCount}</span>
               ) : null}
             </button>
 
-            <button
-              type="button"
-              className="alerts-btn"
-              disabled={monitoringBusy}
-              onClick={handleRecalculate}
-            >
-              {monitoringBusy ? "Recalculating…" : "Recalculate"}
-            </button>
-
-            <button
-              type="button"
-              className={"alerts-btn" + (subagentsOpen ? " on" : "")}
-              onClick={openSubagentsModal}
-            >
-              Subagents
-              {monitorStatusRows.length > 0 ? (
-                <span className="alerts-badge">{monitorStatusRows.length}</span>
-              ) : null}
-            </button>
-
-            <button type="button" className="alerts-btn" onClick={openHistory}>
-              Audit History
-            </button>
-
+            {/* Icon-only from here on: Recalculate, alerts and the overflow
+                menu are supporting controls, so they no longer compete with
+                the primary action for width or attention. */}
             <button
               type="button"
               className={
-                "alerts-btn alerts-bell" +
-                (alertsOpen ? " on" : "") +
-                (monitoringBusy ? " is-busy" : "")
+                "alerts-btn alerts-icon-btn" + (monitoringBusy ? " is-busy" : "")
+              }
+              disabled={monitoringBusy}
+              aria-label={
+                monitoringBusy ? "Recalculating…" : "Recalculate this board"
+              }
+              title={monitoringBusy ? "Recalculating…" : "Recalculate"}
+              onClick={handleRecalculate}
+            >
+              <RecalculateIcon />
+            </button>
+
+            {/* The bell keeps its icon while monitoring runs — the spinning
+                Recalculate button already carries that state, and two
+                spinners for one operation is the noise we are removing. */}
+            {/* A dot, not a count. The bell and Agent Action tally different
+                things, but two bare numbers side by side read as the same
+                number repeated — so the actionable count stays on the
+                actionable button and the bell just says "there is something
+                here". The exact figure is one click away, and `aria-label`
+                still announces it. */}
+            <button
+              type="button"
+              ref={bellRef}
+              className={
+                "alerts-btn alerts-icon-btn alerts-bell" +
+                (alertsOpen ? " on" : "")
               }
               aria-label={`${alertCount} alert${alertCount === 1 ? "" : "s"}`}
               aria-expanded={alertsOpen}
+              title="Alerts"
               onClick={() => setAlertsOpen((open) => !open)}
             >
-              {monitoringBusy ? (
-                <span
-                  className="workboard-spinner alerts-bell-spinner"
-                  aria-hidden="true"
-                />
-              ) : (
-                <BellIcon />
-              )}
+              <BellIcon />
 
               {alertCount > 0 ? (
-                <span className="alerts-bell-badge">{alertCount}</span>
+                <span className="alerts-bell-dot" aria-hidden="true" />
               ) : null}
             </button>
+
+            <button
+              type="button"
+              ref={moreRef}
+              className={
+                "alerts-btn alerts-icon-btn" + (moreOpen ? " on" : "")
+              }
+              aria-label="More board tools"
+              aria-expanded={moreOpen}
+              aria-haspopup="menu"
+              title="More"
+              onClick={() => setMoreOpen((open) => !open)}
+            >
+              <MoreIcon />
+            </button>
+
+            <span className="alerts-toolbar-sep" aria-hidden="true" />
 
             <button
               type="button"
@@ -475,6 +505,46 @@ export default function AlertsPanel({
             </button>
           </div>
 
+          {moreOpen ? (
+            <>
+              <button
+                type="button"
+                className="alerts-popover-scrim"
+                aria-label="Close menu"
+                onClick={() => setMoreOpen(false)}
+              />
+              <div
+                className="alerts-more-menu"
+                role="menu"
+                aria-label="More board tools"
+                style={anchoredStyle(morePos)}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="alerts-more-item"
+                  onClick={openSubagentsModal}
+                >
+                  <span>Subagents</span>
+                  {monitorStatusRows.length > 0 ? (
+                    <span className="alerts-badge">
+                      {monitorStatusRows.length}
+                    </span>
+                  ) : null}
+                </button>
+
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="alerts-more-item"
+                  onClick={openHistory}
+                >
+                  <span>Audit History</span>
+                </button>
+              </div>
+            </>
+          ) : null}
+
           {alertsOpen ? (
             <>
               <button
@@ -487,6 +557,7 @@ export default function AlertsPanel({
                 className="alerts-popover"
                 role="dialog"
                 aria-label={`${agentName} alerts`}
+                style={anchoredStyle(alertsPos)}
               >
                 <div className="alerts-popover-head">
                   <div>
@@ -1129,6 +1200,98 @@ function ApprovalStep({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Anchors a fixed-position layer directly under `anchorRef`.
+ *
+ * Header layers have to be `position: fixed` rather than absolute: the toolbar
+ * scrolls horizontally (`.topbar-main { overflow-x: auto }`), which makes it a
+ * clipping context, so an absolutely positioned layer gets cut off at the
+ * header edge and reads as if it opened behind the board.
+ */
+function useAnchoredPosition(open, anchorRef) {
+  const [position, setPosition] = useState(null);
+
+  const place = useCallback(() => {
+    const anchor = anchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const margin = 8;
+    const rect = anchor.getBoundingClientRect();
+
+    setPosition({
+      top: rect.bottom + margin,
+      right: Math.max(margin, window.innerWidth - rect.right),
+    });
+  }, [anchorRef]);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setPosition(null);
+      return;
+    }
+
+    place();
+
+    // The toolbar scrolls sideways and the board scrolls under it, so follow
+    // the anchor rather than leaving the layer stranded off-position.
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
+
+  return position;
+}
+
+// Hidden until the first measurement lands, so the layer never flashes in the
+// corner before it is placed.
+function anchoredStyle(position) {
+  return {
+    top: position ? `${position.top}px` : "-9999px",
+    right: position ? `${position.right}px` : "-9999px",
+    visibility: position ? "visible" : "hidden",
+  };
+}
+
+function RecalculateIcon() {
+  return (
+    <svg
+      className="alerts-recalc-icon"
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M12 5V2L8 6l4 4V7a5 5 0 11-5 5H5a7 7 0 107-7z"
+      />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        fill="currentColor"
+        d="M6 10a2 2 0 100 4 2 2 0 000-4zm6 0a2 2 0 100 4 2 2 0 000-4zm6 0a2 2 0 100 4 2 2 0 000-4z"
+      />
+    </svg>
   );
 }
 

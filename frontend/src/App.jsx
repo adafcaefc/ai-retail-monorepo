@@ -7,6 +7,7 @@ import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import AppTopbar from "./components/AppTopbar.jsx";
 import AlertsPanel from "./components/AlertsPanel.jsx";
+import LanguageToggle from "./components/LanguageToggle.jsx";
 import UserIcon from "./assets/user-icon.svg";
 import {
   AgentListSkeleton,
@@ -751,6 +752,8 @@ export default function App() {
               ) : (
                 <p className="sidebar-notice">No agents are enabled.</p>
               )}
+
+              <LanguageToggle />
             </aside>
           ) : null}
 
@@ -874,6 +877,8 @@ export default function App() {
                 );
               })}
             </nav>
+
+            <LanguageToggle />
           </aside>
         ) : null}
 

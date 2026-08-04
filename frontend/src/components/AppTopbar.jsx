@@ -1,6 +1,4 @@
 import EyLogo from "./EyLogo.jsx";
-import { LANGUAGES } from "../i18n.js";
-import { useLanguage } from "../LanguageProvider.jsx";
 
 /**
  * The application's single header.
@@ -9,6 +7,10 @@ import { useLanguage } from "../LanguageProvider.jsx";
  * the sidebar toggle, the active board's title, and the board toolbar. The
  * brand block keeps the dark EY tone; the rest of the bar stays light so it
  * reads as part of the workspace, not as a second dark strip.
+ *
+ * Everything in this bar acts on the board currently open. App-level
+ * preferences (language) live in the sidebar footer instead, which also lets
+ * the board toolbar sit flush against the header's right edge.
  */
 export default function AppTopbar({
   sidebarOpen,
@@ -17,7 +19,6 @@ export default function AppTopbar({
   title = "",
   children = null,
 }) {
-  const { language, setLanguage } = useLanguage();
   const toggleLabel = sidebarOpen ? "Hide agent list" : "Show agent list";
 
   return (
@@ -50,27 +51,6 @@ export default function AppTopbar({
         </div>
 
         {children}
-
-        {/* QC-058 */}
-        <div
-          className="language-toggle"
-          role="group"
-          aria-label="Language"
-          data-testid="language-toggle"
-        >
-          {LANGUAGES.map((option) => (
-            <button
-              key={option.id}
-              type="button"
-              className={"lang-btn" + (language === option.id ? " on" : "")}
-              aria-pressed={language === option.id}
-              title={option.title}
-              onClick={() => setLanguage(option.id)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
     </header>
   );
