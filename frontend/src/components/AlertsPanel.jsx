@@ -42,13 +42,18 @@ export default function AlertsPanel({
 }) {
   const monitoring = useMonitoring();
   const [alerts, setAlerts] = useState([]);
+  // actionId -> { rank, score, confidence, confidence_basis, reason, impact }
+  const [ranking, setRanking] = useState(() => new Map());
   const [monitors, setMonitors] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [alertsOpen, setAlertsOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const wasRunningRef = useRef(false);
+  const bellRef = useRef(null);
+  const moreRef = useRef(null);
 
   const [subagentsOpen, setSubagentsOpen] = useState(false);
   const [actionOpen, setActionOpen] = useState(false);
@@ -83,12 +88,19 @@ export default function AlertsPanel({
       setError("");
 
       try {
-        const [payload, monitorsPayload] = await Promise.all([
+        // The agent-wide action list is the only place the ranking is
+        // meaningful. Per-alert fetches score each alert's one or two
+        // actions against each other, so everything comes back rank 1 —
+        // the backend normalises magnitudes within whatever list it is
+        // handed (see impact/scoring.rank).
+        const [payload, monitorsPayload, rankedPayload] = await Promise.all([
           fetchAlertsWithActions(agentId),
           fetchMonitoringAgents(agentId),
+          fetchActions(agentId).catch(() => ({ items: [] })),
         ]);
         if (!cancelled) {
           setAlerts(payload.items || []);
+          setRanking(indexByActionId(rankedPayload.items || []));
           const domain = monitorsPayload.items?.[0];
           setMonitors(domain?.monitoring_agents || []);
         }
@@ -637,6 +649,7 @@ export default function AlertsPanel({
           {!loading && !monitoringBusy && step === 0 ? (
             <RecommendationsStep
               alerts={alerts}
+              ranking={ranking}
               selectedIds={selectedIds}
               onToggle={toggleSelected}
               onToggleAll={toggleSelectAll}
@@ -725,6 +738,7 @@ export default function AlertsPanel({
 
 function RecommendationsStep({
   alerts,
+  ranking,
   selectedIds,
   onToggle,
   onToggleAll,
@@ -732,10 +746,32 @@ function RecommendationsStep({
   continueBusy,
   selectedCount,
 }) {
-  const groups = alerts.filter((alert) => (alert.actions || []).length > 0);
+  // Order by the backend's rank, not by the order the last monitoring run
+  // happened to write the rows in (QC-061). Alerts are kept as the grouping
+  // because an action without the issue behind it is not reviewable — the
+  // group simply leads with whichever of its actions ranks best, so the next
+  // best action in the agent is the first thing on screen.
+  const rankOf = (action) => rankingFor(ranking, action).rank ?? Infinity;
+  const groups = alerts
+    .filter((alert) => (alert.actions || []).length > 0)
+    .map((alert) => ({
+      ...alert,
+      actions: [...(alert.actions || [])].sort(
+        (a, b) => rankOf(a) - rankOf(b),
+      ),
+    }))
+    .sort((a, b) => rankOf(a.actions[0]) - rankOf(b.actions[0]));
   const totalActions = groups.reduce(
     (sum, alert) => sum + (alert.actions || []).length,
     0,
+  );
+  // "One or two next best actions" is QC-061's own wording.
+  const nextBestIds = new Set(
+    groups
+      .flatMap((alert) => alert.actions)
+      .filter((action) => Number.isFinite(rankOf(action)))
+      .slice(0, 2)
+      .map((action) => action.id),
   );
   const allSelected = totalActions > 0 && selectedCount === totalActions;
 
@@ -779,12 +815,16 @@ function RecommendationsStep({
             <ul className="rec-action-list">
               {(alert.actions || []).map((action) => {
                 const checked = selectedIds.has(action.id);
-                const priority = priorityFor(action);
+                const graded = rankingFor(ranking, action);
+                const band = graded.confidence;
+                const isNextBest = nextBestIds.has(action.id);
                 return (
                   <li key={action.id}>
                     <label
                       className={
-                        "rec-action-card" + (checked ? " selected" : "")
+                        "rec-action-card" +
+                        (checked ? " selected" : "") +
+                        (isNextBest ? " next-best" : "")
                       }
                     >
                       <input
@@ -795,16 +835,32 @@ function RecommendationsStep({
                       <div className="rec-action-body">
                         <div className="rec-action-top">
                           <strong>{action.action}</strong>
-                          <span
-                            className={
-                              "priority-pill " + priority.toLowerCase()
-                            }
-                          >
-                            {priority} Priority
-                          </span>
+                          {isNextBest ? (
+                            <span className="next-best-pill">
+                              Next best action
+                            </span>
+                          ) : null}
+                          {band ? (
+                            <span
+                              className={"confidence-pill confidence-" + band}
+                              /* The basis is the whole point of QC-055: a
+                                 confidence that will not say where it came
+                                 from is decoration. */
+                              title={graded.confidence_basis || ""}
+                            >
+                              {CONFIDENCE_WORD[band] || band}
+                            </span>
+                          ) : null}
                         </div>
+                        {/* The agent's own judgement, in its own words. Any
+                            figure it wrote was stripped server-side, so this
+                            never argues with the computed line below it. */}
+                        {graded.reason ? (
+                          <p className="rec-action-reason">{graded.reason}</p>
+                        ) : null}
                         <p>
-                          {action.impact ||
+                          {graded.impact ||
+                            action.impact ||
                             action.spec ||
                             "Review this recommendation before approval."}
                         </p>
@@ -1267,21 +1323,36 @@ function formatMonitorName(name) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function priorityFor(action) {
-  const text = `${action.impact || ""} ${action.spec || ""}`.toLowerCase();
-  if (
-    text.includes("critical") ||
-    text.includes("urgent") ||
-    text.includes("fraud") ||
-    text.includes("margin")
-  ) {
-    return "High";
-  }
-  if (text.includes("watch") || text.includes("monitor")) {
-    return "Low";
-  }
-  return "Medium";
+/**
+ * Rank/confidence/reason keyed by action id.
+ *
+ * The alert-grouped payload and the agent-wide ranked payload are the same
+ * rows fetched two ways, so they join cleanly on id.
+ */
+function indexByActionId(items) {
+  return new Map((items || []).map((item) => [item.id, item]));
 }
+
+/**
+ * What the ranked list says about one action, or a safe blank.
+ *
+ * A blank is normal rather than an error: an action with no cash lever the
+ * agent can size keeps its stored wording and carries no confidence, because
+ * grading how a number was computed is meaningless when none was.
+ */
+function rankingFor(ranking, action) {
+  return ranking.get(action.id) || {};
+}
+
+// Deliberately not a guess. This used to read keywords out of the action text
+// ("fraud" or "margin" meant High), which is the invented confidence QC-055
+// reports; the band now comes from the backend, which derives it from how the
+// figure was produced, and `confidence_basis` carries the justification.
+const CONFIDENCE_WORD = {
+  high: "High confidence",
+  medium: "Medium confidence",
+  low: "Low confidence",
+};
 
 function formatWhen(value) {
   if (!value) {

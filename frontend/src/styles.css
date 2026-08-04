@@ -3879,6 +3879,68 @@ img.ey-logo {
   color: #175cd3;
 }
 
+/*
+ * Confidence and next-best, on the recommendation cards (QC-055, QC-061).
+ *
+ * Kept apart from `.priority-pill`, which still means severity elsewhere and
+ * reads high as red. Confidence runs the other way: high is reassuring, so it
+ * borrows the same success/warning/danger tokens the chat renderer already
+ * uses for the same three words.
+ */
+.confidence-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: help;
+}
+
+.confidence-pill.confidence-high {
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+  border: 1px solid var(--accent-success-border);
+}
+
+.confidence-pill.confidence-medium {
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+  border: 1px solid var(--accent-warning-border);
+}
+
+.confidence-pill.confidence-low {
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  border: 1px solid var(--accent-danger-border);
+}
+
+.next-best-pill {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.64rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  background: var(--accent-strong, #175cd3);
+  color: #fff;
+}
+
+/* A left rail rather than a fill: the card is still a checkbox row, and a
+   tinted background would fight the `.selected` state it also has to show. */
+.rec-action-card.next-best {
+  border-left: 3px solid var(--accent-strong, #175cd3);
+}
+
+/* The agent's sentence, set apart from the computed line underneath so it is
+   obvious which words are the model's and which are the ledger's. */
+.rec-action-reason {
+  font-style: italic;
+  opacity: 0.85;
+  margin: 2px 0 4px;
+}
+
 .alerts-modal-backdrop {
   position: fixed;
   inset: 0;
