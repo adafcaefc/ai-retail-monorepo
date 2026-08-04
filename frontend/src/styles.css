@@ -1771,6 +1771,7 @@ img.ey-logo {
 
 .output-value {
   font-size: 1rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .output-card small {
@@ -2487,6 +2488,7 @@ img.ey-logo {
   margin-top: 3px;
   font-size: 1.15rem;
   font-weight: 900;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
 }
 
@@ -2502,6 +2504,21 @@ img.ey-logo {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--muted);
+}
+
+/*
+ * RAG status repeated as a word + shape (StatusIcon), not just the coloured
+ * rail/dot above — so status still reads without colour vision.
+ */
+.kpi-status-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  color: var(--kpi-accent);
+  font-size: 0.64rem;
+  font-weight: 750;
+  letter-spacing: 0.01em;
 }
 
 /* Progress toward target */
@@ -2583,7 +2600,7 @@ img.ey-logo {
   position: absolute;
   inset: 12% 2px;
   border-radius: 4px;
-  background: #dbe4f6;
+  background: var(--blue-100);
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -2594,7 +2611,7 @@ img.ey-logo {
 }
 
 .board-resize-handle:focus-visible {
-  outline: 2px solid #7a52b3;
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -2606,7 +2623,7 @@ img.ey-logo {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 12px;
-  background: #fff;
+  background: var(--surface-strong);
   padding: 8px 10px;
 }
 
@@ -2634,7 +2651,7 @@ img.ey-logo {
   position: absolute;
   inset: 2px 12%;
   border-radius: 4px;
-  background: #dbe4f6;
+  background: var(--blue-100);
   opacity: 0;
   transition: opacity 120ms ease;
 }
@@ -2645,7 +2662,7 @@ img.ey-logo {
 }
 
 .side-resize-handle:focus-visible {
-  outline: 2px solid #7a52b3;
+  outline: 2px solid var(--primary);
   outline-offset: 1px;
 }
 
@@ -2688,7 +2705,7 @@ img.ey-logo {
   font-weight: 800;
   text-transform: uppercase;
   color: var(--muted);
-  background: #f1f3f9;
+  background: var(--gray-50);
   border-radius: 8px;
   padding: 2px 7px;
 }
@@ -2702,7 +2719,7 @@ img.ey-logo {
 .focus-table th,
 .focus-table td {
   padding: 4px 5px;
-  border-bottom: 1px solid #f1f3f9;
+  border-bottom: 1px solid var(--gray-50);
 }
 
 .focus-table th {
@@ -2712,6 +2729,7 @@ img.ey-logo {
 
 .focus-table td.num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The row above the charts: filters on the left, mode and simulator right. */
@@ -2734,16 +2752,16 @@ img.ey-logo {
 .lang-btn {
   padding: 4px 10px;
   border: 0;
-  background: #fff;
+  background: var(--surface-strong);
   font-size: 0.68rem;
   font-weight: 600;
-  color: #5b6b8c;
+  color: var(--muted);
   cursor: pointer;
 }
 
 .lang-btn.on {
-  background: #1f2a44;
-  color: #fff;
+  background: var(--gray-900);
+  color: white;
 }
 
 /* QC-052 presets and QC-059 reset to baseline. */
@@ -2754,21 +2772,21 @@ img.ey-logo {
   gap: 6px;
   margin: 8px 0 0;
   padding: 8px 0 0;
-  border-top: 1px solid #e6edfa;
+  border-top: 1px solid var(--blue-100);
 }
 
 .preset-btn {
   padding: 5px 10px;
-  border: 1px solid #d9e4fb;
+  border: 1px solid var(--blue-100);
   border-radius: 999px;
-  background: #eff4ff;
+  background: var(--accent-info-soft);
   font-size: 0.7rem;
-  color: #1f2a44;
+  color: var(--gray-900);
   cursor: pointer;
 }
 
 .preset-btn--quiet {
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .preset-btn:disabled {
@@ -2961,7 +2979,7 @@ img.ey-logo {
 .calc-btn {
   background: var(--primary);
   border-color: var(--primary);
-  color: #fff;
+  color: white;
 }
 
 .calc-btn {
@@ -3000,7 +3018,7 @@ img.ey-logo {
   margin-bottom: 6px;
   font-size: 0.72rem;
   font-weight: 700;
-  color: #4a5570;
+  color: var(--gray-700);
 }
 
 .lever-controls {
@@ -3016,7 +3034,7 @@ img.ey-logo {
 
 .lever-number {
   width: 64px;
-  border: 1px solid #cfd5e6;
+  border: 1px solid var(--line);
   border-radius: 6px;
   padding: 2px 4px;
   text-align: right;
@@ -3032,7 +3050,7 @@ img.ey-logo {
 .whatif-stat {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
   padding: 6px 8px;
 }
 
@@ -4953,9 +4971,9 @@ img.ey-logo {
 
 .whatif-skeleton {
   padding: 10px 12px;
-  border: 1px solid #e2e9fb;
+  border: 1px solid var(--blue-100);
   border-radius: 12px;
-  background: #f7f9ff;
+  background: var(--accent-info-soft);
 }
 
 .whatif-skeleton-top {
@@ -4985,7 +5003,7 @@ img.ey-logo {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 /*
@@ -4998,7 +5016,7 @@ img.ey-logo {
   padding: 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-strong);
 }
 
 .whatif-gauge-skeleton {
