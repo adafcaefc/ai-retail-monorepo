@@ -754,18 +754,6 @@ export default function App() {
       <div className="app-body">
         {sidebarOpen ? (
           <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
-            <div className="brand">
-              <div className="brand-mark">
-                <img className="brand-mark-svg" src={UserIcon} alt="User" />
-              </div>
-
-              <div className="brand-copy">
-                <strong>User</strong>
-
-                <span>user@id.ey.com</span>
-              </div>
-            </div>
-
             <nav className="agent-groups" aria-label="Choose an agent">
               {groups.map((group) => {
                 const collapsed = collapsedFolders.has(group.folder);
@@ -832,6 +820,20 @@ export default function App() {
                 );
               })}
             </nav>
+
+            <div className="sidebar-footer">
+              <div className="brand">
+                <div className="brand-mark">
+                  <img className="brand-mark-svg" src={UserIcon} alt="User" />
+                </div>
+
+                <div className="brand-copy">
+                  <strong>User</strong>
+
+                  <span>user@id.ey.com</span>
+                </div>
+              </div>
+            </div>
           </aside>
         ) : null}
 
