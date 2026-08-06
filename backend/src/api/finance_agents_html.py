@@ -167,7 +167,12 @@ async def run_chat_agent(
     history_lines: list,
     emitter,
 ):
-    agent_name = get_agent(agent).chat_agent
+    descriptor = get_agent(agent)
+    if descriptor.dashboard_only:
+        raise ValueError(
+            f"{descriptor.display} is a dashboard-only module."
+        )
+    agent_name = descriptor.chat_agent
 
     messages_input = {
         "lines": history_lines
@@ -495,6 +500,7 @@ async def list_agents() -> dict[str, Any]:
                 "description": descriptor.description,
                 "prompt": descriptor.prompt,
                 "starter_prompts": list(descriptor.starter_prompts),
+                "dashboard_only": descriptor.dashboard_only,
             }
             for descriptor in AGENT_REGISTRY.values()
         ]

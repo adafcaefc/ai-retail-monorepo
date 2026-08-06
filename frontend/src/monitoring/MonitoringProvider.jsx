@@ -49,7 +49,15 @@ function writeSeen(keys) {
 }
 
 export function MonitoringProvider({ children }) {
-  const { agentIds, agentList } = useAgents();
+  const { agentList } = useAgents();
+
+  const monitoredAgentIds = useMemo(
+    () =>
+      agentList
+        .filter((agent) => !agent.dashboardOnly)
+        .map((agent) => agent.id),
+    [agentList]
+  );
 
   // Display names for toast copy, keyed by canonical `folder.agent` id.
   const agentMeta = useMemo(
@@ -72,7 +80,7 @@ export function MonitoringProvider({ children }) {
   // the ones we have never announced before as problem toasts.
   const refreshProblems = useCallback(async () => {
     const perAgent = await Promise.all(
-      agentIds.map(async (agentId) => {
+      monitoredAgentIds.map(async (agentId) => {
         try {
           const payload = await fetchAlerts(agentId);
           return (payload.items || []).map((alert) => ({
@@ -105,7 +113,7 @@ export function MonitoringProvider({ children }) {
 
     setProblems(shown);
     setMoreProblems(Math.max(0, fresh.length - shown.length));
-  }, [agentIds, agentMeta]);
+  }, [monitoredAgentIds, agentMeta]);
 
   const dismissProblem = useCallback((id) => {
     setProblems((current) => current.filter((item) => item.id !== id));
@@ -113,7 +121,7 @@ export function MonitoringProvider({ children }) {
 
   const runMonitoring = useCallback(async ({ force = false } = {}) => {
     // The module list arrives asynchronously; nothing to monitor until it does.
-    if (agentIds.length === 0) {
+    if (monitoredAgentIds.length === 0) {
       return undefined;
     }
 
@@ -133,7 +141,7 @@ export function MonitoringProvider({ children }) {
     const task = (async () => {
       try {
         const results = await Promise.all(
-          agentIds.map((agentId) => resetAndRepopulateAlerts(agentId))
+          monitoredAgentIds.map((agentId) => resetAndRepopulateAlerts(agentId))
         );
         const created = results.reduce(
           (sum, result) => sum + (result.created_count ?? 0),
@@ -172,7 +180,7 @@ export function MonitoringProvider({ children }) {
     }
 
     return task;
-  }, [agentIds, refreshProblems]);
+  }, [monitoredAgentIds, refreshProblems]);
 
   useEffect(() => {
     runMonitoring({ force: false });

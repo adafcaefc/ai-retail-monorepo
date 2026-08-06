@@ -6,11 +6,11 @@ Backend and chat UI for **Ledgerline Finance Forum** — an AI assistant platfor
 
 The platform connects LLM agents to PostgreSQL financial data (collections, cashflow, performance, payment leakage) and renders responses as rich UI blocks: text, tables, charts, simulations, recommendations, and confidence assessments.
 
-Four user-facing agents are available in the chat UI:
+Four chat-capable finance agents and one dashboard-only Retail module are available in the sidebar:
 
 Each agent is a self-contained folder under `src/llm/agents/<folder>/<name>/`
-with a canonical id of the form `folder.agent`. Adding an agent = adding a
-folder (no central registry to edit).
+with a canonical id of the form `folder.agent`. Adding an agent means adding
+that folder plus its id in `ENABLED_MODULES`.
 
 | UI name | Canonical id | Chat agent | Domain |
 |---|---|---|---|
@@ -18,8 +18,9 @@ folder (no central registry to edit).
 | Leakage | `finance.leakage` | `finance.leakage.chat` | Payment integrity, duplicates, fraud signals |
 | Collection | `finance.collection` | `finance.collection.chat` | Receivables, aging, DSO, recovery scenarios |
 | Treasury | `finance.treasury` | `finance.treasury.chat` | Liquidity, cash forecasts, funding options |
+| Retail | `retail.retail` | — | Empty dashboard shell reserved for Retail |
 
-Agents can also be consumed via Microsoft Teams (Adaptive Cards) through `/api/finance-agents/*`.
+Chat-capable agents can also be consumed via Microsoft Teams (Adaptive Cards) through `/api/finance-agents/*`.
 
 ## Tech stack
 

@@ -44,6 +44,7 @@ async function runPool(items, limit, worker) {
 export default function AlertsPanel({
   agentId,
   agentName,
+  backendEnabled = true,
   isChatOpen = false,
   onToggleChat,
 }) {
@@ -78,6 +79,23 @@ export default function AlertsPanel({
 
   useEffect(() => {
     if (!agentId) {
+      return;
+    }
+
+    if (!backendEnabled) {
+      setAlerts([]);
+      setMonitors([]);
+      setHistory([]);
+      setLoading(false);
+      setError("");
+      setAlertsOpen(false);
+      setSubagentsOpen(false);
+      setActionOpen(false);
+      setHistoryOpen(false);
+      setStep(0);
+      setSelectedIds(new Set());
+      setSimResults({});
+      setSimPending(new Set());
       return;
     }
 
@@ -128,12 +146,18 @@ export default function AlertsPanel({
     return () => {
       cancelled = true;
     };
-  }, [agentId, monitoring.runId]);
+  }, [agentId, backendEnabled, monitoring.runId]);
 
   // Surface monitoring progress as a transient toast instead of a
   // dashboard-blocking banner. Only fire on the running -> settled
   // transition so switching agents does not re-announce old results.
   useEffect(() => {
+    if (!backendEnabled) {
+      wasRunningRef.current = false;
+      setToast(null);
+      return;
+    }
+
     if (monitoring.isRunning) {
       wasRunningRef.current = true;
       setToast({
@@ -154,7 +178,7 @@ export default function AlertsPanel({
         });
       }
     }
-  }, [monitoring.isRunning, monitoring.error, monitoring.note]);
+  }, [backendEnabled, monitoring.isRunning, monitoring.error, monitoring.note]);
 
   useEffect(() => {
     if (!toast || toast.kind === "running") {
@@ -203,6 +227,10 @@ export default function AlertsPanel({
    * panel for a skeleton is exactly the stall we are trying to avoid.
    */
   async function reloadAlerts({ silent = false } = {}) {
+    if (!backendEnabled) {
+      return;
+    }
+
     if (!silent) {
       setLoading(true);
     }
@@ -220,7 +248,7 @@ export default function AlertsPanel({
   }
 
   async function handleRecalculate() {
-    if (monitoring.isRunning) {
+    if (!backendEnabled || monitoring.isRunning) {
       return;
     }
 
@@ -229,6 +257,10 @@ export default function AlertsPanel({
   }
 
   async function openHistory() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setMoreOpen(false);
     setHistoryOpen(true);
     setHistoryLoading(true);
@@ -268,12 +300,20 @@ export default function AlertsPanel({
   }
 
   function openActionModal() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionOpen(true);
     setStep(0);
     setError("");
   }
 
   function openSubagentsModal() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setMoreOpen(false);
     setSubagentsOpen(true);
     setError("");
@@ -284,7 +324,7 @@ export default function AlertsPanel({
   );
 
   async function runAnalysis() {
-    if (selectedItems.length === 0 || actionBusyId) {
+    if (!backendEnabled || selectedItems.length === 0 || actionBusyId) {
       return;
     }
 
@@ -336,7 +376,7 @@ export default function AlertsPanel({
   }
 
   async function approveSelected() {
-    if (selectedItems.length === 0 || actionBusyId) {
+    if (!backendEnabled || selectedItems.length === 0 || actionBusyId) {
       return;
     }
 
@@ -362,6 +402,10 @@ export default function AlertsPanel({
   }
 
   async function handleSingleSimulate(actionId) {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionBusyId(actionId);
     setError("");
     setSimPending((prev) => new Set(prev).add(actionId));
@@ -382,6 +426,10 @@ export default function AlertsPanel({
   }
 
   async function handleSingleApprove(actionId) {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionBusyId(actionId);
     setError("");
     try {
@@ -394,9 +442,9 @@ export default function AlertsPanel({
     }
   }
 
-  const monitoringBusy = monitoring.isRunning;
-  const displayError = error || monitoring.error;
-  const displayNote = monitoring.note;
+  const monitoringBusy = backendEnabled && monitoring.isRunning;
+  const displayError = backendEnabled ? error || monitoring.error : "";
+  const displayNote = backendEnabled ? monitoring.note : "";
   const alertCount = alerts.length;
 
   return (
@@ -411,6 +459,7 @@ export default function AlertsPanel({
                   ? `${plannedCount} issue${plannedCount === 1 ? "" : "s"} found`
                   : "Review recommended actions"
               }
+              disabled={!backendEnabled}
               onClick={openActionModal}
             >
               Agent Action
@@ -427,7 +476,7 @@ export default function AlertsPanel({
               className={
                 "alerts-btn alerts-icon-btn" + (monitoringBusy ? " is-busy" : "")
               }
-              disabled={monitoringBusy}
+              disabled={!backendEnabled || monitoringBusy}
               aria-label={
                 monitoringBusy ? "Recalculating…" : "Recalculate this board"
               }
@@ -453,9 +502,14 @@ export default function AlertsPanel({
                 "alerts-btn alerts-icon-btn alerts-bell" +
                 (alertsOpen ? " on" : "")
               }
-              aria-label={`${alertCount} alert${alertCount === 1 ? "" : "s"}`}
+              aria-label={
+                backendEnabled
+                  ? `${alertCount} alert${alertCount === 1 ? "" : "s"}`
+                  : `${agentName} notifications unavailable`
+              }
               aria-expanded={alertsOpen}
               title="Alerts"
+              disabled={!backendEnabled}
               onClick={() => setAlertsOpen((open) => !open)}
             >
               <BellIcon />
@@ -465,6 +519,10 @@ export default function AlertsPanel({
               ) : null}
             </button>
 
+            {/* Everything behind this menu — Subagents, Audit History — talks
+                to the backend, so a dashboard-only board has nothing to open
+                here. Disabling the trigger says that once, rather than opening
+                a menu of dead rows. */}
             <button
               type="button"
               ref={moreRef}
@@ -475,6 +533,7 @@ export default function AlertsPanel({
               aria-expanded={moreOpen}
               aria-haspopup="menu"
               title="More"
+              disabled={!backendEnabled}
               onClick={() => setMoreOpen((open) => !open)}
             >
               <MoreIcon />

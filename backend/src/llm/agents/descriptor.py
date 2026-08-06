@@ -55,5 +55,10 @@ class AgentDescriptor:
     # every existing zero-arg call site keeps working unchanged.
     build_dashboard: Callable[[str | None, str | None, str | None], dict]
 
+    # Backend capability
+    # Dashboard-only modules may reuse the shared header and chat presentation,
+    # but the frontend must not invoke chat, monitoring, actions, or data APIs.
+    dashboard_only: bool = False
+
 
 __all__ = ["AgentDescriptor", "MonitoringPass"]
