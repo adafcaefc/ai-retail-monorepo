@@ -7,7 +7,6 @@ import Workboard from "./components/Workboard.jsx";
 import ProblemToasts from "./components/ProblemToasts.jsx";
 import AppTopbar from "./components/AppTopbar.jsx";
 import AlertsPanel from "./components/AlertsPanel.jsx";
-import LanguageToggle from "./components/LanguageToggle.jsx";
 import UserIcon from "./assets/user-icon.svg";
 import {
   AgentListSkeleton,
@@ -728,21 +727,6 @@ export default function App() {
         <div className="app-body">
           {sidebarOpen ? (
             <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
-              {/* Mirrors the loaded sidebar's header so the skeleton and the
-                  real list share a top edge — otherwise the whole agent list
-                  jumps once the modules arrive. Keep the two in sync. */}
-              <div className="brand">
-                <div className="brand-mark">
-                  <img className="brand-mark-svg" src={UserIcon} alt="User" />
-                </div>
-
-                <div className="brand-copy">
-                  <strong>User</strong>
-
-                  <span>user@id.ey.com</span>
-                </div>
-              </div>
-
               {agentsError ? (
                 <p className="sidebar-notice" role="alert">
                   {agentsError}
@@ -753,7 +737,22 @@ export default function App() {
                 <p className="sidebar-notice">No agents are enabled.</p>
               )}
 
-              <LanguageToggle />
+              {/* Mirrors the loaded sidebar's footer so the skeleton and the
+                  real list share a bottom edge — otherwise the user block
+                  jumps once the modules arrive. Keep the two in sync. */}
+              <div className="sidebar-footer">
+                <div className="brand">
+                  <div className="brand-mark">
+                    <img className="brand-mark-svg" src={UserIcon} alt="User" />
+                  </div>
+
+                  <div className="brand-copy">
+                    <strong>User</strong>
+
+                    <span>user@id.ey.com</span>
+                  </div>
+                </div>
+              </div>
             </aside>
           ) : null}
 
@@ -799,18 +798,6 @@ export default function App() {
       <div className="app-body">
         {sidebarOpen ? (
           <aside id="agent-sidebar" className="sidebar" aria-label="Agent chats">
-            <div className="brand">
-              <div className="brand-mark">
-                <img className="brand-mark-svg" src={UserIcon} alt="User" />
-              </div>
-
-              <div className="brand-copy">
-                <strong>User</strong>
-
-                <span>user@id.ey.com</span>
-              </div>
-            </div>
-
             <nav className="agent-groups" aria-label="Choose an agent">
               {groups.map((group) => {
                 const collapsed = collapsedFolders.has(group.folder);
@@ -878,7 +865,19 @@ export default function App() {
               })}
             </nav>
 
-            <LanguageToggle />
+            <div className="sidebar-footer">
+              <div className="brand">
+                <div className="brand-mark">
+                  <img className="brand-mark-svg" src={UserIcon} alt="User" />
+                </div>
+
+                <div className="brand-copy">
+                  <strong>User</strong>
+
+                  <span>user@id.ey.com</span>
+                </div>
+              </div>
+            </div>
           </aside>
         ) : null}
 

@@ -345,6 +345,19 @@ summary:focus-visible {
   min-width: 40px;
 }
 
+/*
+ * The board toolbar and the language toggle, grouped as one item. The
+ * `margin-left: auto` here is deliberately the only one in this row: a second
+ * auto margin on a sibling would split the free space between the two and
+ * leave the group short of the header's right edge.
+ */
+.topbar-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
 .topbar-main::-webkit-scrollbar {
   height: 0;
 }
@@ -2791,29 +2804,11 @@ img.ey-logo {
   gap: 10px;
 }
 
-/* QC-058: EN / ID toggle in the header. */
 /*
- * Pinned to the bottom of the sidebar: `margin-top: auto` in the sidebar's
- * flex column. It used to sit in the header, where its own `margin-left: auto`
- * fought the toolbar's — two auto margins in one flex row split the free space
- * between them, which is why the toolbar never reached the right edge.
+ * QC-058: EN / ID toggle. This is the light-surface definition; the toggle
+ * lives in the dark header, which restyles it alongside the other toolbar
+ * controls further down.
  */
-.sidebar-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-top: auto;
-  padding: 14px 6px 0;
-  border-top: 1px solid var(--line);
-}
-
-.sidebar-footer-label {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
 .language-toggle {
   display: inline-flex;
   border: 1px solid var(--blue-100);
@@ -5515,4 +5510,38 @@ img.ey-logo {
 
 .topbar-main .alerts-toolbar-sep {
   background: rgba(234, 234, 236, 0.22);
+}
+
+/*
+ * Language toggle. It borrows the secondary-button treatment — outline on
+ * transparent, yellow only for the active segment — so it reads as one more
+ * header control rather than a light pill stamped onto the dark bar. The 34px
+ * height matches `.alerts-btn` so the group shares one baseline.
+ */
+.topbar-main .language-toggle {
+  border-color: rgba(234, 234, 236, 0.22);
+}
+
+.topbar-main .lang-btn {
+  display: inline-flex;
+  min-height: 34px;
+  align-items: center;
+  padding: 0 12px;
+  background: transparent;
+  color: rgba(234, 234, 236, 0.75);
+}
+
+.topbar-main .lang-btn:hover:not(.on) {
+  background: rgba(255, 230, 0, 0.1);
+  color: #eaeaec;
+}
+
+.topbar-main .lang-btn.on {
+  background: rgba(255, 230, 0, 0.16);
+  color: var(--ey-yellow);
+}
+
+.topbar-main .lang-btn:focus-visible {
+  outline: 3px solid rgba(255, 230, 0, 0.35);
+  outline-offset: 2px;
 }

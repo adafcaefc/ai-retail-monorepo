@@ -1,4 +1,5 @@
 import EyLogo from "./EyLogo.jsx";
+import LanguageToggle from "./LanguageToggle.jsx";
 
 /**
  * The application's single header.
@@ -8,9 +9,11 @@ import EyLogo from "./EyLogo.jsx";
  * brand block keeps the dark EY tone; the rest of the bar stays light so it
  * reads as part of the workspace, not as a second dark strip.
  *
- * Everything in this bar acts on the board currently open. App-level
- * preferences (language) live in the sidebar footer instead, which also lets
- * the board toolbar sit flush against the header's right edge.
+ * The board toolbar and the language toggle share one `.topbar-tools` group.
+ * That grouping is load-bearing: the free space in this row must be claimed by
+ * exactly one `margin-left: auto`. When the toggle sat here as its own flex
+ * item it brought a second one, the two split the space between them, and the
+ * toolbar never reached the header's right edge.
  */
 export default function AppTopbar({
   sidebarOpen,
@@ -50,7 +53,11 @@ export default function AppTopbar({
           {title ? <h1>{title}</h1> : null}
         </div>
 
-        {children}
+        <div className="topbar-tools">
+          {children}
+
+          <LanguageToggle />
+        </div>
       </div>
     </header>
   );
