@@ -27,6 +27,7 @@ export function buildAgents(items) {
     prompt: item.prompt || "",
     description: item.description || "",
     starterPrompts: item.starter_prompts || [],
+    dashboardOnly: Boolean(item.dashboard_only),
     // An override wins, so a module can customise its own UI.
     ...(OVERRIDES[item.id] || {})
   }));

@@ -49,5 +49,10 @@ class AgentDescriptor:
     tools: dict[str, Callable]    # domain-specific tools (merged into LOCAL_TOOLS)
     build_dashboard: Callable[[], dict]
 
+    # Backend capability
+    # Dashboard-only modules may reuse the shared header and chat presentation,
+    # but the frontend must not invoke chat, monitoring, actions, or data APIs.
+    dashboard_only: bool = False
+
 
 __all__ = ["AgentDescriptor", "MonitoringPass"]

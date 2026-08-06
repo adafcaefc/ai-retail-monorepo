@@ -104,6 +104,12 @@ export default function App() {
 
   const currentChat = chats[activeAgent] || EMPTY_CHAT;
 
+  const backendFeaturesEnabled = !currentAgent?.dashboardOnly;
+
+  const chatUiOpen = isChatOpen;
+
+  const DashboardComponent = currentAgent?.dashboardComponent || Workboard;
+
   const input = currentChat.draft || "";
 
   const visibleSuggestions =
@@ -111,7 +117,8 @@ export default function App() {
       ? currentChat.suggestions
       : (currentAgent?.starterPrompts ?? []);
 
-  const canSend = Boolean(input.trim()) && !currentChat.busy;
+  const canSend =
+    backendFeaturesEnabled && Boolean(input.trim()) && !currentChat.busy;
 
   // Seed one chat per enabled module once the backend list arrives, keeping
   // any chat already in flight. The first module is the default board.
@@ -497,6 +504,10 @@ export default function App() {
   async function sendMessage(event) {
     event.preventDefault();
 
+    if (!backendFeaturesEnabled) {
+      return;
+    }
+
     const text = input.trim();
 
     if (!text) {
@@ -511,7 +522,7 @@ export default function App() {
   async function submitText(rawText) {
     const text = String(rawText || "").trim();
 
-    if (!text || currentChat.busy) {
+    if (!backendFeaturesEnabled || !text || currentChat.busy) {
       return;
     }
 
@@ -680,7 +691,7 @@ export default function App() {
 
   const shellClassName = [
     "app-shell",
-    isChatOpen ? "chat-open" : "chat-closed",
+    chatUiOpen ? "chat-open" : "chat-closed",
     sidebarOpen ? "sidebar-open" : "sidebar-collapsed",
     resizing ? "is-resizing" : "",
   ]
@@ -746,7 +757,8 @@ export default function App() {
         <AlertsPanel
           agentId={activeAgent}
           agentName={currentAgent.name}
-          isChatOpen={isChatOpen}
+          backendEnabled={backendFeaturesEnabled}
+          isChatOpen={chatUiOpen}
           onToggleChat={toggleChat}
         />
       </AppTopbar>
@@ -837,14 +849,14 @@ export default function App() {
           </aside>
         ) : null}
 
-        <Workboard
+        <DashboardComponent
           agentId={activeAgent}
           agentName={currentAgent.name}
           onAskInsight={askKpiInsight}
           insightBusy={currentChat.busy}
         />
 
-        {isChatOpen ? (
+        {chatUiOpen ? (
           <div
             className="chat-resize-handle"
             role="separator"
@@ -958,7 +970,7 @@ export default function App() {
                       key={suggestion}
                       type="button"
                       className="prompt-chip"
-                      disabled={currentChat.busy}
+                      disabled={currentChat.busy || !backendFeaturesEnabled}
                       onClick={() => {
                         setCurrentDraft(suggestion);
 
@@ -981,7 +993,7 @@ export default function App() {
                 ref={composerRef}
                 value={input}
 
-                disabled={currentChat.busy}
+                disabled={currentChat.busy || !backendFeaturesEnabled}
 
                 rows={1}
                 maxLength={2000}

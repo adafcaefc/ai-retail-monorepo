@@ -37,6 +37,7 @@ async function runPool(items, limit, worker) {
 export default function AlertsPanel({
   agentId,
   agentName,
+  backendEnabled = true,
   isChatOpen = false,
   onToggleChat,
 }) {
@@ -66,6 +67,23 @@ export default function AlertsPanel({
 
   useEffect(() => {
     if (!agentId) {
+      return;
+    }
+
+    if (!backendEnabled) {
+      setAlerts([]);
+      setMonitors([]);
+      setHistory([]);
+      setLoading(false);
+      setError("");
+      setAlertsOpen(false);
+      setSubagentsOpen(false);
+      setActionOpen(false);
+      setHistoryOpen(false);
+      setStep(0);
+      setSelectedIds(new Set());
+      setSimResults({});
+      setSimPending(new Set());
       return;
     }
 
@@ -109,12 +127,18 @@ export default function AlertsPanel({
     return () => {
       cancelled = true;
     };
-  }, [agentId, monitoring.runId]);
+  }, [agentId, backendEnabled, monitoring.runId]);
 
   // Surface monitoring progress as a transient toast instead of a
   // dashboard-blocking banner. Only fire on the running -> settled
   // transition so switching agents does not re-announce old results.
   useEffect(() => {
+    if (!backendEnabled) {
+      wasRunningRef.current = false;
+      setToast(null);
+      return;
+    }
+
     if (monitoring.isRunning) {
       wasRunningRef.current = true;
       setToast({
@@ -135,7 +159,7 @@ export default function AlertsPanel({
         });
       }
     }
-  }, [monitoring.isRunning, monitoring.error, monitoring.note]);
+  }, [backendEnabled, monitoring.isRunning, monitoring.error, monitoring.note]);
 
   useEffect(() => {
     if (!toast || toast.kind === "running") {
@@ -180,6 +204,10 @@ export default function AlertsPanel({
    * panel for a skeleton is exactly the stall we are trying to avoid.
    */
   async function reloadAlerts({ silent = false } = {}) {
+    if (!backendEnabled) {
+      return;
+    }
+
     if (!silent) {
       setLoading(true);
     }
@@ -197,7 +225,7 @@ export default function AlertsPanel({
   }
 
   async function handleRecalculate() {
-    if (monitoring.isRunning) {
+    if (!backendEnabled || monitoring.isRunning) {
       return;
     }
 
@@ -206,6 +234,10 @@ export default function AlertsPanel({
   }
 
   async function openHistory() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setHistoryOpen(true);
     setHistoryLoading(true);
     setError("");
@@ -244,12 +276,20 @@ export default function AlertsPanel({
   }
 
   function openActionModal() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionOpen(true);
     setStep(0);
     setError("");
   }
 
   function openSubagentsModal() {
+    if (!backendEnabled) {
+      return;
+    }
+
     setSubagentsOpen(true);
     setError("");
   }
@@ -259,7 +299,7 @@ export default function AlertsPanel({
   );
 
   async function runAnalysis() {
-    if (selectedItems.length === 0 || actionBusyId) {
+    if (!backendEnabled || selectedItems.length === 0 || actionBusyId) {
       return;
     }
 
@@ -311,7 +351,7 @@ export default function AlertsPanel({
   }
 
   async function approveSelected() {
-    if (selectedItems.length === 0 || actionBusyId) {
+    if (!backendEnabled || selectedItems.length === 0 || actionBusyId) {
       return;
     }
 
@@ -337,6 +377,10 @@ export default function AlertsPanel({
   }
 
   async function handleSingleSimulate(actionId) {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionBusyId(actionId);
     setError("");
     setSimPending((prev) => new Set(prev).add(actionId));
@@ -357,6 +401,10 @@ export default function AlertsPanel({
   }
 
   async function handleSingleApprove(actionId) {
+    if (!backendEnabled) {
+      return;
+    }
+
     setActionBusyId(actionId);
     setError("");
     try {
@@ -369,9 +417,9 @@ export default function AlertsPanel({
     }
   }
 
-  const monitoringBusy = monitoring.isRunning;
-  const displayError = error || monitoring.error;
-  const displayNote = monitoring.note;
+  const monitoringBusy = backendEnabled && monitoring.isRunning;
+  const displayError = backendEnabled ? error || monitoring.error : "";
+  const displayNote = backendEnabled ? monitoring.note : "";
   const alertCount = alerts.length;
 
   return (
@@ -381,6 +429,7 @@ export default function AlertsPanel({
             <button
               type="button"
               className="alerts-btn primary"
+              disabled={!backendEnabled}
               onClick={openActionModal}
             >
               Agent Action
@@ -394,7 +443,7 @@ export default function AlertsPanel({
             <button
               type="button"
               className="alerts-btn"
-              disabled={monitoringBusy}
+              disabled={!backendEnabled || monitoringBusy}
               onClick={handleRecalculate}
             >
               {monitoringBusy ? "Recalculating…" : "Recalculate"}
@@ -403,6 +452,7 @@ export default function AlertsPanel({
             <button
               type="button"
               className={"alerts-btn" + (subagentsOpen ? " on" : "")}
+              disabled={!backendEnabled}
               onClick={openSubagentsModal}
             >
               Subagents
@@ -411,7 +461,12 @@ export default function AlertsPanel({
               ) : null}
             </button>
 
-            <button type="button" className="alerts-btn" onClick={openHistory}>
+            <button
+              type="button"
+              className="alerts-btn"
+              disabled={!backendEnabled}
+              onClick={openHistory}
+            >
               Audit History
             </button>
 
@@ -422,8 +477,13 @@ export default function AlertsPanel({
                 (alertsOpen ? " on" : "") +
                 (monitoringBusy ? " is-busy" : "")
               }
-              aria-label={`${alertCount} alert${alertCount === 1 ? "" : "s"}`}
+              aria-label={
+                backendEnabled
+                  ? `${alertCount} alert${alertCount === 1 ? "" : "s"}`
+                  : `${agentName} notifications unavailable`
+              }
               aria-expanded={alertsOpen}
+              disabled={!backendEnabled}
               onClick={() => setAlertsOpen((open) => !open)}
             >
               {monitoringBusy ? (
