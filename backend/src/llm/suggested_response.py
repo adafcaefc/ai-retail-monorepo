@@ -81,8 +81,8 @@ class SuggestedPromptOutput(BaseModel):
     agent.
     """
     suggestions: list[SuggestedQuestion] = Field(
-        min_length=1, # Allows the LLM to return an empty list
-        max_length=2, # Return either 0,1, or 2 suggested questions.
+        min_length=0,  # Allow the LLM to return an empty list (no forced follow-up)
+        max_length=2,  # Return either 0, 1, or 2 suggested questions.
     )
 
     # Normalize the response from the LLM, and ensure the resulting list
@@ -169,7 +169,7 @@ def get_suggested_response_agent() -> Agent:
         retries=0,
         output_retries=1,
         model_settings=ModelSettings(
-            max_tokens=160,
+            max_tokens=2000,
         ),
     )
 

@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Retail 360 Suite</title>
+<link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+<a class="skip-link" href="#main-content">Skip to main content</a>
+<div class="app">
+
+  <!-- ============ LEFT RAIL ============ -->
+  <aside class="rail">
+    <div class="rail-top">
+      <div class="logo">360</div>
+      <div class="rail-brand"><div class="n">AI Retail 360</div><div class="s">Inventory Risk · Hero</div></div>
+      <button class="hamb" onclick="toggleRail()" title="Collapse / full screen">≡</button>
+    </div>
+    <div class="rail-scroll">
+      <div class="rail-label"><span class="txt" data-en="Agents" data-id="Agent">Agents</span></div>
+      <div class="navsec agent-nav" id="agentnav"></div>
+
+      <div class="rail-label"><span class="txt" data-en="Scope & Filters" data-id="Cakupan & Filter">Scope &amp; Filters</span></div>
+      <div class="fbody">
+        <div class="fgroup">
+          <div class="flabel"><span data-en="Item Filter" data-id="Filter Item">Item Filter</span></div>
+          <div class="seg" id="itemseg">
+            <button class="active" onclick="setItemMode('all',this)" data-en="All" data-id="Semua">All</button>
+            <button onclick="setItemMode('cat',this)" data-en="Category" data-id="Kategori">Category</button>
+            <button onclick="setItemMode('item',this)">Item</button>
+          </div>
+          <div id="catwrap" class="hidden" style="margin-top:7px">
+            <div class="flabel" style="margin-top:2px"><span data-en="Categories (multi)" data-id="Kategori (multi)">Categories (multi)</span><span class="mini-link" onclick="selAll('cat')" data-en="All / Clear" data-id="Semua / Hapus">All / Clear</span></div>
+            <div class="checklist" id="catlist"></div>
+          </div>
+          <div id="itemwrap" class="hidden" style="margin-top:7px">
+            <div class="flabel" style="margin-top:2px"><span data-en="Items (multi)" data-id="Item (multi)">Items (multi)</span><span class="mini-link" onclick="selAll('sku')" data-en="All / Clear" data-id="Semua / Hapus">All / Clear</span></div>
+            <input class="searchbox" id="skusearch" placeholder="Search SKU..." oninput="renderSkuList()">
+            <div class="checklist" id="skulist"></div>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <div class="flabel"><span data-en="Stores" data-id="Toko">Stores</span></div>
+          <div class="seg" id="storeseg">
+            <button class="active" onclick="setStoreMode('all',this)" data-en="All Stores" data-id="Semua Toko">All Stores</button>
+            <button onclick="setStoreMode('sel',this)" data-en="Select (multi)" data-id="Pilih (multi)">Select (multi)</button>
+          </div>
+          <div id="storewrap" class="hidden" style="margin-top:7px">
+            <div class="checklist short" id="storelist"></div>
+          </div>
+        </div>
+
+        <div class="fgroup">
+          <div class="flabel"><span data-en="Sales View" data-id="Tampilan">Sales View</span></div>
+          <div class="seg" id="viewseg" style="flex-wrap:wrap">
+            <button class="active" onclick="setPeriod('daily',this)">ADS</button>
+            <button onclick="setPeriod('weekly',this)">Wk</button>
+            <button onclick="setPeriod('monthly',this)">Mo</button>
+            <button onclick="setPeriod('quarterly',this)">Qtr</button>
+            <button onclick="setPeriod('yearly',this)">Yr</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="rail-label"><span class="txt" data-en="Trigger Calculation" data-id="Trigger Kalkulasi">Trigger Calculation</span> <span id="trigcount" style="color:#8fd7ff"></span></div>
+      <div class="fbody">
+        <div class="trig-scroll" id="triglist"></div>
+        <div class="approach"><b data-en="Fresh:" data-id="Fresh:">Fresh:</b> <span data-en="ADS × (lead+safety). Non-fresh: AMS ÷ 30 × horizon." data-id="ADS × (lead+safety). Non-fresh: AMS ÷ 30 × horizon.">ADS × (lead+safety). Non-fresh: AMS ÷ 30 × horizon.</span></div>
+      </div>
+    </div>
+    <div class="rail-footer">
+      <img class="ey-logo" src="ey-logo.png" alt="EY">
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main class="main" id="main-content">
+    <div class="maintop">
+      <button class="hamb" style="background:var(--panel2);color:var(--ink);border:1px solid var(--line)" onclick="toggleRail()" title="Menu">≡</button>
+      <div>
+        <h1 data-en="Inventory Risk" data-id="Inventory Risk">Inventory Risk</h1>
+        <div class="crumb" id="crumb">Agent 2 of 8 · All items · All stores</div>
+      </div>
+      <span class="badge-live">● <span data-en="Live" data-id="Live">Live</span></span>
+      <div class="cmdbar">
+        <button class="tbtn" onclick="toggleFilters()"><span>⌁</span><span data-en="Filters" data-id="Filter">Filters</span></button>
+        <button class="tbtn primary" onclick="toggleAI()"><span>✦</span><span data-en="AI Assistant" data-id="Asisten AI">AI Assistant</span></button>
+        <details class="more-menu"><summary class="tbtn" aria-label="More options">•••</summary><div class="more-popover">
+          <button onclick="openHistory()">Status &amp; History</button>
+          <div class="menu-language"><span>Language</span><div class="lang-mini"><button id="lang-id" onclick="setLang('id')">ID</button><button id="lang-en" class="active" onclick="setLang('en')">EN</button></div></div>
+          <button onclick="resetAll()">Reset workspace</button>
+        </div></details>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="col-main">
+        <section class="decision-hero" id="decision-hero" aria-labelledby="decision-title">
+          <div><div class="eyebrow">Decision summary</div><h2 id="decision-title">Focus on the highest-value action</h2><p id="decision-copy">Loading current scope...</p></div>
+          <div class="decision-impact"><span id="decision-impact-label">Business impact</span><strong id="decision-impact-value">—</strong></div>
+          <button class="btn indigo" onclick="setWorkspace('actions')">Review actions →</button>
+        </section>
+        <nav class="workspace-tabs" aria-label="Workspace views">
+          <button class="active" data-workspace="overview" onclick="setWorkspace('overview',this)">Overview</button>
+          <button data-workspace="analysis" onclick="setWorkspace('analysis',this)">Analysis</button>
+          <button data-workspace="register" onclick="setWorkspace('register',this)">Register</button>
+          <button data-workspace="simulation" onclick="setWorkspace('simulation',this)">Simulation</button>
+          <button data-workspace="actions" onclick="setWorkspace('actions',this)">Actions</button>
+        </nav>
+        <div class="filterchips workspace-filterchips" id="filterchips"></div>
+
+        <div class="kpirow" id="kpirow" data-sec="kpi"></div>
+
+        <!-- FORECAST EXPLORER -->
+        <div class="panel" data-sec="forecast">
+          <div class="chart-h">
+            <div class="t">📈 <span data-en="Projected On-Hand vs Demand" data-id="Proyeksi On-Hand vs Demand">Projected On-Hand vs Demand</span></div>
+            <div class="numctl" style="margin-left:12px"><span data-en="Horizon" data-id="Horizon">Horizon</span>
+              <input type="range" id="horizon" min="2" max="16" value="8" oninput="onHorizon()"><b id="horizonv">8 wk</b></div>
+            <div class="legend">
+              <span class="lg"><i style="background:#0078D4"></i><span data-en="On-hand" data-id="On-hand">On-hand</span></span>
+              <span class="lg"><i style="background:#5C2D91"></i><span data-en="Projected" data-id="Proyeksi">Projected</span></span>
+              <span class="lg"><i style="background:#e9def5"></i><span data-en="Range" data-id="Rentang">Range</span></span>
+            </div>
+          </div>
+          <div class="chartbody"><div id="chart-forecast"></div>
+            <div class="tiny muted" id="forenote" style="padding:2px 6px"></div>
+            <div class="metrics4" id="forecastStats" style="padding:8px 6px 2px;gap:22px"></div></div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel" data-sec="driver">
+            <div class="chart-h"><div class="t">🧬 <span data-en="At-Risk Inventory Value" data-id="Nilai Inventory Berisiko">At-Risk Inventory Value</span></div>
+              <span class="hint" data-en="value at risk by state (Rp)" data-id="nilai berisiko per status (Rp)">value at risk by state (Rp)</span></div>
+            <div class="chartbody"><div id="chart-driver"></div></div>
+          </div>
+          <div class="panel" data-sec="trend">
+            <div class="chart-h"><div class="t">🔥 <span data-en="Expiry Watchlist" data-id="Watchlist Expiry">Expiry Watchlist</span></div>
+              <span class="hint" data-en="soonest expiry" data-id="paling dekat expiry">soonest expiry</span></div>
+            <div class="panel-b" style="padding-top:10px"><div class="trendlist" id="trendlist"></div></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel" data-sec="cat">
+            <div class="chart-h"><div class="t">🗂️ <span data-en="Inventory Value by Category" data-id="Nilai Inventory per Kategori">Inventory Value by Category</span></div>
+              <span class="hint" data-en="click a bar to filter" data-id="klik bar untuk filter">click a bar to filter</span></div>
+            <div class="chartbody"><div id="chart-cat"></div></div>
+          </div>
+          <div class="panel" data-sec="store">
+            <div class="chart-h"><div class="t">🏪 <span data-en="Stockout-Risk by Store" data-id="Risiko Stockout per Toko">Stockout-Risk by Store</span></div>
+              <span class="hint" data-en="click to filter" data-id="klik untuk filter">click to filter</span></div>
+            <div class="chartbody"><div id="chart-store"></div></div>
+          </div>
+        </div>
+
+        <div class="grid2">
+          <div class="panel" data-sec="cluster">
+            <div class="chart-h"><div class="t">🧭 <span data-en="Overstock Value by Cluster" data-id="Nilai Overstock per Cluster">Overstock Value by Cluster</span></div>
+              <span class="hint" data-en="click to filter" data-id="klik untuk filter">click to filter</span></div>
+            <div class="chartbody"><div id="chart-cluster"></div></div>
+          </div>
+          <div class="panel" data-sec="season">
+            <div class="chart-h"><div class="t">📅 <span data-en="Expiry Timeline" data-id="Timeline Expiry">Expiry Timeline</span></div></div>
+            <div class="chartbody"><div id="chart-season"></div>
+              <div class="tiny muted" style="padding:2px 6px">⏰ <span data-en="Fresh units grouped by remaining shelf-life. ≤3 days = markdown/transfer now." data-id="Unit fresh dikelompokkan per sisa shelf-life. ≤3 hari = markdown/transfer sekarang.">Fresh units grouped by remaining shelf-life. ≤3 days = markdown/transfer now.</span></div></div>
+          </div>
+        </div>
+
+        <!-- FORECAST BY SKU / STORE / PERIOD -->
+        <div class="panel" data-sec="matrix">
+          <div class="chart-h"><div class="t">🔢 <span data-en="Inventory Risk Register" data-id="Register Risiko Inventory">Inventory Risk Register</span></div>
+            <span class="hint" id="matrixhint" data-en="ranked by risk severity · click a row to drill" data-id="urut berdasarkan tingkat risiko · klik baris untuk drill">ranked by risk severity · click a row to drill</span></div>
+          <div class="chartbody" style="overflow:auto"><div id="chart-matrix"></div></div>
+        </div>
+
+        <!-- WHAT-IF -->
+        <div class="panel" data-sec="sim">
+          <div class="panel-h"><span class="ic" style="background:#eef0ff">🎛️</span><span data-en="What-If Simulator" data-id="Simulator What-If">What-If Simulator</span>
+            <span class="hint" data-en="live engine · drag to simulate" data-id="engine live · geser untuk simulasi">live engine · drag to simulate</span></div>
+          <div class="panel-b">
+            <div class="simgrid">
+              <div>
+                <div class="slider"><div class="sh"><span data-en="Demand change" data-id="Perubahan demand">Demand change</span><b id="v-price">0%</b></div><input type="range" id="s-price" min="-30" max="30" value="0" oninput="onSim()"></div>
+                <div class="slider"><div class="sh"><span data-en="Markdown depth" data-id="Kedalaman markdown">Markdown depth</span><b id="v-promo">0%</b></div><input type="range" id="s-promo" min="0" max="50" value="0" oninput="onSim()"></div>
+                <div class="slider"><div class="sh"><span data-en="Extra inbound" data-id="Inbound tambahan">Extra inbound</span><b id="v-seas">0%</b></div><input type="range" id="s-seas" min="-20" max="40" value="0" oninput="onSim()"></div>
+                <div class="slider"><div class="sh"><span data-en="Transfer out" data-id="Transfer keluar">Transfer out</span><b id="v-viral">0%</b></div><input type="range" id="s-viral" min="0" max="60" value="0" oninput="onSim()"></div>
+                <div class="slider"><div class="sh"><span data-en="Vendor lead time" data-id="Lead time vendor">Vendor lead time</span><b id="v-lead">3 d</b></div><input type="range" id="s-lead" min="1" max="10" value="3" oninput="onSim()"></div>
+                <div class="slider"><div class="sh"><span data-en="Safety stock" data-id="Safety stock">Safety stock</span><b id="v-safe">2 d</b></div><input type="range" id="s-safe" min="0" max="7" value="2" oninput="onSim()"></div>
+                <div class="simbtns">
+                  <button class="btn teal sm" onclick="runSim()">▶ <span data-en="Run" data-id="Jalankan">Run</span></button>
+                  <button class="btn sm" onclick="saveScenario()">💾 <span data-en="Save" data-id="Simpan">Save</span></button>
+                  <button class="btn sm" onclick="loadScenario()">📂 <span data-en="Load" data-id="Muat">Load</span></button>
+                  <button class="btn sm" onclick="exportScenarios()">⬇ Excel</button>
+                </div>
+              </div>
+              <div>
+                <div class="tiny muted" style="margin-bottom:3px" data-en="Projected on-hand under levers" data-id="Proyeksi on-hand dengan lever">Projected on-hand under levers</div>
+                <div id="chart-sim"></div>
+                <div class="metrics4">
+                  <div class="m"><div class="k" data-en="Stockout SKUs" data-id="SKU stockout">Stockout SKUs</div><b id="sim-order" data-fx="suggestedOrderSim">—</b></div>
+                  <div class="m"><div class="k">Δ Expiry</div><b id="sim-delta" data-fx="deltaDemand">—</b></div>
+                  <div class="m"><div class="k">Δ Capital</div><b id="sim-margin" data-fx="deltaMargin">—</b></div>
+                  <div class="m"><div class="k">Service</div><b id="sim-svc" data-fx="service">—</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COMPARE SCENARIO -->
+        <div class="panel" data-sec="compare">
+          <div class="chart-h"><div class="t">⚖️ <span data-en="Compare Scenarios" data-id="Bandingkan Skenario">Compare Scenarios</span></div>
+            <span class="hint" id="comparehint" data-en="save 2+ scenarios to overlay" data-id="simpan 2+ skenario untuk overlay">save 2+ scenarios to overlay</span></div>
+          <div class="chartbody"><div id="chart-compare"></div><div id="scentablewrap" style="padding:0 6px"></div></div>
+        </div>
+
+        <!-- BEST ACTION + PO -->
+        <div class="panel" data-sec="action">
+          <div class="panel-h"><span class="ic" style="background:#eafff9">💡</span><span data-en="Suggested Best Action" data-id="Saran Best Action">Suggested Best Action</span>
+            <span class="hint" data-en="sequential handoff → Replenishment Agent" data-id="handoff berurutan → Agent Replenishment">sequential handoff → Replenishment Agent</span></div>
+          <div class="panel-b" id="actionbody"></div>
+        </div>
+
+        <div class="foot">AI Retail 360 Suite · <b>Combined mockup · Demand Forecasting + Inventory Risk</b> · <span data-en="Benchmark: SymphonyAI CINDE. Sample data for demo only." data-id="Benchmark: SymphonyAI CINDE. Data contoh untuk demo.">Benchmark: SymphonyAI CINDE. Sample data for demo only.</span></div>
+      </div>
+
+      <!-- CHAT -->
+      <aside class="col-chat" data-sec="chat" aria-label="AI assistant">
+        <div class="panel">
+          <div class="panel-h"><span class="ic" style="background:#eafff9">✦</span><span data-en="Ask AI Retail 360" data-id="Tanya AI Retail 360">Ask AI Retail 360</span></div>
+          <div class="chat-tools">
+            <span class="toggle" id="chtoggle" onclick="toggleChallenge()"><span class="switch"></span><span data-en="Challenge mode" data-id="Mode Challenge">Challenge mode</span></span>
+            <span class="tiny muted" style="margin-left:auto" data-en="every answer shows the math" data-id="tiap jawaban ada hitungannya">every answer shows the math</span>
+          </div>
+          <div class="chat-scroll" id="chat"></div>
+          <div class="chips" id="chips"></div>
+          <div class="chat-in">
+            <input type="text" id="chatin" placeholder="Ask or challenge the forecast..." onkeydown="if(event.key==='Enter')sendChat()">
+            <button class="send" onclick="sendChat()">➤</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<div id="tip"></div><div id="pop"></div><div id="toast"></div>
+<div class="overlay" id="overlay" onclick="closeAll()"></div>
+<div class="drawer" id="drawer"><div class="drawer-h"><span>📊</span><div><div style="font-weight:700" id="drawer-title">Detail</div><div class="tiny muted" id="drawer-sub"></div></div><button class="x" onclick="closeAll()">✕</button></div><div class="drawer-b" id="drawer-body"></div></div>
+<div class="modal" id="modal-agentic"><div class="modal-h"><span>⚡</span><b data-en="AI Agentic Action Center" data-id="Pusat Aksi Agentik">AI Agentic Action Center</b><button class="x" onclick="closeAll()">✕</button></div><div class="modal-b" id="agentic-body"></div></div>
+<div class="modal" id="modal-history"><div class="modal-h"><span>🕘</span><b data-en="Agent Status & History" data-id="Status & Riwayat">Agent Status &amp; History</b><button class="x" onclick="closeAll()">✕</button></div><div class="modal-b" id="history-body"></div></div>
+<div class="modal" id="modal-wf"><div class="modal-h"><span>🧾</span><b data-en="D365 F&O Approval Workflow" data-id="Workflow Approval D365 F&O">D365 F&amp;O Approval Workflow</b><button class="x" onclick="closeAll()">✕</button></div><div class="modal-b" id="wf-body"></div></div>
+
+<script src="dashboard.js" defer></script>
+</body>
+</html>
