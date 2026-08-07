@@ -6,7 +6,8 @@ Backend and chat UI for **Ledgerline Finance Forum** — an AI assistant platfor
 
 The platform connects LLM agents to PostgreSQL financial data (collections, cashflow, performance, payment leakage) and renders responses as rich UI blocks: text, tables, charts, simulations, recommendations, and confidence assessments.
 
-Four chat-capable finance agents and one dashboard-only Retail module are available in the sidebar:
+Four finance agents and a Retail module are available in the sidebar. The finance agents
+read the `newdata` schema; Retail is chat-only and calls Dynamics 365 live instead:
 
 Each agent is a self-contained folder under `src/llm/agents/<folder>/<name>/`
 with a canonical id of the form `folder.agent`. Adding an agent means adding
@@ -18,7 +19,7 @@ that folder plus its id in `ENABLED_MODULES`.
 | Leakage | `finance.leakage` | `finance.leakage.chat` | Payment integrity, duplicates, fraud signals |
 | Collection | `finance.collection` | `finance.collection.chat` | Receivables, aging, DSO, recovery scenarios |
 | Treasury | `finance.treasury` | `finance.treasury.chat` | Liquidity, cash forecasts, funding options |
-| Retail | `retail.retail` | — | Empty dashboard shell reserved for Retail |
+| Retail | `retail.retail` | `retail.retail.chat` | Demand, stock cover, reorder signals — read live from D365 F&O, not from PostgreSQL. Its dashboard panel is still an empty shell |
 
 Chat-capable agents can also be consumed via Microsoft Teams (Adaptive Cards) through `/api/finance-agents/*`.
 
@@ -34,7 +35,7 @@ Chat-capable agents can also be consumed via Microsoft Teams (Adaptive Cards) th
 
 The original product vision is captured in a self-contained HTML prototype at the repo root:
 
-**[`03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html`](./03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html)** — *CFO Finance AI Suite mockup v9.2 (21 Jul 2026)*
+**[`03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html`](./03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html)** — *CFO Finance AI Suite mockup v10.1 (28 Jul 2026)*
 
 Open it directly in a browser (no backend required). It is **illustrative only**: static ERP-style figures, canned chat replies, and client-side what-if math. It is not wired to the API or PostgreSQL.
 
@@ -50,15 +51,17 @@ The live app (`frontend/`) implements the chat + structured agent responses agai
 ## Project layout
 
 ```
-03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html
-                            Initial UI mockup (static prototype; open in browser)
-03_CFO_FinanceAI_Suite_Mockup_v10.1_...html
-                            Latest mockup: Nusantara group, 3 entities, filters
+03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html
+                            UI mockup: Nusantara group, 3 entities, filters
+                            (static prototype; open in browser)
 Dataset_AI_Finance_Forum_V1.0_20260728.xlsx
-                            Replacement dataset (star schema; not yet loaded)
-exisitingdb/                The four source workbooks currently in the database
-docs/                       Migration plan and options
-scripts/                    Excel importers and the QC verifier
+                            The live dataset (star schema), loaded into the
+                            `newdata` schema — see Database below
+README_DATASET_V1.0_SCHEMA.md
+                            That dataset's schema, ERD and migration notes
+exisitingdb/                The four superseded workbooks; their schemas are
+                            still in the database but nothing reads them
+scripts/                    Excel importers, the SQL runner, and the verifiers
 Dockerfile                  Multi-stage build (context = repo root): builds
                             frontend, then backend runtime
 frontend/                   React + Vite app (built + served in production)
@@ -69,7 +72,7 @@ tmp/                        Scratch workspace (git-ignored)
 backend/                    Python service (run everything from here)
   main.py                   FastAPI entry point
   requirements.txt          Python dependencies
-  tests/                    98 fixture-based tests; no database required
+  tests/                    102 fixture-based tests; no database required
   src/
     api/                    REST endpoints (HTML chat, Teams webhooks)
     actions/                Action store; impact.py recomputes cash impact
@@ -79,7 +82,8 @@ backend/                    Python service (run everything from here)
       agents/               One folder per agent (finance/<name>/): config,
                             tools, dashboard; plus common/ shared tools+blocks
         common/tools/period.py
-                            Derives each agent's reporting period (QC-035)
+                            Treasury's forecast span (QC-035). The other three
+                            agents derive their period in their own tools
       pipeline.py, ...      Agent pipeline and renderers
     cashflow/               Treasury import/service layer
     collections/            Collections cards layer
@@ -103,10 +107,24 @@ remediation ahead of a CFO demo — 27 findings are closed and re-checkable with
   from the cash-flow forecast rather than replaying a sentence the model wrote when the
   action was seeded.
 
-Two findings remain open and **cannot be fixed in code**: the four agents run on four
-unrelated import batches (QC-002) and their revenue bases are not comparable (QC-003).
-Both are properties of the current dataset. See
-[docs/TODO_NEW_DATASET.md](./docs/TODO_NEW_DATASET.md).
+QC-002 and QC-003 — the four agents sitting on unrelated import batches, and their
+revenue bases not being comparable — were properties of the old dataset and are closed
+by the migration to `newdata`. All four agents now read one dataset, and Collection's
+DSO denominator is provably the same revenue Finance reports.
+
+Two verifiers keep this honest, and they answer different questions:
+
+```bash
+cd backend
+../.venv/Scripts/python.exe ../scripts/verify_new_dataset.py   # is the DATA right?
+../.venv/Scripts/python.exe ../scripts/verify_agent_bugs.py    # is the APP right?
+```
+
+`verify_new_dataset.py` re-expresses the dataset's own 14 reconciliation checks and 25
+KPI derivations as SQL — a failure means the import is wrong. `verify_agent_bugs.py`
+compares what each dashboard actually puts on screen against the same figures
+recomputed from `newdata` — a failure means the application is wrong even though the
+data is right. Both exit non-zero on failure, so either can gate a build.
 
 ## Running locally
 
@@ -145,7 +163,7 @@ fail with no error on the backend side.
 
 ```bash
 cd backend
-../.venv/Scripts/python.exe -m pytest tests/ -q     # 98 tests, no database needed
+../.venv/Scripts/python.exe -m pytest tests/ -q     # 102 tests, no database needed
 ```
 
 The suite runs against fixtures. To check the findings that can only be settled against
@@ -163,7 +181,7 @@ is 1 only when a `PASS` regresses; `OPEN` rows are known work, not failures.
 
 - **Production / Docker** — The root `Dockerfile` is multi-stage: stage 1 (`node`) runs `npm ci && npm run build` on `frontend/`; stage 2 (`python`) installs the backend and copies the built `frontend/dist` to `/app/frontend/dist`. At runtime FastAPI serves `frontend/dist/index.html` at `GET /` (`main.py` resolves it as `BASE_DIR.parent/frontend/dist`). Returns 503 if no build is present.
 - **Development** — The React app in `frontend/` runs as a separate Vite dev server (`npm run dev`) and calls the backend API through a Vite proxy.
-- **Design reference** — `03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html` is the original static CFO suite prototype; it does not call the backend.
+- **Design reference** — `03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html` is the original static CFO suite prototype; it does not call the backend.
 
 ## API overview
 
@@ -244,11 +262,11 @@ Two consequences show up directly in the product:
 - A filter has no column to attach to, which is why entity and period filtering is
   currently applied client-side to an already-delivered payload.
 
-The replacement dataset (`Dataset_AI_Finance_Forum_V1.0_20260728.xlsx`) is a star schema
-with real dimensions that removes both. See
-[docs/TODO_NEW_DATASET.md](./docs/TODO_NEW_DATASET.md) for the migration plan and
-[docs/DATASET_MIGRATION_OPTIONS.md](./docs/DATASET_MIGRATION_OPTIONS.md) for why that
-route was chosen over three alternatives.
+This describes the four superseded schemas, which are still present but no longer read.
+`Dataset_AI_Finance_Forum_V1.0_20260728.xlsx` replaced them with a star schema carrying
+real entity and period dimensions, loaded into `newdata`, which removes both problems.
+See [README_DATASET_V1.0_SCHEMA.md](./README_DATASET_V1.0_SCHEMA.md) for that schema and
+the migration notes.
 
 The live database is authoritative. Re-run catalog queries when it changes rather than
 trusting the migration files, which are implementation history and do not describe every
@@ -256,9 +274,8 @@ deployed table.
 
 ## Further reading
 
-- [docs/TODO_NEW_DATASET.md](./docs/TODO_NEW_DATASET.md) — Current work plan: migrating to the replacement dataset
-- [docs/DATASET_MIGRATION_OPTIONS.md](./docs/DATASET_MIGRATION_OPTIONS.md) — The four migration options and the trade-offs behind the choice
+- [README_DATASET_V1.0_SCHEMA.md](./README_DATASET_V1.0_SCHEMA.md) — The live dataset: schema, ERD, value domains, and the migration it came from
 - [database-structure.md](./database-structure.md) — Full deployed schema: every table, column, constraint and index
 - [AGENTS.md](./AGENTS.md) — Agent system architecture, tools, output schemas, and configuration
-- [03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html](./03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html) — Initial UI mockup (static prototype)
+- [03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html](./03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html) — Initial UI mockup (static prototype)
 - [CLAUDE.md](./CLAUDE.md) — Pointer for Claude Code sessions

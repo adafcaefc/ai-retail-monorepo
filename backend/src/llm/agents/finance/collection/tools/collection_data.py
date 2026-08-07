@@ -411,14 +411,22 @@ def get_collections_monitoring_context(
 
 
 def calculate_collection_scenario(
-    customer_name: str,
-    cash_to_collect_idr_mn: float,
+    customer_name: str | None = None,
+    cash_to_collect_idr_mn: float = 0,
     discount_pct: float = 0,
 ) -> dict[str, Any]:
-    """Calculate exact cash, discount cost, customer overdue, and portfolio DSO."""
+    """Calculate exact cash, discount cost, customer overdue, and portfolio DSO.
 
-    if not customer_name.strip():
-        raise ValueError("customer_name must not be empty.")
+    `customer_name` omitted means the most overdue customer -- the one the
+    worklist ranks first and the board's simulator opens on. It used to
+    default to the literal "PT Anugerah Prima (Customer A)", the name the
+    previous dataset gave CU-001. The new dataset names it "PT Anugerah
+    Prima", and because the lookup matches by substring, the old string with
+    its "(Customer A)" suffix matched nothing at all: a call that omitted the
+    customer failed with "Customer was not found" rather than running.
+    Resolving from the ledger means no name is written down here to go stale.
+    """
+    requested_name = (customer_name or "").strip()
     amount = Decimal(str(cash_to_collect_idr_mn))
     discount = Decimal(str(discount_pct))
     if not amount.is_finite() or amount <= 0:
@@ -429,6 +437,13 @@ def calculate_collection_scenario(
     with _read_connection() as connection:
         import_batch_id = _latest_batch_id(connection, BATCH_NAME)
 
+        # With no name, rank by overdue and take the top -- the same customer
+        # the worklist and the board's simulator open on.
+        name_filter = (
+            "AND lower(customer_name) LIKE '%' || lower(:name) || '%'"
+            if requested_name
+            else ""
+        )
         customer = connection.execute(
             text(
                 f"""
@@ -440,7 +455,7 @@ def calculate_collection_scenario(
                         WHERE days_past_due > 0) AS overdue_idr_mn
                 FROM newdata.fact_ar_invoices
                 WHERE {_OPEN_PREDICATE}
-                  AND lower(customer_name) LIKE '%' || lower(:name) || '%'
+                  {name_filter}
                 GROUP BY customer_id
                 ORDER BY
                     CASE WHEN lower(MAX(customer_name)) = lower(:name)
@@ -450,10 +465,14 @@ def calculate_collection_scenario(
                 LIMIT 1
                 """
             ),
-            {"name": customer_name.strip()},
+            {"name": requested_name},
         ).mappings().one_or_none()
         if customer is None:
-            raise ValueError(f"Customer was not found: {customer_name}")
+            raise ValueError(
+                f"Customer was not found: {requested_name}"
+                if requested_name
+                else "No customer with an open balance was found."
+            )
 
         overdue_before = Decimal(str(_number(customer["overdue_idr_mn"])))
         if amount > overdue_before:

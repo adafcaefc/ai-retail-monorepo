@@ -21,8 +21,11 @@ WINDOW_START = "2025-10-01"
 
 BATCH_NAME = "new_dataset"
 
-# Split/threshold flags are a control weakness, not lost cash. The workbook
-# keeps them out of the at-risk total, so the category charts must too.
+# Split/threshold flags are a control weakness, not lost cash, so they are
+# excluded from the direct-loss bars. They are *not* excluded from at-risk:
+# the dataset's 9,795 includes their 1,950, which is why a category chart's
+# direct-loss bars can total less than the flagged card above it. The charts
+# say so rather than hiding the gap.
 _CONTROL_TYPES = {
     "split / threshold",
     "split/threshold",
@@ -30,8 +33,16 @@ _CONTROL_TYPES = {
     "split",
 }
 
-# Cases not yet paid are "blocked before payment"; paid cases are "recoverable".
-_BLOCKED_STATUSES = {"pending", "held", "hold", "blocked", "on hold"}
+# Where each case's money stands is `leakage_status`, not `payment_status`.
+# The two are different questions: payment_status is whether the invoice has
+# been settled, leakage_status is whether the leaked cash was stopped, is
+# clawable, or is gone. Splitting on payment_status put all 9,795 into
+# "blocked" and left recoverable and lost at zero, because the dataset never
+# marks a leakage case as paid -- see 50_Agent_KPIs, which states the split as
+# 6,250 / 3,450 / 95.
+_BLOCKED_STATUS = "blocked before payment"
+_RECOVERABLE_STATUS = "paid - recoverable"
+_LOST_STATUS = "lost - not recoverable"
 
 
 def _is_direct_loss(leakage_type: str) -> bool:
@@ -58,33 +69,47 @@ def _summary_row(
                 COALESCE(SUM(leakage_amount_idr_mn), 0)  AS at_risk,
                 COUNT(*)                                 AS flagged,
                 COALESCE(SUM(leakage_amount_idr_mn) FILTER (
-                    WHERE lower(payment_status) IN
-                        ('pending','held','hold','blocked','on hold')
+                    WHERE lower(leakage_status) = :blocked_status
                 ), 0)                                    AS blocked,
                 COALESCE(SUM(leakage_amount_idr_mn) FILTER (
-                    WHERE lower(payment_status) = 'paid'
-                ), 0)                                    AS recoverable
+                    WHERE lower(leakage_status) = :recoverable_status
+                ), 0)                                    AS recoverable,
+                COALESCE(SUM(leakage_amount_idr_mn) FILTER (
+                    WHERE lower(leakage_status) = :lost_status
+                ), 0)                                    AS lost
             FROM newdata.leakage_cases
             WHERE {window}
               AND leakage_type IS NOT NULL
             """
         ),
-        params,
+        {
+            **params,
+            "blocked_status": _BLOCKED_STATUS,
+            "recoverable_status": _RECOVERABLE_STATUS,
+            "lost_status": _LOST_STATUS,
+        },
     ).mappings().one()
 
     at_risk = _num(row["at_risk"])
     blocked = _num(row["blocked"])
     recoverable = _num(row["recoverable"])
-    protected = blocked + recoverable
-    lost = max(0.0, at_risk - blocked - recoverable)
+    # Read lost rather than inferring it from the remainder: a status the
+    # dataset adds later would otherwise be silently counted as lost cash.
+    lost = _num(row["lost"])
 
+    # No "total protected" here on purpose. Blocked cash is certain, but the
+    # recoverable half has not been clawed back yet, so any single protected
+    # figure depends on a claw-back rate. That rate is a dashboard/simulator
+    # assumption, and keeping it in one place is what stops the card and the
+    # simulator disagreeing on the same screen. The four facts below are what
+    # 50_Agent_KPIs states, and they partition at-risk exactly:
+    #     blocked + recoverable + lost == at_risk
     return {
         "id": 1,
         "total_amount_at_risk_idr_mn": round(at_risk, 2),
         "items_flagged": int(row["flagged"]),
         "blocked_before_payment_idr_mn": round(blocked, 2),
         "recoverable_already_paid_idr_mn": round(recoverable, 2),
-        "total_cash_protected_idr_mn": round(protected, 2),
         "lost_this_cycle_idr_mn": round(lost, 2),
         "source_sheet": "61_Leakage_Cases",
     }

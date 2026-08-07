@@ -284,28 +284,32 @@ def _finance_comp(
 
 
 def _finance_opex_rows(
-    profit: list[dict[str, Any]],
+    opex_lines: list[dict[str, Any]],
 ) -> tuple[list[list[Any]], bool]:
     """Opex lines vs budget, worst variance first.
 
-    profit_summary is selected with `SELECT *`, so the column names are not
-    guaranteed. Probe the plausible ones; if nothing resolves, fall back to
-    the mockup's illustrative breakdown and let the caller say so in the note.
+    Reads `snapshot["operating_expenses"]`, which is `fact_opex` grouped by
+    `opex_line` at the same scope as the KPI cards.
+
+    This used to be reconstructed from `profit_summary` by probing for a
+    `line_item` / `actual_idr_mn` shape. After the move to `newdata` those
+    rows are KPI metrics keyed `metric_name` / `actual_value`, so nothing
+    matched, and the table silently served an illustrative breakdown left
+    over from the previous dataset -- a 7,480 total on a board whose KPI card
+    was built on 98,772. The fallback is kept for a snapshot that genuinely
+    carries no lines, but it is announced by the caller rather than passed
+    off as data.
+
     Returns (rows, is_live).
     """
 
     rows: list[list[Any]] = []
-    for row in profit:
+    for row in opex_lines or []:
         label = str(
-            _row_get(
-                row, "line_item", "opex_line", "category", "name", "label"
-            )
+            _row_get(row, "opex_line", "line_item", "category", "name", "label")
             or ""
         ).strip()
         if not label:
-            continue
-        # Only opex lines; skip revenue/COGS rows that share the table.
-        if any(skip in label.lower() for skip in ("revenue", "cogs", "sales")):
             continue
 
         actual = _row_get(row, "actual_idr_mn", "actual", "amount_idr_mn", "value")
@@ -351,6 +355,7 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     kpis_rows = snap.get("kpis") or []
     variance = snap.get("variance_drivers") or []
     profit = snap.get("profit_summary") or []
+    opex_lines = snap.get("operating_expenses") or []
     levers = snap.get("simulator_levers") or []
 
     # Measured from `fact_sales.import_flag`. Where the snapshot carries no
@@ -430,16 +435,37 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             point["type"] = "total"
         waterfall_rows.append(point)
 
-    # Bookend the live steps with the budget and actual totals so the closing
-    # bar is the same EBITDA the card shows.
-    if waterfall_rows and ebitda_budget and not any(
+    # Bookend the live steps with the bridge's own endpoints. They have to
+    # come from the same scope as the steps: the bridge is whole-ledger and
+    # cannot be sliced by entity, so opening with an entity-scoped EBITDA gave
+    # a waterfall whose bars did not reach its own closing bar. Where the
+    # snapshot carries no endpoints, fall back to the EBITDA cards -- correct
+    # whenever the board is unfiltered, which is the only time the two scopes
+    # coincide.
+    endpoints = snap.get("bridge_endpoints") or {}
+    if waterfall_rows and not any(
         p.get("type") == "total" for p in waterfall_rows
     ):
-        waterfall_rows = (
-            [{"label": "Budget", "value": round(ebitda_budget, 2), "type": "total"}]
-            + waterfall_rows
-            + [{"label": "Actual", "value": round(ebitda, 2), "type": "total"}]
-        )
+        opening = endpoints.get("opening_idr_mn", ebitda_budget)
+        closing = endpoints.get("closing_idr_mn", ebitda)
+        if opening:
+            waterfall_rows = (
+                [
+                    {
+                        "label": str(endpoints.get("opening_label") or "Budget"),
+                        "value": round(float(opening), 2),
+                        "type": "total",
+                    }
+                ]
+                + waterfall_rows
+                + [
+                    {
+                        "label": str(endpoints.get("closing_label") or "Actual"),
+                        "value": round(float(closing), 2),
+                        "type": "total",
+                    }
+                ]
+            )
 
     if not waterfall_rows:
         waterfall_rows = [
@@ -465,7 +491,7 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         for line in base["lines"]
     ]
 
-    opex_rows, opex_is_live = _finance_opex_rows(profit)
+    opex_rows, opex_is_live = _finance_opex_rows(opex_lines)
 
     kpis = [
         {
@@ -604,8 +630,8 @@ def _finance_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             note=(
                 "Worst variance first — the repeatable saving is at the top."
                 if opex_is_live
-                else "Indicative split — this batch stores only the operating "
-                "expenses total, and that total row is actual."
+                else "Indicative split — this batch carries no operating "
+                "expense lines, so the breakdown below is not from the data."
             ),
         ),
     }

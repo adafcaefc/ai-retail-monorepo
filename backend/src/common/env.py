@@ -16,6 +16,10 @@ class AppConfig:
     AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
     DATABASE_URL: str = os.getenv("DATABASE_URL","")
+    # Root log level. INFO keeps the startup lines and model failures; set
+    # DEBUG to get per-request Azure OpenAI traffic (status, rate-limit
+    # headroom) back, which is what the removed print() banners used to show.
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
 
 
 config = AppConfig()

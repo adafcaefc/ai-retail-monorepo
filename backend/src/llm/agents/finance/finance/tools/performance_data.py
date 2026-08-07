@@ -240,6 +240,83 @@ def _kpi_rows(
     ]
 
 
+def _bridge_endpoints(connection: Connection) -> dict[str, float]:
+    """The bridge's own opening and closing EBITDA, whole-ledger.
+
+    `_driver_rows` drops these two `total` rows because they are endpoints
+    rather than drivers, but the chart still needs somewhere honest to start
+    and finish. They must come from the bridge itself: the steps are
+    whole-ledger and cannot be sliced (see `_driver_rows`), so bookending them
+    with entity-scoped EBITDA produced a waterfall that did not walk. Filtered
+    to Singapore it opened at 21,384, stepped through group-sized drivers and
+    landed on 12,134 -- a bar 34,281 away from where the steps actually end.
+
+    Returned separately from the drivers so the caller can tell the difference
+    between "no bridge" and "bridge with no endpoints".
+    """
+    rows = _rows(
+        connection,
+        """
+        SELECT step, value_idr_mn
+        FROM newdata.finance_ebitda_bridge
+        WHERE type = 'total'
+        ORDER BY _row_order
+        """,
+        {},
+    )
+    if len(rows) < 2:
+        return {}
+    return {
+        "opening_label": str(rows[0]["step"]),
+        "opening_idr_mn": float(rows[0]["value_idr_mn"] or 0.0),
+        "closing_label": str(rows[-1]["step"]),
+        "closing_idr_mn": float(rows[-1]["value_idr_mn"] or 0.0),
+    }
+
+
+def _opex_lines(
+    connection: Connection,
+    legal_entity_id: str | None = None,
+    period: str | None = None,
+) -> list[dict[str, Any]]:
+    """The operating-expense lines, actual against budget, worst variance first.
+
+    `fact_opex` carries all five lines (Payroll, Logistics & freight, Rent &
+    utilities, Marketing & selling, Other opex) for every entity and month, so
+    this is the real split rather than an apportionment.
+
+    It exists because the dashboard used to reconstruct this table from
+    `profit_summary`, whose rows are KPI metrics keyed `metric_name` /
+    `actual_value`. No opex line ever resolved, the table fell back to an
+    illustrative breakdown carried over from the previous dataset, and the
+    board showed a 7,480 total beside a KPI card built on 98,772.
+
+    Scoped exactly like `_totals`, so the lines sum to the `opex` figure the
+    KPI cards and the EBITDA bridge are built from.
+    """
+    window, params = _scoped_where(
+        "month_index >= :window_start",
+        {"window_start": WINDOW_START},
+        legal_entity_id=legal_entity_id,
+        month=period,
+    )
+    return _rows(
+        connection,
+        f"""
+        SELECT
+            opex_line                       AS opex_line,
+            SUM(actual_idr_mn)              AS actual_idr_mn,
+            SUM(budget_idr_mn)              AS budget_idr_mn,
+            SUM(actual_idr_mn - budget_idr_mn) AS variance_idr_mn
+        FROM newdata.fact_opex
+        WHERE {window}
+        GROUP BY opex_line
+        ORDER BY SUM(actual_idr_mn - budget_idr_mn) DESC
+        """,
+        params,
+    )
+
+
 def _profit_rows(
     totals: dict[str, float],
     import_batch_id: int,
@@ -622,7 +699,14 @@ def get_financial_performance_snapshot(
             "period": _period(connection, legal_entity_id, period),
             "kpis": _kpi_rows(totals, import_batch_id),
             "profit_summary": _profit_rows(totals, import_batch_id),
+            # The five real opex lines. Same scope as `totals["opex"]`, so the
+            # table and the Opex/rev card can never disagree.
+            "operating_expenses": _opex_lines(
+                connection, legal_entity_id, period
+            ),
             "variance_drivers": _driver_rows(connection, import_batch_id),
+            # Whole-ledger, like the steps they bookend.
+            "bridge_endpoints": _bridge_endpoints(connection),
             "bridge_scope": "all_entities",
             "simulator_levers": _simulator_levers(connection, totals),
             # The imported/local COGS split, measured rather than assumed.

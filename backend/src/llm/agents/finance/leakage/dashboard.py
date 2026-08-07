@@ -219,9 +219,16 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         ).lower() in wanted
 
     def _is_status(*names: str):
+        """Match on where the money stands, not on whether the invoice is paid.
+
+        This read `payment_status`, so the Blocked card's sparkline tracked
+        the six Pending invoices rather than the four cases actually stopped
+        before payment -- mostly the recoverable and lost ones, i.e. the
+        opposite set.
+        """
         wanted = {name.lower() for name in names}
         return lambda row: str(
-            _row_get(row, "payment_status") or ""
+            _row_get(row, "leakage_status") or ""
         ).lower() in wanted
 
     def cat_amount(row: dict[str, Any]) -> float:
@@ -298,6 +305,12 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         or len(worklist)
     )
 
+    # Fraud and duplicates are read off the category rows and nothing else.
+    # These used to fall back to 3,800 and 3,050 when the lookup came back
+    # empty -- the previous dataset's group totals. An entity with no fraud
+    # case therefore still showed a 3,800 fraud card: Singapore reported
+    # 3,800 + 3,050 against 940 flagged, contradicting the category chart
+    # beside it. An entity with no such case has none, and zero is the answer.
     fraud = 0.0
     duplicates = 0.0
     for row in cat_rows:
@@ -306,10 +319,6 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             fraud += row["value"]
         if "dup" in low:
             duplicates += row["value"]
-    if not fraud:
-        fraud = 3800.0
-    if not duplicates:
-        duplicates = 3050.0
 
     blocked_db = _num(
         _row_get(summary, "blocked_before_payment_idr_mn", "blocked_idr_mn")
@@ -324,9 +333,11 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
 
     # Hold + other-blocked and duplicates + overbill are the two splits the
     # simulator works on; back them out of the stored totals so a zero-delta
-    # run reproduces the cards exactly.
-    other_blocked = max(0.0, blocked_db - fraud) if blocked_db else 500.0
-    overbill = max(0.0, recoverable_db - duplicates) if recoverable_db else 400.0
+    # run reproduces the cards exactly. Both are residuals of a real figure,
+    # so they carry no default of their own: if nothing is blocked beyond the
+    # fraud hold, the residual is zero.
+    other_blocked = max(0.0, blocked_db - fraud)
+    overbill = max(0.0, recoverable_db - duplicates)
 
     base_sim = simulate_leakage_scenario(
         hold=fraud,
@@ -338,14 +349,32 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         at_risk=at_risk,
     )
 
-    blocked = blocked_db or base_sim["blocked"]
-    protected = protected_db or base_sim["total_protected"]
-    recoverable = recoverable_db or (duplicates + overbill)
+    # Presence, not truthiness. An entity can legitimately have nothing
+    # blocked, and `or` would read that real zero as "unknown" and substitute
+    # a simulated figure.
+    blocked = (
+        blocked_db
+        if _row_get(summary, "blocked_before_payment_idr_mn", "blocked_idr_mn")
+        is not None
+        else base_sim["blocked"]
+    )
+    recoverable = (
+        recoverable_db
+        if _row_get(
+            summary, "recoverable_already_paid_idr_mn", "recoverable_idr_mn"
+        )
+        is not None
+        else duplicates + overbill
+    )
     lost = (
         _num(lost_db)
         if lost_db is not None
         else max(0.0, at_risk - blocked - recoverable)
     )
+    # Protection is what survives the claw-back rate, so it comes from the
+    # simulator unless the snapshot states one. That keeps the card and a
+    # zero-delta simulator run on the same number by construction.
+    protected = protected_db or base_sim["total_protected"]
 
     kpis = [
         {
@@ -386,7 +415,7 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
             "unit": "mn",
             "delta": "before payment",
             "alert": False,
-            "trend": _trend(_is_status("Pending")),
+            "trend": _trend(_is_status("Blocked before payment")),
         },
         {
             "id": "protected",

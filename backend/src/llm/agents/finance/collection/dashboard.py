@@ -57,29 +57,38 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
         "90+": 0.0,
     }
     for row in customers:
-        aging["Current"] += float(row.get("current_idr_mn") or 0)
-        # customer query may not include current_idr_mn — recompute from tool fields
-        if "current_idr_mn" not in row:
-            pass
         aging["1-30"] += float(row.get("overdue_1_30_idr_mn") or 0)
         aging["31-60"] += float(row.get("overdue_31_60_idr_mn") or 0)
         aging["61-90"] += float(row.get("overdue_61_90_idr_mn") or 0)
         aging["90+"] += float(row.get("overdue_90_plus_idr_mn") or 0)
 
-    # If current missing from SELECT, infer from summary
-    if aging["Current"] == 0 and summary.get("current_ar_idr_mn") is not None:
-        aging["Current"] = float(summary["current_ar_idr_mn"])
+    # Current comes from the summary, which counts the whole book. The four
+    # overdue buckets can safely be summed over `customers` because every
+    # customer carrying overdue is in that list -- but `customers` is a
+    # worklist, ranked and truncated, and a customer who owes nothing overdue
+    # need not appear at all. Summing their `current_idr_mn` therefore dropped
+    # the 15 customers who were merely current: the bar read 43,773 against a
+    # book of 70,644, and the chart totalled 78,090 beside a KPI card reading
+    # 104,961 on the same board.
+    current_ar = summary.get("current_ar_idr_mn")
+    if current_ar is not None:
+        aging["Current"] = float(current_ar)
+    else:
+        aging["Current"] = sum(
+            float(row.get("current_idr_mn") or 0) for row in customers
+        )
 
     aging_rows = [
         {"label": label, "value": round(value, 2)}
         for label, value in aging.items()
     ]
 
+    # The worklist is already ranked, so its first row is the customer the
+    # simulator opens on. No hardcoded stand-in: naming a customer the ledger
+    # does not contain is how the simulator came to submit "PT Anugerah Prima
+    # (Customer A)", a label the current dataset no longer uses.
     top_customer = worklist[0] if worklist else {}
-    customer_name = str(
-        top_customer.get("customer_name")
-        or "PT Anugerah Prima (Customer A)"
-    )
+    customer_name = str(top_customer.get("customer_name") or "")
     max_pull = float(top_customer.get("overdue_idr_mn") or 10000)
 
     # Three reach levels: one call, a focused push, or chase everything.

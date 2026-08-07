@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 
 from contextlib import (
@@ -31,8 +32,24 @@ from src.actions.router import (
     router as alerts_actions_router,
 )
 
+from src.common.env import config
+
 from src.llm.chivon.loader import (
     load_chivon,
+)
+
+
+# The modules under src/ log through `logging.getLogger(__name__)`, which
+# propagates to the root logger. Nothing configured it, so INFO and DEBUG
+# records were dropped -- which is why diagnostics here were written as
+# print() instead. Configure it once, at import, before those modules emit
+# anything. `force=True` so uvicorn's own handler setup does not leave the
+# root logger with a second, differently formatted handler.
+logging.basicConfig(
+    level=config.LOG_LEVEL.upper(),
+    format="%(asctime)s %(levelname)-8s %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    force=True,
 )
 
 

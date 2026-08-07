@@ -226,11 +226,12 @@ def leakage_snapshot() -> dict:
 
 
 def finance_snapshot() -> dict:
-    """`kpis` and `variance_drivers` mirror financial_performance.* exactly.
+    """`kpis` and `variance_drivers` mirror the live snapshot's keys exactly.
 
-    The opex rows deliberately use the looser `line_item` / `actual_idr_mn`
-    shape: the live profit_summary carries no opex line items, so that path
-    only ever runs for a batch that does, and it still needs covering.
+    `operating_expenses` carries the opex lines, because that is where the
+    live snapshot carries them. They used to sit in `profit_summary` under a
+    `line_item` key that the live data has never had, so this fixture proved
+    a path that only existed in the fixture.
     """
     return {
         "kpis": [
@@ -281,26 +282,55 @@ def finance_snapshot() -> dict:
             {"driver_name": "Operating cost", "impact_idr_mn": -480},
         ],
         "simulator_levers": [],
+        # P&L metrics, keyed the way the live snapshot keys them. No opex
+        # lines live here — that is the whole point: they used to, and the
+        # dashboard read them from here, so the live board silently served a
+        # hardcoded fallback while this fixture passed.
         "profit_summary": [
-            {"line_item": "Payroll", "actual_idr_mn": 3300, "budget_idr_mn": 3200},
             {
-                "line_item": "Logistics & freight",
+                "metric_name": "Revenue",
+                "actual_value": 46510,
+                "budget_value": 46000,
+            },
+            {
+                "metric_name": "Operating expenses",
+                "actual_value": 7480,
+                "budget_value": 7000,
+            },
+        ],
+        # `fact_opex` grouped by `opex_line`, which is where the opex table
+        # now reads from. Mirrors `performance_data._opex_lines`.
+        "operating_expenses": [
+            {
+                "opex_line": "Payroll",
+                "actual_idr_mn": 3300,
+                "budget_idr_mn": 3200,
+                "variance_idr_mn": 100,
+            },
+            {
+                "opex_line": "Logistics & freight",
                 "actual_idr_mn": 1650,
                 "budget_idr_mn": 1400,
+                "variance_idr_mn": 250,
             },
             {
-                "line_item": "Rent & utilities",
+                "opex_line": "Rent & utilities",
                 "actual_idr_mn": 920,
                 "budget_idr_mn": 900,
+                "variance_idr_mn": 20,
             },
             {
-                "line_item": "Marketing & selling",
+                "opex_line": "Marketing & selling",
                 "actual_idr_mn": 850,
                 "budget_idr_mn": 800,
+                "variance_idr_mn": 50,
             },
-            {"line_item": "Other opex", "actual_idr_mn": 760, "budget_idr_mn": 700},
-            # Must be filtered out — not an opex line.
-            {"line_item": "Revenue", "actual_idr_mn": 46510, "budget_idr_mn": 46000},
+            {
+                "opex_line": "Other opex",
+                "actual_idr_mn": 760,
+                "budget_idr_mn": 700,
+                "variance_idr_mn": 60,
+            },
         ],
         # Unit economics for the simulator, mirroring the shape
         # `performance_data._cost_model` returns: one line per category, each

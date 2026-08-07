@@ -52,7 +52,7 @@
                 "domain_snapshot already holds forecast, assumptions, AR/AP drivers, and FX context. Read it instead of calling get_cashflow_baseline.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
                 "query_cashflow(queries) runs read-only SELECTs against cashflow tables (max 100 rows).",
-                "Scope domain rows with the latest completed import_batch_id.",
+                "Do NOT filter by import_batch_id: newdata tables do not have that column. Scope by legal_entity_id or week where relevant.",
                 "{{constants.SCHEMA_TOOLS_PROMPT}}",
                 "{{constants.MONITORING_OUTPUT_PROMPT}}"
             ]
@@ -80,7 +80,7 @@
                 "domain_snapshot already holds forecast, assumptions, AR/AP drivers, and FX context. Read it instead of calling get_cashflow_baseline.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
                 "query_cashflow(queries) runs read-only SELECTs against cashflow tables (max 100 rows).",
-                "Scope domain rows with the latest completed import_batch_id.",
+                "Do NOT filter by import_batch_id: newdata tables do not have that column. Scope by legal_entity_id or week where relevant.",
                 "{{constants.SCHEMA_TOOLS_PROMPT}}",
                 "{{constants.MONITORING_OUTPUT_PROMPT}}"
             ]
@@ -108,7 +108,7 @@
                 "domain_snapshot already holds forecast, assumptions, AR/AP drivers, and FX context. Read it instead of calling get_cashflow_baseline.",
                 "simulate_cashflow(...) may be used when scenario evidence helps form an alert or action spec.",
                 "query_cashflow(queries) runs read-only SELECTs against cashflow tables (max 100 rows).",
-                "Scope domain rows with the latest completed import_batch_id.",
+                "Do NOT filter by import_batch_id: newdata tables do not have that column. Scope by legal_entity_id or week where relevant.",
                 "{{constants.SCHEMA_TOOLS_PROMPT}}",
                 "{{constants.MONITORING_OUTPUT_PROMPT}}"
             ]

@@ -32,7 +32,7 @@ User message
 
 ## UI mockup (initial design)
 
-The original CFO suite UX is defined in **`03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html`** at the repo root (v9.2, 21 Jul 2026). Open it in a browser with no backend — it is a static prototype with illustrative figures and canned interactions.
+The original CFO suite UX is defined in **`03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html`** at the repo root (v10.1, 28 Jul 2026). Open it in a browser with no backend — it is a static prototype with illustrative figures and canned interactions.
 
 The mockup is the design reference for how agents should feel in the product:
 
@@ -59,7 +59,7 @@ These modules appear in the dashboard sidebar because `ENABLED_MODULES` lists th
 | `finance.treasury` | `finance.treasury.chat` | Treasury | `agents/finance/treasury/` |
 | `finance.collection` | `finance.collection.chat` | Collection | `agents/finance/collection/` |
 | `finance.leakage` | `finance.leakage.chat` | Leakage | `agents/finance/leakage/` |
-| `retail.retail` | — (dashboard only) | Retail | `agents/retail/retail/` |
+| `retail.retail` | `retail.retail.chat` | Retail | `agents/retail/retail/` |
 
 ### Internal agents
 
@@ -429,7 +429,7 @@ Discovery is strict: an id that is malformed, duplicated, missing on disk, or wh
 
 | File | Role |
 |---|---|
-| `03_CFO_FinanceAI_Suite_Mockup_v9.2_20260721.html` | Initial UI mockup — static CFO suite prototype (design reference) |
+| `03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html` | Initial UI mockup — static CFO suite prototype (design reference) |
 | `src/llm/chivon/chivon.py` | Agent framework (config parsing, model building, execution) |
 | `src/llm/chivon/loader.py` | Startup loader (`load_chivon`, `get_chivon`) |
 | `src/llm/agents/modules.py` | **`ENABLED_MODULES`** — the one list of enabled modules, in sidebar order |

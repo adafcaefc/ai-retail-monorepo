@@ -96,13 +96,12 @@ class ChatRequest(BaseModel):
 class CollectionSimulationRequest(
     BaseModel
 ):
-    customer_name: str = Field(
-        default=(
-            "PT Anugerah Prima "
-            "(Customer A)"
-        ),
-        min_length=1,
-    )
+    # No default name. It used to carry "PT Anugerah Prima (Customer A)",
+    # the previous dataset's label for CU-001; the current dataset drops the
+    # suffix, so the old string matched no customer and a request that
+    # omitted the field failed. Omitted now means "the most overdue
+    # customer", resolved from the ledger by the tool.
+    customer_name: str | None = Field(default=None)
 
     cash_to_collect_idr_mn: float = Field(
         ge=0,
