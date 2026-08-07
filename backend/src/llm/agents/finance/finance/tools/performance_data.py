@@ -739,10 +739,45 @@ def get_financial_performance_snapshot(
             ],
         }
 
+def simulate_finance_what_if(
+    price: float = 0,
+    cost: float = 0,
+    vol: float = 0,
+    fx: float = 0,
+    opex: float = 0,
+    scope: str = "all",
+) -> dict[str, Any]:
+    """Calculate the dashboard What-if simulator levers and return exact numbers.
+
+    This is the lever-based scenario the dashboard's 'Calculate simulation'
+    button runs (Price/Cost/Volume/FX/Opex %), NOT an alert-action simulation.
+    Use this when the user asks to calculate their current what-if parameters
+    or wants figures instead of a chart. Percentages are point changes
+    (e.g. price=8 means +8%).
+    """
+    # Imported here to avoid a circular import at module load: dashboard.py
+    # imports this module for the snapshot.
+    from src.llm.agents.finance.finance.dashboard import (
+        simulate_finance_scenario,
+    )
+
+    return simulate_finance_scenario(
+        price=price,
+        cost=cost,
+        vol=vol,
+        fx=fx,
+        opex=opex,
+        scope=scope,
+    )
 
 TOOLS = {
     "get_financial_performance_snapshot": get_financial_performance_snapshot,
+    "simulate_finance_what_if": simulate_finance_what_if,
 }
 
 
-__all__ = ["TOOLS", "get_financial_performance_snapshot"]
+___all__ = [
+    "TOOLS",
+    "get_financial_performance_snapshot",
+    "simulate_finance_what_if",
+]
