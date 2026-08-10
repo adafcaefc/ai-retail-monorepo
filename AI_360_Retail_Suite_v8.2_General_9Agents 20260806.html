@@ -1,0 +1,1084 @@
+<html lang="en">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+<!--
+:root
+	{}
+[data-theme="dark"]
+	{}
+*
+	{box-sizing:border-box;
+	margin:0;
+	padding:0}
+html, body
+	{height:100%}
+body
+	{overflow:hidden}
+b
+	{font-weight:650}
+.app
+	{display:flex;
+	height:100vh}
+.side
+	{width:248px;
+	min-width:248px;
+	color:#c8d2ea;
+	display:flex;
+	flex-direction:column;
+	overflow-y:auto}
+.brand
+	{display:flex;
+	align-items:center;
+	padding:18px 16px 14px}
+.brand .logo
+	{width:42px;
+	height:42px;
+	border-radius:12px;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	font-weight:800;
+	color:#fff;
+	font-size:13px;
+	box-shadow:0 4px 14px rgba(59,99,246,.45)}
+.brand .t1
+	{font-weight:700;
+	color:#fff;
+	font-size:14.5px}
+.brand .t2
+	{font-size:10.5px;
+	color:#8593b5}
+.navlab
+	{font-size:10px;
+	letter-spacing:.14em;
+	color:#5f6d92;
+	padding:14px 18px 6px;
+	font-weight:700}
+.nav a
+	{display:flex;
+	align-items:center;
+	padding:9px 14px;
+	margin:2px 10px;
+	border-radius:9px;
+	color:#b7c2dd;
+	text-decoration:none;
+	font-size:12.6px}
+.nav a:hover
+	{background:#1a2440;
+	color:#fff}
+.nav a.active
+	{color:#fff;
+	font-weight:600;
+	box-shadow:inset 0 0 0 1px #4c3f86}
+.nav a .ic
+	{width:18px;
+	text-align:center;
+	font-size:13px;
+	opacity:.9}
+.nav a .num
+	{width:18px;
+	height:18px;
+	border-radius:6px;
+	background:#232e4e;
+	color:#9fb0d8;
+	font-size:10.5px;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	font-weight:700}
+.nav a.active .num
+	{background:#4c3f86;
+	color:#fff}
+.nav a .rx
+	{margin-left:auto;
+	background:#129d61;
+	color:#fff;
+	font-size:9px;
+	padding:2px 6px;
+	border-radius:8px;
+	font-weight:700;
+	display:none}
+.nav a .rx.on
+	{display:inline-block}
+.nav a .pend
+	{margin-left:auto;
+	background:#c77700;
+	color:#fff;
+	font-size:9px;
+	padding:2px 6px;
+	border-radius:8px;
+	font-weight:700;
+	display:none}
+.nav a .pend.on
+	{display:inline-block}
+.ready
+	{margin:14px 10px 16px;
+	border:1px solid #222e4c;
+	border-radius:12px;
+	padding:12px}
+.ready .rt
+	{font-weight:700;
+	color:#fff;
+	font-size:12px;
+	margin-bottom:8px}
+.ready .ri
+	{display:flex;
+	justify-content:space-between;
+	align-items:center;
+	font-size:11px;
+	padding:3px 0;
+	color:#9daac9}
+.ready .st
+	{display:flex;
+	align-items:center;
+	font-weight:600;
+	color:#79e2ae;
+	font-size:10.5px}
+.ready .st i
+	{width:7px;
+	height:7px;
+	border-radius:50%;
+	background:#2ecc8f;
+	display:inline-block}
+.ready .st.amb
+	{color:#f5c26b}
+.ready .st.amb i
+	{background:#eba53d}
+.main
+	{flex:1;
+	display:flex;
+	flex-direction:column;
+	min-width:0}
+.top
+	{padding:12px 22px;
+	display:flex;
+	align-items:center}
+.top h1
+	{font-size:19px;
+	font-weight:750}
+.crumb
+	{font-size:11.5px;
+	margin-top:2px}
+.pill-live
+	{background:#e5f8ee;
+	color:#0f8a50;
+	font-size:10.5px;
+	font-weight:700;
+	padding:4px 10px;
+	border-radius:20px;
+	display:flex;
+	align-items:center}
+[data-theme="dark"] .pill-live
+	{background:#123227}
+.pill-live i
+	{width:7px;
+	height:7px;
+	background:#17c26e;
+	border-radius:50%;
+	display:inline-block}
+.top .sp
+	{flex:1}
+.tbtn
+	{display:flex;
+	align-items:center;
+	padding:8px 14px;
+	border-radius:22px;
+	font-size:12.5px;
+	font-weight:600;
+	font-family:inherit}
+.tbtn.primary
+	{border:none;
+	color:#fff;
+	box-shadow:0 4px 14px rgba(109,62,240,.35)}
+.fbar
+	{display:flex;
+	align-items:center;
+	padding:14px 22px 0;
+	flex-wrap:wrap}
+.fsel
+	{border-radius:10px;
+	padding:8px 12px;
+	font-size:12.3px;
+	font-weight:600;
+	font-family:inherit}
+.fsearch
+	{border-radius:10px;
+	padding:8px 13px;
+	font-size:12.3px;
+	width:230px;
+	font-family:inherit}
+.fchip
+	{border-radius:9px;
+	padding:6px 11px;
+	font-size:11.5px;
+	font-weight:600;
+	display:flex;
+	align-items:center}
+.fchip .x
+	{font-weight:800}
+.content
+	{flex:1;
+	overflow-y:auto;
+	padding:16px 22px 40px}
+.grid
+	{display:grid}
+.g2
+	{}
+.g22
+	{}
+.g21
+	{}
+.card
+	{border-radius:14px}
+.card .hd
+	{display:flex;
+	align-items:center;
+	padding:13px 16px 0;
+	font-weight:700;
+	font-size:13.5px}
+.card .hd .hint
+	{margin-left:auto;
+	font-weight:500;
+	font-size:11px}
+.card .bd
+	{padding:12px 16px 14px}
+.kpi
+	{border-radius:14px;
+	padding:13px 15px 11px;
+	overflow:hidden}
+.kpi .lab
+	{font-size:11.3px;
+	font-weight:600;
+	margin-left:6px}
+.kpi .val
+	{font-size:22px;
+	font-weight:780;
+	margin:3px 0 1px 6px;
+	letter-spacing:-.02em}
+.kpi .sub
+	{font-size:10.8px;
+	font-weight:650;
+	margin-left:6px;
+	margin-right:72px;
+	display:flex;
+	align-items:center}
+.kpi .spark
+	{right:10px;
+	bottom:9px;
+	opacity:.95}
+.statrow
+	{display:flex;
+	margin-bottom:14px}
+.statrow .sbox
+	{flex:1 1 0;
+	min-width:0;
+	border-radius:12px;
+	padding:10px 14px}
+.statrow .sbox .lab
+	{font-size:11px;
+	font-weight:600;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis}
+.statrow .sbox .val
+	{font-size:20px;
+	font-weight:780;
+	letter-spacing:-.02em;
+	margin-top:2px;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis}
+.statrow .sbox .sub
+	{font-size:10.3px;
+	font-weight:600;
+	margin-top:1px;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis}
+.tb tr.filt th
+	{padding:3px 6px 6px;
+	vertical-align:top}
+.tb tr.filt input, .tb tr.filt select
+	{width:100%;
+	font-size:10.3px;
+	padding:3px 5px;
+	border-radius:6px;
+	box-sizing:border-box}
+.effcell
+	{font-weight:700}
+table.tb
+	{width:100%;
+	border-collapse:collapse;
+	font-size:12.2px}
+.tb th
+	{text-align:left;
+	font-size:10.3px;
+	letter-spacing:.08em;
+	font-weight:700;
+	padding:8px 10px;
+	white-space:nowrap}
+.tb td
+	{padding:9px 10px;
+	vertical-align:middle}
+.tb tr:last-child td
+	{border-bottom:none}
+.tb tr.click
+	{}
+.tag
+	{font-size:10px;
+	font-weight:700;
+	padding:3px 9px;
+	border-radius:12px;
+	display:inline-flex;
+	align-items:center;
+	white-space:nowrap}
+.t-red
+	{background:#fdecec;
+	color:#c02121}
+.t-org
+	{background:#fdf1e4;
+	color:#b45b0c}
+.t-grn
+	{background:#e5f8ee;
+	color:#0f8a50}
+.t-blu
+	{background:#e8f0fe;
+	color:#2456c9}
+.t-vio
+	{background:#f1eafe;
+	color:#6d28d9}
+.t-amb
+	{background:#fdf5e0;
+	color:#9a6a00}
+[data-theme="dark"] .t-red
+	{background:#3a1620;
+	color:#ff9d9d}
+[data-theme="dark"] .t-org
+	{background:#38220f;
+	color:#f3b47c}
+[data-theme="dark"] .t-grn
+	{background:#12352a;
+	color:#7fe0ae}
+[data-theme="dark"] .t-blu
+	{background:#16264a;
+	color:#9ab8f5}
+[data-theme="dark"] .t-vio
+	{background:#2a1e4a;
+	color:#c4a8f7}
+[data-theme="dark"] .t-amb
+	{background:#3a2e10;
+	color:#eecb75}
+.pri
+	{width:26px;
+	height:20px;
+	border-radius:6px;
+	color:#fff;
+	font-size:10px;
+	font-weight:800;
+	display:inline-flex;
+	align-items:center;
+	justify-content:center}
+.p1
+	{background:#d92d20}
+.p2
+	{background:#e8752b}
+.p3
+	{background:#c77700}
+.p4
+	{background:#2f6bed}
+.p5
+	{background:#7c3aed}
+.btn
+	{border-radius:9px;
+	padding:7px 13px;
+	font-size:12px;
+	font-weight:650;
+	font-family:inherit;
+	display:inline-flex;
+	align-items:center}
+.btn.vio
+	{color:#fff;
+	border:none}
+.btn.grn
+	{background:#129d61;
+	color:#fff;
+	border:none}
+.btn.red
+	{background:#fdecec;
+	color:#c02121;
+	border-color:#f6c9c9}
+.btn.ghost
+	{background:transparent}
+.btn.sm
+	{padding:5px 10px;
+	font-size:11px;
+	border-radius:8px}
+.hero
+	{border-radius:16px;
+	color:#e6e9fb;
+	padding:18px;
+	border:1px solid #2b2a55}
+.hero h3
+	{font-size:16px;
+	font-weight:750;
+	color:#fff}
+.hero .sub
+	{color:#9aa4cd;
+	font-size:12px;
+	margin-top:3px}
+.hero .askrow
+	{display:flex;
+	background:#0e1428;
+	border:1px solid #2a3356;
+	border-radius:12px;
+	padding:8px 8px 8px 14px;
+	margin-top:14px;
+	align-items:center}
+.hero input
+	{flex:1;
+	background:transparent;
+	border:none;
+	outline:none;
+	color:#fff;
+	font-size:13px;
+	font-family:inherit}
+.brief
+	{background:#0e1428;
+	border:1px solid #2a3356;
+	border-radius:12px;
+	padding:13px 15px;
+	margin-top:12px;
+	font-size:12.6px;
+	line-height:1.55;
+	color:#c9d2f2}
+.brief b
+	{color:#fff}
+.brief .bt
+	{font-weight:750;
+	color:#fff;
+	margin-bottom:4px;
+	font-size:12.8px}
+.chiprow
+	{display:flex;
+	flex-wrap:wrap;
+	margin-top:12px}
+.chip
+	{background:#ffffff12;
+	border:1px solid #ffffff22;
+	color:#dfe5ff;
+	border-radius:20px;
+	padding:7px 14px;
+	font-size:11.8px;
+	font-weight:600}
+.gpill
+	{top:16px;
+	right:16px;
+	background:#173626;
+	color:#67e0a3;
+	font-size:10.5px;
+	font-weight:700;
+	padding:4px 10px;
+	border-radius:14px}
+.slider
+	{margin:10px 0 2px}
+.slider .sh
+	{display:flex;
+	justify-content:space-between;
+	font-size:12px;
+	font-weight:600;
+	margin-bottom:4px}
+input[type=range]
+	{width:100%;
+	height:22px}
+select.fsel
+	{}
+.aglist .ai
+	{display:flex;
+	align-items:center;
+	padding:10px;
+	border-radius:12px;
+	margin-bottom:8px}
+.aglist .num
+	{width:26px;
+	height:26px;
+	border-radius:8px;
+	background:#eef1fe;
+	color:#4f46e5;
+	font-weight:800;
+	font-size:12px;
+	display:flex;
+	align-items:center;
+	justify-content:center}
+[data-theme="dark"] .aglist .num
+	{background:#242e52;
+	color:#a5b4fc}
+.aglist .an
+	{font-weight:700;
+	font-size:12.6px}
+.aglist .ad
+	{font-size:11px}
+.online
+	{margin-left:auto;
+	background:#e5f8ee;
+	color:#0f8a50;
+	font-size:10px;
+	font-weight:700;
+	padding:3px 9px;
+	border-radius:12px}
+[data-theme="dark"] .online
+	{background:#123227}
+.axis
+	{font-size:9.6px}
+.axv
+	{font-size:9.8px;
+	font-weight:600}
+.blab
+	{font-size:9.6px;
+	font-weight:650}
+.legend
+	{display:flex;
+	font-size:11px;
+	align-items:center;
+	flex-wrap:wrap}
+.legend i
+	{width:10px;
+	height:10px;
+	border-radius:3px;
+	display:inline-block;
+	margin-right:5px;
+	vertical-align:-1px}
+#tip
+	{z-index:99;
+	border-radius:10px;
+	padding:9px 12px;
+	font-size:11.5px;
+	opacity:0;
+	max-width:300px;
+	box-shadow:0 10px 30px rgba(0,0,0,.35)}
+#tip .th
+	{font-weight:700;
+	margin-bottom:5px;
+	font-size:11.8px}
+#tip .row
+	{display:flex;
+	justify-content:space-between;
+	padding:1.5px 0}
+#tip .row span
+	{color:#9fb0d8}
+#tip .fx
+	{margin-top:6px;
+	border-top:1px solid #ffffff26;
+	padding-top:5px;
+	font-family:ui-monospace,Menlo,monospace;
+	font-size:10px;
+	color:#8fd7bb}
+#toast
+	{bottom:26px;
+	left:50%;
+	background:#101830;
+	color:#fff;
+	border-radius:12px;
+	padding:11px 18px;
+	font-size:12.5px;
+	font-weight:600;
+	z-index:120;
+	opacity:0;
+	box-shadow:0 12px 30px rgba(0,0,0,.35);
+	max-width:70vw}
+.overlay
+	{background:rgba(10,15,30,.45);
+	z-index:90;
+	display:none}
+.overlay.show
+	{display:block}
+.modal
+	{top:50%;
+	left:50%;
+	border-radius:16px;
+	z-index:100;
+	max-height:86vh;
+	display:none;
+	flex-direction:column;
+	box-shadow:0 24px 70px rgba(0,0,0,.4)}
+.modal.show
+	{display:flex}
+.modal .mh
+	{display:flex;
+	align-items:center;
+	padding:15px 18px;
+	font-weight:750;
+	font-size:14px}
+.modal .mh .x
+	{margin-left:auto;
+	border:none;
+	width:28px;
+	height:28px;
+	border-radius:8px;
+	font-size:13px}
+.modal .mb
+	{padding:16px 18px;
+	overflow-y:auto}
+.drawer
+	{top:0;
+	right:-520px;
+	height:100vh;
+	z-index:100;
+	box-shadow:-18px 0 50px rgba(0,0,0,.25);
+	display:flex;
+	flex-direction:column}
+.drawer.show
+	{right:0}
+.drawer .mh
+	{display:flex;
+	align-items:center;
+	padding:15px 18px;
+	font-weight:750}
+.drawer .mh .x
+	{margin-left:auto;
+	border:none;
+	width:28px;
+	height:28px;
+	border-radius:8px}
+.drawer .mb
+	{padding:14px 18px;
+	overflow-y:auto}
+.wf-step
+	{display:flex;
+	align-items:center;
+	border-radius:12px;
+	padding:10px 13px;
+	margin-bottom:4px}
+.wf-step.ok
+	{border-color:#9fdec0;
+	background:#f2fcf7}
+.wf-step.cur
+	{border-color:#ecc98a;
+	background:#fdf9f0}
+.wf-step.no
+	{border-color:#f2b3b3;
+	background:#fdf3f3}
+[data-theme="dark"] .wf-step.ok
+	{background:#0f2c20;
+	border-color:#1f5c40}
+[data-theme="dark"] .wf-step.cur
+	{background:#2e2410;
+	border-color:#6b5320}
+[data-theme="dark"] .wf-step.no
+	{background:#331519;
+	border-color:#6b2530}
+.wf-ic
+	{width:26px;
+	height:26px;
+	border-radius:50%;
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	font-weight:800;
+	font-size:12px}
+.wf-step.ok .wf-ic
+	{background:#129d61;
+	color:#fff}
+.wf-step.cur .wf-ic
+	{background:#c77700;
+	color:#fff}
+.wf-step.no .wf-ic
+	{background:#d92d20;
+	color:#fff}
+.wf-conn
+	{width:2px;
+	height:10px;
+	margin-left:25px}
+.rxbanner
+	{border:1px solid #b9d7f3;
+	border-radius:13px;
+	padding:12px 15px;
+	margin-bottom:14px;
+	display:flex;
+	align-items:flex-start}
+[data-theme="dark"] .rxbanner
+	{background:#16264a;
+	border-color:#2c4470}
+.rxbanner .ric
+	{font-size:18px}
+.foot
+	{margin-top:22px;
+	text-align:center;
+	font-size:10.8px}
+.mini-log
+	{font-size:11.4px}
+.mini-log .li
+	{display:flex;
+	padding:6px 2px;
+	align-items:baseline}
+.mini-log .tm
+	{font-size:10.3px;
+	white-space:nowrap}
+.hl
+	{border-bottom:1px dashed #b7c2dd}
+.langwrap
+	{padding:5px 8px}
+.lang-mini
+	{display:flex;
+	border-radius:8px;
+	overflow:hidden}
+.lang-mini button
+	{border:none;
+	font-size:10.5px;
+	font-weight:800;
+	padding:4px 8px;
+	font-family:inherit}
+.lang-mini button.active
+	{background:#6d3ef0;
+	color:#fff}
+.chatcard .chat-scroll
+	{max-height:270px;
+	overflow-y:auto;
+	padding:4px 2px;
+	display:flex;
+	flex-direction:column}
+.msg
+	{max-width:86%;
+	padding:9px 13px;
+	border-radius:13px;
+	font-size:12.4px;
+	line-height:1.55}
+.msg.user
+	{align-self:flex-end;
+	color:#fff;
+	border-bottom-right-radius:4px}
+.msg.bot
+	{align-self:flex-start;
+	border-bottom-left-radius:4px}
+.msg.bot.ch
+	{border-color:#ecc98a;
+	background:#fdf8ee}
+[data-theme="dark"] .msg.bot.ch
+	{background:#2e2410;
+	border-color:#6b5320}
+.msg .fxrow
+	{margin-top:6px;
+	padding-top:5px;
+	font-family:ui-monospace,Menlo,monospace;
+	font-size:10px;
+	color:#0a746b}
+[data-theme="dark"] .msg .fxrow
+	{color:#7fd7bb}
+.chatchips
+	{display:flex;
+	flex-wrap:wrap;
+	margin:9px 0 8px}
+.chatchips .cchip
+	{border-radius:16px;
+	padding:6px 12px;
+	font-size:11.3px;
+	font-weight:600}
+.chatchips .cchip.ch
+	{border-color:#ecc98a;
+	color:#9a6a00;
+	background:#fdf8ee}
+[data-theme="dark"] .chatchips .cchip.ch
+	{background:#2e2410;
+	color:#eecb75}
+.chatin
+	{display:flex}
+.chatin input
+	{flex:1;
+	border-radius:10px;
+	padding:9px 13px;
+	font-size:12.4px;
+	font-family:inherit}
+.toggle
+	{display:inline-flex;
+	align-items:center;
+	font-size:11.3px;
+	font-weight:650}
+.toggle .sw
+	{width:30px;
+	height:17px;
+	border-radius:10px}
+.toggle.on .sw
+	{background:#c77700}
+.toggle.on
+	{color:#9a6a00}
+.msg .cbwrap
+	{margin-top:7px}
+.msg .cbrow
+	{display:flex;
+	align-items:center;
+	font-size:10.8px;
+	padding:2.5px 0}
+.msg .cbl
+	{width:92px;
+	min-width:92px;
+	font-weight:650;
+	white-space:nowrap;
+	overflow:hidden;
+	text-overflow:ellipsis}
+.msg .cbbar
+	{flex:1;
+	height:9px;
+	border-radius:5px;
+	overflow:hidden}
+.msg .cbbar i
+	{display:block;
+	height:100%;
+	border-radius:5px}
+.msg .cbrow b
+	{white-space:nowrap;
+	font-size:10.6px}
+.msg table.ctb
+	{width:100%;
+	border-collapse:collapse;
+	margin-top:7px;
+	font-size:10.8px}
+.msg .ctb th
+	{text-align:left;
+	font-size:9.6px;
+	letter-spacing:.06em;
+	padding:3px 6px}
+.msg .ctb td
+	{padding:3.5px 6px}
+.msg .ctb tr:last-child td
+	{border-bottom:none}
+body.navmin .side
+	{width:64px;
+	min-width:64px}
+body.navmin .ntx, body.navmin .navlab, body.navmin .brand .bwrap, body.navmin .ready, body.navmin .nav a .rx, body.navmin .nav a .pend
+	{display:none}
+body.navmin .nav a
+	{justify-content:center;
+	padding:9px 6px;
+	margin:2px 8px}
+body.navmin .brand
+	{justify-content:center;
+	padding:16px 6px 10px}
+.agwrap
+	{display:flex;
+	align-items:flex-start}
+.agmain
+	{flex:1;
+	min-width:0}
+.agchat
+	{width:330px;
+	min-width:330px;
+	position:sticky;
+	top:2px}
+.agchat .chatcard
+	{display:flex;
+	flex-direction:column;
+	margin-top:0!important}
+.agchat .chatcard .bd
+	{display:flex;
+	flex-direction:column;
+	min-height:0;
+	flex:1}
+.agchat .chat-scroll
+	{flex:1;
+	max-height:none;
+	min-height:120px}
+body.chatmin .agchat
+	{display:none}
+.chatfab
+	{display:none;
+	right:22px;
+	bottom:22px;
+	z-index:80;
+	color:#fff;
+	border:none;
+	border-radius:24px;
+	padding:12px 18px;
+	font-size:13px;
+	font-weight:700;
+	box-shadow:0 10px 30px rgba(109,62,240,.45);
+	font-family:inherit}
+body.chatmin .chatfab.agpage
+	{display:block}
+.agchat .chatcard .hd
+	{flex-wrap:wrap}
+.agchat .chatcard .hd .hint
+	{display:none}
+.agchat .chatcard .hd .toggle
+	{margin-left:auto}
+.seg
+	{display:inline-flex;
+	border-radius:9px;
+	overflow:hidden}
+.seg button
+	{border:none;
+	font-size:10.8px;
+	font-weight:700;
+	padding:5px 10px;
+	font-family:inherit}
+.seg button:last-child
+	{border-right:none}
+.seg button.active
+	{background:#6d3ef0;
+	color:#fff}
+.metrics4
+	{display:flex;
+	flex-wrap:wrap;
+	padding:8px 4px 0}
+.metrics4 .m .k
+	{font-size:10px;
+	font-weight:700;
+	letter-spacing:.04em}
+.metrics4 .m b
+	{font-size:14.5px}
+.trendlist .ti
+	{display:flex;
+	align-items:center;
+	padding:6px 4px;
+	font-size:11.8px}
+.trendlist .ti b
+	{margin-left:auto;
+	white-space:nowrap}
+.simgrid
+	{display:grid}
+.po-routebar
+	{display:flex;
+	margin:10px 0 8px;
+	flex-wrap:wrap}
+.po-routebar button
+	{border-radius:9px;
+	padding:6px 12px;
+	font-size:11.3px;
+	font-weight:700;
+	font-family:inherit}
+.po-routebar button.active
+	{background:#16264a0d;
+	border-color:#6d3ef0;
+	color:#6d3ef0}
+.action-status
+	{font-size:10.5px;
+	font-weight:800;
+	padding:4px 11px;
+	border-radius:14px}
+.as-pending
+	{background:#fdf5e0;
+	color:#9a6a00}
+.as-approved
+	{background:#e8f0fe;
+	color:#2456c9}
+.as-rejected
+	{background:#fdecec;
+	color:#c02121}
+.as-sent
+	{background:#e5f8ee;
+	color:#0f8a50}
+[data-theme="dark"] .as-pending
+	{background:#3a2e10;
+	color:#eecb75}
+[data-theme="dark"] .as-approved
+	{background:#16264a;
+	color:#9ab8f5}
+[data-theme="dark"] .as-rejected
+	{background:#3a1620;
+	color:#ff9d9d}
+[data-theme="dark"] .as-sent
+	{background:#123227;
+	color:#7fe0ae}
+.abtnrow
+	{display:flex;
+	flex-wrap:wrap;
+	margin-top:10px}
+.tscroll
+	{max-height:440px;
+	overflow:auto}
+.tscroll thead th
+	{position:sticky;
+	top:0;
+	z-index:2}
+#content svg rect, #content svg path, #content svg circle, #content svg polygon
+	{}
+.kpi .val
+	{}
+-->
+</style>
+</head>
+<body>
+<div class="app">
+<div class="brand">
+<div class="logo">360</div>
+<div class="bwrap">
+<div class="t1">AI Retail 360</div>
+<div class="t2">Enterprise Suite · v8.2 · Multi-Vertical</div>
+</div>
+</div>
+<div class="navlab">COMMAND CENTER</div>
+<a><span class="ic">◈</span><span class="ntx">Executive Overview</span></a> <a><span class="ic">✦</span><span class="ntx">AI Agent Command</span></a>
+<a><span class="ic">〜</span><span class="ntx">What-if Simulation</span></a>
+<div class="navlab">RETAIL AGENTS</div>
+<a><span class="num">1</span><span class="ntx">Demand Forecasting</span><span class="rx" id="rx-a1">inbox</span></a>
+<a><span class="num">2</span><span class="ntx">Inventory Risk</span><span class="rx" id="rx-a2">inbox</span></a>
+<a><span class="num">3</span><span class="ntx">Replenishment</span><span class="rx" id="rx-a3">inbox</span></a>
+<a><span class="num">4</span><span class="ntx">Promotion Effectiveness</span><span class="rx" id="rx-a4">inbox</span></a>
+<a><span class="num">5</span><span class="ntx">Pricing &amp; Markdown</span><span class="rx" id="rx-a5">inbox</span></a>
+<a><span class="num">6</span><span class="ntx">Assortment Optimization</span><span class="rx" id="rx-a6">inbox</span></a>
+<a><span class="num">7</span><span class="ntx">Workforce Optimizer</span><span class="rx" id="rx-awf">inbox</span></a>
+<a><span class="num">8</span><span class="ntx">Vendor &amp; Brand Performance</span><span class="rx" id="rx-avb">inbox</span></a>
+<a><span class="num">9</span><span class="ntx">AI Explanation &amp; Summary</span><span class="rx" id="rx-a7">inbox</span></a>
+<div class="navlab">GOVERNANCE</div>
+<a><span class="ic">📦</span><span class="ntx">Replenishment Detail</span></a> <a>
+<span class="ic">🏷️</span><span class="ntx">Promotion &amp; Discount Detail</span></a>
+<a><span class="ic">🧾</span><span class="ntx">Approvals &amp; ERP Log</span><span class="pend" id="pendbadge">0</span></a>
+<div style="flex:1"></div>
+<div class="ready">
+<div class="rt">Platform readiness</div>
+<div class="ri"><span>ERP connection</span><span class="st"><i></i>Connected</span></div>
+<div class="ri"><span>MCP data layer</span><span class="st"><i></i>9 agents</span></div>
+<div class="ri"><span>Copilot Studio</span><span class="st"><i></i>Grounded</span></div>
+<div class="ri"><span>Approval workflow</span><span class="st amb" id="ready-wf"><i></i>0 pending</span></div>
+<div class="ri"><span>Data freshness</span><span class="st"><i></i>Today 03:00</span></div>
+</div>
+<div class="main"><button class="tbtn" title="Minimize / restore menu" style="padding:8px 11px">
+☰</button>
+<div>
+<h1 id="pgtitle">Executive Retail Command Center</h1>
+<div class="crumb" id="pgcrumb">AI Retail 360 / Portfolio overview</div>
+</div>
+<span class="pill-live"><i></i>LIVE DEMO</span>
+<div class="sp"></div>
+<button class="tbtn"><span>◐</span><span>Theme</span></button>
+<div class="tbtn langwrap"><span>🌐</span>
+<div class="lang-mini"><button id="lang-id">ID</button><button id="lang-en" class="active">
+EN</button></div>
+</div>
+<button class="tbtn"><span>🕘</span><span>Agent Status &amp; History</span></button><button class="tbtn">
+<span>↺</span><span>Reset</span></button><button class="tbtn primary"><span>⚡</span><span>Agentic action</span>
+</button>
+<div class="fbar" id="fbar"><select class="fsel" id="f-le" title="ERP legal entity (company)"><option value="all">
+All Verticals</option></select> <select class="fsel" id="f-cat"><option value="all">
+All Categories</option></select> <select class="fsel" id="f-store"><option value="all">
+All Stores</option></select> <select class="fsel" id="f-hz"> <option value="4">Horizon · Next 4 weeks
+</option> <option value="8" selected="">Horizon · Next 8 weeks</option> <option value="12">
+Horizon · Next 12 weeks</option> <option value="16">Horizon · Next 16 weeks</option>
+</select> <input class="fsearch" id="f-sku"><button class="btn">↻ Refresh</button>
+<span class="fchip" id="scopechip" style="display:none"></span></div>
+</div>
+</div>
+<div id="tip"></div>
+<div id="toast"></div>
+<div class="overlay" id="overlay"></div>
+<div class="modal" id="modal-agentic">
+<div class="mh"><span>⚡</span><span id="agentic-title">AI Agentic Action Center</span>
+<button class="x">✕</button></div>
+<div class="mb" id="agentic-body"></div>
+</div>
+<div class="modal" id="modal-wf">
+<div class="mh"><span>🧾</span>ERP Approval Workflow<button class="x">✕</button></div>
+<div class="mb" id="wf-body"></div>
+</div>
+<div class="modal" id="modal-history">
+<div class="mh"><span>🕘</span><span id="hist-title">Agent Status &amp; History</span>
+<button class="x">✕</button></div>
+<div class="mb" id="history-body"></div>
+</div>
+<div class="drawer" id="drawer">
+<div class="mh"><span>📊</span><span id="drawer-title">Detail</span><button class="x">
+✕</button></div>
+<div class="mb" id="drawer-body"></div>
+</div>
+</body>
+</html>
