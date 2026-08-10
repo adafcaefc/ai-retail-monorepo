@@ -65,6 +65,11 @@ scripts/                    Excel importers, the SQL runner, and the verifiers
 Dockerfile                  Multi-stage build (context = repo root): builds
                             frontend, then backend runtime
 frontend/                   React + Vite app (built + served in production)
+  src/agents/               Per-agent UI overrides for backend modules
+  src/pages/                Static pages: frontend-only screens that are not
+                            agents (no backend module, chat or monitoring).
+                            Each <folder>/<name>/ is auto-discovered and
+                            becomes a sidebar group — see AGENTS.md
   src/filters.js            Client-side dashboard filtering (QC-043)
   src/i18n.js               English/Bahasa Indonesia strings (QC-058)
   src/LanguageProvider.jsx  Language context; choice persists in localStorage
@@ -154,6 +159,10 @@ npm run dev
 
 Vite runs on `http://127.0.0.1:5173` and proxies `/api/*` to the backend.
 
+The app opens on **Main → Formula Store**, a static page rather than an agent board, so the
+sidebar and both Main pages render even with the backend down — only the agent folders need
+the API. Adding a page is described in [AGENTS.md](./AGENTS.md#adding-a-static-page-not-an-agent).
+
 **The proxy target and the backend port must match.** The target is set in
 [`frontend/vite.config.js`](./frontend/vite.config.js) and is currently `8000`. If you
 start the backend on another port, change it there too, or the dev server's API calls
@@ -164,9 +173,12 @@ fail with no error on the backend side.
 ```bash
 cd backend
 ../.venv/Scripts/python.exe -m pytest tests/ -q     # 102 tests, no database needed
+
+cd frontend
+npm test                                            # vitest + jsdom, API mocked
 ```
 
-The suite runs against fixtures. To check the findings that can only be settled against
+Both suites run against fixtures. To check the findings that can only be settled against
 real data, run the QC verifier, which needs a live `DATABASE_URL`:
 
 ```bash

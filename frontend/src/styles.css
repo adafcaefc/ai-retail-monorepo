@@ -717,8 +717,13 @@ img.ey-logo {
   white-space: nowrap;
 }
 
+/* Nav labels wrap instead of clipping. The rail was sized for one-word agent
+   names; page names like "What If Simulator" are longer, and an ellipsis in
+   the only place the screen is named is worse than a second line. Two lines
+   still sit inside the button's 56px floor. */
 .agent-copy strong {
   font-size: 0.88rem;
+  white-space: normal;
 }
 
 .agent-copy small {
@@ -5544,4 +5549,29 @@ img.ey-logo {
 .topbar-main .lang-btn:focus-visible {
   outline: 3px solid rgba(255, 230, 0, 0.35);
   outline-offset: 2px;
+}
+
+/* Static pages
+ * ---------------------------------------------------------------------------
+ * Screens under src/pages: frontend-only, no board payload, no chat. They sit
+ * in the same grid cell as .workboard but deliberately do not reuse its rule —
+ * that one is a named-row grid built for KPI tiles, charts and the simulator.
+ * A page is just a scroll surface, so its content decides its own layout.
+ */
+.static-page {
+  min-width: 0;
+  min-height: 0;
+  padding: var(--space-4) var(--space-5) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.static-page > h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }

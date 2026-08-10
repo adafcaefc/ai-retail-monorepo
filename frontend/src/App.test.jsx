@@ -116,6 +116,10 @@ function emptyDashboard(agent) {
   };
 }
 
+// The static pages in src/pages are prepended to the agent list, so every
+// sidebar count here is "agents plus pages".
+const PAGE_COUNT = 2;
+
 function renderApp() {
   return render(
     <AgentsProvider>
@@ -124,14 +128,28 @@ function renderApp() {
   );
 }
 
-async function selectAgent(name) {
-  await waitFor(() => {
-    expect(document.querySelectorAll(".agent-button").length).toBe(5);
-  });
+function agentButtons() {
+  return [...document.querySelectorAll(".agent-button")];
+}
 
-  const button = [...document.querySelectorAll(".agent-button")].find(
+function buttonNamed(name) {
+  return agentButtons().find(
     (candidate) => candidate.querySelector("strong")?.textContent === name,
   );
+}
+
+async function waitForSidebar() {
+  await waitFor(() => {
+    expect(document.querySelectorAll(".agent-button").length).toBe(
+      AGENTS.length + PAGE_COUNT,
+    );
+  });
+}
+
+async function selectAgent(name) {
+  await waitForSidebar();
+
+  const button = buttonNamed(name);
 
   expect(button).toBeDefined();
   fireEvent.click(button);
@@ -158,9 +176,64 @@ describe("Retail dashboard and frontend-only chat", () => {
     mocks.streamChat.mockResolvedValue(undefined);
   });
 
+  it("opens on the Main section's first static page, without any agent chrome", async () => {
+    renderApp();
+    await waitForSidebar();
+
+    // Main leads the sidebar and holds exactly the two static pages.
+    const folders = [...document.querySelectorAll(".folder-name")].map(
+      (node) => node.textContent,
+    );
+    expect(folders[0]).toBe("Main");
+    expect(
+      agentButtons()
+        .slice(0, PAGE_COUNT)
+        .map((button) => button.querySelector("strong").textContent),
+    ).toEqual(["Formula Store", "What If Simulator"]);
+
+    // Formula Store is the default screen: page body plus a plain topbar that
+    // names the section rather than calling it a performance board.
+    expect(buttonNamed("Formula Store")).toHaveClass("active");
+    expect(screen.getByTestId("formula-store")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Formula Store" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 1, name: "Formula Store" }),
+    ).toBeInTheDocument();
+    expect(document.querySelector(".header-kicker")).toHaveTextContent("Main");
+    expect(
+      screen.queryByRole("heading", { name: "Formula Store performance board" }),
+    ).not.toBeInTheDocument();
+
+    // None of the agent chrome comes along, and the shell keeps its
+    // two-column layout rather than reserving an empty chat track.
+    expect(document.querySelector(".chat-panel")).toBeNull();
+    expect(document.querySelector(".chat-resize-handle")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Ask / })).not.toBeInTheDocument();
+    expect(screen.queryByText("Agent Action")).not.toBeInTheDocument();
+    expect(document.querySelector("main")).toHaveClass("chat-closed");
+
+    // A page has no backend module, so nothing is fetched for it.
+    for (const requestMock of [
+      mocks.fetchDashboard,
+      mocks.fetchAlertsWithActions,
+      mocks.fetchActions,
+    ]) {
+      expect(calledWithAgent(requestMock, "main.formula_store")).toBe(false);
+    }
+
+    // The second page behaves the same way.
+    fireEvent.click(buttonNamed("What If Simulator"));
+    expect(await screen.findByTestId("what-if-simulator")).toBeInTheDocument();
+    expect(screen.queryByTestId("formula-store")).not.toBeInTheDocument();
+    expect(document.querySelector(".chat-panel")).toBeNull();
+  });
+
   it("shows the standard Retail controls and opens a backend-safe Retail chat", async () => {
     renderApp();
-    await screen.findByRole("button", { name: "Ask Finance" });
+    // The app now opens on a static page, so step onto an agent board first.
+    await selectAgent("Finance");
 
     const retailButton = await selectAgent("Retail");
 
@@ -246,8 +319,9 @@ describe("Retail dashboard and frontend-only chat", () => {
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {
     renderApp();
+    await selectAgent("Finance");
 
-    const askFinance = await screen.findByRole("button", { name: "Ask Finance" });
+    const askFinance = screen.getByRole("button", { name: "Ask Finance" });
     fireEvent.click(askFinance);
 
     let input = screen.getByRole("textbox", { name: "Message Finance" });

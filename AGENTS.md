@@ -425,6 +425,26 @@ A dashboard-only module follows the same registry pattern but sets `dashboard_on
 
 Discovery is strict: an id that is malformed, duplicated, missing on disk, or whose `DESCRIPTOR.id` disagrees with its folder path raises at import rather than being skipped.
 
+## Adding a static page (not an agent)
+
+Some screens are not agents at all — a welcome page, a reference table, a standalone tool. These are **static pages**: frontend-only, with no backend module, no chat, no monitoring and no dashboard payload. They live in `frontend/src/pages/` and never touch `ENABLED_MODULES`.
+
+A page is a folder plus four lines. To add `<folder>.<name>`, create `frontend/src/pages/<folder>/<name>/`:
+
+1. `<PageName>.jsx` — a default-exported component. Give the root element `className="static-page"` (a plain scroll surface, defined in `styles.css`) plus a `data-testid` and `aria-label`.
+2. `index.js` — `export default { id: "<folder>.<name>", folder: "<folder>", name: "Display Name", component: <PageName> }`.
+
+That is the whole change. `frontend/src/pages/registry.js` auto-discovers the folder with `import.meta.glob("./*/*/index.js")`, so there is no import line and no central list to edit. `buildPages()` shapes each page to look exactly like an agent, `AgentsProvider` prepends the result to the agent list, and `groupByFolder` turns the folder into a sidebar group — the folder name capitalised (`main` → **Main**).
+
+Consequences of that shaping, worth knowing:
+
+- **Order.** Pages sort by glob path and are prepended to the API's agents, so they always lead the sidebar. The first page is therefore the app's default screen (`App.jsx` selects `agentIds[0]`).
+- **Chrome.** Pages carry `isPage: true`. `App.jsx` reads it to drop the `AlertsPanel` toolbar and the chat panel, force the shell onto its two-column `chat-closed` grid, and title the topbar with the section name and page name instead of `<name> performance board`.
+- **No backend contact.** Pages also carry `dashboardOnly: true`, which keeps `MonitoringProvider` from polling an id no backend knows about. Nothing requests `/api/html/dashboard/<page id>`.
+- **Outage resilience.** `buildPages()` runs at module load, so pages render even when `GET /api/html/agents` fails. In that case the sidebar shows the pages plus an error notice where the agent folders would be.
+
+Static pages and per-agent UI overrides are different mechanisms with a similar shape — an override in `frontend/src/agents/<folder>/<name>/index.js` customises a module the backend already serves and is dropped if the API does not return that id; a page in `frontend/src/pages/<folder>/<name>/index.js` creates a screen the backend knows nothing about.
+
 ## Key source files
 
 | File | Role |
@@ -443,3 +463,5 @@ Discovery is strict: an id that is malformed, duplicated, missing on disk, or wh
 | `src/api/finance_agents_html.py` | HTML chat SSE API |
 | `frontend/src/agents/AgentsProvider.jsx` | Fetches `GET /api/html/agents` once and shares the module list app-wide (`useAgents()`) |
 | `frontend/src/agents/registry.js` | Shapes the API response for the UI (`buildAgents`, `groupByFolder`) + auto-discovered optional per-agent overrides |
+| `frontend/src/pages/registry.js` | Auto-discovers static pages (`buildPages`) — frontend-only screens with no backend module |
+| `frontend/src/pages/<folder>/<name>/` | One static page: its component plus a four-line `index.js` descriptor |

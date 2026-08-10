@@ -128,11 +128,22 @@ export default function App() {
 
   const currentAgent = agents[activeAgent] || null;
 
+  // The sidebar group the active item sits in ("Main", "Finance"). Read off
+  // `groups` rather than re-deriving it, so a label only ever has one source.
+  const currentGroupLabel =
+    groups.find((group) => group.folder === currentAgent?.folder)?.label || "";
+
   const currentChat = chats[activeAgent] || EMPTY_CHAT;
 
   const backendFeaturesEnabled = !currentAgent?.dashboardOnly;
 
-  const chatUiOpen = isChatOpen;
+  // Static pages (src/pages) are not agents: no toolbar, no chat, no board
+  // payload. One flag drives every place the agent chrome has to step aside.
+  const isStaticPage = Boolean(currentAgent?.isPage);
+
+  // A page never opens the chat, which also keeps the shell on its two-column
+  // `chat-closed` grid instead of reserving an empty chat track.
+  const chatUiOpen = isChatOpen && !isStaticPage;
 
   const DashboardComponent = currentAgent?.dashboardComponent || Workboard;
 
@@ -795,16 +806,24 @@ export default function App() {
       <AppTopbar
         sidebarOpen={sidebarOpen}
         onToggleSidebar={toggleSidebar}
-        kicker={`${currentAgent.name} dashboard`}
-        title={`${currentAgent.name} performance board`}
+        kicker={
+          isStaticPage ? currentGroupLabel : `${currentAgent.name} dashboard`
+        }
+        title={
+          isStaticPage
+            ? currentAgent.name
+            : `${currentAgent.name} performance board`
+        }
       >
-        <AlertsPanel
-          agentId={activeAgent}
-          agentName={currentAgent.name}
-          backendEnabled={backendFeaturesEnabled}
-          isChatOpen={chatUiOpen}
-          onToggleChat={toggleChat}
-        />
+        {isStaticPage ? null : (
+          <AlertsPanel
+            agentId={activeAgent}
+            agentName={currentAgent.name}
+            backendEnabled={backendFeaturesEnabled}
+            isChatOpen={chatUiOpen}
+            onToggleChat={toggleChat}
+          />
+        )}
       </AppTopbar>
 
       <div className="app-body">
@@ -877,6 +896,15 @@ export default function App() {
               })}
             </nav>
 
+            {/* The static pages keep the shell alive when the module fetch
+                fails, so the loading branch's error message never renders in
+                that case. Say it here instead of dropping it silently. */}
+            {agentsError ? (
+              <p className="sidebar-notice" role="alert">
+                {agentsError}
+              </p>
+            ) : null}
+
             <div className="sidebar-footer">
               <div className="brand">
                 <div className="brand-mark">
@@ -917,168 +945,170 @@ export default function App() {
           </div>
         ) : null}
 
-        <section
-          id="agent-chat-panel"
-          className="chat-panel"
-          aria-label={`${currentAgent.name} chat`}
-        >
-          <header className="chat-header">
-            <div>
-              <span className="header-kicker">
-                {currentAgent.name} chat
-                {currentChat.busy ? " · working" : ""}
-              </span>
+        {isStaticPage ? null : (
+          <section
+            id="agent-chat-panel"
+            className="chat-panel"
+            aria-label={`${currentAgent.name} chat`}
+          >
+            <header className="chat-header">
+              <div>
+                <span className="header-kicker">
+                  {currentAgent.name} chat
+                  {currentChat.busy ? " · working" : ""}
+                </span>
 
-              <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
-            </div>
-
-            <div className="chat-header-actions">
-              <div className="clear-area">
-                <button
-                  type="button"
-                  className="clear-button"
-                  disabled={!currentChat.messages.length}
-                  onClick={() => setClearOpen((open) => !open)}
-                >
-                  Clear chat
-                </button>
-
-                {clearOpen && (
-                  <div className="clear-confirm">
-                    <p>Clear this agent&apos;s local messages?</p>
-
-                    <div>
-                      <button type="button" onClick={() => setClearOpen(false)}>
-                        Cancel
-                      </button>
-
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={clearCurrentChat}
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
               </div>
 
-              <button
-                type="button"
-                className="chat-close-button"
-                aria-label={`Close ${currentAgent.name} chat`}
-                title="Close chat"
-                onClick={closeChat}
-              >
-                ×
-              </button>
+              <div className="chat-header-actions">
+                <div className="clear-area">
+                  <button
+                    type="button"
+                    className="clear-button"
+                    disabled={!currentChat.messages.length}
+                    onClick={() => setClearOpen((open) => !open)}
+                  >
+                    Clear chat
+                  </button>
+
+                  {clearOpen && (
+                    <div className="clear-confirm">
+                      <p>Clear this agent&apos;s local messages?</p>
+
+                      <div>
+                        <button type="button" onClick={() => setClearOpen(false)}>
+                          Cancel
+                        </button>
+
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={clearCurrentChat}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  className="chat-close-button"
+                  aria-label={`Close ${currentAgent.name} chat`}
+                  title="Close chat"
+                  onClick={closeChat}
+                >
+                  ×
+                </button>
+              </div>
+            </header>
+
+            <div ref={transcriptRef} className="transcript" aria-live="polite">
+              {!currentChat.messages.length ? (
+                <EmptyState agent={currentAgent} />
+              ) : (
+                <ol className="message-list">
+                  {currentChat.messages.map((message) => (
+                    <ChatMessage
+                      key={message.id}
+
+                      message={message}
+
+                      agentName={currentAgent.name}
+                    />
+                  ))}
+                </ol>
+              )}
             </div>
-          </header>
 
-          <div ref={transcriptRef} className="transcript" aria-live="polite">
-            {!currentChat.messages.length ? (
-              <EmptyState agent={currentAgent} />
-            ) : (
-              <ol className="message-list">
-                {currentChat.messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
+            <footer className="composer-wrap">
+              {visibleSuggestions?.length > 0 && (
+                <section
+                  className="prompt-suggestions"
+                  aria-label="Suggested prompts"
+                >
+                  <div className="prompt-suggestions-heading">
+                    <SparkleIcon className="prompt-suggestions-spark" />
 
-                    message={message}
+                    <span>
+                      {t(
+                        currentChat.messages.length > 0
+                          ? "Suggested follow-ups"
+                          : "Suggested prompts"
+                      )}
+                    </span>
+                  </div>
 
-                    agentName={currentAgent.name}
-                  />
-                ))}
-              </ol>
-            )}
-          </div>
+                  <div className="prompt-suggestions-list">
+                    {visibleSuggestions.map((suggestion) => {
+                      // Shown and sent as the same words. Filling the composer
+                      // with English after the reader clicked a Bahasa chip
+                      // would be a visible mismatch, and asking in Bahasa is
+                      // the point of the toggle. `key` stays the original so a
+                      // chip keeps its identity across a language switch.
+                      const label = t(suggestion);
+                      return (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          className="prompt-chip"
+                          disabled={currentChat.busy || !backendFeaturesEnabled}
+                          onClick={() => {
+                            setCurrentDraft(label);
 
-          <footer className="composer-wrap">
-            {visibleSuggestions?.length > 0 && (
-              <section
-                className="prompt-suggestions"
-                aria-label="Suggested prompts"
-              >
-                <div className="prompt-suggestions-heading">
-                  <SparkleIcon className="prompt-suggestions-spark" />
+                            requestAnimationFrame(() => {
+                              composerRef.current?.focus();
+                            });
+                          }}
+                        >
+                          <SparkleIcon className="prompt-chip-spark" />
 
-                  <span>
-                    {t(
-                      currentChat.messages.length > 0
-                        ? "Suggested follow-ups"
-                        : "Suggested prompts"
-                    )}
-                  </span>
-                </div>
+                          <span className="prompt-chip-text">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
 
-                <div className="prompt-suggestions-list">
-                  {visibleSuggestions.map((suggestion) => {
-                    // Shown and sent as the same words. Filling the composer
-                    // with English after the reader clicked a Bahasa chip
-                    // would be a visible mismatch, and asking in Bahasa is
-                    // the point of the toggle. `key` stays the original so a
-                    // chip keeps its identity across a language switch.
-                    const label = t(suggestion);
-                    return (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        className="prompt-chip"
-                        disabled={currentChat.busy || !backendFeaturesEnabled}
-                        onClick={() => {
-                          setCurrentDraft(label);
+              <form className="composer" onSubmit={sendMessage}>
+                <textarea
+                  ref={composerRef}
+                  value={input}
 
-                          requestAnimationFrame(() => {
-                            composerRef.current?.focus();
-                          });
-                        }}
-                      >
-                        <SparkleIcon className="prompt-chip-spark" />
+                  disabled={currentChat.busy || !backendFeaturesEnabled}
 
-                        <span className="prompt-chip-text">{label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-            )}
+                  rows={1}
+                  maxLength={2000}
 
-            <form className="composer" onSubmit={sendMessage}>
-              <textarea
-                ref={composerRef}
-                value={input}
+                  placeholder={currentAgent.prompt}
 
-                disabled={currentChat.busy || !backendFeaturesEnabled}
+                  aria-label={`Message ${currentAgent.name}`}
 
-                rows={1}
-                maxLength={2000}
+                  onChange={(event) => setCurrentDraft(event.target.value)}
 
-                placeholder={currentAgent.prompt}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
 
-                aria-label={`Message ${currentAgent.name}`}
+                      event.currentTarget.form.requestSubmit();
+                    }
+                  }}
+                />
 
-                onChange={(event) => setCurrentDraft(event.target.value)}
+                <button type="submit" className="send-button" disabled={!canSend}>
+                  Send
+                </button>
+              </form>
 
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-
-                    event.currentTarget.form.requestSubmit();
-                  }
-                }}
-              />
-
-              <button type="submit" className="send-button" disabled={!canSend}>
-                Send
-              </button>
-            </form>
-
-            <p className="composer-note">
-              AI responses should be reviewed before financial decisions are made.
-            </p>
-          </footer>
-        </section>
+              <p className="composer-note">
+                AI responses should be reviewed before financial decisions are made.
+              </p>
+            </footer>
+          </section>
+        )}
       </div>
 
       <ProblemToasts />
