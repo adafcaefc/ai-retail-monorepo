@@ -11,11 +11,11 @@ add its canonical id here. Removing one: delete the id (the folder may stay).
 from __future__ import annotations
 
 ENABLED_MODULES: tuple[str, ...] = (
-    "finance.finance",
-    "finance.treasury",
-    "finance.collection",
-    "finance.leakage",
-    # "retail.retail",
+    # "finance.finance",
+    # "finance.treasury",
+    # "finance.collection",
+    # "finance.leakage",
+    "retail.retail",
 )
 
 __all__ = ["ENABLED_MODULES"]

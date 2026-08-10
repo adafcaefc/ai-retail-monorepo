@@ -61,6 +61,14 @@ README_DATASET_V1.0_SCHEMA.md
                             That dataset's schema, ERD and migration notes
 exisitingdb/                The four superseded workbooks; their schemas are
                             still in the database but nothing reads them
+resources/                  The retail dataset workbook (git-tracked, ~10 MB)
+                            plus the agent/formula specs. Copied into the
+                            Docker image and read at request time by
+                            `GET /api/excel/*` for the Data Source page
+  formula.md                The formula verification pack: 19 formulas x 5
+                            workbook-traceable worked examples
+  dbtemp/formula.json       The Formula Manager's store (read/written by
+                            `/api/formulas`)
 scripts/                    Excel importers, the SQL runner, and the verifiers
 Dockerfile                  Multi-stage build (context = repo root): builds
                             frontend, then backend runtime
@@ -159,9 +167,20 @@ npm run dev
 
 Vite runs on `http://127.0.0.1:5173` and proxies `/api/*` to the backend.
 
-The app opens on **Main → Formula Store**, a static page rather than an agent board, so the
-sidebar and both Main pages render even with the backend down — only the agent folders need
-the API. Adding a page is described in [AGENTS.md](./AGENTS.md#adding-a-static-page-not-an-agent).
+The app opens on Main's first static page rather than an agent board, so the sidebar renders
+even with the backend down — only the agent folders need the API.
+
+That opening page is **Main → Formula Manager**, the retail calculation library: the 19
+formulas from [`resources/formula.md`](./resources/formula.md), each with an Excel-free
+expression, its tweakable parameters, and the five workbook examples it was verified
+against. Pick a worked example to load its inputs into the validator and check the result
+against the workbook. Formulas are editable (create/update/delete) and stored in
+`resources/dbtemp/formula.json`.
+
+Two Main pages do call the backend, and so need it running: Formula Manager (`/api/formulas`)
+and **Main → Data Source**, a read-only viewer for the `resources/` workbook (`/api/excel/*`)
+— which is exactly why Data Source sets `order: 1` and never takes the opening slot. Adding a
+page is described in [AGENTS.md](./AGENTS.md#adding-a-static-page-not-an-agent).
 
 **The proxy target and the backend port must match.** The target is set in
 [`frontend/vite.config.js`](./frontend/vite.config.js) and is currently `8000`. If you
@@ -191,7 +210,7 @@ is 1 only when a `PASS` regresses; `OPEN` rows are known work, not failures.
 
 ## How the frontend is served
 
-- **Production / Docker** — The root `Dockerfile` is multi-stage: stage 1 (`node`) runs `npm ci && npm run build` on `frontend/`; stage 2 (`python`) installs the backend and copies the built `frontend/dist` to `/app/frontend/dist`. At runtime FastAPI serves `frontend/dist/index.html` at `GET /` (`main.py` resolves it as `BASE_DIR.parent/frontend/dist`). Returns 503 if no build is present.
+- **Production / Docker** — The root `Dockerfile` is multi-stage: stage 1 (`node`) runs `npm ci && npm run build` on `frontend/`; stage 2 (`python`) installs the backend, copies `resources/` to `/app/resources` and the built `frontend/dist` to `/app/frontend/dist`. At runtime FastAPI serves `frontend/dist/index.html` at `GET /` (`main.py` resolves it as `BASE_DIR.parent/frontend/dist`). Returns 503 if no build is present. The `resources/` copy is what keeps the Data Source page working in the image — without it every `/api/excel/*` call returns 503.
 - **Development** — The React app in `frontend/` runs as a separate Vite dev server (`npm run dev`) and calls the backend API through a Vite proxy.
 - **Design reference** — `03_CFO_FinanceAI_Suite_Mockup_v10.1_dengan_dataset_baru_20260728.html` is the original static CFO suite prototype; it does not call the backend.
 
@@ -206,6 +225,11 @@ is 1 only when a `PASS` regresses; `OPEN` rows are known work, not failures.
 | `GET /api/html/conversations` | List conversations |
 | `GET /api/html/conversations/{id}` | Load a conversation |
 | `POST /api/html/simulations/{collection,treasury,finance,leakage}/recalculate` | Deterministic simulation |
+| `GET /api/excel/sheets` | Sheet list for the Data Source page (name + dimensions) |
+| `GET /api/excel/sheets/{name}?offset=&limit=` | One window of a sheet, with the workbook's own formatting |
+| `GET/POST/PUT/DELETE /api/formulas[/{id}]` | Formula CRUD for the Formula Manager page |
+| `POST /api/formulas/validate` | Check a draft expression against its parameters |
+| `POST /api/formulas/{id}/evaluate` | Run a stored formula against supplied values |
 | `POST /api/finance-agents/render` | Teams Adaptive Card rendering (webhook-protected) |
 | `GET /health`, `/livez`, `/readyz` | Health checks |
 
@@ -218,6 +242,12 @@ Copy `.env.example` to `.env` and fill in your values:
 ```bash
 cp .env.example .env
 ```
+
+`EXCEL_WORKBOOK_PATH` is optional. It overrides the workbook the Data Source page reads,
+which defaults to `resources/Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`
+resolved from the backend's parent directory. Point it at a mounted volume to swap the
+dataset without a rebuild, or at a path that does not exist to switch the page off — every
+`/api/excel/*` call then returns 503 and the rest of the app is unaffected.
 
 ## Database
 

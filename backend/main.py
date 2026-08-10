@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -32,6 +33,18 @@ from src.actions.router import (
     router as alerts_actions_router,
 )
 
+from src.excel.router import (
+    router as excel_router,
+)
+
+from src.formulas.router import (
+    router as formulas_router,
+)
+
+from src.excel.workbook import (
+    warm as warm_workbook,
+)
+
 from src.common.env import config
 
 from src.llm.chivon.loader import (
@@ -57,6 +70,15 @@ logging.basicConfig(
 async def lifespan(
     _: FastAPI,
 ):
+    # Parsing the Data Source workbook takes ~13s, so pay it on a worker
+    # thread at boot rather than making the first visitor wait. Fire and
+    # forget: warm_workbook() swallows and logs its own failures, so a missing
+    # or corrupt workbook never blocks or breaks startup.
+    asyncio.get_running_loop().run_in_executor(
+        None,
+        warm_workbook,
+    )
+
     yield
 
 
@@ -92,6 +114,14 @@ app.include_router(
 
 app.include_router(
     alerts_actions_router
+)
+
+app.include_router(
+    excel_router
+)
+
+app.include_router(
+    formulas_router
 )
 
 

@@ -7,7 +7,10 @@ const mocks = vi.hoisted(() => ({
   fetchAgents: vi.fn(),
   fetchAlertsWithActions: vi.fn(),
   fetchDashboard: vi.fn(),
+  fetchFormulas: vi.fn(),
   fetchMonitoringAgents: vi.fn(),
+  fetchSheetList: vi.fn(),
+  fetchSheetPage: vi.fn(),
   recalculateDashboardSimulation: vi.fn(),
   simulateAction: vi.fn(),
   streamChat: vi.fn(),
@@ -43,6 +46,23 @@ vi.mock("./api/chatStream.js", () => ({
 vi.mock("./api/dashboard.js", () => ({
   fetchDashboard: mocks.fetchDashboard,
   recalculateDashboardSimulation: mocks.recalculateDashboardSimulation,
+}));
+
+// The Data Source page imports this at module load, via the page registry, so
+// it has to be mocked even for the tests that never open that page.
+vi.mock("./api/excel.js", () => ({
+  fetchSheetList: mocks.fetchSheetList,
+  fetchSheetPage: mocks.fetchSheetPage,
+}));
+
+// Formula Manager is the default screen, so its loader runs on every render.
+vi.mock("./api/formulas.js", () => ({
+  createFormula: vi.fn(),
+  deleteFormula: vi.fn(),
+  evaluateFormula: vi.fn(),
+  fetchFormulas: mocks.fetchFormulas,
+  updateFormula: vi.fn(),
+  validateFormula: vi.fn(),
 }));
 
 vi.mock("./monitoring/MonitoringProvider.jsx", () => ({
@@ -118,7 +138,50 @@ function emptyDashboard(agent) {
 
 // The static pages in src/pages are prepended to the agent list, so every
 // sidebar count here is "agents plus pages".
-const PAGE_COUNT = 2;
+const PAGE_COUNT = 3;
+
+// One window of a sheet, shaped exactly like GET /api/excel/sheets/{name}.
+const SHEET_LIST = {
+  workbook: "sample.xlsx",
+  count: 2,
+  sheets: [
+    { index: 0, name: "Cover & Storyline", row_count: 3, column_count: 3 },
+    { index: 1, name: "ENGINE_STORE", row_count: 16003, column_count: 3 },
+  ],
+};
+
+const SHEET_PAGE = {
+  sheet: "Cover & Storyline",
+  index: 0,
+  offset: 0,
+  limit: 100,
+  row_count: 3,
+  column_count: 3,
+  returned_rows: 2,
+  has_more: false,
+  columns: [
+    { index: 1, letter: "A", width_px: 66 },
+    { index: 2, letter: "B", width_px: 66 },
+    { index: 3, letter: "C", width_px: 66 },
+  ],
+  merges: [
+    { row: 1, column: 1, rowspan: 1, colspan: 3, clipped: false },
+  ],
+  rows: [
+    {
+      row: 1,
+      cells: [
+        { v: "AI RETAIL 360", b: true, fg: "#FFFFFF", bg: "#1E3A5F" },
+        null,
+        null,
+      ],
+    },
+    {
+      row: 2,
+      cells: [{ v: "Units" }, { v: "12,480", t: "n" }, null],
+    },
+  ],
+};
 
 function renderApp() {
   return render(
@@ -174,36 +237,49 @@ describe("Retail dashboard and frontend-only chat", () => {
       emptyDashboard(agent),
     );
     mocks.streamChat.mockResolvedValue(undefined);
+    mocks.fetchSheetList.mockResolvedValue(SHEET_LIST);
+    mocks.fetchSheetPage.mockResolvedValue(SHEET_PAGE);
+    mocks.fetchFormulas.mockResolvedValue({ items: [], count: 0 });
   });
 
   it("opens on the Main section's first static page, without any agent chrome", async () => {
     renderApp();
     await waitForSidebar();
 
-    // Main leads the sidebar and holds exactly the two static pages.
+    // Main leads the sidebar and holds every static page.
     const folders = [...document.querySelectorAll(".folder-name")].map(
       (node) => node.textContent,
     );
     expect(folders[0]).toBe("Main");
-    expect(
-      agentButtons()
-        .slice(0, PAGE_COUNT)
-        .map((button) => button.querySelector("strong").textContent),
-    ).toEqual(["Formula Store", "What If Simulator"]);
 
-    // Formula Store is the default screen: page body plus a plain topbar that
-    // names the section rather than calling it a performance board.
-    expect(buttonNamed("Formula Store")).toHaveClass("active");
-    expect(screen.getByTestId("formula-store")).toBeInTheDocument();
+    const pages = agentButtons()
+      .slice(0, PAGE_COUNT)
+      .map((button) => button.querySelector("strong").textContent);
+
+    // Data Source sorts last despite "data_source" winning the glob sort: it
+    // sets `order: 1` because the first page is the app's default screen, and
+    // it is the one page that cannot render without the backend. Asserted by
+    // position rather than by roster so adding a page does not touch this.
+    expect(pages).toContain("Data Source");
+    expect(pages[pages.length - 1]).toBe("Data Source");
+    expect(pages[0]).not.toBe("Data Source");
+
+    // The leading page is the default screen: page body plus a plain topbar
+    // that names the section rather than calling it a performance board.
+    expect(pages[0]).toBe("Formula Manager");
+    expect(buttonNamed("Formula Manager")).toHaveClass("active");
+    expect(screen.getByTestId("formula-manager")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 2, name: "Formula Store" }),
+      screen.getByRole("heading", { level: 2, name: "Formula Manager" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: "Formula Store" }),
+      screen.getByRole("heading", { level: 1, name: "Formula Manager" }),
     ).toBeInTheDocument();
     expect(document.querySelector(".header-kicker")).toHaveTextContent("Main");
     expect(
-      screen.queryByRole("heading", { name: "Formula Store performance board" }),
+      screen.queryByRole("heading", {
+        name: "Formula Manager performance board",
+      }),
     ).not.toBeInTheDocument();
 
     // None of the agent chrome comes along, and the shell keeps its
@@ -214,20 +290,79 @@ describe("Retail dashboard and frontend-only chat", () => {
     expect(screen.queryByText("Agent Action")).not.toBeInTheDocument();
     expect(document.querySelector("main")).toHaveClass("chat-closed");
 
-    // A page has no backend module, so nothing is fetched for it.
+    // A page has no backend *module*, so none of the agent APIs are called for
+    // it. (Formula Manager still owns /api/formulas -- that is a page's own
+    // endpoint, not an agent request.)
     for (const requestMock of [
       mocks.fetchDashboard,
       mocks.fetchAlertsWithActions,
       mocks.fetchActions,
     ]) {
-      expect(calledWithAgent(requestMock, "main.formula_store")).toBe(false);
+      expect(calledWithAgent(requestMock, "main.formula_manager")).toBe(false);
+      expect(calledWithAgent(requestMock, "main.what_if_simulator")).toBe(false);
     }
+  });
 
-    // The second page behaves the same way.
-    fireEvent.click(buttonNamed("What If Simulator"));
-    expect(await screen.findByTestId("what-if-simulator")).toBeInTheDocument();
-    expect(screen.queryByTestId("formula-store")).not.toBeInTheDocument();
-    expect(document.querySelector(".chat-panel")).toBeNull();
+  it("renders the Data Source viewer with the workbook's own formatting", async () => {
+    renderApp();
+    await waitForSidebar();
+
+    fireEvent.click(buttonNamed("Data Source"));
+    expect(await screen.findByTestId("data-source")).toBeInTheDocument();
+
+    // Every sheet is reachable from one switcher rather than a tab strip —
+    // the real workbook has 49 of them.
+    const sheetPicker = screen.getAllByRole("combobox")[0];
+    await waitFor(() => {
+      expect([...sheetPicker.options].map((option) => option.value)).toEqual([
+        "Cover & Storyline",
+        "ENGINE_STORE",
+      ]);
+    });
+
+    // The workbook's own bold/fill/colour arrive per cell and are applied
+    // inline, and its merged banner spans the row it merges.
+    const banner = await screen.findByText("AI RETAIL 360");
+    expect(banner.tagName).toBe("TD");
+    expect(banner).toHaveAttribute("colspan", "3");
+    expect(banner).toHaveStyle({
+      backgroundColor: "#1E3A5F",
+      color: "#FFFFFF",
+      fontWeight: "600",
+    });
+
+    // A number keeps the backend's formatting and is right-aligned.
+    expect(screen.getByText("12,480")).toHaveClass("is-number");
+
+    // Paging is server-side: ENGINE_STORE is 16,003 rows.
+    mocks.fetchSheetPage.mockResolvedValue({
+      ...SHEET_PAGE,
+      sheet: "ENGINE_STORE",
+      row_count: 16003,
+      has_more: true,
+    });
+
+    // Switching sheets goes back to the first row rather than carrying the
+    // previous sheet's offset over.
+    fireEvent.change(sheetPicker, { target: { value: "ENGINE_STORE" } });
+    await waitFor(() => {
+      expect(mocks.fetchSheetPage).toHaveBeenLastCalledWith("ENGINE_STORE", {
+        offset: 0,
+        limit: 100,
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => {
+      expect(mocks.fetchSheetPage).toHaveBeenLastCalledWith("ENGINE_STORE", {
+        offset: 100,
+        limit: 100,
+      });
+    });
   });
 
   it("shows the standard Retail controls and opens a backend-safe Retail chat", async () => {

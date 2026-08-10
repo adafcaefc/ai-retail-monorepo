@@ -16,6 +16,7 @@ import {
 } from "../api/alerts.js";
 import { useMonitoring } from "../monitoring/MonitoringProvider.jsx";
 import BlockRenderer from "./BlockRenderer.jsx";
+import Modal from "./Modal.jsx";
 import { ListSkeleton, SkeletonLines } from "./Skeleton.jsx";
 
 const STEPS = [
@@ -1436,68 +1437,6 @@ function StatusAlertCard({ alert }) {
         ) : null}
       </div>
     </li>
-  );
-}
-
-function Modal({
-  title,
-  subtitle,
-  icon,
-  onClose,
-  children,
-  wide = false,
-  scrollResetKey,
-}) {
-  const scrollRef = useRef(null);
-
-  // The primary action is pinned to the bottom of the modal, so a step can
-  // be advanced from halfway down a long list. Without this the next step
-  // would open already scrolled past its own heading.
-  useEffect(() => {
-    if (scrollResetKey === undefined) {
-      return;
-    }
-    scrollRef.current?.scrollTo({ top: 0 });
-  }, [scrollResetKey]);
-
-  return (
-    <div
-      className="alerts-modal-backdrop"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        ref={scrollRef}
-        className={"alerts-modal" + (wide ? " alerts-modal-wide" : "")}
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="alerts-panel-head">
-          <div>
-            <h2>
-              {icon ? (
-                <span className="modal-title-icon" aria-hidden="true">
-                  {icon}
-                </span>
-              ) : null}
-              {title}
-            </h2>
-            {subtitle ? <p>{subtitle}</p> : null}
-          </div>
-          <button
-            type="button"
-            className="alerts-close"
-            aria-label="Close"
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
 

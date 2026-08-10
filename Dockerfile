@@ -21,6 +21,11 @@ COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 
+# The Data Source page parses this workbook at request time (/api/excel/*).
+# Copied before the backend source so the 10 MB layer survives the source
+# edits that actually change often.
+COPY resources/ /app/resources
+
 # Backend source
 COPY backend/ /app/backend
 

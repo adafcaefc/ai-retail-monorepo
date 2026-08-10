@@ -5575,3 +5575,551 @@ img.ey-logo {
   letter-spacing: -0.01em;
   color: var(--ink);
 }
+
+/* Data Source (main.data_source)
+ * ---------------------------------------------------------------------------
+ * A read-only Excel viewer. Everything structural lives here; the workbook's
+ * own colours, weights and alignments arrive per cell from /api/excel and are
+ * applied inline, because they are data rather than design (see cellStyle.js).
+ *
+ * No zebra striping on purpose — it would fight the workbook's own fills,
+ * which is the opposite of what this page is for.
+ */
+.static-page.data-source {
+  /* Overrides the plain scroll surface above: the toolbar, the column letters
+   * and the pager stay put while the grid scrolls inside itself. */
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  overflow: hidden;
+}
+
+.data-source-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.data-source-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+
+.data-source-picker select {
+  max-width: 320px;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.data-source-status {
+  font-size: var(--text-sm);
+  color: var(--gray-500);
+}
+
+.data-source-error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--danger);
+}
+
+.data-source-error button,
+.data-source-pager button {
+  padding: 3px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  cursor: pointer;
+}
+
+.data-source-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.data-source-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+/* A pending page keeps the previous grid mounted rather than blanking: a cold
+ * backend spends up to ~13s parsing the workbook. */
+.data-source-grid.is-loading {
+  opacity: 0.55;
+  transition: opacity 120ms ease;
+}
+
+.data-source-pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.xl-sheet {
+  /* `separate` is required — `collapse` breaks position: sticky on <th>.
+   * `fixed` is what makes the workbook's column widths actually bind. */
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+  font-size: var(--text-sm);
+  color: var(--ink);
+}
+
+.xl-sheet td,
+.xl-sheet th {
+  padding: 2px var(--space-2);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  font-weight: 400;
+  text-align: left;
+}
+
+.xl-sheet td.is-wrap {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  word-break: break-word;
+}
+
+.xl-sheet td.is-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.xl-rowhead-col {
+  width: 56px;
+}
+
+.xl-head th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--gray-50);
+  color: var(--gray-500);
+  text-align: center;
+  font-weight: 500;
+}
+
+.xl-rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--gray-50);
+  color: var(--gray-500);
+  text-align: right;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.xl-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--gray-50);
+}
+
+/* Formula Manager
+ * ---------------------------------------------------------------------------
+ * The one static page that owns a backend resource (/api/formulas). Cards
+ * stack on a plain .static-page scroll surface; buttons, modals, pills and
+ * error/empty states are borrowed from the alerts panel so the page does not
+ * introduce a second button vocabulary.
+ */
+
+.formula-page-intro {
+  margin: 0 0 var(--space-4);
+  color: var(--muted);
+  font-size: var(--text-sm);
+  max-width: 70ch;
+}
+
+.formula-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.formula-search {
+  flex: 1 1 240px;
+  min-width: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.formula-search:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.formula-count {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.formula-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.formula-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-sm);
+}
+
+.formula-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.formula-card-title {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.formula-number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-pill);
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.formula-card-title h3 {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.formula-card-title p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+
+.formula-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.alerts-mini-btn.danger {
+  border-color: var(--accent-danger-border);
+  color: var(--accent-danger-strong);
+}
+
+.formula-expression {
+  margin: var(--space-3) 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+
+/* Try this ---------------------------------------------------------------- */
+
+.formula-try {
+  margin-top: var(--space-4);
+}
+
+.formula-try h4,
+.formula-validate-head h4,
+.formula-editor-params-head h4 {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 700;
+}
+
+.formula-try-hint {
+  margin: 2px 0 var(--space-2);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.formula-examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.formula-examples li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.formula-example {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  text-align: left;
+  font-size: var(--text-xs);
+}
+
+.formula-example:hover {
+  border-color: var(--primary);
+}
+
+.formula-example.selected {
+  border-color: var(--primary);
+  background: var(--accent-info-soft);
+}
+
+.formula-example-label {
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.formula-example-result {
+  flex: none;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.formula-example-address {
+  flex: none;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--text-xs);
+  color: var(--accent-info-strong);
+}
+
+.formula-example-sheet {
+  color: var(--muted);
+}
+
+/* Validator --------------------------------------------------------------- */
+
+.formula-validate {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.formula-validate-source {
+  margin: 2px 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.formula-params {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+
+.formula-param {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.formula-param-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.formula-param input {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  min-width: 0;
+}
+
+.formula-param-key {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.formula-validate-actions,
+.formula-editor-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.formula-editor-actions {
+  justify-content: flex-end;
+}
+
+.formula-result {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+  margin-top: var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.formula-result-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.formula-result-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.formula-result-value {
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Editor ------------------------------------------------------------------ */
+
+.formula-editor {
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.formula-field-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-3);
+}
+
+.formula-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.formula-field > span {
+  font-size: var(--text-xs);
+  font-weight: 600;
+}
+
+.formula-field input,
+.formula-field select,
+.formula-field textarea {
+  padding: 7px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-family: inherit;
+  min-width: 0;
+}
+
+.formula-expression-input {
+  font-family: Consolas, "Courier New", monospace;
+  resize: vertical;
+}
+
+.formula-editor-errors {
+  margin: 0;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  border: 1px solid var(--accent-danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  font-size: var(--text-xs);
+}
+
+.formula-editor-ok {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent-success-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+  font-size: var(--text-xs);
+}
+
+.formula-editor-params-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.formula-param-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 110px 110px auto;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.formula-param-row input,
+.formula-param-row select {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: var(--text-xs);
+  min-width: 0;
+}
+
+@media (max-width: 720px) {
+  .formula-param-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

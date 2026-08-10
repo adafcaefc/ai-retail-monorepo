@@ -1,0 +1,1080 @@
+{
+  "f01-ads-per-store": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!J4",
+      "expected": 29.166885,
+      "values": {
+        "base_ads": 20.9096,
+        "seasonality": 1.14,
+        "store_size": 1.2236,
+        "demand_lever": 0,
+        "promo_eligible": "N",
+        "promo_lever": 0,
+        "promo_depth": 0.26
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!J5",
+      "expected": 34.57072,
+      "values": {
+        "base_ads": 20.9096,
+        "seasonality": 1.14,
+        "store_size": 1.4503,
+        "demand_lever": 0,
+        "promo_eligible": "N",
+        "promo_lever": 0,
+        "promo_depth": 0.26
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!J6",
+      "expected": 19.615421,
+      "values": {
+        "base_ads": 20.9096,
+        "seasonality": 1.14,
+        "store_size": 0.8229,
+        "demand_lever": 0,
+        "promo_eligible": "N",
+        "promo_lever": 0,
+        "promo_depth": 0.26
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!J7",
+      "expected": 25.627098,
+      "values": {
+        "base_ads": 20.9096,
+        "seasonality": 1.14,
+        "store_size": 1.0751,
+        "demand_lever": 0,
+        "promo_eligible": "N",
+        "promo_lever": 0,
+        "promo_depth": 0.26
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!J8",
+      "expected": 34.847228,
+      "values": {
+        "base_ads": 20.9096,
+        "seasonality": 1.14,
+        "store_size": 1.4619,
+        "demand_lever": 0,
+        "promo_eligible": "N",
+        "promo_lever": 0,
+        "promo_depth": 0.26
+      }
+    }
+  ],
+  "f02-on-hand": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!K4",
+      "expected": 66.793533,
+      "values": {
+        "base_ads": 20.9096,
+        "on_hand_days": 2.5,
+        "stock_factor": 1.03793,
+        "store_health": 1.0061,
+        "store_size": 1.2236
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!K5",
+      "expected": 72.456434,
+      "values": {
+        "base_ads": 20.9096,
+        "on_hand_days": 2.5,
+        "stock_factor": 1.03793,
+        "store_health": 0.9208,
+        "store_size": 1.4503
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!K6",
+      "expected": 44.781826,
+      "values": {
+        "base_ads": 20.9096,
+        "on_hand_days": 2.5,
+        "stock_factor": 1.03793,
+        "store_health": 1.003,
+        "store_size": 0.8229
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!K7",
+      "expected": 52.113304,
+      "values": {
+        "base_ads": 20.9096,
+        "on_hand_days": 2.5,
+        "stock_factor": 1.03793,
+        "store_health": 0.8934,
+        "store_size": 1.0751
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!K8",
+      "expected": 100.067522,
+      "values": {
+        "base_ads": 20.9096,
+        "on_hand_days": 2.5,
+        "stock_factor": 1.03793,
+        "store_health": 1.2616,
+        "store_size": 1.4619
+      }
+    }
+  ],
+  "f03-open-po-per-store": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!L4",
+      "expected": 1.467519,
+      "values": {
+        "open_po_total": 25,
+        "store_size": 1.2236,
+        "total_store_size": 20.8447,
+        "inbound_lever": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!L5",
+      "expected": 1.739411,
+      "values": {
+        "open_po_total": 25,
+        "store_size": 1.4503,
+        "total_store_size": 20.8447,
+        "inbound_lever": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!L6",
+      "expected": 0.986942,
+      "values": {
+        "open_po_total": 25,
+        "store_size": 0.8229,
+        "total_store_size": 20.8447,
+        "inbound_lever": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!L7",
+      "expected": 1.289416,
+      "values": {
+        "open_po_total": 25,
+        "store_size": 1.0751,
+        "total_store_size": 20.8447,
+        "inbound_lever": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!L8",
+      "expected": 1.753323,
+      "values": {
+        "open_po_total": 25,
+        "store_size": 1.4619,
+        "total_store_size": 20.8447,
+        "inbound_lever": 0
+      }
+    }
+  ],
+  "f04-position": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!M4",
+      "expected": 68,
+      "values": {
+        "on_hand": 66.793533,
+        "open_po": 1.467519
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!M5",
+      "expected": 74,
+      "values": {
+        "on_hand": 72.456434,
+        "open_po": 1.739411
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!M6",
+      "expected": 46,
+      "values": {
+        "on_hand": 44.781826,
+        "open_po": 0.986942
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!M7",
+      "expected": 53,
+      "values": {
+        "on_hand": 52.113304,
+        "open_po": 1.289416
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!M8",
+      "expected": 102,
+      "values": {
+        "on_hand": 100.067522,
+        "open_po": 1.753323
+      }
+    }
+  ],
+  "f05-rop": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!N4",
+      "expected": 88,
+      "values": {
+        "ads": 29.166885,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!N5",
+      "expected": 104,
+      "values": {
+        "ads": 34.57072,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!N6",
+      "expected": 59,
+      "values": {
+        "ads": 19.615421,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!N7",
+      "expected": 77,
+      "values": {
+        "ads": 25.627098,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!N8",
+      "expected": 105,
+      "values": {
+        "ads": 34.847228,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    }
+  ],
+  "f06-maximum-inventory": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!O4",
+      "expected": 204,
+      "values": {
+        "ads": 29.166885,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!O5",
+      "expected": 242,
+      "values": {
+        "ads": 34.57072,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!O6",
+      "expected": 137,
+      "values": {
+        "ads": 19.615421,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!O7",
+      "expected": 179,
+      "values": {
+        "ads": 25.627098,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!O8",
+      "expected": 244,
+      "values": {
+        "ads": 34.847228,
+        "lead_time_days": 2,
+        "lead_time_adjust": 0,
+        "safety_days": 1,
+        "safety_adjust": 0
+      }
+    }
+  ],
+  "f07-inventory-state": [
+    {
+      "label": "SKU GRC-001, Store S012",
+      "address": "ENGINE_STORE!Q15",
+      "expected": "Stockout",
+      "values": {
+        "position": 26,
+        "rop": 44,
+        "days_of_supply": 1.775588,
+        "perishable": "Y",
+        "shelf_life_days": 3,
+        "velocity": 1.1125
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!Q4",
+      "expected": "Low",
+      "values": {
+        "position": 68,
+        "rop": 88,
+        "days_of_supply": 2.331411,
+        "perishable": "Y",
+        "shelf_life_days": 3,
+        "velocity": 1.1125
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S005",
+      "address": "ENGINE_STORE!Q28",
+      "expected": "Expiry",
+      "values": {
+        "position": 110,
+        "rop": 70,
+        "days_of_supply": 4.688716,
+        "perishable": "Y",
+        "shelf_life_days": 4,
+        "velocity": 1.2005
+      }
+    },
+    {
+      "label": "SKU GRC-043, Store S005",
+      "address": "ENGINE_STORE!Q848",
+      "expected": "Overstock",
+      "values": {
+        "position": 908,
+        "rop": 413,
+        "days_of_supply": 15.403248,
+        "perishable": "N",
+        "shelf_life_days": 999,
+        "velocity": 1.3783
+      }
+    },
+    {
+      "label": "SKU GRC-040, Store S001",
+      "address": "ENGINE_STORE!Q784",
+      "expected": "Slow-mover",
+      "values": {
+        "position": 411,
+        "rop": 258,
+        "days_of_supply": 11.143575,
+        "perishable": "N",
+        "shelf_life_days": 999,
+        "velocity": 0.9474
+      }
+    }
+  ],
+  "f08-forecast-7-days": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!U4",
+      "expected": 217.293291,
+      "values": {
+        "ads": 29.166885,
+        "week_factor": 7.45
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!U5",
+      "expected": 257.551863,
+      "values": {
+        "ads": 34.57072,
+        "week_factor": 7.45
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!U6",
+      "expected": 146.134888,
+      "values": {
+        "ads": 19.615421,
+        "week_factor": 7.45
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!U7",
+      "expected": 190.921884,
+      "values": {
+        "ads": 25.627098,
+        "week_factor": 7.45
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!U8",
+      "expected": 259.611852,
+      "values": {
+        "ads": 34.847228,
+        "week_factor": 7.45
+      }
+    }
+  ],
+  "f09-order-quantity-sales-units": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!V4",
+      "expected": 136,
+      "values": {
+        "position": 68,
+        "rop": 88,
+        "max_inventory": 204
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!V5",
+      "expected": 168,
+      "values": {
+        "position": 74,
+        "rop": 104,
+        "max_inventory": 242
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!V6",
+      "expected": 91,
+      "values": {
+        "position": 46,
+        "rop": 59,
+        "max_inventory": 137
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!V7",
+      "expected": 126,
+      "values": {
+        "position": 53,
+        "rop": 77,
+        "max_inventory": 179
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!V8",
+      "expected": 142,
+      "values": {
+        "position": 102,
+        "rop": 105,
+        "max_inventory": 244
+      }
+    }
+  ],
+  "f10-order-quantity-purchase-units": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!X4",
+      "expected": 12,
+      "values": {
+        "order_sales_units": 136,
+        "pack_factor": 12
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!X5",
+      "expected": 14,
+      "values": {
+        "order_sales_units": 168,
+        "pack_factor": 12
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!X6",
+      "expected": 8,
+      "values": {
+        "order_sales_units": 91,
+        "pack_factor": 12
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!X7",
+      "expected": 11,
+      "values": {
+        "order_sales_units": 126,
+        "pack_factor": 12
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!X8",
+      "expected": 12,
+      "values": {
+        "order_sales_units": 142,
+        "pack_factor": 12
+      }
+    }
+  ],
+  "f11-order-value": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!Y4",
+      "expected": 2721600,
+      "values": {
+        "order_buy_units": 12,
+        "pack_factor": 12,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!Y5",
+      "expected": 3175200,
+      "values": {
+        "order_buy_units": 14,
+        "pack_factor": 12,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!Y6",
+      "expected": 1814400,
+      "values": {
+        "order_buy_units": 8,
+        "pack_factor": 12,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!Y7",
+      "expected": 2494800,
+      "values": {
+        "order_buy_units": 11,
+        "pack_factor": 12,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!Y8",
+      "expected": 2721600,
+      "values": {
+        "order_buy_units": 12,
+        "pack_factor": 12,
+        "price": 18900
+      }
+    }
+  ],
+  "f12-at-risk-value": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!T4",
+      "expected": 1285200,
+      "values": {
+        "state": "Low",
+        "position": 68,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!T5",
+      "expected": 1398600,
+      "values": {
+        "state": "Low",
+        "position": 74,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!T6",
+      "expected": 869400,
+      "values": {
+        "state": "Low",
+        "position": 46,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!T7",
+      "expected": 1001700,
+      "values": {
+        "state": "Low",
+        "position": 53,
+        "price": 18900
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!T8",
+      "expected": 1927800,
+      "values": {
+        "state": "Low",
+        "position": 102,
+        "price": 18900
+      }
+    }
+  ],
+  "f13-incremental-promotion-margin": [
+    {
+      "label": "SKU GRC-002, Store S001",
+      "address": "ENGINE_STORE!Z24",
+      "expected": 97773.937355,
+      "values": {
+        "ads": 19.636343,
+        "price": 19100,
+        "margin_pct": 0.1778,
+        "promo_funding": 0.4862,
+        "cannibalization": 0.1596,
+        "promo_eligible": "Y"
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S002",
+      "address": "ENGINE_STORE!Z25",
+      "expected": 115888.80463,
+      "values": {
+        "ads": 23.274426,
+        "price": 19100,
+        "margin_pct": 0.1778,
+        "promo_funding": 0.4862,
+        "cannibalization": 0.1596,
+        "promo_eligible": "Y"
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S003",
+      "address": "ENGINE_STORE!Z26",
+      "expected": 65755.290168,
+      "values": {
+        "ads": 13.205906,
+        "price": 19100,
+        "margin_pct": 0.1778,
+        "promo_funding": 0.4862,
+        "cannibalization": 0.1596,
+        "promo_eligible": "Y"
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S004",
+      "address": "ENGINE_STORE!Z27",
+      "expected": 85907.780361,
+      "values": {
+        "ads": 17.253213,
+        "price": 19100,
+        "margin_pct": 0.1778,
+        "promo_funding": 0.4862,
+        "cannibalization": 0.1596,
+        "promo_eligible": "Y"
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S005",
+      "address": "ENGINE_STORE!Z28",
+      "expected": 116815.723291,
+      "values": {
+        "ads": 23.460583,
+        "price": 19100,
+        "margin_pct": 0.1778,
+        "promo_funding": 0.4862,
+        "cannibalization": 0.1596,
+        "promo_eligible": "Y"
+      }
+    }
+  ],
+  "f14-recoverable-at-risk-value": [
+    {
+      "label": "SKU GRC-002, Store S005",
+      "address": "ENGINE_STORE!AA28",
+      "expected": 308611.466807,
+      "values": {
+        "state": "Expiry",
+        "position": 110,
+        "ads": 23.460583,
+        "shelf_life_days": 4,
+        "max_inventory": 164,
+        "price": 19100
+      }
+    },
+    {
+      "label": "SKU GRC-043, Store S005",
+      "address": "ENGINE_STORE!AA848",
+      "expected": 6734000,
+      "values": {
+        "state": "Overstock",
+        "position": 908,
+        "ads": 58.948606,
+        "shelf_life_days": 999,
+        "max_inventory": 648,
+        "price": 25900
+      }
+    },
+    {
+      "label": "SKU GRC-040, Store S001",
+      "address": "ENGINE_STORE!AA784",
+      "expected": 127500,
+      "values": {
+        "state": "Slow-mover",
+        "position": 411,
+        "ads": 36.882238,
+        "shelf_life_days": 999,
+        "max_inventory": 406,
+        "price": 25500
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S008",
+      "address": "ENGINE_STORE!AA31",
+      "expected": 168759.956272,
+      "values": {
+        "state": "Expiry",
+        "position": 67,
+        "ads": 14.5411,
+        "shelf_life_days": 4,
+        "max_inventory": 102,
+        "price": 19100
+      }
+    },
+    {
+      "label": "SKU GRC-002, Store S014",
+      "address": "ENGINE_STORE!AA37",
+      "expected": 69773.650691,
+      "values": {
+        "state": "Expiry",
+        "position": 64,
+        "ads": 15.086732,
+        "shelf_life_days": 4,
+        "max_inventory": 106,
+        "price": 19100
+      }
+    }
+  ],
+  "f15-contribution-per-day": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!AB4",
+      "expected": 134230,
+      "values": {
+        "ads": 29.166885,
+        "price": 18900,
+        "margin_pct": 0.2435
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!AB5",
+      "expected": 159100,
+      "values": {
+        "ads": 34.57072,
+        "price": 18900,
+        "margin_pct": 0.2435
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!AB6",
+      "expected": 90273,
+      "values": {
+        "ads": 19.615421,
+        "price": 18900,
+        "margin_pct": 0.2435
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!AB7",
+      "expected": 117940,
+      "values": {
+        "ads": 25.627098,
+        "price": 18900,
+        "margin_pct": 0.2435
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!AB8",
+      "expected": 160372,
+      "values": {
+        "ads": 34.847228,
+        "price": 18900,
+        "margin_pct": 0.2435
+      }
+    }
+  ],
+  "f16-labour-fte": [
+    {
+      "label": "SKU GRC-001, Store S001",
+      "address": "ENGINE_STORE!AC4",
+      "expected": 0.622384,
+      "values": {
+        "ads": 29.166885,
+        "price": 18900,
+        "sales_per_fte": 6200000
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!AC5",
+      "expected": 0.737695,
+      "values": {
+        "ads": 34.57072,
+        "price": 18900,
+        "sales_per_fte": 6200000
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!AC6",
+      "expected": 0.418568,
+      "values": {
+        "ads": 19.615421,
+        "price": 18900,
+        "sales_per_fte": 6200000
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!AC7",
+      "expected": 0.546849,
+      "values": {
+        "ads": 25.627098,
+        "price": 18900,
+        "sales_per_fte": 6200000
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!AC8",
+      "expected": 0.743595,
+      "values": {
+        "ads": 34.847228,
+        "price": 18900,
+        "sales_per_fte": 6200000
+      }
+    }
+  ],
+  "f17-required-workforce": [
+    {
+      "label": "Store S004 (Grocery 04 · Bandung)",
+      "address": "Workforce!M9",
+      "expected": 42,
+      "values": {
+        "store_size": 1.0751,
+        "wf_base": 26,
+        "peak_factor": 1.22,
+        "event_lift": 0.25,
+        "footfall_index": 1.085
+      }
+    },
+    {
+      "label": "Store S011 (Grocery 11 · Batam)",
+      "address": "Workforce!M16",
+      "expected": 49,
+      "values": {
+        "store_size": 1.3266,
+        "wf_base": 26,
+        "peak_factor": 1.22,
+        "event_lift": 0.2,
+        "footfall_index": 0.9722
+      }
+    },
+    {
+      "label": "Store S001 (Grocery 01 · Jakarta Pusat)",
+      "address": "Workforce!M6",
+      "expected": 38,
+      "values": {
+        "store_size": 1.2236,
+        "wf_base": 26,
+        "peak_factor": 1.22,
+        "event_lift": 0,
+        "footfall_index": 1.1221
+      }
+    },
+    {
+      "label": "Store S002 (Grocery 02 · Jakarta Selatan)",
+      "address": "Workforce!M7",
+      "expected": 46,
+      "values": {
+        "store_size": 1.4503,
+        "wf_base": 26,
+        "peak_factor": 1.22,
+        "event_lift": 0,
+        "footfall_index": 1.1765
+      }
+    },
+    {
+      "label": "Store S003 (Grocery 03 · Surabaya)",
+      "address": "Workforce!M8",
+      "expected": 26,
+      "values": {
+        "store_size": 0.8229,
+        "wf_base": 26,
+        "peak_factor": 1.22,
+        "event_lift": 0,
+        "footfall_index": 1.0549
+      }
+    }
+  ],
+  "f18-scheduled-workforce": [
+    {
+      "label": "Store S004 (Grocery 04 · Bandung)",
+      "address": "Workforce!L9",
+      "expected": 32,
+      "values": {
+        "store_size": 1.0751,
+        "wf_base": 26,
+        "store_health": 0.8934
+      }
+    },
+    {
+      "label": "Store S011 (Grocery 11 · Batam)",
+      "address": "Workforce!L16",
+      "expected": 39,
+      "values": {
+        "store_size": 1.3266,
+        "wf_base": 26,
+        "store_health": 0.8044
+      }
+    },
+    {
+      "label": "Store S001 (Grocery 01 · Jakarta Pusat)",
+      "address": "Workforce!L6",
+      "expected": 37,
+      "values": {
+        "store_size": 1.2236,
+        "wf_base": 26,
+        "store_health": 1.0061
+      }
+    },
+    {
+      "label": "Store S002 (Grocery 02 · Jakarta Selatan)",
+      "address": "Workforce!L7",
+      "expected": 43,
+      "values": {
+        "store_size": 1.4503,
+        "wf_base": 26,
+        "store_health": 0.9208
+      }
+    },
+    {
+      "label": "Store S003 (Grocery 03 · Surabaya)",
+      "address": "Workforce!L8",
+      "expected": 25,
+      "values": {
+        "store_size": 0.8229,
+        "wf_base": 26,
+        "store_health": 1.003
+      }
+    }
+  ],
+  "f19-coverage-gap": [
+    {
+      "label": "Store S004 (Grocery 04 · Bandung)",
+      "address": "Workforce!N9",
+      "expected": 10,
+      "values": {
+        "required": 42,
+        "scheduled": 32
+      }
+    },
+    {
+      "label": "Store S011 (Grocery 11 · Batam)",
+      "address": "Workforce!N16",
+      "expected": 10,
+      "values": {
+        "required": 49,
+        "scheduled": 39
+      }
+    },
+    {
+      "label": "Store S001 (Grocery 01 · Jakarta Pusat)",
+      "address": "Workforce!N6",
+      "expected": 1,
+      "values": {
+        "required": 38,
+        "scheduled": 37
+      }
+    },
+    {
+      "label": "Store S002 (Grocery 02 · Jakarta Selatan)",
+      "address": "Workforce!N7",
+      "expected": 3,
+      "values": {
+        "required": 46,
+        "scheduled": 43
+      }
+    },
+    {
+      "label": "Store S003 (Grocery 03 · Surabaya)",
+      "address": "Workforce!N8",
+      "expected": 1,
+      "values": {
+        "required": 26,
+        "scheduled": 25
+      }
+    }
+  ]
+}

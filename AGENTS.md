@@ -375,6 +375,41 @@ Prefix: `/api/html`
 
 SSE event types: `status`, `tool_call`, `tool_result`, `assistant_response`, `done`, `error`.
 
+### Workbook viewer (used by the Data Source page)
+
+Prefix: `/api/excel`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/sheets` | Every sheet in the workbook: `{ index, name, row_count, column_count }` |
+| `GET` | `/sheets/{name}?offset=&limit=` | One window of a sheet, with the workbook's own formatting. `limit` defaults to 100 and is capped at 500 |
+
+The sheet name is the id, percent-encoded (one sheet is `What-If · Per Agent`). Errors: missing workbook → `503` (mirrors how `/` reports a missing frontend build — the deployment is wrong, not the URL); unknown sheet → `404`; bad `offset`/`limit` → `422`. An `offset` past the last row is an empty page, not an error.
+
+Backed by `src/excel/`. Reading merges, column widths and per-cell styles requires a non-`read_only` parse, which costs ~13 s and ~220 MB on the shipped workbook, so it happens **once** into a module singleton and reloads only when the file's mtime/size changes; a windowed read against the cache is then ~50 ms. Consequences: the endpoints are plain `def` so the cold parse cannot stall the event loop, the lock spans the whole read (openpyxl lazily mutates `ws._cells` and is not thread-safe), sheet dimensions are cached because `ws.max_row` is O(cells) on *every* access, and `lifespan` pre-warms the cache fire-and-forget so a missing workbook is a warning rather than a boot failure.
+
+Cell payloads use short keys and omit every default, because a page is up to 500 × 31 cells: `v` text · `t` `"n"` for numbers · `b` bold · `i` italic · `a` horizontal · `va` vertical · `w` wrap · `fg`/`bg` `#RRGGBB`. A cell with nothing to say serialises as `null`. The legend lives in `src/excel/formatting.py`; the consumer is `frontend/src/pages/main/data_source/cellStyle.js`.
+
+### Formulas (used by the Formula Manager page)
+
+Prefix: `/api/formulas`
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `` | Every stored formula, ordered by `number`: `{ items, count }` |
+| `GET` | `/{id}` | One formula |
+| `POST` | `` | Create. `id` is slugified from the name when omitted, `number` auto-increments. `201` |
+| `PUT` | `/{id}` | Replace one formula |
+| `DELETE` | `/{id}` | Remove one formula |
+| `POST` | `/validate` | Check a draft `{ expression, parameters }` without storing it → `{ valid, errors, referenced, undeclared, unused }` |
+| `POST` | `/{id}/evaluate` | Run a stored formula: `{ values }` → `{ result, result_type, values }`. Missing values fall back to each parameter's `default` |
+
+Errors: unknown id → `404`; unparseable expression, undeclared parameter, duplicate name/number, non-numeric input → `422`.
+
+Backed by `src/formulas/`, and stored in `resources/dbtemp/formula.json` rather than Postgres — 19 hand-curated reference formulas that are easier to read, diff and hand-edit as a file. Writes are atomic (temp file + `os.replace`) under a module lock.
+
+**Expressions are Excel-free.** A formula is arithmetic over *named parameters* — `MAX(0, required - scheduled)`, never `MAX(0,M9-L9)`. `resources/formula.md` documents each workbook original in native Excel, but that is reference material used to *derive* the expression and to verify the worked examples; sheet names, `!` and `$` are rejected by the parser with a message that says so. `src/formulas/expression.py` never calls `eval()` or `ast.parse()`: it tokenizes a fixed grammar, parses to a tuple AST, and walks it against an allow-list of `MAX MIN ROUND CEILING IF AND OR NOT`. `IF` short-circuits, so `IF(qty > 0, total / qty, 0)` is a safe guard, and `ROUND` uses Excel's half-away-from-zero rule rather than Python's half-to-even.
+
 ## Chivon framework
 
 Chivon (`src/llm/chivon/chivon.py`) is the agent loader/runner:
@@ -438,10 +473,17 @@ That is the whole change. `frontend/src/pages/registry.js` auto-discovers the fo
 
 Consequences of that shaping, worth knowing:
 
-- **Order.** Pages sort by glob path and are prepended to the API's agents, so they always lead the sidebar. The first page is therefore the app's default screen (`App.jsx` selects `agentIds[0]`).
+- **Order.** Pages sort by `order` (optional in the descriptor, default `0`) and then by glob path, and are prepended to the API's agents, so they always lead the sidebar. The first page is therefore the app's default screen (`App.jsx` selects `agentIds[0]`). `order` exists so a page can place itself without being renamed: **Data Source** sets `order: 1` because `data_source` would otherwise win the glob sort and take the default-screen slot, which it must not — see the exception below.
 - **Chrome.** Pages carry `isPage: true`. `App.jsx` reads it to drop the `AlertsPanel` toolbar and the chat panel, force the shell onto its two-column `chat-closed` grid, and title the topbar with the section name and page name instead of `<name> performance board`.
-- **No backend contact.** Pages also carry `dashboardOnly: true`, which keeps `MonitoringProvider` from polling an id no backend knows about. Nothing requests `/api/html/dashboard/<page id>`.
+- **No agent traffic.** Pages also carry `dashboardOnly: true`, which keeps `MonitoringProvider` from polling an id no backend knows about. Nothing requests `/api/html/dashboard/<page id>`, `/api/alerts` or `/api/actions` for a page.
 - **Outage resilience.** `buildPages()` runs at module load, so pages render even when `GET /api/html/agents` fails. In that case the sidebar shows the pages plus an error notice where the agent folders would be.
+
+**A page may still own an endpoint.** `isPage`/`dashboardOnly` suppress the *agent* APIs; they do not forbid a page from fetching its own resource. Two pages do, and both therefore carry their own loading, error and retry states instead of relying on the shell:
+
+- `main.formula_manager` reads and writes `/api/formulas` (see the Formulas section above).
+- `main.data_source` is a read-only Excel viewer over `/api/excel/*` (see the Workbook viewer section above). It sets `order: 1` to keep itself out of the default-screen slot.
+
+Both stay pages rather than becoming agents because they have no module, no chat and no dashboard payload. Neither renders content during an API outage — each shows its own error state — so "outage resilience" above now means only that the *sidebar* survives, not that every page body does.
 
 Static pages and per-agent UI overrides are different mechanisms with a similar shape — an override in `frontend/src/agents/<folder>/<name>/index.js` customises a module the backend already serves and is dropped if the API does not return that id; a page in `frontend/src/pages/<folder>/<name>/index.js` creates a screen the backend knows nothing about.
 
@@ -461,6 +503,20 @@ Static pages and per-agent UI overrides are different mechanisms with a similar 
 | `src/llm/html_renderer.py` | Component → UI block rendering |
 | `src/llm/model_provider.py` | Azure OpenAI model configuration |
 | `src/api/finance_agents_html.py` | HTML chat SSE API |
+| `src/excel/workbook.py` | Cached openpyxl workbook singleton: sheet listing and windowed reads |
+| `src/excel/formatting.py` | Cell value/number formatting, ARGB colour guards, Excel width → px |
+| `src/excel/router.py` | `GET /api/excel/sheets`, `GET /api/excel/sheets/{name}` |
+| `frontend/src/api/excel.js` | `fetchSheetList` / `fetchSheetPage` for the Data Source page |
+| `frontend/src/pages/main/data_source/` | The Data Source page: sheet switcher, pager, cell-styled grid |
+| `src/formulas/expression.py` | Excel-free expression tokenizer/parser/evaluator (no `eval`) |
+| `src/formulas/repository.py` | Atomic JSON persistence for `resources/dbtemp/formula.json` |
+| `src/formulas/router.py` | `/api/formulas` CRUD plus `/validate` and `/{id}/evaluate` |
+| `resources/dbtemp/formula.json` | The 19 stored formulas: name, expression, tweakable parameters |
+| `resources/formula.md` | Source of truth for the derivation: 19 formulas × 5 workbook examples |
+| `frontend/src/api/formulas.js` | Formula CRUD/validate/evaluate for the Formula Manager page |
+| `frontend/src/pages/main/formula_manager/` | The Formula Manager page: cards, "try this" examples, validator, editor |
+| `frontend/src/pages/main/formula_manager/workedExamples.json` | The 95 worked examples, hardcoded UI data (never touched by CRUD) |
+| `frontend/src/components/Modal.jsx` | Shared dialog shell (AlertsPanel + Formula Manager) |
 | `frontend/src/agents/AgentsProvider.jsx` | Fetches `GET /api/html/agents` once and shares the module list app-wide (`useAgents()`) |
 | `frontend/src/agents/registry.js` | Shapes the API response for the UI (`buildAgents`, `groupByFolder`) + auto-discovered optional per-agent overrides |
 | `frontend/src/pages/registry.js` | Auto-discovers static pages (`buildPages`) — frontend-only screens with no backend module |
