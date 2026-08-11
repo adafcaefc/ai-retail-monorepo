@@ -19,11 +19,18 @@ which covers Demand's frontend design rather than the cross-module picture.
 | `retail.replenishment` | Empty shell | — | None — shared empty stub |
 
 Both finished boards are frontend-only. Neither reads PostgreSQL, and neither
-touches D365. Test suites are green: 68 frontend, 348 backend.
+touches D365. Test suites are green: 97 frontend, 348 backend.
 
-Inventory Risk landed in `5003bcd`: six KPIs, at-risk-by-state and category
+Inventory Risk landed in `5003bcd`: six KPI cards, at-risk-by-state and category
 value panels, dimension charts, expiry timeline, and a paged risk register over
-800 SKUs.
+800 SKUs. It has since gained two money sub-values
+(`overstock_excess_value`, `expiry_value`), a per-store split by state that
+makes the store chart a true stack, and a **Suggested Best Action** panel that
+groups every non-healthy SKU by the agent that owns the fix — Agent 3 for
+replenishment, Agent 5 for markdown. The panel routes; it does not act.
+
+Its payload is now 18 top-level fields and eleven KPI measures. The contract is
+specified in [`inventory-risk-backend-handoff.md`](./inventory-risk-backend-handoff.md).
 
 ### The one asymmetry that matters
 
@@ -237,6 +244,14 @@ Not "forecast data" — that request is too vague to fill. Specifically:
 
 Items 2–4 can run in parallel once item 1 lands. Item 5 is the only one that
 genuinely waits.
+
+Since this table was written, the decision was taken to land interim workbook
+data in **PostgreSQL `retail.*`** rather than in frontend fixtures, because
+agent tools query PostgreSQL and a frontend fixture is invisible to them. That
+adds a phase in front of items 4–6 and is set out, with the mapping from each
+workbook table to its target, in
+[`rencana-retail-menuju-backend.md`](./rencana-retail-menuju-backend.md)
+(Bahasa Indonesia).
 
 ### Shared files to coordinate on
 

@@ -23,10 +23,20 @@ Contract terminology used below:
   the frontend formats at render time in the active language.
 - "Nullable" describes a valid explicit JSON `null`, not an omitted field.
 
-The response has 15 top-level fields. Only two are validator-critical —
+The response has 18 top-level fields. Only two are validator-critical —
 `schema_version` and `agent` — but a populated production dashboard must supply
-the filter options, the nine KPI measures, the six breakdown arrays, the expiry
-timeline, and the risk register documented below.
+the filter options, the eleven KPI measures, the six breakdown arrays, the
+expiry timeline, the best-action routes, and the risk register documented below.
+
+**On `schema_version` staying at `1`.** This contract has grown since it was
+first written — two KPI measures, a `best_actions` root, and three per-store
+counts were added — and the version was deliberately not bumped. Every
+addition is *additive with a default*: `normalizeInventoryRiskDashboard`
+resolves `best_actions` to `[]` and any absent KPI to `0`, so a backend that
+implements an earlier reading of this document still renders, showing an empty
+panel rather than failing. Treat version 1 as "these fields or a subset of
+them". A **removal or a type change** is what requires version 2 — adding a
+field does not.
 
 A complete, real example generated from the current provider is in
 [`inventory-risk-api-example.json`](./inventory-risk-api-example.json)
@@ -144,25 +154,35 @@ reset an invalidated child selection without a second round trip.
 ### 2.3 KPI object
 
 **`kpis` is an object keyed by measure, not an array.** This differs from
-Demand deliberately: these nine measures are fixed and never reordered, so the
-frontend owns their labels, order, and formatting in `RiskKpiGrid`. The backend
-sends numbers only — no labels, no units, no sparklines, no status enums.
+Demand deliberately: these eleven measures are fixed and never reordered, so
+the frontend owns their labels, order, and formatting in `RiskKpiGrid`. The
+backend sends numbers only — no labels, no units, no sparklines, no status
+enums.
 
-Six are rendered as KPI cards; the remaining three are used in panel headers,
+Six are rendered as KPI cards. Two more are rendered as a money sub-value
+underneath their own card, and the remaining three are used in panel headers,
 share denominators, and the empty state.
 
 | JSON path | Type | Req. | Nullable | Rendered as | Meaning |
 |---|---|---:|---:|---|---|
-| `kpis` | object | P | No | — | All nine keys default to `0` when absent. |
+| `kpis` | object | P | No | — | All eleven keys default to `0` when absent. |
 | `kpis.stockout_risk_skus` | integer | P | No | KPI card 1 | Distinct SKUs in scope where `Position < ROP`. |
 | `kpis.overstock_skus` | integer | P | No | KPI card 2 | Distinct SKUs in scope where `DoS > 15`. |
+| `kpis.overstock_excess_value` | number | P | No | Sub-value on card 2 | Value of the position **above `Max` only**, not the full value of every overstocked SKU. See the warning below. |
 | `kpis.expiry_units` | number | P | No | KPI card 3 | Sum of units beyond shelf-life cover, in units. |
+| `kpis.expiry_value` | number | P | No | Sub-value on card 3 | `expiry_units × price`, raw IDR. |
 | `kpis.slow_mover_skus` | integer | P | No | KPI card 4 | Distinct SKUs where `growth < 1.0 && DoS > 10`. |
 | `kpis.avg_dos` | number | P | No | KPI card 5 | Mean days of supply across scoped SKUs. |
 | `kpis.inventory_value` | number | P | No | KPI card 6 | Sum of `Position × price`, raw IDR. |
 | `kpis.at_risk_value` | number | P | No | Panel header, footnote | Sum of `inv_value` where `state != Healthy`. See the warning below. |
 | `kpis.healthy_skus` | integer | P | No | State panel | Count where `state == Healthy`. |
 | `kpis.sku_count` | integer | P | No | Register header, empty state | Rows in scope. |
+
+> **The workbook keeps two senses of "overstock" alive; these are the narrow
+> one.** `overstock_excess_value` prices only the units above `Max`, so it is
+> deliberately *not* the sum of `inv_value` over rows where `is_overstock` is
+> true. Sending the wider figure under this name overstates the write-down
+> exposure by a large multiple.
 
 > **`at_risk_value` is not an expected loss.** It is the full position value of
 > every non-healthy SKU. It overstates exposure next to unit measures like
@@ -214,11 +234,32 @@ These three are **gross**, not chain-net. See section 8 before implementing.
 | `stockout_by_store[].store_id` | string | P | No | `S001` | Stable store ID. |
 | `stockout_by_store[].label` | string | P | No | `Grocery 01 · Jakarta Pusat` | Store name for the axis. |
 | `stockout_by_store[].cluster` | string | P | No | `Express` | Store cluster. |
-| `stockout_by_store[].stockout_risk_count` | integer | P | No | `46` | SKUs below ROP at that store. |
-| `stockout_by_store[].at_risk_count` | integer | P | No | `58` | SKUs in any non-healthy state. |
+| `stockout_by_store[].stockout_count` | integer | P | No | `19` | SKUs in state `Stockout`. Bottom segment of the stack. |
+| `stockout_by_store[].low_count` | integer | P | No | `27` | SKUs in state `Low`. Middle segment. |
+| `stockout_by_store[].other_at_risk_count` | integer | P | No | `12` | SKUs in any other non-healthy state. Top segment. |
 | `stockout_by_store[].healthy_count` | integer | P | No | `42` | Must equal `sku_count - at_risk_count`. |
+| `stockout_by_store[].stockout_risk_count` | integer | P | No | `46` | SKUs below ROP at that store. Sort key only — see the note below. |
+| `stockout_by_store[].at_risk_count` | integer | P | No | `58` | SKUs in any non-healthy state. |
 | `stockout_by_store[].sku_count` | integer | P | No | `100` | SKUs carried at that store. |
 | `stockout_by_store[].at_risk_value` | number | P | No | `245721700` | Gross at-risk value at that store. |
+
+The three segment counts are what the stacked bar actually draws, and they must
+partition the at-risk set exactly:
+
+```text
+stockout_count + low_count + other_at_risk_count = at_risk_count
+at_risk_count + healthy_count                    = sku_count
+```
+
+`stockout_risk_count` is a **different measure** and deliberately not part of
+that sum: it counts `Position < ROP`, which is the KPI predicate, whereas
+`stockout_count` counts rows whose resolved `state` is `Stockout`. A SKU can be
+below its reorder point without having run out.
+
+The two differ in **all 160 stores** in the current data — S001 reports
+`stockout_count: 19` against `stockout_risk_count: 46`. Keep both; do not
+reconcile one into the other, and do not substitute one for the other in the
+stacked bar.
 | `at_risk_by_cluster` | array | P | No | 4 objects | Vertical bar, **descending by value**. |
 | `at_risk_by_cluster[].cluster` | string | P | No | `Flagship` | Cluster name. |
 | `at_risk_by_cluster[].value` | number | P | No | `812000000` | Sum of member stores' `at_risk_value`. |
@@ -264,7 +305,42 @@ Bucket assignment is by `shelf_life_days`, upper bound inclusive: `≤1` → `d1
 > shelf-life constraint, and those rows carry `expiry_units: 0` so they never
 > reach the timeline. Either keep that convention or send a real number.
 
-### 2.8 Risk register
+### 2.8 Best-action routes
+
+Inventory Risk diagnoses; it does not fix. Every problem it finds belongs to
+another agent, and this array is that hand-off made explicit and sized, so a
+reader can see which route is the bigger decision today rather than inferring
+it from 800 register rows.
+
+It is a **grouping of the register by `next_agent`**, not a new judgement:
+`Stockout` and `Low` are a replenishment call, everything else non-healthy is a
+markdown call. Healthy rows are excluded entirely.
+
+| JSON path | Type | Req. | Nullable | Example | Meaning |
+|---|---|---:|---:|---|---|
+| `best_actions` | array | P | No | at most 2 objects | One entry per distinct `next_agent` in scope, **descending by `value`**. Empty when nothing is at risk. |
+| `best_actions[].next_agent` | string | P | No | `3 Replenish` | Owning agent, matching `risk_register[].next_agent`. |
+| `best_actions[].sku_count` | integer | P | No | `287` | Non-healthy SKUs routed here. |
+| `best_actions[].value` | number | P | No | `412000000` | Sum of `at_risk_value` for those SKUs, raw IDR. |
+| `best_actions[].states` | string array | P | No | `["Stockout","Low"]` | States present on this route, in canonical severity order. |
+| `best_actions[].top_skus` | array of at most 3 | P | No | `[...]` | Worst offenders: severity first, then `at_risk_value` descending. |
+| `best_actions[].top_skus[].sku_id` | string | P | No | `GRC-001` | Selecting a row sets `scope.sku`. |
+| `best_actions[].top_skus[].name` | string | P | No | `Fruit 1` | Item name. |
+| `best_actions[].top_skus[].state` | string enum | P | No | `Low` | One of the six states. |
+| `best_actions[].top_skus[].value` | number | P | No | `22226400` | That SKU's `at_risk_value`. |
+
+Because it partitions the same non-healthy rows the register carries:
+
+```text
+sum(best_actions[].sku_count) = sku_count - healthy_skus
+sum(best_actions[].value)     = at_risk_value
+```
+
+**This routes; it does not act.** Nothing here claims a purchase order or a
+markdown has been raised, and the frontend renders every control as disabled.
+Do not wire it to an execution endpoint without a separate decision.
+
+### 2.9 Risk register
 
 The full scoped result set, sorted **severity first, then inventory value
 descending**. The frontend pages it client-side at 50 rows per page and does
@@ -303,7 +379,7 @@ count is materially larger, and see section 15, decision 4.
 | `risk_register[].is_slow_mover` | boolean | P | No | `false` | Pre-resolved predicate. |
 | `risk_register[].next_agent` | string | P | No | `3 Replenish` | Owning agent for the fix. See section 9. |
 
-### 2.9 Reference by vertical
+### 2.10 Reference by vertical
 
 Per-vertical totals used to check the dashboard against the source of record.
 They are **not scoped** — always send all eight verticals regardless of the
@@ -345,6 +421,7 @@ are trimmed for readability; the untrimmed cardinality at that scope is:
 | `at_risk_by_state` | — | 5 | 6 |
 | `at_risk_by_cluster` | — | 4 | 4 |
 | `at_risk_by_legal_entity` | — | 1 | 8 |
+| `best_actions` | — | 2 | 2 |
 
 Use it as a shape reference for backend contract tests. Note that
 `at_risk_by_state` has five entries at this scope, not six — that vertical has
@@ -477,9 +554,25 @@ risk_register.length                      = kpis.sku_count
 sum(at_risk_by_cluster[].value)           = sum(at_risk_by_legal_entity[].value)
                                           = sum(stockout_by_store[].at_risk_value)
 value_by_category[].share                 = value / sum(value), in 0..1
+
+sum(best_actions[].sku_count)             = kpis.sku_count - kpis.healthy_skus
+sum(best_actions[].value)                 = kpis.at_risk_value
+
+kpis.expiry_value                         = sum(expiry_units × price) over the register
+kpis.overstock_excess_value               = sum((position - max) × price)
+                                            over rows where is_overstock and position > max
+
+stockout_count + low_count + other_at_risk_count = at_risk_count   (per store)
+at_risk_count + healthy_count                    = sku_count       (per store)
 ```
 
 `value_by_category[].share` additionally sums to `1` across the array.
+
+Note what is **not** an identity: `stockout_risk_count` is not part of the
+per-store segment sum, and `overstock_excess_value` is not the total value of
+overstocked SKUs. Both are explained where they are defined (sections 2.6 and
+2.3); treating either as a reconciliation target produces a wrong figure that
+still adds up.
 
 Use a deterministic rounding method so displayed integers reconcile exactly.
 
@@ -488,6 +581,9 @@ scopes — unfiltered, one entity, one state, and an entity/state combination
 that matches zero rows — and all of them hold, including the empty case. They
 are therefore requirements a backend must meet, not aspirations. A backend
 contract test asserting the same list is the cheapest way to keep them true.
+
+The per-store segment identities were checked across all 160 stores, and the
+`best_actions` and new KPI identities across the same four scopes.
 
 ## 9. Next-agent routing
 
@@ -585,7 +681,7 @@ purpose. Do not port an assumption from one to the other.
 | Time dimension | Central — grain, horizon, series, confidence | None |
 | Gross vs net | Not applicable; all dimensions reconcile exactly | Store and cluster are gross and exceed the headline by design |
 | Simulation / What-If | In contract | Not in contract |
-| Suggested actions | In contract | Not in contract; `next_agent` is a display label only |
+| Suggested actions | `suggested_actions` — prose plus a plan preview | `best_actions` — routes grouped by owning agent, sized; no prose |
 | Interim data | Invented in JavaScript | Workbook-derived and reconciled |
 
 Two fields carry the same name in both contracts and **must agree** at the same
@@ -604,10 +700,13 @@ scope, because a user can compare them by switching boards:
 - [ ] Extend the shared route/builder signature so `store_id`, `state`, and `sku` are no longer silently dropped — once, for both Retail modules.
 - [ ] Split `src/llm/agents/retail/retail/dashboard.py` so each descriptor has its own builder before filling either in.
 - [ ] Return `schema_version: 1` and `agent: "retail.inventory_risk"` exactly.
-- [ ] Populate all nine KPI measures as raw finite numbers.
+- [ ] Populate all eleven KPI measures as raw finite numbers.
+- [ ] Price `overstock_excess_value` on the position above `Max` only, not on the full value of overstocked SKUs.
 - [ ] Resolve `state`, `severity_rank`, and the three `is_*` booleans server-side.
 - [ ] Return scope-aware `filter_options`, with categories and stores narrowed to the selected entity.
 - [ ] Omit states with no rows from `at_risk_by_state` rather than sending zero bars.
+- [ ] Return the three per-store segment counts, and keep `stockout_count` distinct from `stockout_risk_count`.
+- [ ] Group `best_actions` by `next_agent`, excluding healthy rows, with at most three `top_skus` each.
 - [ ] Sort every array as documented: severity then value for the register, descending value elsewhere, canonical order for states and expiry buckets.
 - [ ] Return all four expiry buckets even when zero, and at most four watchlist rows.
 - [ ] Return the complete scoped `risk_register`; the frontend pages it.
