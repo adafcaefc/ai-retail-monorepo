@@ -71,6 +71,10 @@ __pycache__/
 data/*.xlsx
 data/*.xls
 
+# Excel lock files, written next to a workbook while it is open
+~$*.xlsx
+~$*.xls
+
 # Generated import files
 data/import_logs/
 data/import_preview/

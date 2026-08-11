@@ -116,6 +116,92 @@ const CHROME = {
   "Demand Forecasting dashboard": "Dasbor Proyeksi Permintaan",
   "Unable to load Demand Forecasting.": "Tidak dapat memuat Proyeksi Permintaan.",
 
+  // Inventory Risk dashboard. Reuses the Demand filter wording above where the
+  // control is the same one; only the risk-specific vocabulary is added here.
+  "Inventory risk filters": "Filter risiko persediaan",
+  "Inventory risk summary": "Ringkasan risiko persediaan",
+  "Inventory Risk dashboard": "Dasbor Risiko Persediaan",
+  "Unable to load Inventory Risk.": "Tidak dapat memuat Risiko Persediaan.",
+  "All retail inventory": "Semua persediaan retail",
+  "Workbook data": "Data workbook",
+  "Store scope needs the per-store dataset, not yet available.":
+    "Cakupan toko butuh dataset per toko, belum tersedia.",
+  State: "Status",
+
+  // The six inventory states. Kept as nouns, matching the register's chips.
+  Expiry: "Kedaluwarsa",
+  Overstock: "Kelebihan stok",
+  "Slow-mover": "Perputaran lambat",
+
+  // KPI tiles and their captions.
+  "Overstock SKUs": "SKU kelebihan stok",
+  "Expiry-risk units": "Unit berisiko kedaluwarsa",
+  "Slow-moving SKUs": "SKU perputaran lambat",
+  "Avg days of supply": "Rata-rata hari persediaan",
+  "Inventory value": "Nilai persediaan",
+  "At risk": "Berisiko",
+  "Position below reorder point": "Posisi di bawah titik pemesanan",
+  "Days of supply above 15": "Hari persediaan di atas 15",
+  "Units beyond shelf-life cover": "Unit melebihi masa simpan",
+  "Declining growth, high cover": "Pertumbuhan turun, cakupan tinggi",
+  "Mean position ÷ ADS": "Rata-rata posisi ÷ ADS",
+
+  // Charts.
+  "At-risk value by state": "Nilai berisiko per status",
+  "At-risk value by category": "Nilai berisiko per kategori",
+  "At-risk value by cluster": "Nilai berisiko per klaster",
+  "At-risk value by legal entity": "Nilai berisiko per entitas legal",
+  "At-risk value": "Nilai berisiko",
+  "Inventory value by category": "Nilai persediaan per kategori",
+  "Stockout-risk by store": "Risiko kehabisan stok per toko",
+  "Risk by dimension": "Risiko per dimensi",
+  "Chain-net, full position value": "Neto rantai, nilai posisi penuh",
+  "Other categories": "Kategori lain",
+  Other: "Lainnya",
+  Total: "Total",
+  Share: "Porsi",
+  "Top 10": "10 teratas",
+  Gross: "Bruto",
+  "Gross · top 12": "Bruto · 12 teratas",
+  "SKUs stocked": "SKU tersedia",
+
+  // Expiry timeline.
+  "Expiry timeline": "Lini masa kedaluwarsa",
+  "Units at risk": "Unit berisiko",
+  "No expiry exposure in the current scope.":
+    "Tidak ada paparan kedaluwarsa pada cakupan saat ini.",
+  "≤ 1 day": "≤ 1 hari",
+  "2–3 days": "2–3 hari",
+  "4–7 days": "4–7 hari",
+  "> 7 days": "> 7 hari",
+
+  // Risk register. The column tooltips carry the formula because "Position"
+  // and "ROP" mean different things in different retail systems.
+  "Inventory risk register": "Daftar risiko persediaan",
+  SKUs: "SKU",
+  "On-hand": "Stok di tangan",
+  "Open PO": "PO terbuka",
+  Position: "Posisi",
+  ROP: "ROP",
+  DoS: "Hari persediaan",
+  Value: "Nilai",
+  "Next agent": "Agen berikutnya",
+  "Position = On-hand + Open PO": "Posisi = Stok di tangan + PO terbuka",
+  "ROP = ADS × (Lead + Safety)": "ROP = ADS × (Lead + Safety)",
+  "DoS = Position ÷ ADS": "Hari persediaan = Posisi ÷ ADS",
+  "Value = Position × price": "Nilai = Posisi × harga",
+  "3 Replenish": "3 Pengisian ulang",
+  "5 Markdown": "5 Penurunan harga",
+  Previous: "Sebelumnya",
+  Next: "Berikutnya",
+  Page: "Halaman",
+
+  // The two caveats the board must carry, not bury (A2 spec section 10).
+  "Store and cluster breakdowns are gross: they sum local risk pockets and exceed the chain-net headline, which nets surplus against shortage across stores.":
+    "Rincian toko dan klaster bersifat bruto: menjumlahkan kantong risiko lokal dan melebihi angka utama neto rantai, yang saling menghapus surplus dan kekurangan antar toko.",
+  "At-risk value is the full position value of every non-healthy SKU, not an expected loss.":
+    "Nilai berisiko adalah nilai posisi penuh setiap SKU tidak sehat, bukan perkiraan kerugian.",
+
   // Chat starter prompts (QC-042). These are the first words in the chat
   // panel, and clicking a chip puts these exact words in the composer, so a
   // missing entry here would send English on behalf of a Bahasa reader.

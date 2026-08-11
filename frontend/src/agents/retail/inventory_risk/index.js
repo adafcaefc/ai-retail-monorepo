@@ -1,7 +1,7 @@
-import RetailDashboard from "../retail/RetailDashboard.jsx";
+import InventoryRiskDashboard from "./InventoryRiskDashboard.jsx";
 
 export default {
   id: "retail.inventory_risk",
   chatLabel: "Inventory",
-  dashboardComponent: RetailDashboard,
+  dashboardComponent: InventoryRiskDashboard,
 };

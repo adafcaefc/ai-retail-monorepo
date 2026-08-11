@@ -516,6 +516,12 @@ describe("Retail dashboard and frontend-only chat", () => {
           screen.getByRole("heading", { name: "Demand forecast — actual vs AI" }),
         );
         expect(document.querySelectorAll(".demand-kpi")).toHaveLength(6);
+      } else if (module.id === "retail.inventory_risk") {
+        // Inventory Risk reads the workbook fixture, so it renders populated
+        // like Demand does. Replenishment is still a blank scaffold.
+        await screen.findByTestId("inventory-risk-dashboard");
+        expect(await screen.findByText("Inventory risk register")).toBeInTheDocument();
+        expect(document.querySelectorAll(".risk-kpi")).toHaveLength(6);
       } else {
         const retailDashboard = screen.getByTestId("retail-dashboard");
         expect(retailDashboard).toBeEmptyDOMElement();
@@ -549,6 +555,10 @@ describe("Retail dashboard and frontend-only chat", () => {
     expect(document.querySelector("main")).toHaveClass("chat-closed");
     expect(buttonNamed("Replenishment")).toHaveClass("active");
     expect(screen.getByTestId("retail-dashboard")).toBeInTheDocument();
+    // Two of the three Retail modules now render a full board, so this walk
+    // costs roughly 9s in jsdom. It relies on the raised `testTimeout` in
+    // vite.config.js rather than being trimmed: the point of the test is that
+    // selecting any module leaves the other two alone, which needs all three.
   });
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {
