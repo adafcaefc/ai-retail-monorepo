@@ -21,7 +21,15 @@ const ENTITY_DEFINITIONS = [
   },
 ];
 
-const CITY_NAMES = ["Jakarta", "Bandung", "Surabaya"];
+const CITY_NAMES = ["Jakarta", "Bandung", "Surabaya", "Semarang"];
+export const STORE_CLUSTERS = ["Flagship", "Mall", "Community", "Express"];
+
+export const SEASONALITY_BY_ENTITY = Object.freeze({
+  GRC: [0.96, 0.93, 0.99, 1.01, 1.06, 1.1, 1.14, 1.12, 1.03, 1, 1.07, 1.22],
+  FSH: [1, 0.95, 1.05, 1.12, 1.22, 1.16, 0.98, 0.95, 1.06, 1.02, 1.12, 1.32],
+  HBA: [1.06, 1.03, 1, 1.01, 1.08, 1.06, 1.05, 1.04, 1.02, 1.05, 1.1, 1.15],
+  HME: [1.04, 0.98, 1.02, 1.08, 1.16, 1.1, 1, 1.02, 1.06, 1.05, 1.12, 1.28],
+});
 const ITEM_NAMES = [
   "Everyday Essential",
   "Premium Selection",
@@ -53,6 +61,7 @@ export const STORES = ENTITY_DEFINITIONS.flatMap((entity, entityIndex) =>
     value: `${entity.value}-S${storeIndex + 1}`,
     label: `${entity.value} ${city} ${storeIndex + 1}`,
     legal_entity_id: entity.value,
+    cluster: STORE_CLUSTERS[storeIndex],
   })),
 );
 
@@ -71,6 +80,7 @@ const baseRows = Array.from({ length: 400 }, (_, index) => {
     category_id: `${entity.value}-C${String(categoryIndex + 1).padStart(2, "0")}`,
     category_label: entity.categories[categoryIndex],
     store_id: `${entity.value}-S${storeIndex + 1}`,
+    cluster: STORE_CLUSTERS[storeIndex],
     ads_raw: rawAds,
     growth_index: growthIndex,
     mape_raw: 5.2 + (hash(index, 7) % 390) / 100,
@@ -93,6 +103,16 @@ const trendIds = new Set(
     .slice(0, 355)
     .map((row) => row.sku_id),
 );
+const riskRank = new Map(
+  [...baseRows]
+    .sort((left, right) => right.risk_score - left.risk_score)
+    .map((row, index) => [row.sku_id, index]),
+);
+const trendRank = new Map(
+  [...baseRows]
+    .sort((left, right) => right.trend_score - left.trend_score)
+    .map((row, index) => [row.sku_id, index]),
+);
 
 export const DEMAND_SKUS = baseRows.map((row, index) => {
   const signals = [];
@@ -104,6 +124,8 @@ export const DEMAND_SKUS = baseRows.map((row, index) => {
     ...row,
     stockout_risk: riskIds.has(row.sku_id),
     predicted_to_trend: trendIds.has(row.sku_id),
+    risk_rank: riskRank.get(row.sku_id),
+    trend_rank: trendRank.get(row.sku_id),
     signals: signals.length ? [...new Set(signals)] : ["stable"],
   };
 });

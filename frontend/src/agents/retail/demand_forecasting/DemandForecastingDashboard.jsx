@@ -1,15 +1,28 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useLanguage } from "../../../LanguageProvider.jsx";
 import DemandForecastFilters from "./components/DemandForecastFilters.jsx";
 import DemandForecastingSkeleton from "./components/DemandForecastingSkeleton.jsx";
 import DemandKpiGrid from "./components/DemandKpiGrid.jsx";
+import DemandAppliedScenarioBanner from "./components/DemandAppliedScenarioBanner.jsx";
+import DemandDimensionPanels from "./components/DemandDimensionPanels.jsx";
+import DemandScenarioComparison from "./components/DemandScenarioComparison.jsx";
+import DemandSuggestedActions from "./components/DemandSuggestedActions.jsx";
+import DemandWhatIfSimulator from "./components/DemandWhatIfSimulator.jsx";
 import ForecastConfidencePanel from "./components/ForecastConfidencePanel.jsx";
 import ForecastDetailTable from "./components/ForecastDetailTable.jsx";
 import ForecastOverviewPanel from "./components/ForecastOverviewPanel.jsx";
 import PredictedTrendPanel from "./components/PredictedTrendPanel.jsx";
-import { DEFAULT_DEMAND_QUERY } from "./data/contract.js";
-import { loadDemandForecastingDashboard } from "./data/dashboardData.js";
+import {
+  DEFAULT_DEMAND_LEVERS,
+  DEFAULT_DEMAND_QUERY,
+  demandScenarioContext,
+  isDemandScenarioCompatible,
+} from "./data/contract.js";
+import {
+  loadDemandForecastingDashboard,
+  loadDemandForecastingScenario,
+} from "./data/dashboardData.js";
 
 function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
@@ -22,6 +35,15 @@ export default function DemandForecastingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [draftLevers, setDraftLevers] = useState({ ...DEFAULT_DEMAND_LEVERS });
+  const [appliedLevers, setAppliedLevers] = useState({ ...DEFAULT_DEMAND_LEVERS });
+  const [driveWholePage, setDriveWholePage] = useState(true);
+  const [scenarioResult, setScenarioResult] = useState(null);
+  const [scenarioDirty, setScenarioDirty] = useState(false);
+  const [scenarioBusy, setScenarioBusy] = useState(false);
+  const [scenarioError, setScenarioError] = useState("");
+  const [savedScenarios, setSavedScenarios] = useState([]);
+  const nextScenarioId = useRef(1);
 
   useEffect(() => {
     let cancelled = false;
@@ -30,7 +52,7 @@ export default function DemandForecastingDashboard() {
       setLoading(true);
       setError("");
       try {
-        const result = await loadDemandForecastingDashboard(query);
+        const result = await loadDemandForecastingDashboard(query, appliedLevers);
         if (!cancelled) setDashboard(result);
       } catch (loadError) {
         if (!cancelled) setError(loadError.message || t("Unable to load Demand Forecasting."));
@@ -50,17 +72,95 @@ export default function DemandForecastingDashboard() {
     query.horizon_weeks,
     query.detail_offset,
     query.detail_limit,
+    appliedLevers.demand,
+    appliedLevers.promo,
+    appliedLevers.markdown,
+    appliedLevers.inbound,
+    appliedLevers.lead,
+    appliedLevers.safety,
     refreshToken,
     t,
   ]);
 
   const patchQuery = useCallback((patch) => {
     setQuery((current) => ({ ...current, ...patch, detail_offset: 0 }));
+    setScenarioResult(null);
   }, []);
 
   const clearQuery = useCallback(() => {
     setQuery({ ...DEFAULT_DEMAND_QUERY });
+    setScenarioResult(null);
   }, []);
+
+  const runScenario = useCallback(async (levers = draftLevers, scenarioQuery = query) => {
+    setScenarioBusy(true);
+    setScenarioError("");
+    try {
+      const result = await loadDemandForecastingScenario(scenarioQuery, levers);
+      setScenarioResult(result);
+      setDraftLevers({ ...result.simulation.scenario_levers });
+      setScenarioDirty(false);
+      if (driveWholePage) {
+        setAppliedLevers({ ...result.simulation.scenario_levers });
+      }
+      return result;
+    } catch (runError) {
+      setScenarioError(runError.message || t("Unable to run scenario."));
+      return null;
+    } finally {
+      setScenarioBusy(false);
+    }
+  }, [draftLevers, driveWholePage, query, t]);
+
+  const saveScenario = useCallback(() => {
+    if (!scenarioResult || scenarioDirty) return;
+    const number = nextScenarioId.current;
+    nextScenarioId.current += 1;
+    setSavedScenarios((current) => [...current, {
+      id: `scenario-${number}`,
+      name: `S${number}`,
+      levers: { ...scenarioResult.simulation.scenario_levers },
+      context: demandScenarioContext(scenarioResult.scope),
+      baselineForecast: scenarioResult.simulation.baseline_forecast,
+      forecast: scenarioResult.forecast,
+      metrics: scenarioResult.simulation.scenario,
+      savedAt: new Date().toLocaleTimeString("en-GB", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      }),
+    }]);
+  }, [scenarioDirty, scenarioResult]);
+
+  const loadLatestScenario = useCallback(async () => {
+    const latest = savedScenarios[savedScenarios.length - 1];
+    if (!latest) return;
+    const restoredQuery = {
+      ...query,
+      ...latest.context,
+      detail_offset: 0,
+    };
+    setQuery(restoredQuery);
+    setDraftLevers({ ...latest.levers });
+    await runScenario(latest.levers, restoredQuery);
+  }, [query, runScenario, savedScenarios]);
+
+  const resetScenario = useCallback(() => {
+    setDraftLevers({ ...DEFAULT_DEMAND_LEVERS });
+    setAppliedLevers({ ...DEFAULT_DEMAND_LEVERS });
+    setScenarioResult(null);
+    setScenarioDirty(false);
+    setScenarioError("");
+  }, []);
+
+  const changeDriveWholePage = useCallback((enabled) => {
+    setDriveWholePage(enabled);
+    if (!enabled) {
+      setAppliedLevers({ ...DEFAULT_DEMAND_LEVERS });
+    } else if (scenarioResult) {
+      setAppliedLevers({ ...scenarioResult.simulation.scenario_levers });
+    }
+  }, [scenarioResult]);
 
   const options = dashboard?.filter_options || {
     legal_entities: [], categories: [], stores: [], grains: ["daily", "weekly", "monthly", "quarterly", "yearly"], horizons_weeks: [4, 8, 12, 16],
@@ -74,6 +174,15 @@ export default function DemandForecastingDashboard() {
     if (query.sku) labels.push(query.sku);
     return labels;
   }, [options, query]);
+
+  const compatibleSavedScenarios = useMemo(
+    () => savedScenarios.filter((scenario) => isDemandScenarioCompatible(scenario, query)),
+    [query, savedScenarios],
+  );
+  const hiddenScenarioCount = savedScenarios.length - compatibleSavedScenarios.length;
+  const appliedScenarioVisible = driveWholePage && Object.keys(DEFAULT_DEMAND_LEVERS).some(
+    (key) => appliedLevers[key] !== DEFAULT_DEMAND_LEVERS[key],
+  );
 
   if (!dashboard && loading) {
     return (
@@ -120,6 +229,14 @@ export default function DemandForecastingDashboard() {
         </div>
       </div>
 
+      {appliedScenarioVisible ? (
+        <DemandAppliedScenarioBanner
+          levers={appliedLevers}
+          definitions={dashboard.simulation.levers}
+          onReset={resetScenario}
+        />
+      ) : null}
+
       {error ? (
         <div className="demand-inline-error" role="alert">
           <span>{error}</span>
@@ -140,7 +257,45 @@ export default function DemandForecastingDashboard() {
 
       <PredictedTrendPanel items={dashboard.trending_items} onSelect={(sku) => patchQuery({ sku })} />
       <ForecastDetailTable details={dashboard.details} grain={dashboard.forecast.grain} onSelect={(sku) => patchQuery({ sku })} />
+
+      <DemandDimensionPanels
+        dimensions={dashboard.dimensions}
+        onCategory={(category_group) => patchQuery({ category_group })}
+        onStore={(store_id) => patchQuery({ store_id })}
+        onLegalEntity={(legal_entity_id) => patchQuery({
+          legal_entity_id,
+          category_group: "ALL",
+          store_id: "ALL",
+        })}
+      />
+
+      {scenarioError ? <div className="demand-inline-error" role="alert">{scenarioError}</div> : null}
+      <DemandWhatIfSimulator
+        simulation={scenarioResult?.simulation || dashboard.simulation}
+        draftLevers={draftLevers}
+        onLeverChange={(id, value) => {
+          setDraftLevers((current) => ({ ...current, [id]: value }));
+          setScenarioDirty(true);
+        }}
+        onRun={() => runScenario()}
+        onSave={saveScenario}
+        onLoad={loadLatestScenario}
+        onReset={resetScenario}
+        driveWholePage={driveWholePage}
+        onDriveWholePageChange={changeDriveWholePage}
+        savedCount={savedScenarios.length}
+        busy={scenarioBusy}
+        canSave={Boolean(scenarioResult) && !scenarioDirty}
+      />
+
+      <DemandScenarioComparison
+        baselineForecast={dashboard.simulation.baseline_forecast}
+        scenarios={compatibleSavedScenarios}
+        hiddenCount={hiddenScenarioCount}
+        onRemove={(id) => setSavedScenarios((current) => current.filter((scenario) => scenario.id !== id))}
+      />
+
+      <DemandSuggestedActions actions={dashboard.suggested_actions} />
     </section>
   );
 }
-
