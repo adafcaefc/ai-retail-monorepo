@@ -15,7 +15,9 @@ ENABLED_MODULES: tuple[str, ...] = (
     # "finance.treasury",
     # "finance.collection",
     # "finance.leakage",
-    "retail.retail",
+    "retail.demand_forecasting",
+    "retail.inventory_risk",
+    "retail.replenishment",
 )
 
 __all__ = ["ENABLED_MODULES"]

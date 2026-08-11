@@ -45,6 +45,7 @@ async function runPool(items, limit, worker) {
 export default function AlertsPanel({
   agentId,
   agentName,
+  chatLabel = agentName,
   backendEnabled = true,
   isChatOpen = false,
   onToggleChat,
@@ -550,18 +551,18 @@ export default function AlertsPanel({
               aria-expanded={isChatOpen}
               aria-controls="agent-chat-panel"
               aria-label={
-                isChatOpen ? `Close ${agentName} chat` : `Ask ${agentName}`
+                isChatOpen ? `Close ${chatLabel} chat` : `Ask ${chatLabel}`
               }
               title={
                 isChatOpen
-                  ? `Close ${agentName} chat`
-                  : `Open ${agentName} chat`
+                  ? `Close ${chatLabel} chat`
+                  : `Open ${chatLabel} chat`
               }
               onClick={() => onToggleChat?.()}
             >
               <ChatSparkleIcon />
 
-              <span className="chat-toggle-label">Ask {agentName}</span>
+              <span className="chat-toggle-label">Ask {chatLabel}</span>
             </button>
           </div>
 

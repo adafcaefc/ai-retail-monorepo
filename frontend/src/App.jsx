@@ -135,6 +135,8 @@ export default function App() {
 
   const currentChat = chats[activeAgent] || EMPTY_CHAT;
 
+  const currentChatLabel = currentAgent?.chatLabel || currentAgent?.name || "";
+
   const backendFeaturesEnabled = !currentAgent?.dashboardOnly;
 
   // Static pages (src/pages) are not agents: no toolbar, no chat, no board
@@ -807,18 +809,25 @@ export default function App() {
         sidebarOpen={sidebarOpen}
         onToggleSidebar={toggleSidebar}
         kicker={
-          isStaticPage ? currentGroupLabel : `${currentAgent.name} dashboard`
+          isStaticPage
+            ? currentGroupLabel
+            : currentAgent.folder === "retail"
+              ? "Retail"
+              : `${currentAgent.name} dashboard`
         }
         title={
           isStaticPage
             ? currentAgent.name
-            : `${currentAgent.name} performance board`
+            : currentAgent.folder === "retail"
+              ? currentAgent.name
+              : `${currentAgent.name} performance board`
         }
       >
         {isStaticPage ? null : (
           <AlertsPanel
             agentId={activeAgent}
             agentName={currentAgent.name}
+            chatLabel={currentChatLabel}
             backendEnabled={backendFeaturesEnabled}
             isChatOpen={chatUiOpen}
             onToggleChat={toggleChat}
@@ -958,7 +967,7 @@ export default function App() {
                   {currentChat.busy ? " · working" : ""}
                 </span>
 
-                <h1>{currentChat.title || `Ask ${currentAgent.name}`}</h1>
+                <h1>{currentChat.title || `Ask ${currentChatLabel}`}</h1>
               </div>
 
               <div className="chat-header-actions">

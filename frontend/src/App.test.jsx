@@ -111,15 +111,30 @@ const AGENTS = [
     dashboard_only: false,
   },
   {
-    id: "retail.retail",
+    id: "retail.demand_forecasting",
     folder: "retail",
-    display: "Retail",
-    description: "Review retail performance, trends, and operational insights.",
-    prompt: "Retail chat is not connected yet.",
-    starter_prompts: [
-      "Summarize retail performance trends.",
-      "Which retail operations need attention?",
-    ],
+    display: "Demand Forecasting",
+    description: "Review retail demand forecasts.",
+    prompt: "Ask Demand...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
+  {
+    id: "retail.inventory_risk",
+    folder: "retail",
+    display: "Inventory Risk",
+    description: "Review retail inventory risk.",
+    prompt: "Ask Inventory...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
+  {
+    id: "retail.replenishment",
+    folder: "retail",
+    display: "Replenishment",
+    description: "Review retail replenishment needs.",
+    prompt: "Ask Replenishment...",
+    starter_prompts: [],
     dashboard_only: true,
   },
 ];
@@ -216,7 +231,10 @@ async function selectAgent(name) {
 
   expect(button).toBeDefined();
   fireEvent.click(button);
-  await screen.findByRole("heading", { name: `${name} performance board` });
+  const agent = AGENTS.find((item) => item.display === name);
+  const title =
+    agent?.folder === "retail" ? name : `${name} performance board`;
+  await screen.findByRole("heading", { name: title });
   return button;
 }
 
@@ -365,15 +383,41 @@ describe("Retail dashboard and frontend-only chat", () => {
     });
   });
 
-  it("shows the standard Retail controls and opens a backend-safe Retail chat", async () => {
+  it("groups three independently selectable Retail scaffolds with disabled chat", async () => {
     renderApp();
-    // The app now opens on a static page, so step onto an agent board first.
-    await selectAgent("Finance");
 
-    const retailButton = await selectAgent("Retail");
+    await waitForSidebar();
 
-    expect(retailButton).toHaveClass("active");
-    expect(screen.getByText("Retail dashboard")).toBeInTheDocument();
+    const retailGroup = [...document.querySelectorAll(".agent-group")].find(
+      (group) => group.querySelector(".folder-name")?.textContent === "Retail",
+    );
+    expect(retailGroup).toBeDefined();
+    expect(retailGroup.querySelector(".folder-count")).toHaveTextContent("3");
+    expect(buttonNamed("Retail")).toBeUndefined();
+
+    const retailModules = [
+      {
+        id: "retail.demand_forecasting",
+        name: "Demand Forecasting",
+        chatLabel: "Demand",
+        prompt: "Ask Demand...",
+      },
+      {
+        id: "retail.inventory_risk",
+        name: "Inventory Risk",
+        chatLabel: "Inventory",
+        prompt: "Ask Inventory...",
+      },
+      {
+        id: "retail.replenishment",
+        name: "Replenishment",
+        chatLabel: "Replenishment",
+        prompt: "Ask Replenishment...",
+      },
+    ];
+
+    const demandButton = await selectAgent("Demand Forecasting");
+    expect(demandButton).toHaveClass("active");
 
     // The board toolbar is icon-first: only the primary action carries a
     // caption, so Recalculate and the overflow menu are matched on their
@@ -397,59 +441,77 @@ describe("Retail dashboard and frontend-only chat", () => {
     ).toBeNull();
 
     const notifications = screen.getByRole("button", {
-      name: "Retail notifications unavailable",
+      name: "Demand Forecasting notifications unavailable",
     });
     expect(notifications).toBeDisabled();
     fireEvent.click(notifications);
 
-    const askRetail = screen.getByRole("button", { name: "Ask Retail" });
-    expect(askRetail).toBeEnabled();
-    fireEvent.click(askRetail);
+    const askDemand = screen.getByRole("button", { name: "Ask Demand" });
+    expect(askDemand).toBeEnabled();
+    fireEvent.click(askDemand);
 
     expect(document.querySelector("main")).toHaveClass("chat-open");
-    expect(askRetail).toHaveClass("on");
-    expect(screen.getByText("Retail chat")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Ask Retail" })).toBeInTheDocument();
-    expect(screen.getByText("Retail, ready when you are")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Review retail performance, trends, and operational insights.",
-      ),
-    ).toBeInTheDocument();
-    expect(document.querySelector(".empty-icon")).toHaveTextContent("R");
+    expect(askDemand).toHaveClass("on");
 
-    const retailDashboard = screen.getByTestId("retail-dashboard");
-    expect(retailDashboard).toBeEmptyDOMElement();
+    for (const module of retailModules) {
+      const activeButton = await selectAgent(module.name);
 
-    const input = screen.getByRole("textbox", { name: "Message Retail" });
-    const send = screen.getByRole("button", { name: "Send" });
-    expect(input).toBeDisabled();
-    expect(input).toHaveAttribute("placeholder", "Retail chat is not connected yet.");
-    expect(send).toBeDisabled();
+      expect(activeButton).toHaveClass("active");
+      for (const other of retailModules.filter((item) => item.id !== module.id)) {
+        expect(buttonNamed(other.name)).not.toHaveClass("active");
+      }
 
-    for (const prompt of AGENTS.at(-1).starter_prompts) {
-      expect(screen.getByRole("button", { name: prompt })).toBeDisabled();
+      expect(
+        document.querySelector(".topbar-heading .header-kicker"),
+      ).toHaveTextContent("Retail");
+      expect(
+        document.querySelector(".topbar-heading").children[0],
+      ).toHaveTextContent("Retail");
+      expect(
+        document.querySelector(".topbar-heading").children[1],
+      ).toHaveTextContent(module.name);
+      expect(
+        screen.getByRole("heading", { level: 1, name: module.name }),
+      ).toBeInTheDocument();
+      expect(document.querySelector(".chat-toggle-label")).toHaveTextContent(
+        `Ask ${module.chatLabel}`,
+      );
+
+      expect(
+        screen.getByRole("heading", { name: `Ask ${module.chatLabel}` }),
+      ).toBeInTheDocument();
+
+      const retailDashboard = screen.getByTestId("retail-dashboard");
+      expect(retailDashboard).toBeEmptyDOMElement();
+
+      const input = screen.getByRole("textbox", {
+        name: `Message ${module.name}`,
+      });
+      expect(input).toBeDisabled();
+      expect(input).toHaveAttribute("placeholder", module.prompt);
+      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+
+      fireEvent.submit(input.closest("form"));
+
+      for (const requestMock of [
+        mocks.fetchDashboard,
+        mocks.fetchAlertsWithActions,
+        mocks.fetchMonitoringAgents,
+        mocks.fetchActions,
+      ]) {
+        expect(calledWithAgent(requestMock, module.id)).toBe(false);
+      }
     }
 
-    fireEvent.submit(input.closest("form"));
     expect(mocks.streamChat).not.toHaveBeenCalled();
-
-    for (const requestMock of [
-      mocks.fetchDashboard,
-      mocks.fetchAlertsWithActions,
-      mocks.fetchMonitoringAgents,
-      mocks.fetchActions,
-    ]) {
-      expect(calledWithAgent(requestMock, "retail.retail")).toBe(false);
-    }
     expect(mocks.monitoring.recalculate).not.toHaveBeenCalled();
     expect(mocks.simulateAction).not.toHaveBeenCalled();
     expect(mocks.approveAction).not.toHaveBeenCalled();
 
     fireEvent.click(document.querySelector(".chat-close-button"));
     expect(document.querySelector("main")).toHaveClass("chat-closed");
-    expect(retailButton).toHaveClass("active");
-    expect(retailDashboard).toBeInTheDocument();
+    expect(buttonNamed("Replenishment")).toHaveClass("active");
+    expect(screen.getByTestId("retail-dashboard")).toBeInTheDocument();
   });
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {
@@ -487,9 +549,11 @@ describe("Retail dashboard and frontend-only chat", () => {
       );
     });
 
-    await selectAgent("Retail");
-    expect(screen.getByRole("heading", { name: "Ask Retail" })).toBeInTheDocument();
-    expect(screen.getByText("Retail, ready when you are")).toBeInTheDocument();
+    await selectAgent("Demand Forecasting");
+    expect(screen.getByRole("heading", { name: "Ask Demand" })).toBeInTheDocument();
+    expect(
+      screen.getByText("Demand Forecasting, ready when you are"),
+    ).toBeInTheDocument();
     expect(screen.queryByText("Treasury, ready when you are")).not.toBeInTheDocument();
     expect(mocks.streamChat).toHaveBeenCalledTimes(2);
   });
