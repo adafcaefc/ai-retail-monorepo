@@ -9,6 +9,7 @@ import InventoryRiskFilters from "./components/InventoryRiskFilters.jsx";
 import InventoryRiskSkeleton from "./components/InventoryRiskSkeleton.jsx";
 import RiskKpiGrid from "./components/RiskKpiGrid.jsx";
 import RiskRegisterTable from "./components/RiskRegisterTable.jsx";
+import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
 import { ALL, DEFAULT_SCOPE, GROSS_VS_NET_NOTE } from "./data/contract.js";
 import { loadInventoryRiskDashboard } from "./data/dashboardData.js";
 
@@ -167,7 +168,20 @@ export default function InventoryRiskDashboard() {
         </div>
       ) : null}
 
-      <RiskKpiGrid kpis={dashboard.kpis} />
+      <RiskKpiGrid
+        kpis={dashboard.kpis}
+        // The reorder zone is Stockout plus Low, and the state filter takes one
+        // value — so the drill lands on Stockout, the more urgent half, rather
+        // than inventing a compound filter the contract does not carry.
+        onDrillStockoutRisk={() =>
+          patchScope({ state: scope.state === "Stockout" ? ALL : "Stockout" })
+        }
+      />
+
+      <SuggestedBestAction
+        routes={dashboard.best_actions}
+        onSelect={(sku) => patchScope({ sku })}
+      />
 
       <div className="risk-chart-grid">
         <AtRiskByStatePanel rows={dashboard.at_risk_by_state} />

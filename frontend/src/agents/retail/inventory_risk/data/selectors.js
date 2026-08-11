@@ -81,13 +81,32 @@ function sum(rows, key) {
   return rows.reduce((total, row) => total + (row[key] ?? 0), 0);
 }
 
-/** The six A2 KPIs plus slow-mover, from pre-resolved flags only. */
+/**
+ * The six A2 KPIs plus slow-mover, from pre-resolved flags only.
+ *
+ * Two of the tiles carry a money figure under their count:
+ * `overstock_excess_value` is only the position ABOVE Max, not the full value
+ * of every overstocked SKU — the workbook keeps both senses of "overstock"
+ * alive and this is the narrower one (A2 spec section 10 note 3).
+ * `expiry_value` prices the units already past their shelf-life cover.
+ */
 export function computeKpis(items) {
   const count = items.length;
   return {
     stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
     overstock_skus: items.filter((item) => item.is_overstock).length,
+    overstock_excess_value: items.reduce(
+      (total, item) =>
+        item.is_overstock && item.position > item.max
+          ? total + (item.position - item.max) * item.price
+          : total,
+      0,
+    ),
     expiry_units: sum(items, "expiry_units"),
+    expiry_value: items.reduce(
+      (total, item) => total + item.expiry_units * item.price,
+      0,
+    ),
     slow_mover_skus: items.filter((item) => item.is_slow_mover).length,
     avg_dos: count ? sum(items, "dos") / count : 0,
     inventory_value: sum(items, "inv_value"),
@@ -95,6 +114,58 @@ export function computeKpis(items) {
     healthy_skus: items.filter((item) => item.state === HEALTHY_STATE).length,
     sku_count: count,
   };
+}
+
+/**
+ * Suggested Best Action (A2 spec section 1 point 8).
+ *
+ * Two routes, not a ranked list of one: Stockout and Low are a replenishment
+ * problem and go to Agent 3, while Expiry, Overstock and Slow-mover are a
+ * markdown/assortment problem and go to Agent 5. The split already exists per
+ * row as `next_agent`; this only groups it and sizes each side so the board
+ * can say which route is the bigger call today.
+ */
+export function computeBestActions(items) {
+  const routes = new Map();
+
+  for (const item of items) {
+    if (item.state === HEALTHY_STATE) continue;
+
+    let route = routes.get(item.next_agent);
+    if (!route) {
+      route = routes.set(item.next_agent, {
+        next_agent: item.next_agent,
+        sku_count: 0,
+        value: 0,
+        states: new Set(),
+        top_skus: [],
+      }).get(item.next_agent);
+    }
+    route.sku_count += 1;
+    route.value += item.at_risk_value;
+    route.states.add(item.state);
+    route.top_skus.push(item);
+  }
+
+  return [...routes.values()]
+    .map((route) => ({
+      next_agent: route.next_agent,
+      sku_count: route.sku_count,
+      value: route.value,
+      states: STATE_ORDER.filter((state) => route.states.has(state)),
+      top_skus: route.top_skus
+        .sort(
+          (a, b) => a.severity_rank - b.severity_rank || b.at_risk_value - a.at_risk_value,
+        )
+        .slice(0, 3)
+        .map((item) => ({
+          sku_id: item.sku_id,
+          name: item.name,
+          state: item.state,
+          value: item.at_risk_value,
+        })),
+    }))
+    .sort((a, b) => b.value - a.value);
 }
 
 /**
@@ -168,9 +239,18 @@ export function computeAtRiskByCategory(items) {
 }
 
 /**
- * Gross per-store stockout counts, worst first (A2 spec section 6).
- * See GROSS_VS_NET_NOTE in the contract: these exceed the chain-net headline
- * on purpose.
+ * Gross per-store risk breakdown, worst first (A2 spec section 6).
+ *
+ * The four state segments add up to `sku_count` exactly — the fixture builder
+ * refuses to emit a store where they do not. That invariant is the point: an
+ * earlier version stacked a partial breakdown, so a dozen SKUs per store fell
+ * outside every bar and the chart quietly understated the store.
+ *
+ * `stockout_count + low_count === stockout_risk_count`, verified across all
+ * 16,000 source rows, so the reorder zone is the first two segments.
+ *
+ * See GROSS_VS_NET_NOTE in the contract: these totals exceed the chain-net
+ * headline on purpose.
  */
 export function computeStockoutByStore(stores) {
   return [...stores]
@@ -178,9 +258,12 @@ export function computeStockoutByStore(stores) {
       store_id: store.store_id,
       label: store.name,
       cluster: store.cluster,
+      stockout_count: store.stockout_count,
+      low_count: store.low_count,
+      other_at_risk_count: store.other_at_risk_count,
+      healthy_count: store.healthy_count,
       stockout_risk_count: store.stockout_risk_count,
       at_risk_count: store.at_risk_count,
-      healthy_count: store.sku_count - store.at_risk_count,
       sku_count: store.sku_count,
       at_risk_value: store.at_risk_value,
     }))
@@ -323,6 +406,7 @@ export function buildDashboardFromFixture(fixture, scope = {}) {
     at_risk_by_cluster: computeAtRiskByCluster(stores),
     at_risk_by_legal_entity: computeAtRiskByLegalEntity(stores, legalEntities),
     expiry_timeline: computeExpiryTimeline(items),
+    best_actions: computeBestActions(items),
     risk_register: computeRiskRegister(items),
     reference_by_vertical: fixture.reference_by_vertical,
   };

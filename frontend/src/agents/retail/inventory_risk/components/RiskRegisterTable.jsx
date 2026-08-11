@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
+import { REGISTER_FORMULAS } from "../data/contract.js";
 import {
   formatDays,
   formatIdrExact,
@@ -90,21 +91,39 @@ export default function RiskRegisterTable({ rows, onSelect }) {
                 }}
               >
                 <td>
-                  <span className="risk-sku-id">{row.sku_id}</span>
-                  <span className="risk-sku-name">{row.name}</span>
+                  {/* Name first: a reader scanning for a product recognises it
+                      by name, and the code is the lookup key underneath. */}
+                  <span className="risk-sku-name-primary">{row.name}</span>
+                  <span className="risk-sku-meta">
+                    {row.sku_id} · {row.category_name}
+                  </span>
                 </td>
                 <td>
                   <span className={`risk-chip risk-chip--${stateSlug(row.state)}`}>
                     {t(row.state)}
                   </span>
                 </td>
-                <td className="num">{formatUnits(row.on_hand, language)}</td>
-                <td className="num">{formatUnits(row.open_po, language)}</td>
-                <td className="num">{formatUnits(row.position, language)}</td>
-                <td className="num">{formatUnits(row.rop, language)}</td>
-                <td className="num">{formatDays(row.dos, language)}</td>
-                <td className="num">{formatIdrExact(row.inv_value, language)}</td>
-                <td className="risk-next-agent">{t(row.next_agent)}</td>
+                {/* Each figure carries its own formula, not just the header, so
+                    the definition is reachable wherever the eye lands. */}
+                <td className="num" title={t(REGISTER_FORMULAS.on_hand)}>
+                  {formatUnits(row.on_hand, language)}
+                </td>
+                <td className="num" title={t(REGISTER_FORMULAS.open_po)}>
+                  {formatUnits(row.open_po, language)}
+                </td>
+                <td className="num" title={t(REGISTER_FORMULAS.position)}>
+                  <b>{formatUnits(row.position, language)}</b>
+                </td>
+                <td className="num" title={t(REGISTER_FORMULAS.rop)}>
+                  {formatUnits(row.rop, language)}
+                </td>
+                <td className="num" title={t(REGISTER_FORMULAS.dos)}>
+                  {formatDays(row.dos, language)}
+                </td>
+                <td className="num" title={t(REGISTER_FORMULAS.inv_value)}>
+                  {formatIdrExact(row.inv_value, language)}
+                </td>
+                <td className="risk-next-agent">→ {t(row.next_agent)}</td>
               </tr>
             ))}
           </tbody>

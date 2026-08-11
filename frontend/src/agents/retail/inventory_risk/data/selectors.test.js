@@ -208,6 +208,96 @@ describe("derived views", () => {
     // Gross sums local pockets; chain-net nets them off. A2 spec 10 note 1.
     expect(clusterTotal).toBeGreaterThan(payload.kpis.at_risk_value);
   });
+
+  it("stacks every SKU a store carries, leaving none outside a segment", () => {
+    // The defect this guards: an earlier chart stacked only part of the
+    // breakdown, so a dozen SKUs per store sat in no bar at all and the column
+    // silently understated the store.
+    const { stockout_by_store: rows } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+
+    expect(rows).toHaveLength(160);
+    for (const row of rows) {
+      const segments =
+        row.stockout_count +
+        row.low_count +
+        row.other_at_risk_count +
+        row.healthy_count;
+      expect(segments).toBe(row.sku_count);
+      // The reorder zone is exactly the first two segments.
+      expect(row.stockout_count + row.low_count).toBe(row.stockout_risk_count);
+    }
+  });
+});
+
+describe("money figures behind the counts", () => {
+  it("prices overstock as the excess above Max, not the whole position", () => {
+    const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const overstocked = fixture.items.filter((item) => item.is_overstock);
+
+    const excess = overstocked.reduce(
+      (running, item) =>
+        item.position > item.max
+          ? running + (item.position - item.max) * item.price
+          : running,
+      0,
+    );
+    const fullPosition = overstocked.reduce(
+      (running, item) => running + item.position * item.price,
+      0,
+    );
+
+    expect(kpis.overstock_excess_value).toBeCloseTo(excess, 6);
+    // A2 spec 10 note 3: the two senses of "overstock" must not be conflated.
+    expect(kpis.overstock_excess_value).toBeLessThan(fullPosition);
+  });
+
+  it("prices expiry exposure from the units already past cover", () => {
+    const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const expected = fixture.items.reduce(
+      (running, item) => running + item.expiry_units * item.price,
+      0,
+    );
+
+    expect(kpis.expiry_value).toBeCloseTo(expected, 6);
+    expect(kpis.expiry_value).toBeGreaterThan(0);
+  });
+});
+
+describe("suggested best action", () => {
+  it("routes every non-healthy SKU to exactly one owning agent", () => {
+    const { best_actions: routes, kpis } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+
+    const routed = routes.reduce((running, route) => running + route.sku_count, 0);
+    expect(routed).toBe(kpis.sku_count - kpis.healthy_skus);
+
+    const names = routes.map((route) => route.next_agent).sort();
+    expect(names).toEqual(["3 Replenish", "5 Markdown"]);
+  });
+
+  it("sends the reorder states to Agent 3 and the rest to Agent 5", () => {
+    const { best_actions: routes } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+    const byAgent = new Map(routes.map((route) => [route.next_agent, route]));
+
+    expect(byAgent.get("3 Replenish").states).toEqual(["Stockout", "Low"]);
+    for (const state of byAgent.get("5 Markdown").states) {
+      expect(["Expiry", "Overstock", "Slow-mover"]).toContain(state);
+    }
+    // Ranked by exposure, and each route offers a short worklist.
+    expect(routes[0].value).toBeGreaterThanOrEqual(routes[1].value);
+    for (const route of routes) {
+      expect(route.top_skus.length).toBeGreaterThan(0);
+      expect(route.top_skus.length).toBeLessThanOrEqual(3);
+    }
+  });
 });
 
 describe("the data gateway", () => {

@@ -189,29 +189,82 @@ def build_store_rows(
                 "cluster": store["cluster"],
                 "channel": store["channel"],
                 "sku_count": 0,
+                # Broken out per state so the store chart can stack segments
+                # that add up to sku_count. Rendering a partial breakdown as if
+                # it covered the whole store is how the earlier version of that
+                # chart came to leave SKUs out of every bar.
+                "stockout_count": 0,
+                "low_count": 0,
+                "other_at_risk_count": 0,
+                "healthy_count": 0,
                 "stockout_risk_count": 0,
                 "at_risk_count": 0,
                 "at_risk_value": 0.0,
                 "inv_value": 0.0,
             }
         bucket["sku_count"] += 1
+
+        state = row["state"]
+        if state == "Stockout":
+            bucket["stockout_count"] += 1
+        elif state == "Low":
+            bucket["low_count"] += 1
+        elif state == "Healthy":
+            bucket["healthy_count"] += 1
+        else:
+            bucket["other_at_risk_count"] += 1
+
+        # Verified across all 16,000 rows: `position < rop` holds for exactly
+        # the Stockout and Low rows, so the reorder-zone count is the sum of
+        # those two segments rather than an independent measure.
         if row["position"] < row["rop"]:
             bucket["stockout_risk_count"] += 1
-        if row["state"] != "Healthy":
+        if state != "Healthy":
             bucket["at_risk_count"] += 1
         bucket["at_risk_value"] += row["at_risk"]
         bucket["inv_value"] += row["inv_value"]
+
+    for bucket in grouped.values():
+        segments = (
+            bucket["stockout_count"]
+            + bucket["low_count"]
+            + bucket["other_at_risk_count"]
+            + bucket["healthy_count"]
+        )
+        if segments != bucket["sku_count"]:
+            raise SystemExit(
+                f"FAIL  {bucket['store_id']}: state segments sum to {segments}"
+                f" but the store stocks {bucket['sku_count']} SKUs"
+            )
+        if bucket["stockout_count"] + bucket["low_count"] != bucket["stockout_risk_count"]:
+            raise SystemExit(
+                f"FAIL  {bucket['store_id']}: Stockout+Low disagrees with the"
+                " position-below-ROP count"
+            )
 
     return sorted(grouped.values(), key=lambda row: row["store_id"])
 
 
 def kpis_for(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """The six A2 KPIs plus slow-mover, from pre-resolved flags only."""
+    """The six A2 KPIs plus slow-mover, from pre-resolved flags only.
+
+    `overstock_excess_value` and `expiry_value` are the money figures the A2
+    cards show underneath their counts. Note `overstock_excess_value` counts
+    only the position above Max, not the full position value — the workbook
+    keeps two different senses of "overstock" side by side (A2 spec section 10
+    note 3), and this is the narrower one.
+    """
     count = len(items)
     return {
         "stockout_risk_skus": sum(1 for row in items if row["is_stockout_risk"]),
         "overstock_skus": sum(1 for row in items if row["is_overstock"]),
+        "overstock_excess_value": sum(
+            (row["position"] - row["max"]) * row["price"]
+            for row in items
+            if row["is_overstock"] and row["position"] > row["max"]
+        ),
         "expiry_units": sum(row["expiry_units"] for row in items),
+        "expiry_value": sum(row["expiry_units"] * row["price"] for row in items),
         "slow_mover_skus": sum(1 for row in items if row["is_slow_mover"]),
         "avg_dos": (sum(row["dos"] for row in items) / count) if count else 0.0,
         "inventory_value": sum(row["inv_value"] for row in items),

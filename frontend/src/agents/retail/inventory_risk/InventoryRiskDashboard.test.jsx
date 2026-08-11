@@ -157,9 +157,10 @@ describe("InventoryRiskDashboard", () => {
       expect(document.querySelectorAll(".risk-row")).toHaveLength(1);
     });
     // The term also appears in the search box and the scope chip, so assert
-    // against the register row itself.
+    // against the register row itself. The code shares a line with the
+    // category, so match the meta line rather than a bare text node.
     const row = document.querySelector(".risk-row");
-    expect(within(row).getByText("GRC-001")).toBeInTheDocument();
+    expect(row.querySelector(".risk-sku-meta").textContent).toMatch(/^GRC-001 · /);
   });
 
   it("disables the store filter while the per-store dataset is unavailable", async () => {
@@ -186,5 +187,93 @@ describe("InventoryRiskDashboard", () => {
 
     const first = document.querySelector(".risk-row");
     expect(first.className).toContain("risk-row--stockout");
+  });
+
+  it("prices overstock and expiry underneath their counts", async () => {
+    await renderSettled();
+
+    const overstock = screen
+      .getByText("Overstock SKUs")
+      .closest(".risk-kpi");
+    const expiry = screen
+      .getByText("Expiry-risk units")
+      .closest(".risk-kpi");
+
+    // A count alone cannot be weighed against anything; the money line is what
+    // makes the tile actionable.
+    expect(within(overstock).getByText(/excess/)).toBeInTheDocument();
+    expect(within(overstock).getByText(/Rp/)).toBeInTheDocument();
+    expect(within(expiry).getByText(/write-off risk/)).toBeInTheDocument();
+    expect(within(expiry).getByText(/Rp/)).toBeInTheDocument();
+  });
+
+  it("shows the days-of-supply target band", async () => {
+    await renderSettled();
+
+    const tile = screen.getByText("Avg days of supply").closest(".risk-kpi");
+    expect(within(tile).getByText(/target 7–21d/)).toBeInTheDocument();
+  });
+
+  it("carries each KPI's formula on the tile itself", async () => {
+    await renderSettled();
+
+    const tile = screen.getByText("Stockout-risk SKUs").closest(".risk-kpi");
+    expect(tile).toHaveAttribute("title", expect.stringContaining("Position < ROP"));
+  });
+
+  it("drills to the reorder zone from the stockout tile, and back again", async () => {
+    await renderSettled();
+
+    const tile = screen.getByText("Stockout-risk SKUs").closest(".risk-kpi");
+    expect(tile.tagName).toBe("BUTTON");
+
+    fireEvent.click(tile);
+    await waitFor(() => {
+      const rows = document.querySelectorAll(".risk-row");
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        expect(row.className).toContain("risk-row--stockout");
+      }
+    });
+
+    // Clicking again clears it rather than trapping the reader in the filter.
+    fireEvent.click(screen.getByText("Stockout-risk SKUs").closest(".risk-kpi"));
+    await waitFor(() => {
+      expect(screen.getByText("All retail inventory")).toBeInTheDocument();
+    });
+  });
+
+  it("routes non-healthy SKUs to the agent that owns the fix", async () => {
+    await renderSettled();
+
+    const panel = screen
+      .getByText("Suggested best action")
+      .closest(".risk-panel");
+
+    expect(within(panel).getByText("→ 3 Replenish")).toBeInTheDocument();
+    expect(within(panel).getByText("→ 5 Markdown")).toBeInTheDocument();
+    expect(panel.querySelectorAll(".risk-action")).toHaveLength(2);
+  });
+
+  it("puts the product name ahead of its code in the register", async () => {
+    await renderSettled();
+
+    const row = document.querySelector(".risk-row");
+    const primary = row.querySelector(".risk-sku-name-primary");
+    const meta = row.querySelector(".risk-sku-meta");
+
+    expect(primary.textContent).not.toMatch(/^[A-Z]{3}-\d{3}$/);
+    expect(meta.textContent).toMatch(/^[A-Z]{3}-\d{3} · /);
+  });
+
+  it("explains each register figure where the figure is", async () => {
+    await renderSettled();
+
+    const cells = document.querySelector(".risk-row").querySelectorAll("td.num");
+    const titles = [...cells].map((cell) => cell.getAttribute("title"));
+
+    expect(titles).toContain("Position = On-hand + Open PO");
+    expect(titles).toContain("ROP = ADS × (Lead + Safety)");
+    expect(titles).toContain("DoS = Position ÷ ADS");
   });
 });

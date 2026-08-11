@@ -29,18 +29,29 @@ function ValueTooltip({ active, payload, label }) {
   );
 }
 
-function CountTooltip({ active, payload, label }) {
+function StoreTooltip({ active, payload }) {
   const { language, t } = useLanguage();
   if (!active || !payload?.length) return null;
 
   const point = payload[0].payload;
   return (
     <div className="risk-chart-tooltip">
-      <strong>{label}</strong>
+      <strong>
+        {point.store_id} · {point.label}
+      </strong>
       <span>
-        {t("Stockout-risk SKUs")}: {formatUnits(point.stockout_risk_count, language)}
+        {t("Stockout")}: {formatUnits(point.stockout_count, language)}
       </span>
       <span>
+        {t("Low")}: {formatUnits(point.low_count, language)}
+      </span>
+      <span>
+        {t("Other at risk")}: {formatUnits(point.other_at_risk_count, language)}
+      </span>
+      <span>
+        {t("Healthy")}: {formatUnits(point.healthy_count, language)}
+      </span>
+      <span className="risk-tooltip-total">
         {t("SKUs stocked")}: {formatUnits(point.sku_count, language)}
       </span>
       <span>
@@ -159,6 +170,11 @@ export default function DimensionCharts({
             {t("Gross · top 12")}
           </span>
         </header>
+        {/* One stack per store covering every SKU it carries. All four
+            segments share a stackId so the column height is `sku_count`; the
+            reorder zone is the first two, which the fixture guarantees equals
+            `stockout_risk_count`. An earlier version stacked only part of the
+            breakdown, so a dozen SKUs per store sat outside every bar. */}
         <div className="risk-chart" role="img" aria-label={t("Stockout-risk by store")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={storeData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
@@ -178,12 +194,21 @@ export default function DimensionCharts({
                 width={34}
                 tickFormatter={(value) => formatUnits(value, language)}
               />
-              <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<CountTooltip />} />
-              <Bar dataKey="stockout_risk_count" fill="var(--risk-stockout)" isAnimationActive={false} />
-              <Bar dataKey="healthy_count" stackId="rest" fill="var(--gray-200)" isAnimationActive={false} />
+              <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<StoreTooltip />} />
+              <Bar dataKey="stockout_count" stackId="skus" fill="var(--risk-stockout)" isAnimationActive={false} />
+              <Bar dataKey="low_count" stackId="skus" fill="var(--risk-low)" isAnimationActive={false} />
+              <Bar dataKey="other_at_risk_count" stackId="skus" fill="var(--risk-slow-mover)" isAnimationActive={false} />
+              <Bar dataKey="healthy_count" stackId="skus" fill="var(--gray-200)" isAnimationActive={false} />
             </BarChart>
           </ResponsiveContainer>
         </div>
+
+        <ul className="risk-legend" aria-hidden="true">
+          <li><i style={{ background: "var(--risk-stockout)" }} />{t("Stockout")}</li>
+          <li><i style={{ background: "var(--risk-low)" }} />{t("Low")}</li>
+          <li><i style={{ background: "var(--risk-slow-mover)" }} />{t("Other at risk")}</li>
+          <li><i style={{ background: "var(--gray-200)" }} />{t("Healthy")}</li>
+        </ul>
       </article>
 
       <article className="risk-panel">

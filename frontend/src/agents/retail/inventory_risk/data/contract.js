@@ -130,10 +130,39 @@ export const AT_RISK_VALUE_NOTE =
   "At-risk value is the full position value of every non-healthy SKU, not an " +
   "expected loss.";
 
-/** Route a register row to the agent that owns the fix (A2 spec section 5c). */
-export function nextAgentFor(state) {
-  return state === "Stockout" || state === "Low" ? "3 Replenish" : "5 Markdown";
-}
+/**
+ * The healthy band for average days of supply (A2 spec section 3). Outside it
+ * the tile is flagged: below means the scope is running thin, above means
+ * capital is sitting still.
+ */
+export const DOS_TARGET = Object.freeze({ min: 7, max: 21 });
+
+/**
+ * The formula behind each tile, shown on hover.
+ *
+ * These are labels, not logic — every one of them is already resolved upstream
+ * (see the note at the top of this file). They exist so a reader can see what
+ * a number means without leaving the board, which is what the mockup's
+ * `data-fx` attributes did.
+ */
+export const KPI_FORMULAS = Object.freeze({
+  stockout_risk_skus: "count( Position < ROP )",
+  overstock_skus: "count( DoS > 15 ) · excess = Σ (Position − Max) × price",
+  expiry_units: "Σ max(0, Position − ADS × shelf-life)",
+  slow_mover_skus: "count( growth < 1.0 AND DoS > 10 )",
+  avg_dos: "mean( Position ÷ ADS )",
+  inventory_value: "Σ Position × unit price",
+});
+
+/** Column formulas for the risk register, shown on hover per cell. */
+export const REGISTER_FORMULAS = Object.freeze({
+  on_hand: "On-hand = Position − Open PO",
+  open_po: "Open PO = ordered, not yet received",
+  position: "Position = On-hand + Open PO",
+  rop: "ROP = ADS × (Lead + Safety)",
+  dos: "DoS = Position ÷ ADS",
+  inv_value: "Value = Position × price",
+});
 
 /**
  * Validate and fill a dashboard payload from either source.
@@ -179,7 +208,9 @@ export function normalizeInventoryRiskDashboard(payload) {
     kpis: {
       stockout_risk_skus: 0,
       overstock_skus: 0,
+      overstock_excess_value: 0,
       expiry_units: 0,
+      expiry_value: 0,
       slow_mover_skus: 0,
       avg_dos: 0,
       inventory_value: 0,
@@ -198,6 +229,7 @@ export function normalizeInventoryRiskDashboard(payload) {
       buckets: payload.expiry_timeline?.buckets ?? [],
       watchlist: payload.expiry_timeline?.watchlist ?? [],
     },
+    best_actions: payload.best_actions ?? [],
     risk_register: payload.risk_register ?? [],
     reference_by_vertical: payload.reference_by_vertical ?? [],
   };

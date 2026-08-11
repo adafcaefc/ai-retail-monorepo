@@ -213,6 +213,17 @@ const CHROME = {
   "Units beyond shelf-life cover": "Unit melebihi masa simpan",
   "Declining growth, high cover": "Pertumbuhan turun, cakupan tinggi",
   "Mean position ÷ ADS": "Rata-rata posisi ÷ ADS",
+  excess: "kelebihan",
+  "write-off risk": "risiko write-off",
+  target: "target",
+  "Click to show only the reorder zone": "Klik untuk menampilkan zona pemesanan saja",
+
+  // Suggested best action.
+  "Suggested best action": "Tindakan terbaik yang disarankan",
+  "Routed to the owning agent": "Diteruskan ke agen pemiliknya",
+  "Nothing needs action in the current scope.":
+    "Tidak ada yang perlu ditindak pada cakupan saat ini.",
+  "Other at risk": "Berisiko lainnya",
 
   // Charts.
   "At-risk value by state": "Nilai berisiko per status",
@@ -227,7 +238,6 @@ const CHROME = {
   "Other categories": "Kategori lain",
   Other: "Lainnya",
   Total: "Total",
-  Share: "Porsi",
   "Top 10": "10 teratas",
   Gross: "Bruto",
   "Gross · top 12": "Bruto · 12 teratas",
@@ -254,6 +264,9 @@ const CHROME = {
   DoS: "Hari persediaan",
   Value: "Nilai",
   "Next agent": "Agen berikutnya",
+  "On-hand = Position − Open PO": "Stok di tangan = Posisi − PO terbuka",
+  "Open PO = ordered, not yet received":
+    "PO terbuka = sudah dipesan, belum diterima",
   "Position = On-hand + Open PO": "Posisi = Stok di tangan + PO terbuka",
   "ROP = ADS × (Lead + Safety)": "ROP = ADS × (Lead + Safety)",
   "DoS = Position ÷ ADS": "Hari persediaan = Posisi ÷ ADS",

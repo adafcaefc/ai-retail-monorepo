@@ -7,7 +7,7 @@
  * still be summed and sorted.
  */
 
-import { formatNumber, numberLocale } from "../../../format.js";
+import { formatNumber } from "../../../format.js";
 
 /**
  * Inventory value runs to hundreds of billions of rupiah, so a bare grouped
@@ -82,12 +82,12 @@ export function stateSlug(state) {
 }
 
 /**
- * Chart fills read the same custom properties the CSS classes use, so a
- * palette change lands in both at once. Recharts needs a concrete value for
- * `fill`, and `var()` resolves fine there.
+ * One accent per KPI tile, matching the mockup's six-colour strip. Returned as
+ * custom properties rather than hex so the palette stays in `styles.css` and a
+ * theme change reaches the tiles without touching this file.
  */
-export function stateColor(state) {
-  return `var(--risk-${stateSlug(state)})`;
+export function kpiAccent(id) {
+  return `var(--risk-kpi-${id.replace(/_/g, "-")})`;
 }
 
 /** Categorical palette for the category segments inside a stacked bar. */
@@ -123,5 +123,3 @@ export function kpiTone(id, value) {
       return "neutral";
   }
 }
-
-export { numberLocale };
