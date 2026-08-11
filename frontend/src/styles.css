@@ -6132,6 +6132,12 @@ img.ey-logo {
   --demand-band: var(--blue-200);
   --demand-boundary: var(--gray-400);
   --demand-trend: var(--green-500);
+  --demand-dimension: var(--blue-500);
+  --demand-store: var(--blue-600);
+  --demand-season: var(--gray-300);
+  --demand-current-month: var(--blue-500);
+  --demand-baseline: var(--blue-500);
+  --demand-scenario: var(--green-500);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -6295,6 +6301,45 @@ img.ey-logo {
   padding: 6px var(--space-3);
   cursor: pointer;
   font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.demand-scenario-applied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border: 1px solid var(--accent-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-xs);
+}
+
+.demand-scenario-applied > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demand-scenario-applied span {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demand-scenario-applied button {
+  flex: 0 0 auto;
+  border: 1px solid var(--accent-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--accent-warning-strong);
+  padding: 5px 9px;
+  cursor: pointer;
+  font-size: inherit;
   font-weight: 750;
 }
 
@@ -6829,6 +6874,13 @@ img.ey-logo {
   .demand-scope-summary { justify-content: flex-start; }
   .demand-data-note { white-space: normal; }
 
+  .demand-scenario-applied {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .demand-scenario-applied span { white-space: normal; }
+
   .demand-summary-strip {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -6849,5 +6901,431 @@ img.ey-logo {
   .demand-forecasting-dashboard.is-refreshing .demand-trend-panel,
   .demand-forecasting-dashboard.is-refreshing .demand-detail-panel {
     transition: none;
+  }
+}
+
+/* Demand Forecasting Phase 2: shared-shell parity ------------------------ */
+
+.demand-dimensions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.demand-dimension-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.demand-dimension-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 330px;
+}
+
+.demand-dimension-chart {
+  flex: 1 1 auto;
+  min-height: 245px;
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.demand-store-chart {
+  min-height: 240px;
+  max-height: 490px;
+  padding: var(--space-2) var(--space-3) 0;
+}
+
+.demand-dimension-drilldowns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.demand-dimension-drilldowns button {
+  max-width: 180px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demand-dimension-drilldowns button:hover,
+.demand-dimension-drilldowns button:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
+}
+
+.demand-legal-entity-panel {
+  min-height: 350px;
+}
+
+.demand-legal-entity-panel .demand-dimension-chart {
+  min-height: 220px;
+}
+
+.demand-chain-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.demand-chain-summary span {
+  white-space: nowrap;
+}
+
+.demand-chain-summary b {
+  color: var(--primary-deep);
+}
+
+.demand-chain-summary > strong {
+  margin-left: auto;
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.demand-simulator {
+  overflow: visible;
+}
+
+.demand-simulator-head {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.demand-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.demand-simulator-actions .demand-button:disabled {
+  cursor: not-allowed;
+}
+
+.demand-drive-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  margin: var(--space-3) var(--space-4) 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+  padding: 5px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.demand-drive-toggle input {
+  accent-color: var(--primary);
+}
+
+.demand-lever-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(170px, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-lever {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--space-2) var(--space-3);
+}
+
+.demand-lever > span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.demand-lever output {
+  color: var(--primary-deep);
+  font-variant-numeric: tabular-nums;
+  font-weight: 850;
+}
+
+.demand-lever input[type="range"] {
+  width: 100%;
+  accent-color: var(--primary);
+}
+
+.demand-lever small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.demand-simulator-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.75fr);
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.demand-simulation-chart {
+  height: 270px;
+  min-width: 0;
+}
+
+.demand-scenario-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(130px, 1fr));
+  gap: var(--space-2);
+}
+
+.demand-scenario-metrics article {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+
+.demand-scenario-metrics span,
+.demand-scenario-metrics small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.demand-scenario-metrics strong {
+  margin: 3px 0;
+  color: var(--ink);
+  font-size: var(--text-lg);
+  font-variant-numeric: tabular-nums;
+}
+
+.demand-scenario-compare {
+  min-height: 260px;
+}
+
+.demand-compare-chart {
+  height: 260px;
+  padding: var(--space-2) var(--space-4);
+}
+
+.demand-compare-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-height: 190px;
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.demand-compare-empty strong {
+  color: var(--ink);
+  font-size: var(--text-base);
+}
+
+.demand-scenario-table-wrap,
+.demand-plan-table {
+  overflow-x: auto;
+  border-top: 1px solid var(--line);
+}
+
+.demand-scenario-table-wrap table,
+.demand-plan-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.demand-scenario-table-wrap th,
+.demand-scenario-table-wrap td,
+.demand-plan-table th,
+.demand-plan-table td {
+  border-bottom: 1px solid var(--gray-50);
+  padding: var(--space-2) var(--space-3);
+  color: var(--ink);
+  text-align: left;
+}
+
+.demand-scenario-table-wrap th,
+.demand-plan-table th {
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.demand-scenario-table-wrap td:nth-child(2) {
+  color: var(--muted);
+}
+
+.demand-scenario-table-wrap td:last-child button {
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.demand-pending-badge {
+  border: 1px solid var(--accent-warning-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+  padding: 4px 9px;
+  font-size: var(--text-xs);
+  font-weight: 800;
+}
+
+.demand-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-action-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  padding: var(--space-4);
+}
+
+.demand-action-card--primary {
+  border-color: var(--accent-info-border);
+  background: var(--accent-info-soft);
+}
+
+.demand-action-card > span {
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.demand-action-card h3 {
+  margin: var(--space-1) 0 var(--space-2);
+  color: var(--ink);
+  font-size: var(--text-base);
+}
+
+.demand-action-card p {
+  min-height: 36px;
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  line-height: 1.45;
+}
+
+.demand-action-card button,
+.demand-disabled-transaction {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  color: var(--gray-500);
+  padding: 6px 10px;
+  cursor: not-allowed;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.demand-plan-preview {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-plan-preview > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demand-plan-preview strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.demand-plan-preview span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.demand-plan-table td:first-child strong,
+.demand-plan-table td:first-child small {
+  display: block;
+}
+
+.demand-plan-table td:first-child small {
+  color: var(--muted);
+}
+
+.demand-disabled-transaction {
+  margin: var(--space-3);
+}
+
+@container demand-board (max-width: 940px) {
+  .demand-dimension-row,
+  .demand-simulator-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .demand-lever-grid {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
+
+  .demand-chain-summary > strong {
+    width: 100%;
+    margin-left: 0;
+  }
+}
+
+@container demand-board (max-width: 620px) {
+  .demand-lever-grid,
+  .demand-scenario-metrics,
+  .demand-action-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .demand-simulator-actions,
+  .demand-plan-preview {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .demand-simulator-actions .demand-button {
+    flex: 1;
   }
 }

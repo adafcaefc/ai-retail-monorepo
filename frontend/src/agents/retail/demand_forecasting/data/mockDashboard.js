@@ -2,7 +2,10 @@ import {
   DEMAND_AGENT_ID,
   DEMAND_GRAINS,
   DEMAND_HORIZONS,
+  DEFAULT_DEMAND_LEVERS,
+  DEMAND_LEVER_DEFINITIONS,
   normalizeDemandDashboard,
+  normalizeDemandLevers,
   normalizeDemandQuery,
 } from "./contract.js";
 import { buildDemandDashboard } from "./mockCalculations.js";
@@ -21,9 +24,25 @@ function spark(value, pattern) {
   return pattern.map((factor) => Math.round(value * factor * 10) / 10);
 }
 
-export async function getMockDemandForecastingDashboard(inputQuery = {}) {
+function simulationMetrics(metrics) {
+  return {
+    forecast_next_7d: metrics.next7,
+    stockout_risk_skus: metrics.risk,
+    forecast_accuracy_pct: metrics.accuracy,
+    predicted_to_trend: metrics.trending,
+  };
+}
+
+function isApplied(levers) {
+  return Object.keys(DEFAULT_DEMAND_LEVERS).some(
+    (key) => levers[key] !== DEFAULT_DEMAND_LEVERS[key],
+  );
+}
+
+export async function getMockDemandForecastingDashboard(inputQuery = {}, inputLevers = {}) {
   const query = normalizeDemandQuery(inputQuery);
-  const calculated = buildDemandDashboard(query);
+  const levers = normalizeDemandLevers(inputLevers);
+  const calculated = buildDemandDashboard(query, levers);
   const { metrics } = calculated;
   const visibleRows = calculated.detailRows.slice(
     query.detail_offset,
@@ -31,7 +50,7 @@ export async function getMockDemandForecastingDashboard(inputQuery = {}) {
   );
 
   return normalizeDemandDashboard({
-    schema_version: 1,
+    schema_version: 2,
     agent: DEMAND_AGENT_ID,
     as_of: "2026-08-06T03:00:00Z",
     is_mock: true,
@@ -125,13 +144,53 @@ export async function getMockDemandForecastingDashboard(inputQuery = {}) {
       points: calculated.confidencePoints,
       summary: [],
     },
+    dimensions: calculated.dimensions,
     trending_items: calculated.trendingItems,
     details: {
       total: calculated.detailRows.length,
       offset: query.detail_offset,
       limit: query.detail_limit,
+      forecast_total_units: calculated.detailForecastTotal,
       rows: visibleRows,
+    },
+    simulation: {
+      applied: isApplied(levers),
+      levers: DEMAND_LEVER_DEFINITIONS,
+      scenario_levers: levers,
+      baseline: simulationMetrics(calculated.baselineMetrics),
+      scenario: simulationMetrics(calculated.metrics),
+      baseline_forecast: {
+        grain: query.grain,
+        history_count: query.grain === "weekly" ? 12 : 0,
+        horizon_weeks: query.horizon_weeks,
+        horizon_label: "Baseline forecast",
+        points: calculated.baselineForecastPoints,
+        summary: [],
+      },
+    },
+    scenarios: [],
+    suggested_actions: {
+      primary: {
+        title: "Send 7-day forecast basket to Replenishment",
+        description: `${metrics.next7.toLocaleString("en-US")} units across ${calculated.detailRows.length} SKUs · accuracy ${metrics.accuracy.toFixed(1)}% · includes ${metrics.trending} trending SKUs flagged for uplift.`,
+        action_label: "Send to Replenishment",
+      },
+      secondary: {
+        title: `Raise safety stock on ${metrics.risk} stockout-risk SKUs`,
+        description: "Forecast exceeds supply within lead time. Recommend one additional safety day, then recalculate replenishment.",
+        action_label: "Flag to Inventory Risk",
+      },
+      plan_preview: {
+        title: "Generate forecast basket",
+        description: "Read-only preview of the highest forecast lines. Backend generation and handoff are pending.",
+        rows: calculated.detailRows.slice(0, 10).map((row) => ({
+          sku_id: row.sku_id,
+          sku_name: row.sku_name,
+          forecast_7d_units: row.forecast_7d_units,
+          signal: row.signals[0] || "stable",
+          route: row.supply_state === "Healthy" ? "Standard" : "Priority review",
+        })),
+      },
     },
   });
 }
-
