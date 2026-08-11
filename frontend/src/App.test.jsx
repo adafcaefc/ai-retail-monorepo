@@ -481,8 +481,16 @@ describe("Retail dashboard and frontend-only chat", () => {
         screen.getByRole("heading", { name: `Ask ${module.chatLabel}` }),
       ).toBeInTheDocument();
 
-      const retailDashboard = screen.getByTestId("retail-dashboard");
-      expect(retailDashboard).toBeEmptyDOMElement();
+      if (module.id === "retail.demand_forecasting") {
+        const demandDashboard = await screen.findByTestId("demand-forecasting-dashboard");
+        expect(demandDashboard).toContainElement(
+          screen.getByRole("heading", { name: "Demand forecast — actual vs AI" }),
+        );
+        expect(document.querySelectorAll(".demand-kpi")).toHaveLength(6);
+      } else {
+        const retailDashboard = screen.getByTestId("retail-dashboard");
+        expect(retailDashboard).toBeEmptyDOMElement();
+      }
 
       const input = screen.getByRole("textbox", {
         name: `Message ${module.name}`,
