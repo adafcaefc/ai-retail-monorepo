@@ -15,6 +15,7 @@ import {
 import { buildInfoPrompt } from "./infoRegistry.js";
 import { useAgents } from "./agents/AgentsProvider.jsx";
 import { useLanguage } from "./LanguageProvider.jsx";
+import { parseWorkbookHash } from "./pages/excelAddress.js";
 
 const CHAT_WIDTH_KEY = "ledgerline.chatWidth";
 const CHAT_WIDTH_MIN = 320;
@@ -50,6 +51,32 @@ function readStoredChatWidth() {
   return stored ? clampChatWidth(stored) : CHAT_WIDTH_DEFAULT;
 }
 
+/*
+ * Deep links. A worked example in the Formula Manager cites the workbook cell
+ * behind each of its inputs, and those citations link to the Data Source page
+ * as `#main.data_source?cell=Stores!E6`. The hash is the whole router: it
+ * names a page to open and a cell for that page to show.
+ */
+function readHashTarget() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  return parseWorkbookHash(window.location.hash);
+}
+
+function clearHash() {
+  if (typeof window === "undefined" || !window.location.hash) {
+    return;
+  }
+  // Dropped rather than left behind so that clicking the *same* citation again
+  // after a detour through the sidebar still fires a hashchange.
+  window.history.replaceState(
+    null,
+    "",
+    window.location.pathname + window.location.search,
+  );
+}
+
 function createInitialChat() {
   return {
     title: "",
@@ -80,7 +107,13 @@ export default function App() {
   // returns anything it has no entry for unchanged.
   const { t } = useLanguage();
 
-  const [activeAgent, setActiveAgent] = useState(null);
+  const [activeAgent, setActiveAgent] = useState(
+    () => readHashTarget()?.pageId ?? null,
+  );
+
+  // The cell the hash asked the active page to show, if any. Only the page it
+  // names ever receives it.
+  const [pageTarget, setPageTarget] = useState(readHashTarget);
 
   // The board's server_filters selections (Legal entity, Period, Category
   // group — whichever ones the active agent offers). Lives here, not inside
@@ -182,6 +215,24 @@ export default function App() {
       current && agentIds.includes(current) ? current : agentIds[0],
     );
   }, [agentIds]);
+
+  // Static pages are in the list from the first render, so a hash-selected
+  // page survives the default-screen effect above.
+  useEffect(() => {
+    function followHash() {
+      const target = readHashTarget();
+
+      if (!target) {
+        return;
+      }
+
+      setActiveAgent(target.pageId);
+      setPageTarget(target);
+    }
+
+    window.addEventListener("hashchange", followHash);
+    return () => window.removeEventListener("hashchange", followHash);
+  }, []);
 
   useEffect(() => {
     const element = transcriptRef.current;
@@ -360,6 +411,10 @@ export default function App() {
   function selectAgent(agentId) {
     setActiveAgent(agentId);
     setClearOpen(false);
+    // A sidebar click is not a deep link: drop any cell the hash was asking a
+    // page to show, so returning to it later opens it plainly.
+    setPageTarget(null);
+    clearHash();
   }
 
   function toggleChat() {
@@ -928,6 +983,9 @@ export default function App() {
           insightBusy={currentChat.busy}
           serverFilterValues={serverFilters}
           onServerFilterChange={setServerFilter}
+          pageTarget={
+            pageTarget && pageTarget.pageId === activeAgent ? pageTarget : null
+          }
         />
 
         {chatUiOpen ? (

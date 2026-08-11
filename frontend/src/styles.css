@@ -5624,6 +5624,17 @@ img.ey-logo {
   color: var(--gray-500);
 }
 
+/* Says which cell a deep link is pointing at, since the highlight itself can
+ * sit anywhere in a 500-row window. */
+.data-source-focus {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--text-xs);
+}
+
 .data-source-error {
   margin: 0;
   font-size: var(--text-sm);
@@ -5702,6 +5713,14 @@ img.ey-logo {
 .xl-sheet td.is-number {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* The cell a deep link landed on. Outline rather than background: cells carry
+ * the workbook's own fill as an inline style, and a background rule would
+ * either lose to it or paint over workbook data. */
+.xl-sheet td.is-focus {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .xl-rowhead-col {
@@ -5936,6 +5955,14 @@ img.ey-logo {
   color: var(--accent-info-strong);
 }
 
+.formula-example-address:hover,
+.formula-example-address:focus-visible,
+.formula-param-cell:hover,
+.formula-param-cell:focus-visible {
+  color: var(--primary);
+  text-decoration: underline;
+}
+
 .formula-example-sheet {
   color: var(--muted);
 }
@@ -5960,11 +5987,29 @@ img.ey-logo {
   gap: var(--space-3);
 }
 
+.formula-param-row,
 .formula-param {
   display: flex;
   flex-direction: column;
   gap: 2px;
   min-width: 0;
+}
+
+/* The parameter's key and the workbook cell it was read from share a line
+ * while the column is wide enough, and stack when it is not. */
+.formula-param-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px var(--space-2);
+  min-width: 0;
+}
+
+.formula-param-cell {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: var(--text-xs);
+  color: var(--accent-info-strong);
 }
 
 .formula-param-label {

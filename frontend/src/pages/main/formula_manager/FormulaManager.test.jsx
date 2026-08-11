@@ -29,12 +29,14 @@ vi.mock("./workedExamples.json", () => ({
         address: "Workforce!N9",
         expected: 10,
         values: { required: 42, scheduled: 32 },
+        sources: { required: "Workforce!L9", scheduled: "Workforce!M9" },
       },
       {
         label: "Store S011 (Grocery 11 - Batam)",
         address: "Workforce!N16",
         expected: 10,
         values: { required: 49, scheduled: 39 },
+        sources: { required: "Workforce!L16", scheduled: "Workforce!M16" },
       },
     ],
   },
@@ -97,10 +99,46 @@ describe("Formula Manager", () => {
       .toBeInTheDocument();
     expect(screen.getByText("ADS per store")).toBeInTheDocument();
 
-    // Excel addresses render as links, dummy for now.
+    // Excel addresses deep-link into the Data Source worksheet viewer.
     const address = screen.getByTitle("Open Workforce!N9 in the workbook");
     expect(address.tagName).toBe("A");
-    expect(address).toHaveAttribute("href", "#");
+    // "!" survives encodeURIComponent untouched; a sheet name like
+    // "What-If · Per Agent" is what the encoding is there for.
+    expect(address).toHaveAttribute(
+      "href",
+      "#main.data_source?cell=Workforce!N9",
+    );
+  });
+
+  it("traces every loaded input back to its workbook cell", async () => {
+    await renderPage();
+
+    // The citations belong to the example, so they appear with it.
+    expect(
+      screen.queryByTitle("Open Workforce!L9 in the workbook"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Store S004 (Grocery 04 - Bandung)"));
+
+    const required = screen.getByTitle("Open Workforce!L9 in the workbook");
+    expect(required).toHaveAttribute(
+      "href",
+      "#main.data_source?cell=Workforce!L9",
+    );
+    expect(
+      screen.getByTitle("Open Workforce!M9 in the workbook"),
+    ).toBeInTheDocument();
+  });
+
+  it("leaves the validator uncited when no example is loaded", async () => {
+    await renderPage();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Validate" })[0]);
+
+    expect(screen.getByLabelText("Required workforce")).toBeInTheDocument();
+    expect(
+      screen.queryByTitle("Open Workforce!L9 in the workbook"),
+    ).not.toBeInTheDocument();
   });
 
   it("filters the list by search", async () => {

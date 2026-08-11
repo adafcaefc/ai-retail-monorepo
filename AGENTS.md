@@ -410,6 +410,22 @@ Backed by `src/formulas/`, and stored in `resources/dbtemp/formula.json` rather 
 
 **Expressions are Excel-free.** A formula is arithmetic over *named parameters* — `MAX(0, required - scheduled)`, never `MAX(0,M9-L9)`. `resources/formula.md` documents each workbook original in native Excel, but that is reference material used to *derive* the expression and to verify the worked examples; sheet names, `!` and `$` are rejected by the parser with a message that says so. `src/formulas/expression.py` never calls `eval()` or `ast.parse()`: it tokenizes a fixed grammar, parses to a tuple AST, and walks it against an allow-list of `MAX MIN ROUND CEILING IF AND OR NOT`. `IF` short-circuits, so `IF(qty > 0, total / qty, 0)` is a safe guard, and `ROUND` uses Excel's half-away-from-zero rule rather than Python's half-to-even.
 
+### The worked-example corpus
+
+The 95 worked examples the Formula Manager shows are **generated**, not hand-written. `resources/formula.md` is the source of truth; `src/formulas/verification_pack.py` parses it into `frontend/src/pages/main/formula_manager/workedExamples.json`:
+
+```bash
+cd backend
+python -m src.formulas.verification_pack           # check, exit 1 on drift
+python -m src.formulas.verification_pack --write   # regenerate
+```
+
+Each case is `{ label, address, expected, values, sources }`. `address` is the workbook cell holding the result (`ENGINE_STORE!J4`); **`sources` cites the cell behind every input** (`{ "base_ads": "SKU_Master!G6", … }`), read from the pack's "Input and source-cell verification" table. Inputs map to rows positionally — the Nth row is the Nth declared parameter — and surplus trailing rows are workbook intermediates that are not parameters (Formula 12 cites the at-risk value it multiplies out).
+
+Three tests hold it together, and they fail for different reasons: `test_formulas.py` replays all 95 through the stored expressions (a misaligned input cannot reproduce the workbook's answer); `test_worked_example_cells.py` re-parses the pack and asserts the JSON is byte-identical, then opens the real workbook and asserts every cited cell holds the documented value. That last one loads `read_only=True, data_only=True` (~0.1 s, not the viewer's ~13 s styled parse), collects cells in one pass per sheet, and skips when the workbook is not deployed.
+
+In the UI, every citation is a link: `#main.data_source?cell=ENGINE_STORE!J4` opens the Data Source viewer on that sheet, pages to the row and outlines the cell. See "Deep links" below.
+
 ## Chivon framework
 
 Chivon (`src/llm/chivon/chivon.py`) is the agent loader/runner:
@@ -485,6 +501,18 @@ Consequences of that shaping, worth knowing:
 
 Both stay pages rather than becoming agents because they have no module, no chat and no dashboard payload. Neither renders content during an API outage — each shows its own error state — so "outage resilience" above now means only that the *sidebar* survives, not that every page body does.
 
+### Deep links between pages
+
+The app has no router: navigation is `activeAgent` state in `App.jsx`. One page still needs to send you to another — the Formula Manager cites workbook cells the Data Source viewer can show — so the **hash** carries that, and only that:
+
+```
+#main.data_source?cell=SKU_Master!G6
+```
+
+`frontend/src/pages/excelAddress.js` owns both ends of the contract (`excelAddressHref`, `parseWorkbookHash`, plus `parseAddress` for A1 → `{ sheet, row, column }`) and is the only place in the app that builds an href. It sits beside `registry.js`, outside the page glob, because both pages import it. `App.jsx` reads the hash on mount and on `hashchange`, selects the page it names, and passes the request to that page — and only that page — as a `pageTarget` prop; `selectAgent` clears the hash so a sidebar detour does not strand a stale one. `DataSource` resolves it against the sheet list once loaded (a cold backend is ~13 s away), sets `offset = floor((row - 1) / limit) * limit`, and hands `SheetGrid` a `focus` it outlines and scrolls to. Paging or switching sheets by hand drops the highlight.
+
+To give another page a deep link, add a query key here rather than inventing a second scheme.
+
 Static pages and per-agent UI overrides are different mechanisms with a similar shape — an override in `frontend/src/agents/<folder>/<name>/index.js` customises a module the backend already serves and is dropped if the API does not return that id; a page in `frontend/src/pages/<folder>/<name>/index.js` creates a screen the backend knows nothing about.
 
 ## Key source files
@@ -512,10 +540,13 @@ Static pages and per-agent UI overrides are different mechanisms with a similar 
 | `src/formulas/repository.py` | Atomic JSON persistence for `resources/dbtemp/formula.json` |
 | `src/formulas/router.py` | `/api/formulas` CRUD plus `/validate` and `/{id}/evaluate` |
 | `resources/dbtemp/formula.json` | The 19 stored formulas: name, expression, tweakable parameters |
-| `resources/formula.md` | Source of truth for the derivation: 19 formulas × 5 workbook examples |
+| `resources/formula.md` | Source of truth for the derivation: 19 formulas × 5 workbook examples, each traced to its source cells |
+| `src/formulas/verification_pack.py` | Parses `formula.md` into `workedExamples.json`; imported by the parity test |
+| `tests/test_worked_example_cells.py` | Corpus ↔ pack parity, and every cited cell checked against the real workbook |
 | `frontend/src/api/formulas.js` | Formula CRUD/validate/evaluate for the Formula Manager page |
 | `frontend/src/pages/main/formula_manager/` | The Formula Manager page: cards, "try this" examples, validator, editor |
-| `frontend/src/pages/main/formula_manager/workedExamples.json` | The 95 worked examples, hardcoded UI data (never touched by CRUD) |
+| `frontend/src/pages/main/formula_manager/workedExamples.json` | The 95 worked examples with their per-input cell citations — generated from `formula.md`, never touched by CRUD |
+| `frontend/src/pages/excelAddress.js` | Cell addresses and the `#main.data_source?cell=` deep link — the only place an href is built |
 | `frontend/src/components/Modal.jsx` | Shared dialog shell (AlertsPanel + Formula Manager) |
 | `frontend/src/agents/AgentsProvider.jsx` | Fetches `GET /api/html/agents` once and shares the module list app-wide (`useAgents()`) |
 | `frontend/src/agents/registry.js` | Shapes the API response for the UI (`buildAgents`, `groupByFolder`) + auto-discovered optional per-agent overrides |

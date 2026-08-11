@@ -65,8 +65,9 @@ resources/                  The retail dataset workbook (git-tracked, ~10 MB)
                             plus the agent/formula specs. Copied into the
                             Docker image and read at request time by
                             `GET /api/excel/*` for the Data Source page
-  formula.md                The formula verification pack: 19 formulas x 5
-                            workbook-traceable worked examples
+  formula.md                The formula verification pack and source of truth
+                            for the worked examples: 19 formulas x 5 cases,
+                            each input traced to the cell it was read from
   dbtemp/formula.json       The Formula Manager's store (read/written by
                             `/api/formulas`)
 scripts/                    Excel importers, the SQL runner, and the verifiers
@@ -174,8 +175,19 @@ That opening page is **Main → Formula Manager**, the retail calculation librar
 formulas from [`resources/formula.md`](./resources/formula.md), each with an Excel-free
 expression, its tweakable parameters, and the five workbook examples it was verified
 against. Pick a worked example to load its inputs into the validator and check the result
-against the workbook. Formulas are editable (create/update/delete) and stored in
+against the workbook. Every input carries the cell it was read from — `SKU_Master!G6`,
+`Constants!B16` — and clicking one opens **Main → Data Source** on that sheet, paged to
+that row with the cell outlined. Formulas are editable (create/update/delete) and stored in
 `resources/dbtemp/formula.json`.
+
+The examples themselves are generated from the verification pack rather than hand-written,
+so the two cannot drift:
+
+```bash
+cd backend
+../.venv/Scripts/python.exe -m src.formulas.verification_pack           # check
+../.venv/Scripts/python.exe -m src.formulas.verification_pack --write   # regenerate
+```
 
 Two Main pages do call the backend, and so need it running: Formula Manager (`/api/formulas`)
 and **Main → Data Source**, a read-only viewer for the `resources/` workbook (`/api/excel/*`)
@@ -191,7 +203,7 @@ fail with no error on the backend side.
 
 ```bash
 cd backend
-../.venv/Scripts/python.exe -m pytest tests/ -q     # 102 tests, no database needed
+../.venv/Scripts/python.exe -m pytest tests/ -q     # no database needed
 
 cd frontend
 npm test                                            # vitest + jsdom, API mocked

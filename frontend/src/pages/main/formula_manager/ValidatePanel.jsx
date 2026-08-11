@@ -1,8 +1,13 @@
+import { excelAddressHref } from "../../excelAddress.js";
 import { formatResult, resultsMatch } from "./formatResult.js";
 
 /**
  * The tweakable-parameter form. Fully controlled by FormulaCard so that
  * clicking a worked example can drop its values straight in.
+ *
+ * `sources` is the loaded example's cell citations, one per parameter. It is
+ * absent until an example is picked, and for a user-created formula there is
+ * no example to pick -- so every input renders with or without it.
  */
 export default function ValidatePanel({
   formula,
@@ -14,7 +19,8 @@ export default function ValidatePanel({
   result,
   error,
   expected,
-  exampleLabel
+  exampleLabel,
+  sources
 }) {
   const parameters = formula.parameters || [];
   const matched = expected === undefined ? null : resultsMatch(result, expected);
@@ -38,21 +44,42 @@ export default function ValidatePanel({
         <p className="alerts-empty">This formula has no parameters.</p>
       ) : (
         <div className="formula-params">
-          {parameters.map((parameter) => (
-            <label className="formula-param" key={parameter.key}>
-              <span className="formula-param-label">{parameter.label}</span>
-              <input
-                type={parameter.type === "number" ? "number" : "text"}
-                step="any"
-                value={values[parameter.key] ?? ""}
-                aria-label={parameter.label}
-                onChange={(event) =>
-                  onChange(parameter.key, event.target.value)
-                }
-              />
-              <span className="formula-param-key">{parameter.key}</span>
-            </label>
-          ))}
+          {parameters.map((parameter) => {
+            const address = sources?.[parameter.key];
+            return (
+              // The citation sits outside the <label> deliberately: a link
+              // inside one also fires the label's activation and steals focus
+              // to the input on its way to the worksheet.
+              <div className="formula-param-row" key={parameter.key}>
+                <label className="formula-param">
+                  <span className="formula-param-label">
+                    {parameter.label}
+                  </span>
+                  <input
+                    type={parameter.type === "number" ? "number" : "text"}
+                    step="any"
+                    value={values[parameter.key] ?? ""}
+                    aria-label={parameter.label}
+                    onChange={(event) =>
+                      onChange(parameter.key, event.target.value)
+                    }
+                  />
+                </label>
+                <div className="formula-param-foot">
+                  <span className="formula-param-key">{parameter.key}</span>
+                  {address ? (
+                    <a
+                      className="formula-param-cell"
+                      href={excelAddressHref(address)}
+                      title={`Open ${address} in the workbook`}
+                    >
+                      {address}
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
