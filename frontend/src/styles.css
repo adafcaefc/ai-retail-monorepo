@@ -6970,9 +6970,37 @@ img.ey-logo {
   --risk-slow-mover: var(--gray-500);
   --risk-healthy: var(--green-500);
 
+  /* One accent per KPI tile, matching the mockup's six-colour strip. Two hues
+     have no existing token because nothing else in the app uses them; they are
+     declared here rather than as globals so they stay this board's business. */
+  --risk-kpi-stockout-risk-skus: var(--red-500);
+  --risk-kpi-overstock-skus: #5c2d91;
+  --risk-kpi-expiry-units: var(--amber-600);
+  --risk-kpi-slow-mover-skus: #0a9ed4;
+  --risk-kpi-avg-dos: var(--blue-500);
+  --risk-kpi-inventory-value: var(--green-600);
+
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/*
+ * Nothing on this board may be squeezed to fit.
+ *
+ * `.workboard` gives the section a bounded height and its own scrollbar. As a
+ * flex column inside that bound, every child defaults to `flex-shrink: 1`, and
+ * `.risk-panel` sets `overflow: hidden` — which resolves its automatic minimum
+ * size to zero. The two together let the panels compress until only their
+ * headers survived: the charts and the register rendered, but with no height
+ * to draw into. Pinning the children stops the compression, so the content
+ * keeps its size and the board scrolls instead.
+ */
+.inventory-risk-dashboard > * {
+  flex-shrink: 0;
 }
 
 .inventory-risk-dashboard.is-refreshing {
@@ -6988,11 +7016,12 @@ img.ey-logo {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: 14px;
-  padding: 12px 14px;
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card, #fff);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .risk-filter-selects {
@@ -7004,20 +7033,33 @@ img.ey-logo {
 .risk-filter-field {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
   color: var(--muted);
+}
+
+/* Field captions and the state legend share the Demand board's label
+   treatment, so the two filter bars read as one control strip. */
+.risk-filter-field > span,
+.risk-state-filter legend,
+.risk-search > label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .risk-filter-field select {
   min-width: 160px;
   max-width: 230px;
-  padding: 6px 8px;
+  height: 34px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card, #fff);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--ink);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .risk-filter-field select:disabled {
@@ -7034,24 +7076,40 @@ img.ey-logo {
 
 .risk-state-filter legend {
   padding: 0;
-  font-size: 11px;
-  color: var(--muted);
+}
+
+/* Same focus ring as the Demand board, on the same kinds of control. */
+.risk-filter-field select:focus-visible,
+.risk-search input:focus-visible,
+.risk-search button:focus-visible,
+.risk-segmented button:focus-visible,
+.risk-button:focus-visible,
+.risk-watchlist button:focus-visible,
+.risk-pager button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .risk-segmented {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
 }
 
+/* Demand groups its four horizons inside one pill container. This control
+   holds seven options that wrap, and each state carries a meaning-bearing
+   colour, so the chips stay individually outlined. Type, size and pressed
+   treatment follow the Demand segmented control. */
 .risk-segmented button {
-  padding: 5px 9px;
+  min-width: 34px;
+  padding: 6px var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--card, #fff);
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
+  font-weight: 750;
   cursor: pointer;
 }
 
@@ -7059,49 +7117,59 @@ img.ey-logo {
   border-color: var(--accent-info);
   background: var(--accent-info-soft);
   color: var(--accent-info-strong);
-  font-weight: 600;
+  box-shadow: var(--shadow-sm);
 }
 
 .risk-search {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11px;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
+/* Input and Search join into one control, as on the Demand board. */
 .risk-search > div {
-  display: flex;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .risk-search input {
   min-width: 170px;
-  padding: 6px 8px;
+  height: 34px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.risk-search button {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
 .risk-search button,
 .risk-button {
-  padding: 6px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--accent-info);
-  color: #fff;
-  font-size: 12px;
+  min-height: 34px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--gray-0);
+  font-size: var(--text-xs);
+  font-weight: 750;
   cursor: pointer;
 }
 
-.risk-button--quiet,
-.risk-search button {
-  background: var(--card, #fff);
-  color: var(--ink);
+.risk-button--quiet {
+  border-color: var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
 }
 
 .risk-button:disabled {
-  opacity: 0.55;
+  opacity: 0.6;
   cursor: progress;
 }
 
@@ -7119,14 +7187,14 @@ img.ey-logo {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
 .risk-data-note {
   padding: 3px 9px;
   border: 1px solid var(--accent-warning-border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--accent-warning-soft);
   color: var(--accent-warning-strong);
 }
@@ -7139,7 +7207,7 @@ img.ey-logo {
 
 .risk-scope-summary b {
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--gray-100);
   color: var(--ink);
   font-weight: 600;
@@ -7150,7 +7218,7 @@ img.ey-logo {
   border: 0;
   background: none;
   color: var(--accent-info-strong);
-  font-size: 11px;
+  font-size: var(--text-xs);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -7164,12 +7232,12 @@ img.ey-logo {
   border-radius: 10px;
   background: var(--accent-danger-soft);
   color: var(--accent-danger-strong);
-  font-size: 12px;
+  font-size: var(--text-sm);
 }
 
 .risk-footnote {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--text-xs);
   line-height: 1.5;
   color: var(--muted);
 }
@@ -7184,29 +7252,58 @@ img.ey-logo {
 
 .risk-kpi {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 4px;
-  padding: 12px 14px;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-3);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--gray-300);
-  border-radius: 12px;
-  background: var(--card, #fff);
+  /* The accent names the metric, the tone says whether it is a problem. Both
+     are needed: one colour cannot carry "this is overstock" and "this is bad"
+     at the same time. */
+  border-left: 3px solid var(--risk-kpi-accent, var(--gray-300));
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
 }
 
-.risk-kpi--bad {
-  border-left-color: var(--risk-stockout);
+.risk-kpi--actionable {
+  cursor: pointer;
+  font: inherit;
 }
 
-.risk-kpi--warn {
-  border-left-color: var(--risk-low);
+.risk-kpi--actionable:hover {
+  background: var(--surface);
 }
 
-.risk-kpi--neutral {
-  border-left-color: var(--gray-300);
+.risk-kpi--actionable:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+
+.risk-kpi--bad .risk-kpi-value {
+  color: var(--accent-danger-strong);
+}
+
+.risk-kpi--warn .risk-kpi-value {
+  color: var(--accent-warning-strong);
+}
+
+.risk-kpi-caption--good {
+  color: var(--accent-success-strong);
+}
+
+.risk-kpi-caption--warn {
+  color: var(--accent-warning-strong);
+}
+
+.risk-kpi-caption--bad {
+  color: var(--accent-danger-strong);
 }
 
 .risk-kpi-label {
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
@@ -7218,7 +7315,7 @@ img.ey-logo {
 }
 
 .risk-kpi-caption {
-  font-size: 10px;
+  font-size: 0.62rem;
   line-height: 1.4;
   color: var(--muted);
 }
@@ -7228,23 +7325,26 @@ img.ey-logo {
 .risk-chart-grid {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .risk-dimension-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .risk-panel {
   display: flex;
+  min-width: 0;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px 14px;
+  gap: var(--space-2);
+  overflow: hidden;
+  padding: var(--space-3);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--card, #fff);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .risk-panel-head {
@@ -7262,7 +7362,7 @@ img.ey-logo {
 }
 
 .risk-panel-note {
-  font-size: 10px;
+  font-size: 0.62rem;
   color: var(--muted);
 }
 
@@ -7279,7 +7379,7 @@ img.ey-logo {
   margin: 0;
   padding: 26px 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--text-sm);
   text-align: center;
 }
 
@@ -7289,10 +7389,10 @@ img.ey-logo {
   gap: 2px;
   padding: 8px 10px;
   border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card, #fff);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
   box-shadow: 0 6px 18px rgb(15 23 42 / 12%);
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--ink);
 }
 
@@ -7306,11 +7406,11 @@ img.ey-logo {
 .risk-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: var(--space-1) 12px;
   margin: 0;
   padding: 0;
   list-style: none;
-  font-size: 10px;
+  font-size: 0.62rem;
   color: var(--muted);
 }
 
@@ -7335,10 +7435,10 @@ img.ey-logo {
 .risk-chip {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--gray-100);
   color: var(--ink);
-  font-size: 10px;
+  font-size: 0.62rem;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -7383,13 +7483,13 @@ img.ey-logo {
 .risk-watchlist button {
   display: grid;
   grid-template-columns: 82px 1fr 42px 62px;
-  gap: 8px;
+  gap: var(--space-2);
   width: 100%;
   padding: 5px 8px;
   border: 0;
   border-radius: 7px;
-  background: var(--gray-50, #f8fafc);
-  font-size: 11px;
+  background: var(--gray-50);
+  font-size: var(--text-xs);
   text-align: left;
   cursor: pointer;
 }
@@ -7430,7 +7530,7 @@ img.ey-logo {
 .risk-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .risk-table thead th {
@@ -7439,7 +7539,7 @@ img.ey-logo {
   z-index: 1;
   padding: 7px 8px;
   border-bottom: 1px solid var(--line);
-  background: var(--card, #fff);
+  background: var(--surface-strong);
   color: var(--muted);
   font-weight: 600;
   text-align: left;
@@ -7464,7 +7564,7 @@ img.ey-logo {
 }
 
 .risk-row:hover td {
-  background: var(--gray-50, #f8fafc);
+  background: var(--gray-50);
 }
 
 .risk-row:focus-visible {
@@ -7472,15 +7572,17 @@ img.ey-logo {
   outline-offset: -2px;
 }
 
-.risk-sku-id {
+/* Product name leads, code and category sit under it — a reader scanning the
+   register recognises the product, then reaches for the key. */
+.risk-sku-name-primary {
   display: block;
   font-weight: 600;
 }
 
-.risk-sku-name {
+.risk-sku-meta {
   display: block;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 0.62rem;
 }
 
 .risk-next-agent {
@@ -7493,7 +7595,7 @@ img.ey-logo {
   align-items: center;
   justify-content: flex-end;
   gap: 10px;
-  font-size: 11px;
+  font-size: var(--text-xs);
   color: var(--muted);
 }
 
@@ -7501,14 +7603,110 @@ img.ey-logo {
   padding: 4px 10px;
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: var(--card, #fff);
-  font-size: 11px;
+  background: var(--surface-strong);
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
 .risk-pager button:disabled {
   opacity: 0.45;
   cursor: default;
+}
+
+/* --- suggested best action ---------------------------------------------- */
+
+.risk-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-2);
+}
+
+.risk-action {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.risk-action-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.risk-action-route {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent-info-strong);
+}
+
+.risk-action-value {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.risk-action-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.risk-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-action-list button {
+  display: grid;
+  width: 100%;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: none;
+  grid-template-columns: 1fr auto;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-action-list button:hover {
+  background: var(--surface-strong);
+}
+
+.risk-action-sku-name {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-action-sku-id {
+  display: block;
+  color: var(--muted);
+  font-size: 0.58rem;
+  grid-column: 1;
+}
+
+.risk-action-sku-value {
+  grid-row: 1 / span 2;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 /* --- skeleton ----------------------------------------------------------- */
@@ -7528,13 +7726,13 @@ img.ey-logo {
 .risk-skeleton-panels {
   display: grid;
   grid-template-columns: 1.35fr 1fr;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .risk-skeleton-dims {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 /* --- responsive --------------------------------------------------------- */
