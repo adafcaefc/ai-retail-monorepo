@@ -5987,7 +5987,10 @@ img.ey-logo {
   gap: var(--space-3);
 }
 
-.formula-param-row,
+/* One validator input plus the workbook cell it was loaded from. Not
+ * `.formula-param-row` — the editor below owns that name, and its five-column
+ * grid comes later in this file. */
+.formula-param-field,
 .formula-param {
   display: flex;
   flex-direction: column;

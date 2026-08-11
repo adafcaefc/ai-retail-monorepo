@@ -50,7 +50,7 @@ export default function ValidatePanel({
               // The citation sits outside the <label> deliberately: a link
               // inside one also fires the label's activation and steals focus
               // to the input on its way to the worksheet.
-              <div className="formula-param-row" key={parameter.key}>
+              <div className="formula-param-field" key={parameter.key}>
                 <label className="formula-param">
                   <span className="formula-param-label">
                     {parameter.label}
