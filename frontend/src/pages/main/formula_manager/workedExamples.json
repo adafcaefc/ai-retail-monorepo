@@ -12,6 +12,15 @@
         "promo_eligible": "N",
         "promo_lever": 0,
         "promo_depth": 0.26
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "seasonality": "SKU_Master!AA6",
+        "store_size": "Stores!E6",
+        "demand_lever": "Constants!B16",
+        "promo_eligible": "SKU_Master!U6",
+        "promo_lever": "Constants!B17",
+        "promo_depth": "SKU_Master!T6"
       }
     },
     {
@@ -26,6 +35,15 @@
         "promo_eligible": "N",
         "promo_lever": 0,
         "promo_depth": 0.26
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "seasonality": "SKU_Master!AA6",
+        "store_size": "Stores!E7",
+        "demand_lever": "Constants!B16",
+        "promo_eligible": "SKU_Master!U6",
+        "promo_lever": "Constants!B17",
+        "promo_depth": "SKU_Master!T6"
       }
     },
     {
@@ -40,6 +58,15 @@
         "promo_eligible": "N",
         "promo_lever": 0,
         "promo_depth": 0.26
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "seasonality": "SKU_Master!AA6",
+        "store_size": "Stores!E8",
+        "demand_lever": "Constants!B16",
+        "promo_eligible": "SKU_Master!U6",
+        "promo_lever": "Constants!B17",
+        "promo_depth": "SKU_Master!T6"
       }
     },
     {
@@ -54,6 +81,15 @@
         "promo_eligible": "N",
         "promo_lever": 0,
         "promo_depth": 0.26
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "seasonality": "SKU_Master!AA6",
+        "store_size": "Stores!E9",
+        "demand_lever": "Constants!B16",
+        "promo_eligible": "SKU_Master!U6",
+        "promo_lever": "Constants!B17",
+        "promo_depth": "SKU_Master!T6"
       }
     },
     {
@@ -68,6 +104,15 @@
         "promo_eligible": "N",
         "promo_lever": 0,
         "promo_depth": 0.26
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "seasonality": "SKU_Master!AA6",
+        "store_size": "Stores!E10",
+        "demand_lever": "Constants!B16",
+        "promo_eligible": "SKU_Master!U6",
+        "promo_lever": "Constants!B17",
+        "promo_depth": "SKU_Master!T6"
       }
     }
   ],
@@ -82,6 +127,13 @@
         "stock_factor": 1.03793,
         "store_health": 1.0061,
         "store_size": 1.2236
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "on_hand_days": "SKU_Master!L6",
+        "stock_factor": "SKU_Master!AB6",
+        "store_health": "Stores!F6",
+        "store_size": "Stores!E6"
       }
     },
     {
@@ -94,6 +146,13 @@
         "stock_factor": 1.03793,
         "store_health": 0.9208,
         "store_size": 1.4503
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "on_hand_days": "SKU_Master!L6",
+        "stock_factor": "SKU_Master!AB6",
+        "store_health": "Stores!F7",
+        "store_size": "Stores!E7"
       }
     },
     {
@@ -106,6 +165,13 @@
         "stock_factor": 1.03793,
         "store_health": 1.003,
         "store_size": 0.8229
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "on_hand_days": "SKU_Master!L6",
+        "stock_factor": "SKU_Master!AB6",
+        "store_health": "Stores!F8",
+        "store_size": "Stores!E8"
       }
     },
     {
@@ -118,6 +184,13 @@
         "stock_factor": 1.03793,
         "store_health": 0.8934,
         "store_size": 1.0751
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "on_hand_days": "SKU_Master!L6",
+        "stock_factor": "SKU_Master!AB6",
+        "store_health": "Stores!F9",
+        "store_size": "Stores!E9"
       }
     },
     {
@@ -130,6 +203,13 @@
         "stock_factor": 1.03793,
         "store_health": 1.2616,
         "store_size": 1.4619
+      },
+      "sources": {
+        "base_ads": "SKU_Master!G6",
+        "on_hand_days": "SKU_Master!L6",
+        "stock_factor": "SKU_Master!AB6",
+        "store_health": "Stores!F10",
+        "store_size": "Stores!E10"
       }
     }
   ],
@@ -143,6 +223,12 @@
         "store_size": 1.2236,
         "total_store_size": 20.8447,
         "inbound_lever": 0
+      },
+      "sources": {
+        "open_po_total": "SKU_Master!M6",
+        "store_size": "Stores!E6",
+        "total_store_size": "SKU_Master!AC6",
+        "inbound_lever": "Constants!B19"
       }
     },
     {
@@ -154,6 +240,12 @@
         "store_size": 1.4503,
         "total_store_size": 20.8447,
         "inbound_lever": 0
+      },
+      "sources": {
+        "open_po_total": "SKU_Master!M6",
+        "store_size": "Stores!E7",
+        "total_store_size": "SKU_Master!AC6",
+        "inbound_lever": "Constants!B19"
       }
     },
     {
@@ -165,6 +257,12 @@
         "store_size": 0.8229,
         "total_store_size": 20.8447,
         "inbound_lever": 0
+      },
+      "sources": {
+        "open_po_total": "SKU_Master!M6",
+        "store_size": "Stores!E8",
+        "total_store_size": "SKU_Master!AC6",
+        "inbound_lever": "Constants!B19"
       }
     },
     {
@@ -176,6 +274,12 @@
         "store_size": 1.0751,
         "total_store_size": 20.8447,
         "inbound_lever": 0
+      },
+      "sources": {
+        "open_po_total": "SKU_Master!M6",
+        "store_size": "Stores!E9",
+        "total_store_size": "SKU_Master!AC6",
+        "inbound_lever": "Constants!B19"
       }
     },
     {
@@ -187,6 +291,12 @@
         "store_size": 1.4619,
         "total_store_size": 20.8447,
         "inbound_lever": 0
+      },
+      "sources": {
+        "open_po_total": "SKU_Master!M6",
+        "store_size": "Stores!E10",
+        "total_store_size": "SKU_Master!AC6",
+        "inbound_lever": "Constants!B19"
       }
     }
   ],
@@ -198,6 +308,10 @@
       "values": {
         "on_hand": 66.793533,
         "open_po": 1.467519
+      },
+      "sources": {
+        "on_hand": "ENGINE_STORE!K4",
+        "open_po": "ENGINE_STORE!L4"
       }
     },
     {
@@ -207,6 +321,10 @@
       "values": {
         "on_hand": 72.456434,
         "open_po": 1.739411
+      },
+      "sources": {
+        "on_hand": "ENGINE_STORE!K5",
+        "open_po": "ENGINE_STORE!L5"
       }
     },
     {
@@ -216,6 +334,10 @@
       "values": {
         "on_hand": 44.781826,
         "open_po": 0.986942
+      },
+      "sources": {
+        "on_hand": "ENGINE_STORE!K6",
+        "open_po": "ENGINE_STORE!L6"
       }
     },
     {
@@ -225,6 +347,10 @@
       "values": {
         "on_hand": 52.113304,
         "open_po": 1.289416
+      },
+      "sources": {
+        "on_hand": "ENGINE_STORE!K7",
+        "open_po": "ENGINE_STORE!L7"
       }
     },
     {
@@ -234,6 +360,10 @@
       "values": {
         "on_hand": 100.067522,
         "open_po": 1.753323
+      },
+      "sources": {
+        "on_hand": "ENGINE_STORE!K8",
+        "open_po": "ENGINE_STORE!L8"
       }
     }
   ],
@@ -248,6 +378,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J4",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -260,6 +397,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J5",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -272,6 +416,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J6",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -284,6 +435,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J7",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -296,6 +454,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J8",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     }
   ],
@@ -310,6 +475,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J4",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -322,6 +494,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J5",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -334,6 +513,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J6",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -346,6 +532,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J7",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     },
     {
@@ -358,6 +551,13 @@
         "lead_time_adjust": 0,
         "safety_days": 1,
         "safety_adjust": 0
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J8",
+        "lead_time_days": "SKU_Master!K6",
+        "lead_time_adjust": "Constants!B20",
+        "safety_days": "SKU_Master!N6",
+        "safety_adjust": "Constants!B21"
       }
     }
   ],
@@ -373,6 +573,14 @@
         "perishable": "Y",
         "shelf_life_days": 3,
         "velocity": 1.1125
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M15",
+        "rop": "ENGINE_STORE!N15",
+        "days_of_supply": "ENGINE_STORE!P15",
+        "perishable": "ENGINE_STORE!E15",
+        "shelf_life_days": "SKU_Master!O6",
+        "velocity": "SKU_Master!P6"
       }
     },
     {
@@ -386,6 +594,14 @@
         "perishable": "Y",
         "shelf_life_days": 3,
         "velocity": 1.1125
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M4",
+        "rop": "ENGINE_STORE!N4",
+        "days_of_supply": "ENGINE_STORE!P4",
+        "perishable": "ENGINE_STORE!E4",
+        "shelf_life_days": "SKU_Master!O6",
+        "velocity": "SKU_Master!P6"
       }
     },
     {
@@ -399,6 +615,14 @@
         "perishable": "Y",
         "shelf_life_days": 4,
         "velocity": 1.2005
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M28",
+        "rop": "ENGINE_STORE!N28",
+        "days_of_supply": "ENGINE_STORE!P28",
+        "perishable": "ENGINE_STORE!E28",
+        "shelf_life_days": "SKU_Master!O7",
+        "velocity": "SKU_Master!P7"
       }
     },
     {
@@ -412,6 +636,14 @@
         "perishable": "N",
         "shelf_life_days": 999,
         "velocity": 1.3783
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M848",
+        "rop": "ENGINE_STORE!N848",
+        "days_of_supply": "ENGINE_STORE!P848",
+        "perishable": "ENGINE_STORE!E848",
+        "shelf_life_days": "SKU_Master!O48",
+        "velocity": "SKU_Master!P48"
       }
     },
     {
@@ -425,6 +657,14 @@
         "perishable": "N",
         "shelf_life_days": 999,
         "velocity": 0.9474
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M784",
+        "rop": "ENGINE_STORE!N784",
+        "days_of_supply": "ENGINE_STORE!P784",
+        "perishable": "ENGINE_STORE!E784",
+        "shelf_life_days": "SKU_Master!O45",
+        "velocity": "SKU_Master!P45"
       }
     }
   ],
@@ -436,6 +676,10 @@
       "values": {
         "ads": 29.166885,
         "week_factor": 7.45
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J4",
+        "week_factor": "Constants!B10"
       }
     },
     {
@@ -445,6 +689,10 @@
       "values": {
         "ads": 34.57072,
         "week_factor": 7.45
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J5",
+        "week_factor": "Constants!B10"
       }
     },
     {
@@ -454,6 +702,10 @@
       "values": {
         "ads": 19.615421,
         "week_factor": 7.45
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J6",
+        "week_factor": "Constants!B10"
       }
     },
     {
@@ -463,6 +715,10 @@
       "values": {
         "ads": 25.627098,
         "week_factor": 7.45
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J7",
+        "week_factor": "Constants!B10"
       }
     },
     {
@@ -472,6 +728,10 @@
       "values": {
         "ads": 34.847228,
         "week_factor": 7.45
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J8",
+        "week_factor": "Constants!B10"
       }
     }
   ],
@@ -484,6 +744,11 @@
         "position": 68,
         "rop": 88,
         "max_inventory": 204
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M4",
+        "rop": "ENGINE_STORE!N4",
+        "max_inventory": "ENGINE_STORE!O4"
       }
     },
     {
@@ -494,6 +759,11 @@
         "position": 74,
         "rop": 104,
         "max_inventory": 242
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M5",
+        "rop": "ENGINE_STORE!N5",
+        "max_inventory": "ENGINE_STORE!O5"
       }
     },
     {
@@ -504,6 +774,11 @@
         "position": 46,
         "rop": 59,
         "max_inventory": 137
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M6",
+        "rop": "ENGINE_STORE!N6",
+        "max_inventory": "ENGINE_STORE!O6"
       }
     },
     {
@@ -514,6 +789,11 @@
         "position": 53,
         "rop": 77,
         "max_inventory": 179
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M7",
+        "rop": "ENGINE_STORE!N7",
+        "max_inventory": "ENGINE_STORE!O7"
       }
     },
     {
@@ -524,6 +804,11 @@
         "position": 102,
         "rop": 105,
         "max_inventory": 244
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M8",
+        "rop": "ENGINE_STORE!N8",
+        "max_inventory": "ENGINE_STORE!O8"
       }
     }
   ],
@@ -535,6 +820,10 @@
       "values": {
         "order_sales_units": 136,
         "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V4",
+        "pack_factor": "ENGINE_STORE!W4"
       }
     },
     {
@@ -544,6 +833,10 @@
       "values": {
         "order_sales_units": 168,
         "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V5",
+        "pack_factor": "ENGINE_STORE!W5"
       }
     },
     {
@@ -553,6 +846,10 @@
       "values": {
         "order_sales_units": 91,
         "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V6",
+        "pack_factor": "ENGINE_STORE!W6"
       }
     },
     {
@@ -562,6 +859,10 @@
       "values": {
         "order_sales_units": 126,
         "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V7",
+        "pack_factor": "ENGINE_STORE!W7"
       }
     },
     {
@@ -571,6 +872,10 @@
       "values": {
         "order_sales_units": 142,
         "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V8",
+        "pack_factor": "ENGINE_STORE!W8"
       }
     }
   ],
@@ -583,6 +888,11 @@
         "order_buy_units": 12,
         "pack_factor": 12,
         "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X4",
+        "pack_factor": "ENGINE_STORE!W4",
+        "price": "ENGINE_STORE!R4"
       }
     },
     {
@@ -593,6 +903,11 @@
         "order_buy_units": 14,
         "pack_factor": 12,
         "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X5",
+        "pack_factor": "ENGINE_STORE!W5",
+        "price": "ENGINE_STORE!R5"
       }
     },
     {
@@ -603,6 +918,11 @@
         "order_buy_units": 8,
         "pack_factor": 12,
         "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X6",
+        "pack_factor": "ENGINE_STORE!W6",
+        "price": "ENGINE_STORE!R6"
       }
     },
     {
@@ -613,6 +933,11 @@
         "order_buy_units": 11,
         "pack_factor": 12,
         "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X7",
+        "pack_factor": "ENGINE_STORE!W7",
+        "price": "ENGINE_STORE!R7"
       }
     },
     {
@@ -623,6 +948,11 @@
         "order_buy_units": 12,
         "pack_factor": 12,
         "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X8",
+        "pack_factor": "ENGINE_STORE!W8",
+        "price": "ENGINE_STORE!R8"
       }
     }
   ],
@@ -635,6 +965,11 @@
         "state": "Low",
         "position": 68,
         "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q4",
+        "position": "ENGINE_STORE!M4",
+        "price": "ENGINE_STORE!R4"
       }
     },
     {
@@ -645,6 +980,11 @@
         "state": "Low",
         "position": 74,
         "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q5",
+        "position": "ENGINE_STORE!M5",
+        "price": "ENGINE_STORE!R5"
       }
     },
     {
@@ -655,6 +995,11 @@
         "state": "Low",
         "position": 46,
         "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q6",
+        "position": "ENGINE_STORE!M6",
+        "price": "ENGINE_STORE!R6"
       }
     },
     {
@@ -665,6 +1010,11 @@
         "state": "Low",
         "position": 53,
         "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q7",
+        "position": "ENGINE_STORE!M7",
+        "price": "ENGINE_STORE!R7"
       }
     },
     {
@@ -675,6 +1025,11 @@
         "state": "Low",
         "position": 102,
         "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q8",
+        "position": "ENGINE_STORE!M8",
+        "price": "ENGINE_STORE!R8"
       }
     }
   ],
@@ -690,6 +1045,14 @@
         "promo_funding": 0.4862,
         "cannibalization": 0.1596,
         "promo_eligible": "Y"
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J24",
+        "price": "ENGINE_STORE!R24",
+        "margin_pct": "SKU_Master!I7",
+        "promo_funding": "SKU_Master!S7",
+        "cannibalization": "SKU_Master!T7",
+        "promo_eligible": "SKU_Master!U7"
       }
     },
     {
@@ -703,6 +1066,14 @@
         "promo_funding": 0.4862,
         "cannibalization": 0.1596,
         "promo_eligible": "Y"
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J25",
+        "price": "ENGINE_STORE!R25",
+        "margin_pct": "SKU_Master!I7",
+        "promo_funding": "SKU_Master!S7",
+        "cannibalization": "SKU_Master!T7",
+        "promo_eligible": "SKU_Master!U7"
       }
     },
     {
@@ -716,6 +1087,14 @@
         "promo_funding": 0.4862,
         "cannibalization": 0.1596,
         "promo_eligible": "Y"
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J26",
+        "price": "ENGINE_STORE!R26",
+        "margin_pct": "SKU_Master!I7",
+        "promo_funding": "SKU_Master!S7",
+        "cannibalization": "SKU_Master!T7",
+        "promo_eligible": "SKU_Master!U7"
       }
     },
     {
@@ -729,6 +1108,14 @@
         "promo_funding": 0.4862,
         "cannibalization": 0.1596,
         "promo_eligible": "Y"
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J27",
+        "price": "ENGINE_STORE!R27",
+        "margin_pct": "SKU_Master!I7",
+        "promo_funding": "SKU_Master!S7",
+        "cannibalization": "SKU_Master!T7",
+        "promo_eligible": "SKU_Master!U7"
       }
     },
     {
@@ -742,6 +1129,14 @@
         "promo_funding": 0.4862,
         "cannibalization": 0.1596,
         "promo_eligible": "Y"
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J28",
+        "price": "ENGINE_STORE!R28",
+        "margin_pct": "SKU_Master!I7",
+        "promo_funding": "SKU_Master!S7",
+        "cannibalization": "SKU_Master!T7",
+        "promo_eligible": "SKU_Master!U7"
       }
     }
   ],
@@ -757,6 +1152,14 @@
         "shelf_life_days": 4,
         "max_inventory": 164,
         "price": 19100
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q28",
+        "position": "ENGINE_STORE!M28",
+        "ads": "ENGINE_STORE!J28",
+        "shelf_life_days": "SKU_Master!O7",
+        "max_inventory": "ENGINE_STORE!O28",
+        "price": "ENGINE_STORE!R28"
       }
     },
     {
@@ -770,6 +1173,14 @@
         "shelf_life_days": 999,
         "max_inventory": 648,
         "price": 25900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q848",
+        "position": "ENGINE_STORE!M848",
+        "ads": "ENGINE_STORE!J848",
+        "shelf_life_days": "SKU_Master!O48",
+        "max_inventory": "ENGINE_STORE!O848",
+        "price": "ENGINE_STORE!R848"
       }
     },
     {
@@ -783,6 +1194,14 @@
         "shelf_life_days": 999,
         "max_inventory": 406,
         "price": 25500
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q784",
+        "position": "ENGINE_STORE!M784",
+        "ads": "ENGINE_STORE!J784",
+        "shelf_life_days": "SKU_Master!O45",
+        "max_inventory": "ENGINE_STORE!O784",
+        "price": "ENGINE_STORE!R784"
       }
     },
     {
@@ -796,6 +1215,14 @@
         "shelf_life_days": 4,
         "max_inventory": 102,
         "price": 19100
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q31",
+        "position": "ENGINE_STORE!M31",
+        "ads": "ENGINE_STORE!J31",
+        "shelf_life_days": "SKU_Master!O7",
+        "max_inventory": "ENGINE_STORE!O31",
+        "price": "ENGINE_STORE!R31"
       }
     },
     {
@@ -809,6 +1236,14 @@
         "shelf_life_days": 4,
         "max_inventory": 106,
         "price": 19100
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q37",
+        "position": "ENGINE_STORE!M37",
+        "ads": "ENGINE_STORE!J37",
+        "shelf_life_days": "SKU_Master!O7",
+        "max_inventory": "ENGINE_STORE!O37",
+        "price": "ENGINE_STORE!R37"
       }
     }
   ],
@@ -821,6 +1256,11 @@
         "ads": 29.166885,
         "price": 18900,
         "margin_pct": 0.2435
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J4",
+        "price": "ENGINE_STORE!R4",
+        "margin_pct": "SKU_Master!I6"
       }
     },
     {
@@ -831,6 +1271,11 @@
         "ads": 34.57072,
         "price": 18900,
         "margin_pct": 0.2435
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J5",
+        "price": "ENGINE_STORE!R5",
+        "margin_pct": "SKU_Master!I6"
       }
     },
     {
@@ -841,6 +1286,11 @@
         "ads": 19.615421,
         "price": 18900,
         "margin_pct": 0.2435
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J6",
+        "price": "ENGINE_STORE!R6",
+        "margin_pct": "SKU_Master!I6"
       }
     },
     {
@@ -851,6 +1301,11 @@
         "ads": 25.627098,
         "price": 18900,
         "margin_pct": 0.2435
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J7",
+        "price": "ENGINE_STORE!R7",
+        "margin_pct": "SKU_Master!I6"
       }
     },
     {
@@ -861,6 +1316,11 @@
         "ads": 34.847228,
         "price": 18900,
         "margin_pct": 0.2435
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J8",
+        "price": "ENGINE_STORE!R8",
+        "margin_pct": "SKU_Master!I6"
       }
     }
   ],
@@ -873,6 +1333,11 @@
         "ads": 29.166885,
         "price": 18900,
         "sales_per_fte": 6200000
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J4",
+        "price": "ENGINE_STORE!R4",
+        "sales_per_fte": "SKU_Master!AD6"
       }
     },
     {
@@ -883,6 +1348,11 @@
         "ads": 34.57072,
         "price": 18900,
         "sales_per_fte": 6200000
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J5",
+        "price": "ENGINE_STORE!R5",
+        "sales_per_fte": "SKU_Master!AD6"
       }
     },
     {
@@ -893,6 +1363,11 @@
         "ads": 19.615421,
         "price": 18900,
         "sales_per_fte": 6200000
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J6",
+        "price": "ENGINE_STORE!R6",
+        "sales_per_fte": "SKU_Master!AD6"
       }
     },
     {
@@ -903,6 +1378,11 @@
         "ads": 25.627098,
         "price": 18900,
         "sales_per_fte": 6200000
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J7",
+        "price": "ENGINE_STORE!R7",
+        "sales_per_fte": "SKU_Master!AD6"
       }
     },
     {
@@ -913,6 +1393,11 @@
         "ads": 34.847228,
         "price": 18900,
         "sales_per_fte": 6200000
+      },
+      "sources": {
+        "ads": "ENGINE_STORE!J8",
+        "price": "ENGINE_STORE!R8",
+        "sales_per_fte": "SKU_Master!AD6"
       }
     }
   ],
@@ -927,6 +1412,13 @@
         "peak_factor": 1.22,
         "event_lift": 0.25,
         "footfall_index": 1.085
+      },
+      "sources": {
+        "store_size": "Workforce!E9",
+        "wf_base": "Workforce!J9",
+        "peak_factor": "Workforce!K9",
+        "event_lift": "Workforce!I9",
+        "footfall_index": "Workforce!G9"
       }
     },
     {
@@ -939,6 +1431,13 @@
         "peak_factor": 1.22,
         "event_lift": 0.2,
         "footfall_index": 0.9722
+      },
+      "sources": {
+        "store_size": "Workforce!E16",
+        "wf_base": "Workforce!J16",
+        "peak_factor": "Workforce!K16",
+        "event_lift": "Workforce!I16",
+        "footfall_index": "Workforce!G16"
       }
     },
     {
@@ -951,6 +1450,13 @@
         "peak_factor": 1.22,
         "event_lift": 0,
         "footfall_index": 1.1221
+      },
+      "sources": {
+        "store_size": "Workforce!E6",
+        "wf_base": "Workforce!J6",
+        "peak_factor": "Workforce!K6",
+        "event_lift": "Workforce!I6",
+        "footfall_index": "Workforce!G6"
       }
     },
     {
@@ -963,6 +1469,13 @@
         "peak_factor": 1.22,
         "event_lift": 0,
         "footfall_index": 1.1765
+      },
+      "sources": {
+        "store_size": "Workforce!E7",
+        "wf_base": "Workforce!J7",
+        "peak_factor": "Workforce!K7",
+        "event_lift": "Workforce!I7",
+        "footfall_index": "Workforce!G7"
       }
     },
     {
@@ -975,6 +1488,13 @@
         "peak_factor": 1.22,
         "event_lift": 0,
         "footfall_index": 1.0549
+      },
+      "sources": {
+        "store_size": "Workforce!E8",
+        "wf_base": "Workforce!J8",
+        "peak_factor": "Workforce!K8",
+        "event_lift": "Workforce!I8",
+        "footfall_index": "Workforce!G8"
       }
     }
   ],
@@ -987,6 +1507,11 @@
         "store_size": 1.0751,
         "wf_base": 26,
         "store_health": 0.8934
+      },
+      "sources": {
+        "store_size": "Workforce!E9",
+        "wf_base": "Workforce!J9",
+        "store_health": "Workforce!F9"
       }
     },
     {
@@ -997,6 +1522,11 @@
         "store_size": 1.3266,
         "wf_base": 26,
         "store_health": 0.8044
+      },
+      "sources": {
+        "store_size": "Workforce!E16",
+        "wf_base": "Workforce!J16",
+        "store_health": "Workforce!F16"
       }
     },
     {
@@ -1007,6 +1537,11 @@
         "store_size": 1.2236,
         "wf_base": 26,
         "store_health": 1.0061
+      },
+      "sources": {
+        "store_size": "Workforce!E6",
+        "wf_base": "Workforce!J6",
+        "store_health": "Workforce!F6"
       }
     },
     {
@@ -1017,6 +1552,11 @@
         "store_size": 1.4503,
         "wf_base": 26,
         "store_health": 0.9208
+      },
+      "sources": {
+        "store_size": "Workforce!E7",
+        "wf_base": "Workforce!J7",
+        "store_health": "Workforce!F7"
       }
     },
     {
@@ -1027,6 +1567,11 @@
         "store_size": 0.8229,
         "wf_base": 26,
         "store_health": 1.003
+      },
+      "sources": {
+        "store_size": "Workforce!E8",
+        "wf_base": "Workforce!J8",
+        "store_health": "Workforce!F8"
       }
     }
   ],
@@ -1038,6 +1583,10 @@
       "values": {
         "required": 42,
         "scheduled": 32
+      },
+      "sources": {
+        "required": "Workforce!M9",
+        "scheduled": "Workforce!L9"
       }
     },
     {
@@ -1047,6 +1596,10 @@
       "values": {
         "required": 49,
         "scheduled": 39
+      },
+      "sources": {
+        "required": "Workforce!M16",
+        "scheduled": "Workforce!L16"
       }
     },
     {
@@ -1056,6 +1609,10 @@
       "values": {
         "required": 38,
         "scheduled": 37
+      },
+      "sources": {
+        "required": "Workforce!M6",
+        "scheduled": "Workforce!L6"
       }
     },
     {
@@ -1065,6 +1622,10 @@
       "values": {
         "required": 46,
         "scheduled": 43
+      },
+      "sources": {
+        "required": "Workforce!M7",
+        "scheduled": "Workforce!L7"
       }
     },
     {
@@ -1074,6 +1635,10 @@
       "values": {
         "required": 26,
         "scheduled": 25
+      },
+      "sources": {
+        "required": "Workforce!M8",
+        "scheduled": "Workforce!L8"
       }
     }
   ]

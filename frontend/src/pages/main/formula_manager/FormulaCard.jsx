@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { evaluateFormula } from "../../../api/formulas.js";
-import { excelAddressHref, splitAddress } from "./excelAddress.js";
+import { excelAddressHref, splitAddress } from "../../excelAddress.js";
 import { formatResult } from "./formatResult.js";
 import ValidatePanel from "./ValidatePanel.jsx";
 import workedExamples from "./workedExamples.json";
@@ -147,7 +147,8 @@ export default function FormulaCard({ formula, onEdit, onDelete, deleting }) {
           <h4>Try this</h4>
           <p className="formula-try-hint">
             Five worked examples from the verification pack. Pick one to load
-            its inputs into the validator.
+            its inputs into the validator, each traced to the workbook cell it
+            was read from.
           </p>
           <ul className="formula-examples">
             {examples.map((example) => {
@@ -197,6 +198,7 @@ export default function FormulaCard({ formula, onEdit, onDelete, deleting }) {
           error={error}
           expected={active ? active.expected : undefined}
           exampleLabel={active ? active.label : ""}
+          sources={active ? active.sources : undefined}
         />
       ) : null}
     </article>

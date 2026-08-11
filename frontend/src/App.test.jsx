@@ -246,6 +246,9 @@ describe("Retail dashboard and frontend-only chat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
+    // The hash is the app's only route, so a test that sets one must not leak
+    // it into the next.
+    window.location.hash = "";
 
     mocks.fetchAgents.mockResolvedValue(AGENTS);
     mocks.fetchAlertsWithActions.mockResolvedValue({ items: [] });
@@ -381,6 +384,32 @@ describe("Retail dashboard and frontend-only chat", () => {
         limit: 100,
       });
     });
+  });
+
+  it("opens the worksheet a cell deep link names, not the default page", async () => {
+    // The hash is the whole router: the Formula Manager's cell citations link
+    // here rather than to the page's front door.
+    window.location.hash = "#main.data_source?cell=ENGINE_STORE%21J4";
+
+    renderApp();
+
+    expect(await screen.findByTestId("data-source")).toBeInTheDocument();
+    expect(screen.queryByTestId("formula-manager")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(buttonNamed("Data Source")).toHaveClass("active");
+    });
+
+    await waitFor(() => {
+      expect(mocks.fetchSheetPage).toHaveBeenLastCalledWith("ENGINE_STORE", {
+        offset: 0,
+        limit: 100,
+      });
+    });
+
+    // Leaving through the sidebar drops the hash, so clicking the same
+    // citation again still fires a hashchange.
+    fireEvent.click(buttonNamed("Formula Manager"));
+    expect(window.location.hash).toBe("");
   });
 
   it("groups three independently selectable Retail scaffolds with disabled chat", async () => {
