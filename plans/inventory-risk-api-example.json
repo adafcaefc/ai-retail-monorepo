@@ -1,0 +1,931 @@
+{
+  "schema_version": 1,
+  "agent": "retail.inventory_risk",
+  "as_of": "2026-08-11T07:01:11+00:00",
+  "is_mock": true,
+  "note": "Workbook demonstration data, not a live ERP position. On-hand in the source workbook is pseudo-random in the SKU id, so treat stock levels as illustrative.",
+  "scope": {
+    "legal_entity_id": "GRC",
+    "category_group": "ALL",
+    "store_id": "ALL",
+    "state": "ALL",
+    "sku": ""
+  },
+  "filter_options": {
+    "legal_entities": [
+      {
+        "value": "GRC",
+        "label": "GRC · Grocery Retail (Hypermarket)",
+        "dashboard_label": "Grocery"
+      },
+      {
+        "value": "GMR",
+        "label": "GMR · General Merchandise Retail (Department Store)",
+        "dashboard_label": "General Merch"
+      },
+      {
+        "value": "FSH",
+        "label": "FSH · Fashion Retail (Apparel & Footwear)",
+        "dashboard_label": "Fashion"
+      }
+    ],
+    "categories": [
+      {
+        "value": "GRC-C01",
+        "label": "Fruit",
+        "legal_entity_id": "GRC"
+      },
+      {
+        "value": "GRC-C02",
+        "label": "Vegetable",
+        "legal_entity_id": "GRC"
+      },
+      {
+        "value": "GRC-C03",
+        "label": "Meat & Poultry",
+        "legal_entity_id": "GRC"
+      }
+    ],
+    "stores": [
+      {
+        "value": "S001",
+        "label": "S001 · Grocery 01 · Jakarta Pusat",
+        "legal_entity_id": "GRC",
+        "cluster": "Express"
+      },
+      {
+        "value": "S002",
+        "label": "S002 · Grocery 02 · Jakarta Selatan",
+        "legal_entity_id": "GRC",
+        "cluster": "Mall"
+      },
+      {
+        "value": "S003",
+        "label": "S003 · Grocery 03 · Surabaya",
+        "legal_entity_id": "GRC",
+        "cluster": "Flagship"
+      }
+    ],
+    "states": [
+      "Stockout",
+      "Low",
+      "Expiry",
+      "Overstock",
+      "Slow-mover",
+      "Healthy"
+    ]
+  },
+  "kpis": {
+    "stockout_risk_skus": 46,
+    "overstock_skus": 0,
+    "expiry_units": 6251.887728735003,
+    "slow_mover_skus": 4,
+    "avg_dos": 5.89320528741919,
+    "inventory_value": 9749973700,
+    "at_risk_value": 4232178400,
+    "healthy_skus": 42,
+    "sku_count": 100
+  },
+  "at_risk_by_state": [
+    {
+      "state": "Stockout",
+      "total": 788775500,
+      "segments": [
+        {
+          "category_id": "GRC-C10",
+          "label": "Confectionery",
+          "value": 82001400
+        },
+        {
+          "category_id": "GRC-C15",
+          "label": "Personal Care",
+          "value": 80710800
+        },
+        {
+          "category_id": "GRC-C20",
+          "label": "Beer Wine & Spirits",
+          "value": 79307000
+        },
+        {
+          "category_id": "GRC-C13",
+          "label": "Condiments & Sauces",
+          "value": 79032000
+        },
+        {
+          "category_id": "GRC-C08",
+          "label": "Beverages",
+          "value": 77784900
+        },
+        {
+          "category_id": "GRC-C19",
+          "label": "Ready Meals",
+          "value": 74168600
+        },
+        {
+          "category_id": "GRC-C12",
+          "label": "Canned & Jarred",
+          "value": 68638800
+        },
+        {
+          "category_id": "GRC-C17",
+          "label": "Pet Care",
+          "value": 65370400
+        },
+        {
+          "category_id": "GRC-C16",
+          "label": "Baby Care",
+          "value": 46543100
+        },
+        {
+          "category_id": "GRC-C06",
+          "label": "Dairy",
+          "value": 26370400
+        },
+        {
+          "category_id": "GRC-C03",
+          "label": "Meat & Poultry",
+          "value": 26158300
+        },
+        {
+          "category_id": "GRC-C01",
+          "label": "Fruit",
+          "value": 24723300
+        },
+        {
+          "category_id": "GRC-C05",
+          "label": "Bakery",
+          "value": 22198400
+        },
+        {
+          "category_id": "GRC-C02",
+          "label": "Vegetable",
+          "value": 13356600
+        },
+        {
+          "category_id": "GRC-C07",
+          "label": "Frozen Food",
+          "value": 11785500
+        },
+        {
+          "category_id": "GRC-C04",
+          "label": "Seafood",
+          "value": 10626000
+        }
+      ]
+    },
+    {
+      "state": "Low",
+      "total": 1944125200,
+      "segments": [
+        {
+          "category_id": "GRC-C15",
+          "label": "Personal Care",
+          "value": 246339100
+        },
+        {
+          "category_id": "GRC-C17",
+          "label": "Pet Care",
+          "value": 181213200
+        },
+        {
+          "category_id": "GRC-C18",
+          "label": "Health & Wellness",
+          "value": 179104800
+        },
+        {
+          "category_id": "GRC-C11",
+          "label": "Dry Grocery",
+          "value": 163766000
+        },
+        {
+          "category_id": "GRC-C10",
+          "label": "Confectionery",
+          "value": 160590000
+        },
+        {
+          "category_id": "GRC-C09",
+          "label": "Snacks",
+          "value": 142613700
+        },
+        {
+          "category_id": "GRC-C12",
+          "label": "Canned & Jarred",
+          "value": 134208000
+        },
+        {
+          "category_id": "GRC-C16",
+          "label": "Baby Care",
+          "value": 110214500
+        },
+        {
+          "category_id": "GRC-C05",
+          "label": "Bakery",
+          "value": 75383400
+        },
+        {
+          "category_id": "GRC-C20",
+          "label": "Beer Wine & Spirits",
+          "value": 73394100
+        },
+        {
+          "category_id": "GRC-C08",
+          "label": "Beverages",
+          "value": 73309600
+        },
+        {
+          "category_id": "GRC-C13",
+          "label": "Condiments & Sauces",
+          "value": 68736800
+        },
+        {
+          "category_id": "GRC-C01",
+          "label": "Fruit",
+          "value": 65418900
+        },
+        {
+          "category_id": "GRC-C04",
+          "label": "Seafood",
+          "value": 50612400
+        },
+        {
+          "category_id": "GRC-C03",
+          "label": "Meat & Poultry",
+          "value": 48251700
+        },
+        {
+          "category_id": "GRC-C19",
+          "label": "Ready Meals",
+          "value": 43263000
+        },
+        {
+          "category_id": "GRC-C07",
+          "label": "Frozen Food",
+          "value": 39841300
+        },
+        {
+          "category_id": "GRC-C14",
+          "label": "Household Care",
+          "value": 36180200
+        },
+        {
+          "category_id": "GRC-C02",
+          "label": "Vegetable",
+          "value": 30226700
+        },
+        {
+          "category_id": "GRC-C06",
+          "label": "Dairy",
+          "value": 21457800
+        }
+      ]
+    },
+    {
+      "state": "Expiry",
+      "total": 447525700,
+      "segments": [
+        {
+          "category_id": "GRC-C02",
+          "label": "Vegetable",
+          "value": 92618900
+        },
+        {
+          "category_id": "GRC-C04",
+          "label": "Seafood",
+          "value": 90543400
+        },
+        {
+          "category_id": "GRC-C07",
+          "label": "Frozen Food",
+          "value": 83881200
+        },
+        {
+          "category_id": "GRC-C03",
+          "label": "Meat & Poultry",
+          "value": 62052100
+        },
+        {
+          "category_id": "GRC-C01",
+          "label": "Fruit",
+          "value": 52264100
+        },
+        {
+          "category_id": "GRC-C19",
+          "label": "Ready Meals",
+          "value": 45752000
+        },
+        {
+          "category_id": "GRC-C06",
+          "label": "Dairy",
+          "value": 20414000
+        }
+      ]
+    },
+    {
+      "state": "Slow-mover",
+      "total": 1051752000,
+      "segments": [
+        {
+          "category_id": "GRC-C18",
+          "label": "Health & Wellness",
+          "value": 353529000
+        },
+        {
+          "category_id": "GRC-C14",
+          "label": "Household Care",
+          "value": 277580500
+        },
+        {
+          "category_id": "GRC-C12",
+          "label": "Canned & Jarred",
+          "value": 240128000
+        },
+        {
+          "category_id": "GRC-C08",
+          "label": "Beverages",
+          "value": 180514500
+        }
+      ]
+    },
+    {
+      "state": "Healthy",
+      "total": 0,
+      "segments": [
+        {
+          "category_id": "GRC-C01",
+          "label": "Fruit",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C02",
+          "label": "Vegetable",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C03",
+          "label": "Meat & Poultry",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C04",
+          "label": "Seafood",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C05",
+          "label": "Bakery",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C06",
+          "label": "Dairy",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C07",
+          "label": "Frozen Food",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C08",
+          "label": "Beverages",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C09",
+          "label": "Snacks",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C10",
+          "label": "Confectionery",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C11",
+          "label": "Dry Grocery",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C12",
+          "label": "Canned & Jarred",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C13",
+          "label": "Condiments & Sauces",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C14",
+          "label": "Household Care",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C15",
+          "label": "Personal Care",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C16",
+          "label": "Baby Care",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C17",
+          "label": "Pet Care",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C18",
+          "label": "Health & Wellness",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C19",
+          "label": "Ready Meals",
+          "value": 0
+        },
+        {
+          "category_id": "GRC-C20",
+          "label": "Beer Wine & Spirits",
+          "value": 0
+        }
+      ]
+    }
+  ],
+  "value_by_category": [
+    {
+      "category_id": "GRC-C18",
+      "label": "Health & Wellness",
+      "value": 900701400,
+      "share": 0.09237987995803516
+    },
+    {
+      "category_id": "GRC-C14",
+      "label": "Household Care",
+      "value": 818652100,
+      "share": 0.08396454443769423
+    },
+    {
+      "category_id": "GRC-C11",
+      "label": "Dry Grocery",
+      "value": 795009400,
+      "share": 0.08153964558899272
+    },
+    {
+      "category_id": "GRC-C17",
+      "label": "Pet Care",
+      "value": 699756200,
+      "share": 0.07177006026180358
+    },
+    {
+      "category_id": "GRC-C16",
+      "label": "Baby Care",
+      "value": 676507600,
+      "share": 0.06938558203495462
+    },
+    {
+      "category_id": "GRC-C20",
+      "label": "Beer Wine & Spirits",
+      "value": 667113600,
+      "share": 0.06842209225651552
+    },
+    {
+      "category_id": "GRC-C12",
+      "label": "Canned & Jarred",
+      "value": 664060200,
+      "share": 0.06810892218099009
+    },
+    {
+      "category_id": "GRC-C15",
+      "label": "Personal Care",
+      "value": 634095700,
+      "share": 0.06503563183970434
+    },
+    {
+      "category_id": "GRC-C13",
+      "label": "Condiments & Sauces",
+      "value": 599764000,
+      "share": 0.061514422341467444
+    },
+    {
+      "category_id": "GRC-C09",
+      "label": "Snacks",
+      "value": 592264900,
+      "share": 0.06074528180522169
+    },
+    {
+      "category_id": "GRC-C08",
+      "label": "Beverages",
+      "value": 558707100,
+      "share": 0.05730344688006697
+    },
+    {
+      "category_id": "GRC-C10",
+      "label": "Confectionery",
+      "value": 542486200,
+      "share": 0.055639760341097126
+    },
+    {
+      "category_id": "GRC-C19",
+      "label": "Ready Meals",
+      "value": 261237400,
+      "share": 0.02679365176133757
+    },
+    {
+      "category_id": "GRC-C07",
+      "label": "Frozen Food",
+      "value": 250238100,
+      "share": 0.02566551538492868
+    },
+    {
+      "category_id": "GRC-C05",
+      "label": "Bakery",
+      "value": 202854200,
+      "share": 0.020805615096172004
+    },
+    {
+      "category_id": "GRC-C04",
+      "label": "Seafood",
+      "value": 198390200,
+      "share": 0.020347767707311868
+    },
+    {
+      "category_id": "GRC-C06",
+      "label": "Dairy",
+      "value": 183974600,
+      "share": 0.01886924064215681
+    },
+    {
+      "category_id": "GRC-C02",
+      "label": "Vegetable",
+      "value": 174906200,
+      "share": 0.017939145825593354
+    },
+    {
+      "category_id": "GRC-C01",
+      "label": "Fruit",
+      "value": 166529600,
+      "share": 0.017080005046577716
+    },
+    {
+      "category_id": "GRC-C03",
+      "label": "Meat & Poultry",
+      "value": 162725000,
+      "share": 0.016689788609378507
+    }
+  ],
+  "at_risk_by_category": [
+    {
+      "category_id": "GRC-C18",
+      "label": "Health & Wellness",
+      "value": 532633800
+    },
+    {
+      "category_id": "GRC-C12",
+      "label": "Canned & Jarred",
+      "value": 442974800
+    },
+    {
+      "category_id": "GRC-C08",
+      "label": "Beverages",
+      "value": 331609000
+    },
+    {
+      "category_id": "GRC-C15",
+      "label": "Personal Care",
+      "value": 327049900
+    },
+    {
+      "category_id": "GRC-C14",
+      "label": "Household Care",
+      "value": 313760700
+    },
+    {
+      "category_id": "GRC-C17",
+      "label": "Pet Care",
+      "value": 246583600
+    },
+    {
+      "category_id": "GRC-C10",
+      "label": "Confectionery",
+      "value": 242591400
+    },
+    {
+      "category_id": "GRC-C11",
+      "label": "Dry Grocery",
+      "value": 163766000
+    },
+    {
+      "category_id": "GRC-C19",
+      "label": "Ready Meals",
+      "value": 163183600
+    },
+    {
+      "category_id": "GRC-C16",
+      "label": "Baby Care",
+      "value": 156757600
+    },
+    {
+      "category_id": "GRC-C20",
+      "label": "Beer Wine & Spirits",
+      "value": 152701100
+    },
+    {
+      "category_id": "GRC-C04",
+      "label": "Seafood",
+      "value": 151781800
+    },
+    {
+      "category_id": "GRC-C13",
+      "label": "Condiments & Sauces",
+      "value": 147768800
+    },
+    {
+      "category_id": "GRC-C09",
+      "label": "Snacks",
+      "value": 142613700
+    },
+    {
+      "category_id": "GRC-C01",
+      "label": "Fruit",
+      "value": 142406300
+    },
+    {
+      "category_id": "GRC-C03",
+      "label": "Meat & Poultry",
+      "value": 136462100
+    },
+    {
+      "category_id": "GRC-C02",
+      "label": "Vegetable",
+      "value": 136202200
+    },
+    {
+      "category_id": "GRC-C07",
+      "label": "Frozen Food",
+      "value": 135508000
+    },
+    {
+      "category_id": "GRC-C05",
+      "label": "Bakery",
+      "value": 97581800
+    },
+    {
+      "category_id": "GRC-C06",
+      "label": "Dairy",
+      "value": 68242200
+    }
+  ],
+  "stockout_by_store": [
+    {
+      "store_id": "S012",
+      "label": "Grocery 12 · Tangerang",
+      "cluster": "Mall",
+      "stockout_risk_count": 70,
+      "at_risk_count": 74,
+      "healthy_count": 26,
+      "sku_count": 100,
+      "at_risk_value": 115830000
+    },
+    {
+      "store_id": "S011",
+      "label": "Grocery 11 · Batam",
+      "cluster": "Community",
+      "stockout_risk_count": 64,
+      "at_risk_count": 69,
+      "healthy_count": 31,
+      "sku_count": 100,
+      "at_risk_value": 246664600
+    },
+    {
+      "store_id": "S007",
+      "label": "Grocery 07 · Makassar",
+      "cluster": "Flagship",
+      "stockout_risk_count": 56,
+      "at_risk_count": 64,
+      "healthy_count": 36,
+      "sku_count": 100,
+      "at_risk_value": 177835200
+    }
+  ],
+  "at_risk_by_cluster": [
+    {
+      "cluster": "Community",
+      "value": 1793162000,
+      "store_count": 8
+    },
+    {
+      "cluster": "Flagship",
+      "value": 924390200,
+      "store_count": 5
+    },
+    {
+      "cluster": "Mall",
+      "value": 884497300,
+      "store_count": 4
+    },
+    {
+      "cluster": "Express",
+      "value": 767879300,
+      "store_count": 3
+    }
+  ],
+  "at_risk_by_legal_entity": [
+    {
+      "legal_entity_id": "GRC",
+      "label": "GRC · Grocery Retail (Hypermarket)",
+      "value": 4369928800
+    }
+  ],
+  "expiry_timeline": {
+    "buckets": [
+      {
+        "id": "d1",
+        "label": "≤ 1 day",
+        "units": 0
+      },
+      {
+        "id": "d2_3",
+        "label": "2–3 days",
+        "units": 5725.202928487002
+      },
+      {
+        "id": "d4_7",
+        "label": "4–7 days",
+        "units": 526.6848002480006
+      },
+      {
+        "id": "d8p",
+        "label": "> 7 days",
+        "units": 0
+      }
+    ],
+    "watchlist": [
+      {
+        "sku_id": "GRC-013",
+        "name": "Meat & Poultry 3",
+        "shelf_life_days": 2,
+        "units": 1506.3374328560005
+      },
+      {
+        "sku_id": "GRC-007",
+        "name": "Vegetable 2",
+        "shelf_life_days": 2,
+        "units": 268.96962722000006
+      },
+      {
+        "sku_id": "GRC-028",
+        "name": "Dairy 3",
+        "shelf_life_days": 2,
+        "units": 129.3177785060003
+      },
+      {
+        "sku_id": "GRC-016",
+        "name": "Seafood 1",
+        "shelf_life_days": 3,
+        "units": 1400.3598396700004
+      }
+    ]
+  },
+  "risk_register": [
+    {
+      "sku_id": "GRC-073",
+      "name": "Personal Care 3",
+      "vertical_id": "GRC",
+      "category_id": "GRC-C15",
+      "category_name": "Personal Care",
+      "brand": "Vertex",
+      "vendor": "Vendor B",
+      "state": "Stockout",
+      "severity_rank": 0,
+      "on_hand": 2476,
+      "open_po": 136,
+      "position": 2612,
+      "rop": 6648,
+      "max": 10447,
+      "dos": 2.7503247802447217,
+      "ads": 949.7060197259999,
+      "price": 30900,
+      "inv_value": 80710800,
+      "at_risk_value": 80710800,
+      "expiry_units": 0,
+      "shelf_life_days": 999,
+      "is_perishable": false,
+      "growth": 1.3763,
+      "is_stockout_risk": true,
+      "is_overstock": false,
+      "is_slow_mover": false,
+      "next_agent": "3 Replenish"
+    },
+    {
+      "sku_id": "GRC-100",
+      "name": "Beer Wine & Spirits 5",
+      "vertical_id": "GRC",
+      "category_id": "GRC-C20",
+      "category_name": "Beer Wine & Spirits",
+      "brand": "Nimbus",
+      "vendor": "Vendor A",
+      "state": "Stockout",
+      "severity_rank": 0,
+      "on_hand": 2116,
+      "open_po": 118,
+      "position": 2234,
+      "rop": 5927,
+      "max": 9313,
+      "dos": 2.6385475099029545,
+      "ads": 846.6779512649997,
+      "price": 35500,
+      "inv_value": 79307000,
+      "at_risk_value": 79307000,
+      "expiry_units": 0,
+      "shelf_life_days": 999,
+      "is_perishable": false,
+      "growth": 0.9435,
+      "is_stockout_risk": true,
+      "is_overstock": false,
+      "is_slow_mover": false,
+      "next_agent": "3 Replenish"
+    },
+    {
+      "sku_id": "GRC-065",
+      "name": "Condiments & Sauces 5",
+      "vertical_id": "GRC",
+      "category_id": "GRC-C13",
+      "category_name": "Condiments & Sauces",
+      "brand": "Aurora",
+      "vendor": "Vendor C",
+      "state": "Stockout",
+      "severity_rank": 0,
+      "on_hand": 2583,
+      "open_po": 87,
+      "position": 2670,
+      "rop": 5950,
+      "max": 9350,
+      "dos": 3.141220449322744,
+      "ads": 849.9880995539996,
+      "price": 29600,
+      "inv_value": 79032000,
+      "at_risk_value": 79032000,
+      "expiry_units": 0,
+      "shelf_life_days": 999,
+      "is_perishable": false,
+      "growth": 1.1124,
+      "is_stockout_risk": true,
+      "is_overstock": false,
+      "is_slow_mover": false,
+      "next_agent": "3 Replenish"
+    },
+    {
+      "sku_id": "GRC-038",
+      "name": "Beverages 3",
+      "vertical_id": "GRC",
+      "category_id": "GRC-C08",
+      "category_name": "Beverages",
+      "brand": "Meridian",
+      "vendor": "Vendor D",
+      "state": "Stockout",
+      "severity_rank": 0,
+      "on_hand": 2998,
+      "open_po": 101,
+      "position": 3099,
+      "rop": 6671,
+      "max": 10483,
+      "dos": 3.2517811386713262,
+      "ads": 953.0161680149998,
+      "price": 25100,
+      "inv_value": 77784900,
+      "at_risk_value": 77784900,
+      "expiry_units": 0,
+      "shelf_life_days": 999,
+      "is_perishable": false,
+      "growth": 1.0453,
+      "is_stockout_risk": true,
+      "is_overstock": false,
+      "is_slow_mover": false,
+      "next_agent": "3 Replenish"
+    }
+  ],
+  "reference_by_vertical": [
+    {
+      "legal_entity_id": "DGT",
+      "vertical_label": "Digital/Online",
+      "stockout_risk_skus": 40,
+      "overstock_skus": 0,
+      "expiry_units": 0,
+      "inventory_value": 385582313300,
+      "at_risk_value": 133323852000,
+      "avg_dos": 8
+    },
+    {
+      "legal_entity_id": "ELC",
+      "vertical_label": "Electronics",
+      "stockout_risk_skus": 35,
+      "overstock_skus": 0,
+      "expiry_units": 0,
+      "inventory_value": 857334020200,
+      "at_risk_value": 222864021100,
+      "avg_dos": 8.9
+    }
+  ]
+}
