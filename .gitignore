@@ -1,5 +1,6 @@
 # Environment files
 .env
+/backend/.env
 .env.*
 !.env.example
 
@@ -74,6 +75,9 @@ data/*.xls
 # Generated import files
 data/import_logs/
 data/import_preview/
+
+# Generated Retail 360 inspection and semantic preview artifacts
+/generated/
 
 # Temporary workspace
 /tmp/*
