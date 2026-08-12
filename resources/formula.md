@@ -1,7 +1,7 @@
 # AI Retail 360 Formula Verification Pack
 
 - **Workbook:** `Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`
-- **Scope:** 19 documented formulas × 5 worked examples = **95 examples**
+- **Scope:** 22 documented formulas × 5 worked examples = **110 examples**
 - **Verification method:** each example records the workbook result cell, the native Excel formula, direct input/source cells, cached workbook values, and a readable arithmetic check.
 - **Important:** values are read from the workbook’s saved calculation cache. Minor displayed differences can occur because Excel stores more precision than formatted cells show.
 
@@ -26,6 +26,9 @@
 17. [Required workforce](#formula-17-required-workforce)
 18. [Scheduled workforce](#formula-18-scheduled-workforce)
 19. [Coverage gap](#formula-19-coverage-gap)
+20. [Days of supply](#formula-20-days-of-supply)
+21. [Inventory value](#formula-21-inventory-value)
+22. [Expiry units](#formula-22-expiry-units)
 
 ## Formula 1: ADS per store
 
@@ -2218,3 +2221,325 @@
 | 19. Coverage gap | 5 | `Workforce` |
 
 **Total: 95 workbook-traceable worked examples.**
+
+## Formula 20: Days of supply
+
+**Documented logic:** `Position ÷ ADS, guarded against a dead SKU`
+
+### Example 1: SKU `GRC-005`, chain-net
+
+- **Result:** `ENGINE!I10` = **4.200354**
+- **Native Excel formula:**
+
+```excel
+=IF($E10>0,$F10/$E10,0)
+```
+
+- **Arithmetic / decision check:** `IF(631.613363 > 0, 2,653 ÷ 631.613363) = 4.200354`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `E10` | 631.613363 | Direct precedent/input |
+| `ENGINE` | `F10` | 2,653 | Direct precedent/input |
+
+---
+
+### Example 2: SKU `GRC-007`, chain-net
+
+- **Result:** `ENGINE!I12` = **3.211492**
+- **Native Excel formula:**
+
+```excel
+=IF($E12>0,$F12/$E12,0)
+```
+
+- **Arithmetic / decision check:** `IF(222.015186 > 0, 713 ÷ 222.015186) = 3.211492`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `E12` | 222.015186 | Direct precedent/input |
+| `ENGINE` | `F12` | 713 | Direct precedent/input |
+
+---
+
+### Example 3: SKU `GRC-001`, chain-net
+
+- **Result:** `ENGINE!I6` = **2.36682**
+- **Native Excel formula:**
+
+```excel
+=IF($E6>0,$F6/$E6,0)
+```
+
+- **Arithmetic / decision check:** `IF(496.869179 > 0, 1,176 ÷ 496.869179) = 2.36682`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `E6` | 496.869179 | Direct precedent/input |
+| `ENGINE` | `F6` | 1,176 | Direct precedent/input |
+
+---
+
+### Example 4: SKU `GRC-036`, chain-net
+
+- **Result:** `ENGINE!I41` = **6.013465**
+- **Native Excel formula:**
+
+```excel
+=IF($E41>0,$F41/$E41,0)
+```
+
+- **Arithmetic / decision check:** `IF(493.559031 > 0, 2,968 ÷ 493.559031) = 6.013465`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `E41` | 493.559031 | Direct precedent/input |
+| `ENGINE` | `F41` | 2,968 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-037`, chain-net
+
+- **Result:** `ENGINE!I42` = **10.081444**
+- **Native Excel formula:**
+
+```excel
+=IF($E42>0,$F42/$E42,0)
+```
+
+- **Arithmetic / decision check:** `IF(331.202554 > 0, 3,339 ÷ 331.202554) = 10.081444`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `E42` | 331.202554 | Direct precedent/input |
+| `ENGINE` | `F42` | 3,339 | Direct precedent/input |
+
+---
+
+## Formula 21: Inventory value
+
+**Documented logic:** `ROUND(position × price)`
+
+### Example 1: SKU `GRC-005`, chain-net
+
+- **Result:** `ENGINE!L10` = **52,264,100**
+- **Native Excel formula:**
+
+```excel
+=ROUND($F10*$K10,0)
+```
+
+- **Arithmetic / decision check:** `ROUND(2,653 × 19,700) = 52,264,100`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `F10` | 2,653 | Direct precedent/input |
+| `ENGINE` | `K10` | 19,700 | Direct precedent/input |
+
+---
+
+### Example 2: SKU `GRC-007`, chain-net
+
+- **Result:** `ENGINE!L12` = **14,188,700**
+- **Native Excel formula:**
+
+```excel
+=ROUND($F12*$K12,0)
+```
+
+- **Arithmetic / decision check:** `ROUND(713 × 19,900) = 14,188,700`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `F12` | 713 | Direct precedent/input |
+| `ENGINE` | `K12` | 19,900 | Direct precedent/input |
+
+---
+
+### Example 3: SKU `GRC-001`, chain-net
+
+- **Result:** `ENGINE!L6` = **22,226,400**
+- **Native Excel formula:**
+
+```excel
+=ROUND($F6*$K6,0)
+```
+
+- **Arithmetic / decision check:** `ROUND(1,176 × 18,900) = 22,226,400`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `F6` | 1,176 | Direct precedent/input |
+| `ENGINE` | `K6` | 18,900 | Direct precedent/input |
+
+---
+
+### Example 4: SKU `GRC-036`, chain-net
+
+- **Result:** `ENGINE!L41` = **73,309,600**
+- **Native Excel formula:**
+
+```excel
+=ROUND($F41*$K41,0)
+```
+
+- **Arithmetic / decision check:** `ROUND(2,968 × 24,700) = 73,309,600`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `F41` | 2,968 | Direct precedent/input |
+| `ENGINE` | `K41` | 24,700 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-037`, chain-net
+
+- **Result:** `ENGINE!L42` = **83,141,100**
+- **Native Excel formula:**
+
+```excel
+=ROUND($F42*$K42,0)
+```
+
+- **Arithmetic / decision check:** `ROUND(3,339 × 24,900) = 83,141,100`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `F42` | 3,339 | Direct precedent/input |
+| `ENGINE` | `K42` | 24,900 | Direct precedent/input |
+
+---
+
+## Formula 22: Expiry units
+
+**Documented logic:** `Perishable stock already past its shelf-life cover`
+
+### Example 1: SKU `GRC-005`, chain-net
+
+- **Result:** `ENGINE!N10` = **758.15991**
+- **Native Excel formula:**
+
+```excel
+=IF($D10="Y",MAX(0,$F10-$E10*SKU_Master!$O$10),0)
+```
+
+- **Arithmetic / decision check:** `IF("Y" = "Y", MAX(0, 2,653 − 631.613363 × 3)) = 758.15991`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `D10` | Y | Direct precedent/input |
+| `ENGINE` | `F10` | 2,653 | Direct precedent/input |
+| `ENGINE` | `E10` | 631.613363 | Direct precedent/input |
+| `SKU_Master` | `O10` | 3 | Direct precedent/input |
+
+---
+
+### Example 2: SKU `GRC-007`, chain-net
+
+- **Result:** `ENGINE!N12` = **268.969627**
+- **Native Excel formula:**
+
+```excel
+=IF($D12="Y",MAX(0,$F12-$E12*SKU_Master!$O$12),0)
+```
+
+- **Arithmetic / decision check:** `IF("Y" = "Y", MAX(0, 713 − 222.015186 × 2)) = 268.969627`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `D12` | Y | Direct precedent/input |
+| `ENGINE` | `F12` | 713 | Direct precedent/input |
+| `ENGINE` | `E12` | 222.015186 | Direct precedent/input |
+| `SKU_Master` | `O12` | 2 | Direct precedent/input |
+
+---
+
+### Example 3: SKU `GRC-001`, chain-net
+
+- **Result:** `ENGINE!N6` = **0**
+- **Native Excel formula:**
+
+```excel
+=IF($D6="Y",MAX(0,$F6-$E6*SKU_Master!$O$6),0)
+```
+
+- **Arithmetic / decision check:** `IF("Y" = "Y", MAX(0, 1,176 − 496.869179 × 3)) = 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `D6` | Y | Direct precedent/input |
+| `ENGINE` | `F6` | 1,176 | Direct precedent/input |
+| `ENGINE` | `E6` | 496.869179 | Direct precedent/input |
+| `SKU_Master` | `O6` | 3 | Direct precedent/input |
+
+---
+
+### Example 4: SKU `GRC-036`, chain-net
+
+- **Result:** `ENGINE!N41` = **0**
+- **Native Excel formula:**
+
+```excel
+=IF($D41="Y",MAX(0,$F41-$E41*SKU_Master!$O$41),0)
+```
+
+- **Arithmetic / decision check:** `IF("N" = "Y", …, 0) = 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `D41` | N | Direct precedent/input |
+| `ENGINE` | `F41` | 2,968 | Direct precedent/input |
+| `ENGINE` | `E41` | 493.559031 | Direct precedent/input |
+| `SKU_Master` | `O41` | 999 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-037`, chain-net
+
+- **Result:** `ENGINE!N42` = **0**
+- **Native Excel formula:**
+
+```excel
+=IF($D42="Y",MAX(0,$F42-$E42*SKU_Master!$O$42),0)
+```
+
+- **Arithmetic / decision check:** `IF("N" = "Y", …, 0) = 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE` | `D42` | N | Direct precedent/input |
+| `ENGINE` | `F42` | 3,339 | Direct precedent/input |
+| `ENGINE` | `E42` | 331.202554 | Direct precedent/input |
+| `SKU_Master` | `O42` | 999 | Direct precedent/input |
+
+---

@@ -20,9 +20,11 @@ import {
   EXPIRY_BUCKETS,
   EXPIRY_WATCHLIST_SIZE,
   HEALTHY_STATE,
+  PROJECTION_DAYS,
   SCHEMA_VERSION,
   STATE_ORDER,
 } from "./contract.js";
+import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
 
 /**
  * STORE SCOPING IS NOT SUPPORTED BY THIS PROVIDER.
@@ -364,11 +366,171 @@ export function computeRiskRegister(items) {
  * @param {Partial<import("./contract.js").InventoryRiskScope>} [scope]
  * @returns {object} A payload matching the dashboard contract.
  */
-export function buildDashboardFromFixture(fixture, scope = {}) {
+/**
+ * Projected on-hand against demand, A2 spec section 4.
+ *
+ * The replenishment cycle in one line: stock falls by a day's demand each day
+ * and steps back up when an open PO lands. Nothing here is a guess about the
+ * future — the fall is `ads`, the step is `open_po`, and it lands after
+ * `lead_days`, all three read per SKU from the workbook.
+ *
+ * Two honest limits, both worth saying out loud on the panel:
+ * demand is flat, because the workbook carries one ADS per SKU and no
+ * day-of-week or seasonal curve at this grain; and stock is floored at zero,
+ * so a SKU that runs out stays out rather than going negative and quietly
+ * subsidising the chain total.
+ */
+export function computeProjection(items, days = PROJECTION_DAYS) {
+  const demandPerDay = sum(items, "ads");
+  const points = [];
+
+  for (let day = 0; day <= days; day += 1) {
+    let onHand = 0;
+    let inbound = 0;
+
+    for (const item of items) {
+      const arrived = day >= item.lead_days ? item.open_po : 0;
+      onHand += Math.max(0, item.on_hand - item.ads * day + arrived);
+      inbound += arrived;
+    }
+
+    points.push({
+      day,
+      label: day === 0 ? "Today" : `D+${day}`,
+      on_hand: onHand,
+      inbound,
+      demand: demandPerDay,
+    });
+  }
+
+  const opening = points[0];
+  return {
+    days,
+    points,
+    // The strip under the chart, A2 spec section 4.
+    metrics: {
+      position: opening.on_hand + sum(items, "open_po"),
+      inbound: sum(items, "open_po"),
+      avg_dos: items.length ? sum(items, "dos") / items.length : 0,
+      at_risk_value: sum(items, "at_risk_value"),
+    },
+    // The first day the chain is projected to hold less than one day of cover.
+    days_to_empty:
+      points.find((point) => point.on_hand < demandPerDay)?.day ?? null,
+  };
+}
+
+/**
+ * Baseline against scenario, A2 spec section 8.
+ *
+ * `applyLevers` re-runs the workbook's own expressions per SKU; everything
+ * here just counts and sums the two sets of rows the same way `computeKpis`
+ * does, so a difference between the columns can only come from the formulas.
+ *
+ * The index bars are the panel's own shape (A2 spec 8c): baseline pinned at
+ * 100, scenario expressed against it, so four metrics on four different scales
+ * can share one axis. A baseline of zero has no index — reported as `null`
+ * rather than as a fabricated 100.
+ */
+export function computeSimulation(items, levers, applyLevers) {
+  const merged = { ...BASELINE_LEVERS, ...levers };
+  const applied = !isBaseline(merged);
+  const baseline = computeKpis(items);
+
+  /*
+   * At rest the scenario IS the baseline, and saying so is not just a saving.
+   * Re-running the engine here would produce figures that differ in the last
+   * float digit — 6251.887728735004 against a stored 6251.887728735005, from
+   * summing 800 re-evaluations instead of 800 readings — and the panel would
+   * report a delta of -1e-12 on a board that has not been touched.
+   */
+  const scenarioItems = applied
+    ? items.map((item) => applyLevers(item, merged))
+    : items;
+  const scenario = applied ? computeKpis(scenarioItems) : baseline;
+
+  const compared = [
+    { id: "stockout_risk_skus", label: "Stockout-risk SKUs", lowerIsBetter: true },
+    { id: "expiry_units", label: "Expiry units", lowerIsBetter: true },
+    { id: "overstock_skus", label: "Overstock SKUs", lowerIsBetter: true },
+    { id: "at_risk_value", label: "At-risk value", lowerIsBetter: true },
+  ];
+
+  return {
+    applied,
+    levers: merged,
+    baseline,
+    scenario,
+    /*
+     * Two curves, because Compare Scenarios (A2 spec 8d) needs a reference
+     * line that does not move. `baseline_projection` is always the workbook's
+     * own stock curve for this scope; `projection` is the scenario's.
+     *
+     * The board's top-level `projection` cannot serve as the reference: with
+     * "levers drive whole page" on, it is the simulated one, and a comparison
+     * whose baseline shifts with the sliders compares nothing.
+     *
+     * A scenario is only interesting as a shape over time — "does this run me
+     * out before the PO lands" — which four KPI totals cannot answer.
+     */
+    baseline_projection: computeProjection(items),
+    projection: applied ? computeProjection(scenarioItems) : null,
+    index: compared.map((metric) => ({
+      ...metric,
+      baseline_value: baseline[metric.id],
+      scenario_value: scenario[metric.id],
+      baseline_index: 100,
+      scenario_index: baseline[metric.id]
+        ? (scenario[metric.id] / baseline[metric.id]) * 100
+        : null,
+      delta: scenario[metric.id] - baseline[metric.id],
+    })),
+  };
+}
+
+/*
+ * One engine per fixture, not one per render.
+ *
+ * `createEngine` parses ten expressions. A slider drag rebuilds the dashboard
+ * on every frame, and re-parsing there would turn a smooth control into a
+ * stuttering one for no benefit — the expressions cannot change between
+ * renders.
+ */
+let cachedFormulas = null;
+let cachedEngine = null;
+
+function engineFor(formulas) {
+  if (formulas !== cachedFormulas) {
+    cachedEngine = createEngine(formulas);
+    cachedFormulas = formulas;
+  }
+  return cachedEngine;
+}
+
+export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
-  const items = scopeItems(fixture.items, merged);
+  const baselineItems = scopeItems(fixture.items, merged);
   const stores = scopeStores(fixture.stores, merged);
   const legalEntities = fixture.filter_options.legal_entities;
+
+  const applyLevers = engineFor(fixture.formulas);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulation = computeSimulation(baselineItems, levers, applyLevers);
+
+  /*
+   * "Levers drive whole page" (A2 spec 8b). With it on, every panel below
+   * reads the re-simulated rows rather than the workbook's stored ones.
+   *
+   * Two things it cannot reach, and the UI has to admit as much: the store and
+   * cluster charts read `fixture.stores`, which is aggregated per store before
+   * it ever gets here, and the reference totals are the workbook's own and
+   * belong to the baseline by definition.
+   */
+  const driveWholePage = options.driveWholePage !== false;
+  const items =
+    simulation.applied && driveWholePage
+      ? baselineItems.map((item) => applyLevers(item, levers))
+      : baselineItems;
 
   // Categories depend on the selected vertical, so the filter bar can reset a
   // child selection the new parent invalidates without a second load.
@@ -399,6 +561,8 @@ export function buildDashboardFromFixture(fixture, scope = {}) {
       states: fixture.filter_options.states,
     },
     kpis: computeKpis(items),
+    projection: computeProjection(items),
+    simulation,
     at_risk_by_state: computeAtRiskByState(items),
     value_by_category: computeValueByCategory(items),
     at_risk_by_category: computeAtRiskByCategory(items),

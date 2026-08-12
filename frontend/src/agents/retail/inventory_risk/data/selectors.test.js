@@ -37,6 +37,26 @@ describe("fixture integrity", () => {
       expect(item.severity_rank).toBe(STATE_ORDER.indexOf(item.state));
     }
   });
+
+  /*
+   * The KPI flags and the state must describe the same SKU, because the board
+   * shows both at once: the tiles count flags, the state panel and the register
+   * group by state. They used to disagree — `is_slow_mover` was a raw
+   * `growth < 1 && DoS > 10`, which matched 62 SKUs while only 51 carried the
+   * Slow-mover state, the other 11 having been claimed by a more urgent one.
+   * The card read 62 and the chart under it read 51.
+   */
+  it("keeps every KPI flag in step with the state it reports on", () => {
+    for (const item of fixture.items) {
+      expect(item.is_overstock).toBe(item.state === "Overstock");
+      expect(item.is_slow_mover).toBe(item.state === "Slow-mover");
+      // Stockout-risk is the reorder zone, so it spans two states rather than
+      // one. A2 sheet column B counts exactly Position < ROP.
+      expect(item.is_stockout_risk).toBe(
+        item.state === "Stockout" || item.state === "Low",
+      );
+    }
+  });
 });
 
 describe("KPIs reconcile with the workbook", () => {
@@ -229,6 +249,113 @@ describe("derived views", () => {
       // The reorder zone is exactly the first two segments.
       expect(row.stockout_count + row.low_count).toBe(row.stockout_risk_count);
     }
+  });
+});
+
+describe("the projection", () => {
+  it("starts at today's stock and never lets a SKU go negative", () => {
+    const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const openingStock = fixture.items.reduce(
+      (running, item) => running + item.on_hand,
+      0,
+    );
+
+    expect(projection.points).toHaveLength(projection.days + 1);
+    expect(projection.points[0].label).toBe("Today");
+    // Day 0 has no arrivals yet for anything with a lead time, so opening
+    // on-hand is the chain's on-hand, not its position.
+    expect(projection.points[0].on_hand).toBeCloseTo(openingStock, 6);
+
+    for (const point of projection.points) {
+      expect(point.on_hand).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it("lands each open PO once, and never takes it back", () => {
+    const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const totalInbound = fixture.items.reduce(
+      (running, item) => running + item.open_po,
+      0,
+    );
+
+    for (let index = 1; index < projection.points.length; index += 1) {
+      expect(projection.points[index].inbound).toBeGreaterThanOrEqual(
+        projection.points[index - 1].inbound,
+      );
+    }
+    // The longest lead time in the dataset is 7 days, well inside the horizon.
+    expect(projection.points.at(-1).inbound).toBeCloseTo(totalInbound, 6);
+  });
+
+  it("reports the strip figures the panel prints under the chart", () => {
+    const { projection, kpis } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+
+    expect(projection.metrics.at_risk_value).toBeCloseTo(kpis.at_risk_value, 6);
+    expect(projection.metrics.avg_dos).toBeCloseTo(kpis.avg_dos, 9);
+    expect(projection.metrics.inbound).toBeGreaterThan(0);
+  });
+});
+
+describe("the simulation block", () => {
+  it("reads as unapplied while every lever sits at zero", () => {
+    const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+
+    expect(simulation.applied).toBe(false);
+    expect(simulation.scenario).toEqual(simulation.baseline);
+    for (const metric of simulation.index) {
+      expect(metric.scenario_index).toBeCloseTo(100, 9);
+      expect(metric.delta).toBe(0);
+    }
+  });
+
+  it("compares the four metrics the A2 simulator panel shows", () => {
+    const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      levers: { demand: 20 },
+    });
+
+    expect(simulation.index.map((metric) => metric.id)).toEqual([
+      "stockout_risk_skus",
+      "expiry_units",
+      "overstock_skus",
+      "at_risk_value",
+    ]);
+    expect(simulation.applied).toBe(true);
+    // A demand surge empties shelves: more SKUs below ROP than before.
+    const stockout = simulation.index[0];
+    expect(stockout.scenario_value).toBeGreaterThan(stockout.baseline_value);
+  });
+
+  it("only reaches the rest of the board when told to drive the whole page", () => {
+    const scope = { ...DEFAULT_SCOPE, legal_entity_id: "GRC" };
+    const levers = { demand: 40 };
+
+    const driven = buildDashboardFromFixture(fixture, scope, { levers });
+    const contained = buildDashboardFromFixture(fixture, scope, {
+      levers,
+      driveWholePage: false,
+    });
+    const untouched = buildDashboardFromFixture(fixture, scope);
+
+    // Both know the scenario; only one lets it out of the panel.
+    expect(driven.simulation.scenario).toEqual(contained.simulation.scenario);
+    expect(driven.kpis).toEqual(driven.simulation.scenario);
+    expect(contained.kpis).toEqual(untouched.kpis);
+  });
+
+  it("leaves the store charts on the baseline, because they arrive aggregated", () => {
+    // Honest limit rather than a bug: `fixture.stores` is summed per store
+    // before it reaches the selectors, so there are no rows left to re-run.
+    const scope = { ...DEFAULT_SCOPE, legal_entity_id: "GRC" };
+    const driven = buildDashboardFromFixture(fixture, scope, {
+      levers: { demand: 40 },
+    });
+    const untouched = buildDashboardFromFixture(fixture, scope);
+
+    expect(driven.stockout_by_store).toEqual(untouched.stockout_by_store);
+    expect(driven.at_risk_by_cluster).toEqual(untouched.at_risk_by_cluster);
   });
 });
 

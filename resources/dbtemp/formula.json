@@ -659,6 +659,87 @@
                     "default": 32
                 }
             ]
+        },
+        {
+            "id": "f20-days-of-supply",
+            "number": 20,
+            "name": "Days of supply",
+            "logic": "Position / ADS, guarded against a dead SKU",
+            "sheet": "ENGINE",
+            "result_type": "number",
+            "expression": "IF(ads > 0, position / ads, 0)",
+            "parameters": [
+                {
+                    "key": "ads",
+                    "label": "ADS, chain-net",
+                    "type": "number",
+                    "default": 496.869179208
+                },
+                {
+                    "key": "position",
+                    "label": "Position",
+                    "type": "number",
+                    "default": 1176
+                }
+            ]
+        },
+        {
+            "id": "f21-inventory-value",
+            "number": 21,
+            "name": "Inventory value",
+            "logic": "ROUND(position x price)",
+            "sheet": "ENGINE",
+            "result_type": "number",
+            "expression": "ROUND(position * price)",
+            "parameters": [
+                {
+                    "key": "position",
+                    "label": "Position",
+                    "type": "number",
+                    "default": 1176
+                },
+                {
+                    "key": "price",
+                    "label": "Unit price",
+                    "type": "number",
+                    "default": 18900
+                }
+            ]
+        },
+        {
+            "id": "f22-expiry-units",
+            "number": 22,
+            "name": "Expiry units",
+            "logic": "Perishable stock already past its shelf-life cover",
+            "sheet": "ENGINE",
+            "result_type": "number",
+            "expression": "IF(perishable = \"Y\", MAX(0, position - ads * shelf_life_days), 0)",
+            "parameters": [
+                {
+                    "key": "perishable",
+                    "label": "Perishable (Y/N)",
+                    "type": "text",
+                    "default": "Y"
+                },
+                {
+                    "key": "position",
+                    "label": "Position",
+                    "type": "number",
+                    "default": 1176
+                },
+                {
+                    "key": "ads",
+                    "label": "ADS, chain-net",
+                    "type": "number",
+                    "default": 496.869179208
+                },
+                {
+                    "key": "shelf_life_days",
+                    "label": "Shelf life (days)",
+                    "type": "number",
+                    "default": 3
+                }
+            ]
         }
     ]
 }

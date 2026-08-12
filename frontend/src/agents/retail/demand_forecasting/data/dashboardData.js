@@ -1,40 +1,68 @@
+/**
+ * The only place Demand Forecasting chooses where its data comes from.
+ *
+ * Components import `loadDemandForecastingDashboard` and never touch the
+ * fixture, the selectors, or `fetch` directly. When the backend builder is
+ * ready, flipping `DATA_SOURCE` to "api" is the whole cutover.
+ *
+ * This used to read `mockDataset.js`, which invented four legal entities, a
+ * dozen categories and four hundred SKUs from a hash of the row index. It now
+ * reads figures derived from the same workbook Inventory Risk reads, so a code
+ * like `GRC-001` means one product across both boards.
+ */
+
 import { fetchDashboard } from "../../../../api/dashboard.js";
 import {
   DEMAND_AGENT_ID,
   normalizeDemandDashboard,
   normalizeDemandQuery,
 } from "./contract.js";
-import { getMockDemandForecastingDashboard } from "./mockDashboard.js";
+import fixture from "./fixture.json";
+import { buildDashboardFromFixture } from "./selectors.js";
+
+/** @type {"fixture" | "api"} */
+export const DATA_SOURCE = "fixture";
 
 export function demandForecastingDataSource() {
-  const configured = String(
-    import.meta.env.VITE_DEMAND_FORECASTING_DATA_SOURCE || "mock",
-  ).toLowerCase();
-  return configured === "api" ? "api" : "mock";
+  return DATA_SOURCE;
 }
 
-export async function loadDemandForecastingDashboard(inputQuery = {}, simulationLevers = {}) {
+export async function loadDemandForecastingDashboard(
+  inputQuery = {},
+  simulationLevers = {},
+  options = {},
+) {
   const query = normalizeDemandQuery(inputQuery);
 
-  if (demandForecastingDataSource() === "api") {
+  if (DATA_SOURCE === "api") {
     const payload = await fetchDashboard(DEMAND_AGENT_ID, query);
     return normalizeDemandDashboard(payload, { requirePhase2: true });
   }
 
-  return getMockDemandForecastingDashboard(query, simulationLevers);
+  return normalizeDemandDashboard(
+    buildDashboardFromFixture(fixture, query, {
+      levers: simulationLevers,
+      driveWholePage: options.driveWholePage,
+    }),
+  );
 }
 
 /**
- * Mock-only simulation boundary. A future backend contract should accept the
- * normalized query plus lever values and return the same dashboard contract;
- * no production route is invented during this frontend phase.
+ * Scenario preview: the same board under different levers, without applying
+ * them to the page. No backend route is invented for it — when the API can
+ * answer a scoped What-If, this is the second call site that has to learn.
  */
-export async function loadDemandForecastingScenario(inputQuery = {}, simulationLevers = {}) {
-  if (demandForecastingDataSource() === "api") {
+export async function loadDemandForecastingScenario(
+  inputQuery = {},
+  simulationLevers = {},
+) {
+  if (DATA_SOURCE === "api") {
     throw new Error("Demand Forecasting simulation backend integration is pending.");
   }
-  return getMockDemandForecastingDashboard(
-    normalizeDemandQuery(inputQuery),
-    simulationLevers,
+  return normalizeDemandDashboard(
+    buildDashboardFromFixture(fixture, normalizeDemandQuery(inputQuery), {
+      levers: simulationLevers,
+      driveWholePage: true,
+    }),
   );
 }

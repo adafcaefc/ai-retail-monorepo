@@ -1,93 +1,191 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+/*
+ * The gateway, and the reconciliation behind it.
+ *
+ * These used to assert against `mockDashboard.js` — a payload checked against
+ * the thing that produced it, which could only ever pass. The comparisons here
+ * are against `a1_demand_forecasting`, the workbook's own sheet, carried into
+ * the fixture as `reference_by_vertical`.
+ *
+ * The API branch is not exercised: `DATA_SOURCE` is a module constant rather
+ * than an environment flag (see `dashboardData.js` for why), so there is
+ * nothing to stub. Inventory Risk makes the same trade. When the backend
+ * builder lands, that branch gets a test against a real response.
+ */
 
-const mocks = vi.hoisted(() => ({
-  fetchDashboard: vi.fn(),
-}));
+import { describe, expect, it } from "vitest";
 
-vi.mock("../../../../api/dashboard.js", () => ({
-  fetchDashboard: mocks.fetchDashboard,
-}));
-
-import { DEMAND_AGENT_ID } from "./contract.js";
+import { DEMAND_AGENT_ID, DEFAULT_DEMAND_LEVERS } from "./contract.js";
 import {
   demandForecastingDataSource,
   loadDemandForecastingDashboard,
   loadDemandForecastingScenario,
 } from "./dashboardData.js";
-import { getMockDemandForecastingDashboard } from "./mockDashboard.js";
+import fixture from "./fixture.json";
 
-describe("Demand Forecasting data gateway", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    vi.unstubAllEnvs();
-  });
+const grocery = fixture.reference_by_vertical.find(
+  (row) => row.legal_entity_id === "GRC",
+);
 
-  it("defaults safely to mock mode", async () => {
-    expect(demandForecastingDataSource()).toBe("mock");
+describe("the Demand Forecasting gateway", () => {
+  it("reads the workbook fixture, not an invented dataset", async () => {
+    expect(demandForecastingDataSource()).toBe("fixture");
+
     const dashboard = await loadDemandForecastingDashboard();
 
+    expect(dashboard.agent).toBe(DEMAND_AGENT_ID);
     expect(dashboard.is_mock).toBe(true);
-    expect(mocks.fetchDashboard).not.toHaveBeenCalled();
+    expect(dashboard.note).toMatch(/typed into the A1 sheet/);
   });
 
-  it("uses the canonical dashboard client and normalized query in API mode", async () => {
-    vi.stubEnv("VITE_DEMAND_FORECASTING_DATA_SOURCE", "api");
-    const apiPayload = await getMockDemandForecastingDashboard({
-      legal_entity_id: "GRC",
-      horizon_weeks: 12,
-    });
-    mocks.fetchDashboard.mockResolvedValue({ ...apiPayload, is_mock: false });
+  it("carries the real eight verticals, not the four that were made up", async () => {
+    const dashboard = await loadDemandForecastingDashboard();
+    const ids = dashboard.filter_options.legal_entities.map((row) => row.value);
 
-    const result = await loadDemandForecastingDashboard({
-      legal_entity_id: "GRC",
-      horizon_weeks: 12,
-      detail_limit: 500,
-    });
+    expect(ids).toHaveLength(8);
+    expect(ids).toContain("GRC");
+    expect(ids).toContain("HNB");
+    // HBA and HME were invented and do not exist in the dataset.
+    expect(ids).not.toContain("HBA");
+    expect(ids).not.toContain("HME");
+  });
 
-    expect(demandForecastingDataSource()).toBe("api");
-    expect(mocks.fetchDashboard).toHaveBeenCalledWith(
-      DEMAND_AGENT_ID,
-      expect.objectContaining({
-        legal_entity_id: "GRC",
-        horizon_weeks: 12,
-        detail_offset: 0,
-        detail_limit: 100,
-      }),
+  it("matches the A1 sheet on the two figures the workbook actually computes", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+    });
+    const byId = Object.fromEntries(
+      dashboard.kpis.map((kpi) => [kpi.id, kpi.value]),
     );
-    expect(result.agent).toBe(DEMAND_AGENT_ID);
-    expect(result.is_mock).toBe(false);
+
+    expect(byId.forecast_next_7d).toBeCloseTo(grocery.forecast_7d, 3);
+    expect(byId.stockout_risk_skus).toBe(grocery.stockout_risk_skus);
+    expect(byId.predicted_to_trend).toBe(grocery.trending_skus);
   });
 
-  it("treats unsupported source values as mock mode", () => {
-    vi.stubEnv("VITE_DEMAND_FORECASTING_DATA_SOURCE", "unexpected");
-    expect(demandForecastingDataSource()).toBe("mock");
+  it("passes the typed constants through untouched, and labels them", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+    });
+    const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
+
+    expect(kpi("forecast_accuracy").value).toBeCloseTo(grocery.accuracy_pct, 6);
+    expect(kpi("demand_trend").value).toBeCloseTo(grocery.trend_pct, 6);
+    expect(kpi("seasonality_index").value).toBeCloseTo(grocery.seasonality_idx, 6);
+
+    // The tile says where its number came from rather than implying it was
+    // calculated. Four of the six were keyed in by hand.
+    expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
+    expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
   });
 
-  it("runs frontend scenarios in mock mode without making a backend request", async () => {
-    const result = await loadDemandForecastingScenario({}, { demand: 20 });
+  it("totals the chain to the sum of its verticals", async () => {
+    const dashboard = await loadDemandForecastingDashboard();
+    const expected = fixture.reference_by_vertical.reduce(
+      (running, row) => running + row.forecast_7d,
+      0,
+    );
+    const forecast = dashboard.kpis.find((kpi) => kpi.id === "forecast_next_7d");
 
-    expect(result.simulation.applied).toBe(true);
-    expect(result.simulation.scenario.forecast_next_7d)
-      .toBeGreaterThan(result.simulation.baseline.forecast_next_7d);
-    expect(mocks.fetchDashboard).not.toHaveBeenCalled();
+    expect(forecast.value).toBeCloseTo(expected, 3);
+    expect(dashboard.details.total).toBe(800);
   });
 
-  it("does not invent a simulation endpoint in API mode", async () => {
-    vi.stubEnv("VITE_DEMAND_FORECASTING_DATA_SOURCE", "api");
+  it("emits a forecast series with a widening interval and no actuals", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      horizon_weeks: 8,
+      grain: "weekly",
+    });
+    const { points } = dashboard.forecast;
 
-    await expect(loadDemandForecastingScenario({}, { demand: 20 }))
-      .rejects.toThrow("simulation backend integration is pending");
-    expect(mocks.fetchDashboard).not.toHaveBeenCalled();
+    expect(points).toHaveLength(8);
+    // No sales history exists at any grain, so nothing claims to be measured.
+    expect(points.every((point) => point.actual === null)).toBe(true);
+
+    const width = (point) => point.confidence_high - point.confidence_low;
+    const relative = points.map((point) => width(point) / point.forecast);
+    // sqrt(h) growth: the band is wider at the far end than the near one.
+    expect(relative.at(-1)).toBeGreaterThan(relative[0]);
+    // And the first period lands on the ±12% the A1 spec asserts flatly.
+    expect(relative[0] / 2).toBeCloseTo(0.125, 2);
   });
 
-  it("rejects an incomplete schema-version-2 API payload instead of rendering empty panels", async () => {
-    vi.stubEnv("VITE_DEMAND_FORECASTING_DATA_SOURCE", "api");
-    const complete = await getMockDemandForecastingDashboard();
-    const { dimensions: _dimensions, ...incomplete } = complete;
-    mocks.fetchDashboard.mockResolvedValue({ ...incomplete, is_mock: false });
+  it("keeps the board on the workbook until a lever is moved", async () => {
+    const rest = await loadDemandForecastingDashboard({}, DEFAULT_DEMAND_LEVERS);
+    expect(rest.simulation.applied).toBe(false);
+    expect(rest.simulation.scenario).toEqual(rest.simulation.baseline);
+  });
 
-    await expect(loadDemandForecastingDashboard())
-      .rejects.toThrow("API contract field dimensions is required");
-    expect(mocks.fetchDashboard).toHaveBeenCalledTimes(1);
+  it("moves what the formulas reach, and nothing else", async () => {
+    const dashboard = await loadDemandForecastingDashboard(
+      {},
+      { ...DEFAULT_DEMAND_LEVERS, demand: 30 },
+    );
+    const { baseline, scenario } = dashboard.simulation;
+
+    // f01 scales ADS, so the forecast and the reorder zone both move.
+    expect(scenario.forecast_next_7d).toBeGreaterThan(baseline.forecast_next_7d);
+    expect(scenario.stockout_risk_skus).toBeGreaterThan(baseline.stockout_risk_skus);
+    /*
+     * Accuracy and trending are typed constants with no lever anywhere near
+     * them, and the payload names them so the panel can say so.
+     *
+     * Accuracy is compared approximately rather than exactly: it is blended
+     * across the scope's verticals weighted by forecast, so a scenario that
+     * changes volumes changes the weights. The workbook types 92.4 for all
+     * eight, so the blend is 92.4 either way and the difference is 1e-13 of
+     * floating point, not a lever taking effect.
+     */
+    expect(scenario.forecast_accuracy_pct).toBeCloseTo(
+      baseline.forecast_accuracy_pct,
+      9,
+    );
+    expect(scenario.predicted_to_trend).toBe(baseline.predicted_to_trend);
+    expect(dashboard.simulation.unmodelled).toContain("forecast_accuracy_pct");
+  });
+
+  it("previews a scenario without applying it to the board", async () => {
+    const preview = await loadDemandForecastingScenario(
+      {},
+      { ...DEFAULT_DEMAND_LEVERS, demand: 20 },
+    );
+    expect(preview.simulation.applied).toBe(true);
+    expect(preview.forecast.points.length).toBeGreaterThan(0);
+  });
+});
+
+describe("dimensions", () => {
+  it("reconciles every breakdown to the chain total", async () => {
+    const dashboard = await loadDemandForecastingDashboard();
+    const { dimensions } = dashboard;
+    const total = dimensions.chain_total;
+
+    for (const key of ["categories", "stores", "clusters", "legal_entities"]) {
+      const summed = dimensions[key].reduce(
+        (running, row) => running + row.forecast_units,
+        0,
+      );
+      expect(summed).toBeCloseTo(total, 3);
+    }
+
+    expect(dimensions.categories).toHaveLength(160);
+    expect(dimensions.stores).toHaveLength(160);
+    expect(dimensions.legal_entities).toHaveLength(8);
+  });
+
+  it("derives the seasonality curve from the monthly profile", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+    });
+    const { seasonality } = dashboard.dimensions;
+
+    expect(seasonality).toHaveLength(12);
+    // `Constants` B6 says the workbook is evaluated at July.
+    expect(seasonality[fixture.seasonality.current_month_index].current).toBe(true);
+    expect(seasonality.filter((point) => point.current)).toHaveLength(1);
+
+    // Indices average 100 by construction — they are month over series mean.
+    const mean =
+      seasonality.reduce((running, point) => running + point.index, 0) / 12;
+    expect(mean).toBeCloseTo(100, 6);
   });
 });

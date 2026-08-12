@@ -277,6 +277,126 @@ const CHROME = {
   Next: "Berikutnya",
   Page: "Halaman",
 
+  // Replenishment (Agent 3). Order value appears twice on purpose — at cost
+  // and at retail — because the workbook states it twice and the two differ.
+  "Replenishment dashboard": "Dasbor pengisian ulang",
+  "Replenishment summary": "Ringkasan pengisian ulang",
+  "Unable to load Replenishment.": "Gagal memuat Pengisian Ulang.",
+  "Whole chain": "Seluruh rantai",
+  Route: "Rute",
+  "Only what needs ordering": "Hanya yang perlu dipesan",
+  "SKUs to reorder": "SKU perlu dipesan",
+  "Order units": "Unit pesanan",
+  "sales units": "unit jual",
+  "Order value at cost": "Nilai pesanan (harga beli)",
+  "what the PO pays": "yang dibayar PO",
+  "Order value at retail": "Nilai pesanan (harga jual)",
+  "what it is worth": "nilai jualnya",
+  "Fill rate": "Tingkat pemenuhan",
+  cover: "cakupan",
+  Recoverable: "Bisa dihemat",
+  "by switching vendor": "dengan pindah vendor",
+  "Order value by route": "Nilai pesanan per rute",
+  "Order value by category": "Nilai pesanan per kategori",
+  "Order value by store": "Nilai pesanan per toko",
+  "Order value by cluster": "Nilai pesanan per klaster",
+  "at cost": "harga beli",
+  lead: "waktu tunggu",
+  "At cost": "Harga beli",
+  Lines: "Baris",
+  lines: "baris",
+  "Vendor sourcing": "Sumber vendor",
+  "recoverable across all vendors": "bisa dihemat di seluruh vendor",
+  "Every line is already on its cheapest quote":
+    "Semua baris sudah memakai penawaran termurah",
+  "if switched": "jika dialihkan",
+  "cheapest on file": "termurah yang tercatat",
+  OTIF: "OTIF",
+  "Purchase order preview": "Pratinjau pesanan pembelian",
+  "Nothing needs ordering in the current scope.":
+    "Tidak ada yang perlu dipesan pada cakupan ini.",
+  "Nothing in scope.": "Tidak ada dalam cakupan.",
+  Max: "Maks",
+  Order: "Pesan",
+  Buy: "Beli",
+  "Line cost": "Biaya baris",
+  Vendor: "Vendor",
+  recoverable: "bisa dihemat",
+  "Cheapest quote for this line": "Penawaran termurah untuk baris ini",
+  top: "teratas",
+  stores: "toko",
+  "Order value is shown twice: at selling price, which is what the A3 sheet totals, and at trade-agreement price, which is what the purchase order would actually cost.":
+    "Nilai pesanan ditampilkan dua kali: harga jual, yang dijumlahkan sheet A3, dan harga trade-agreement, yang sebenarnya dibayar pesanan pembelian.",
+  "Purchase quantities round up to whole packs, so a line buys a little more than its shortfall.":
+    "Kuantitas beli dibulatkan ke atas ke kelipatan kemasan, jadi satu baris membeli sedikit lebih banyak dari kekurangannya.",
+  "Workbook demonstration data, not a live ERP position. Order value is reported twice — at selling price, which is what the A3 sheet totals, and at trade-agreement price, which is what the purchase order would actually cost.":
+    "Data demonstrasi workbook, bukan posisi ERP langsung. Nilai pesanan dilaporkan dua kali — harga jual, yang dijumlahkan sheet A3, dan harga trade-agreement, yang sebenarnya dibayar pesanan pembelian.",
+
+  // Projected on-hand vs demand (A2 spec section 4).
+  "Projected on-hand vs demand": "Proyeksi stok vs permintaan",
+  "Projected on-hand": "Proyeksi stok di tangan",
+  "Demand per day": "Permintaan per hari",
+  "Inbound landed": "Barang masuk yang tiba",
+  "Nothing in scope to project.": "Tidak ada yang bisa diproyeksikan pada cakupan ini.",
+  "Cover holds across the horizon": "Cakupan bertahan sepanjang horizon",
+  "Under one day of cover from": "Kurang dari satu hari cakupan sejak",
+  Inbound: "Barang masuk",
+  "Avg DoS": "Rata-rata hari persediaan",
+  "At risk": "Berisiko",
+  "Projected forward from today's position. The workbook holds one on-hand reading per SKU and no history, so there is nothing to plot before day 0.":
+    "Diproyeksikan maju dari posisi hari ini. Workbook hanya menyimpan satu angka stok per SKU dan tidak punya riwayat, jadi tidak ada yang bisa digambar sebelum hari ke-0.",
+
+  // What-If simulator (A2 spec section 8). The lever labels and their effects
+  // are the spec's own wording; the cell references stay untranslated because
+  // `Constants!B16` is an address, not prose.
+  "Levers re-run the workbook's formulas · no backend calls":
+    "Tuas menjalankan ulang formula workbook · tanpa panggilan backend",
+  Run: "Jalankan",
+  Save: "Simpan",
+  Reset: "Atur ulang",
+  "Move a lever before saving a scenario":
+    "Geser satu tuas dulu sebelum menyimpan skenario",
+  "Baseline versus scenario": "Dasar dibanding skenario",
+  Baseline: "Dasar",
+  Scenario: "Skenario",
+  Unchanged: "Tidak berubah",
+  "Demand surge": "Lonjakan permintaan",
+  "Promo pull": "Tarikan promo",
+  "Markdown clear": "Cuci gudang",
+  "Inbound cover": "Cakupan barang masuk",
+  "Lead time": "Waktu tunggu",
+  "Safety days": "Hari pengaman",
+  "ADS × (1 + demand/100) — DoS falls, stockouts rise":
+    "ADS × (1 + permintaan/100) — hari persediaan turun, kehabisan stok naik",
+  "Promo-eligible SKUs deplete faster": "SKU berpromo terkuras lebih cepat",
+  "No modelled effect — the workbook has no markdown term":
+    "Tidak dimodelkan — workbook tidak punya suku cuci gudang",
+  "Open PO × (1 + inbound/100) — fills Position":
+    "PO terbuka × (1 + barang masuk/100) — mengisi Posisi",
+  "ROP = ADS × (Lead + Δ + Safety) — pushes ROP up":
+    "ROP = ADS × (Lead + Δ + Safety) — mendorong ROP naik",
+  "ROP += safety — fewer stockouts, more capital":
+    "ROP += pengaman — kehabisan stok berkurang, modal bertambah",
+  "Expiry units": "Unit kedaluwarsa",
+
+  // Compare scenarios (A2 spec section 8d).
+  "Compare scenarios": "Bandingkan skenario",
+  saved: "tersimpan",
+  "Save a scenario to compare it against the baseline":
+    "Simpan skenario untuk membandingkannya dengan dasar",
+  Day: "Hari",
+  Remove: "Hapus",
+  "Scenarios are held in this browser tab only and are not saved anywhere.":
+    "Skenario hanya tersimpan di tab peramban ini dan tidak disimpan di mana pun.",
+
+  // The scenario banner. This one has to be unmissable: with levers driving
+  // the page, every figure above and below it is simulated.
+  "These are simulated figures, not the workbook position.":
+    "Angka-angka ini hasil simulasi, bukan posisi workbook.",
+  "Store and cluster charts stay on the baseline — they arrive pre-aggregated.":
+    "Chart toko dan klaster tetap pada dasar — datanya sudah teragregasi sejak awal.",
+  "Back to workbook": "Kembali ke workbook",
+
   // The two caveats the board must carry, not bury (A2 spec section 10).
   "Store and cluster breakdowns are gross: they sum local risk pockets and exceed the chain-net headline, which nets surplus against shortage across stores.":
     "Rincian toko dan klaster bersifat bruto: menjumlahkan kantong risiko lokal dan melebihi angka utama neto rantai, yang saling menghapus surplus dan kekurangan antar toko.",

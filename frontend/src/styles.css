@@ -6980,6 +6980,16 @@ img.ey-logo {
   --risk-kpi-avg-dos: var(--blue-500);
   --risk-kpi-inventory-value: var(--green-600);
 
+  /* Projection and What-If. Baseline is deliberately the quieter of the pair:
+     the scenario is what the reader is being asked to look at. */
+  --risk-projection: var(--blue-500);
+  --risk-demand: #7c4dff;
+  --risk-baseline: var(--gray-400);
+  --risk-scenario: var(--blue-500);
+  --risk-compare-2: var(--amber-600);
+  --risk-compare-3: var(--green-600);
+  --risk-compare-4: #5c2d91;
+
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -7735,6 +7745,225 @@ img.ey-logo {
   gap: var(--space-3);
 }
 
+/* --- projection, What-If, compare (A2 spec 4 and 8) --------------------- */
+
+/* The figures under the main chart: Position, Inbound, Avg DoS, At risk. */
+.risk-metric-strip {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.risk-metric-strip dt {
+  color: var(--muted);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.risk-metric-strip dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* Reserved for statements about what a panel is NOT showing. Quiet, but never
+   hidden behind a hover: a caveat a reader has to discover is not a caveat. */
+.risk-panel-caveat {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.risk-simulator-head {
+  align-items: flex-start;
+}
+
+.risk-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.risk-drive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.risk-lever-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.risk-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+
+.risk-lever > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.risk-lever b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.risk-lever output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-lever small {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.4;
+}
+
+/* The markdown lever: declared by the spec, absent from the workbook's
+   formulas. Dimmed rather than removed, so the question "where is it?" is
+   answered where it is asked. */
+.risk-lever--inert {
+  opacity: 0.5;
+}
+
+.risk-lever--inert input {
+  cursor: not-allowed;
+}
+
+.risk-simulator-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.risk-chart--sim {
+  height: 190px;
+}
+
+.risk-scenario-metrics {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.risk-scenario-metrics article {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.risk-scenario-metrics span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.risk-scenario-metrics strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-scenario-metrics small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.risk-scenario-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-scenario-list li {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  gap: 8px;
+  font-size: 0.66rem;
+}
+
+.risk-scenario-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.risk-scenario-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.risk-scenario-levers,
+.risk-scenario-value {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-scenario-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The board is showing a simulation. Loud on purpose — every figure below it
+   is a projection, and a reader must not screenshot one as the position. */
+.risk-applied-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+
+.risk-applied-flag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--amber-500);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.risk-applied-banner p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+
+.risk-applied-scope {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
 /* --- responsive --------------------------------------------------------- */
 
 @media (width <= 1180px) {
@@ -7746,8 +7975,13 @@ img.ey-logo {
   .risk-chart-grid,
   .risk-skeleton-panels,
   .risk-dimension-grid,
-  .risk-skeleton-dims {
+  .risk-skeleton-dims,
+  .risk-simulator-results {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-lever-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -7759,6 +7993,29 @@ img.ey-logo {
 
   .risk-filter-actions {
     margin-left: 0;
+  }
+
+  .risk-lever-grid,
+  .risk-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-simulator-actions {
+    width: 100%;
+  }
+
+  .risk-simulator-actions .risk-button {
+    flex: 1;
+  }
+
+  /* The lever summary is the first thing to go: the swatch, the name and the
+     exposure still identify the line on the chart without it. */
+  .risk-scenario-list li {
+    grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  }
+
+  .risk-scenario-levers {
+    display: none;
   }
 }
 
@@ -8191,5 +8448,487 @@ img.ey-logo {
 
   .demand-simulator-actions .demand-button {
     flex: 1;
+  }
+}
+
+/* ==========================================================================
+   Replenishment (Agent 3)
+
+   Reuses the Inventory Risk layout vocabulary rather than inventing a second
+   one: the two boards are read by the same people, one after the other, and a
+   purchase order that looks like a different product is a purchase order that
+   gets misread.
+   ========================================================================== */
+
+.replenishment-dashboard {
+  /* One accent per route, in lead-time order: fastest reads warmest. */
+  --po-route-direct: var(--green-600);
+  --po-route-flow: var(--blue-500);
+  --po-route-cross: #5c2d91;
+  --po-bar: var(--blue-500);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Same reason as the Inventory Risk board: inside the workboard bounded
+   height, every flex child would otherwise shrink to its header. */
+.replenishment-dashboard > * {
+  flex-shrink: 0;
+}
+
+.replenishment-dashboard.is-refreshing {
+  opacity: 0.62;
+}
+
+.po-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.po-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.62rem;
+}
+
+.po-filters label > span {
+  color: var(--muted);
+}
+
+.po-filters select,
+.po-filters input[type="search"] {
+  min-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.po-toggle {
+  align-items: center;
+  flex-direction: row;
+  gap: 6px;
+  color: var(--ink);
+}
+
+.po-filter-actions {
+  display: flex;
+  margin-left: auto;
+  gap: 6px;
+}
+
+.po-button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.po-button--quiet {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.po-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.po-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.62rem;
+}
+
+.po-data-note {
+  color: var(--muted);
+}
+
+.po-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.po-scope-summary b {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.po-scope-summary button,
+.po-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.po-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--red-500);
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+}
+
+.po-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.po-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+button.po-kpi {
+  cursor: pointer;
+}
+
+.po-kpi--good {
+  border-left-color: var(--green-600);
+}
+
+.po-kpi--warn {
+  border-left-color: var(--amber-500);
+}
+
+.po-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.po-kpi-value {
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.po-kpi-sub {
+  color: var(--muted);
+  font-size: 0.56rem;
+}
+
+.po-footnote,
+.po-panel-caveat {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.po-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.po-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.po-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.po-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.po-panel-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.po-panel-note {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-chart {
+  width: 100%;
+  height: 230px;
+}
+
+.po-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.po-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.po-chart-tooltip em {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.po-route-legend {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 3px;
+  padding: 0;
+  font-size: 0.64rem;
+  list-style: none;
+}
+
+.po-route-legend button {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.64rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-route-legend button.is-active,
+.po-route-legend button:hover {
+  background: var(--surface);
+}
+
+.po-route-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.po-route-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.po-route-lead,
+.po-route-lines {
+  color: var(--muted);
+}
+
+.po-vendor-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.po-vendor-list li {
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.po-vendor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+}
+
+.po-vendor-terms {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.po-vendor-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-vendor-saving {
+  color: var(--green-600);
+  font-weight: 600;
+}
+
+.po-vendor-best {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.po-table-scroll {
+  overflow-x: auto;
+}
+
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.po-table th,
+.po-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.po-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.po-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.po-row {
+  cursor: pointer;
+}
+
+.po-row:hover {
+  background: var(--surface);
+}
+
+.po-row-route {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+}
+
+.po-row-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.po-row-meta {
+  display: block;
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 0.56rem;
+}
+
+.po-vendor {
+  color: var(--ink);
+}
+
+.po-vendor-switch {
+  display: block;
+  color: var(--green-600);
+  font-size: 0.56rem;
+}
+
+.po-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.po-pager button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.po-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (width <= 1180px) {
+  .po-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .po-chart-grid,
+  .po-dimension-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width <= 720px) {
+  .po-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .po-filter-actions {
+    margin-left: 0;
   }
 }

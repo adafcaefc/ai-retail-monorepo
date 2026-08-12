@@ -41,6 +41,102 @@ export const STATE_ORDER = Object.freeze([
 export const HEALTHY_STATE = "Healthy";
 
 /**
+ * The reorder zone: exactly the states `Position < ROP` produces.
+ *
+ * f07 assigns Stockout below `0.6 × ROP` and Low below ROP, so these two
+ * states and that comparison select the same rows by construction. Naming the
+ * set once keeps the tiles, the register and the What-If engine from each
+ * deciding it separately.
+ */
+export const REPLENISH_STATES = Object.freeze(["Stockout", "Low"]);
+
+/**
+ * What-If levers, A2 spec section 8a → `Constants` B16–B21.
+ *
+ * `effect` is what the reader is told the lever does. It is not decoration:
+ * `markdown` is listed with no effect because the workbook's formulas carry no
+ * markdown term, and a slider that silently does nothing is worse than one
+ * that says so.
+ */
+export const LEVER_DEFINITIONS = Object.freeze([
+  {
+    id: "demand",
+    label: "Demand surge",
+    unit: "%",
+    min: -30,
+    max: 40,
+    step: 1,
+    cell: "B16",
+    effect: "ADS × (1 + demand/100) — DoS falls, stockouts rise",
+  },
+  {
+    id: "promo",
+    label: "Promo pull",
+    unit: "%",
+    min: 0,
+    max: 50,
+    step: 1,
+    cell: "B17",
+    effect: "Promo-eligible SKUs deplete faster",
+  },
+  {
+    id: "markdown",
+    label: "Markdown clear",
+    unit: "%",
+    min: 0,
+    max: 60,
+    step: 1,
+    cell: "B18",
+    effect: "No modelled effect — the workbook has no markdown term",
+    modelled: false,
+  },
+  {
+    id: "inbound",
+    label: "Inbound cover",
+    unit: "%",
+    min: -40,
+    max: 60,
+    step: 5,
+    cell: "B19",
+    effect: "Open PO × (1 + inbound/100) — fills Position",
+  },
+  {
+    id: "lead",
+    label: "Lead time",
+    unit: "d",
+    min: -2,
+    max: 6,
+    step: 1,
+    cell: "B20",
+    effect: "ROP = ADS × (Lead + Δ + Safety) — pushes ROP up",
+  },
+  {
+    id: "safety",
+    label: "Safety days",
+    unit: "d",
+    min: -2,
+    max: 5,
+    step: 1,
+    cell: "B21",
+    effect: "ROP += safety — fewer stockouts, more capital",
+  },
+]);
+
+/**
+ * Every lever at rest, which is the setting the workbook was calculated at
+ * (`Constants` B16–B21 are all zero).
+ *
+ * Deliberately not the mockup's `baseOv()`, which opens promo at 15 and
+ * markdown at 25. Those are the values of the *scenario* the workbook
+ * publishes on `What-If · Per Agent`, not of its baseline — starting the
+ * sliders there would show a scenario while the board claimed to show the
+ * workbook.
+ */
+export const BASELINE_LEVERS = Object.freeze(
+  Object.fromEntries(LEVER_DEFINITIONS.map((lever) => [lever.id, 0])),
+);
+
+/**
  * Shelf-life buckets for the expiry timeline (A2 spec section 6,
  * `#ch-dim-sea`). Upper bound is inclusive; `null` means unbounded.
  */
@@ -53,6 +149,26 @@ export const EXPIRY_BUCKETS = Object.freeze([
 
 /** How many SKUs the expiry watchlist shows (A2 spec section 6). */
 export const EXPIRY_WATCHLIST_SIZE = 4;
+
+/**
+ * How far the projection chart looks ahead, in days (A2 spec section 4).
+ *
+ * Four weeks: long enough for the longest lead time in the dataset (7 days)
+ * plus a full replenishment cycle after it, short enough that a straight-line
+ * demand assumption is not obviously silly.
+ */
+export const PROJECTION_DAYS = 28;
+
+/**
+ * The projection has no history to show, and the chart says so rather than
+ * drawing one. A2 spec section 4 puts a split line between past and forecast;
+ * the workbook stores a single on-hand position per SKU and no time series at
+ * all, so anything to the left of today would be a back-cast — a straight line
+ * drawn by assuming the past looked like the future.
+ */
+export const PROJECTION_NOTE =
+  "Projected forward from today's position. The workbook holds one on-hand " +
+  "reading per SKU and no history, so there is nothing to plot before day 0.";
 
 /**
  * @typedef {object} InventoryRiskScope
@@ -75,9 +191,9 @@ export const DEFAULT_SCOPE = Object.freeze({
 /**
  * @typedef {object} InventoryRiskKpis
  * @property {number} stockout_risk_skus Count of `Position < ROP`.
- * @property {number} overstock_skus     Count of `DoS > 15`.
+ * @property {number} overstock_skus     Count of state Overstock.
  * @property {number} expiry_units       Sum of units past shelf-life cover.
- * @property {number} slow_mover_skus    Count of `growth < 1 && DoS > 10`.
+ * @property {number} slow_mover_skus    Count of state Slow-mover.
  * @property {number} avg_dos            Mean days of supply.
  * @property {number} inventory_value    Sum of `Position × price`.
  * @property {number} at_risk_value      Sum of value where state is not Healthy.
@@ -147,9 +263,17 @@ export const DOS_TARGET = Object.freeze({ min: 7, max: 21 });
  */
 export const KPI_FORMULAS = Object.freeze({
   stockout_risk_skus: "count( Position < ROP )",
-  overstock_skus: "count( DoS > 15 ) · excess = Σ (Position − Max) × price",
+  overstock_skus:
+    "count( state = Overstock: non-perishable, DoS > 15 )" +
+    " · excess = Σ (Position − Max) × price",
   expiry_units: "Σ max(0, Position − ADS × shelf-life)",
-  slow_mover_skus: "count( growth < 1.0 AND DoS > 10 )",
+  // "not already worse off" is the whole difference between this count and a
+  // bare growth/DoS predicate: a slow SKU that is also short of stock is
+  // counted once, under the more urgent state. Reading 51 here and 62 from the
+  // raw predicate is not a discrepancy — states are exclusive by severity.
+  slow_mover_skus:
+    "count( state = Slow-mover: growth < 1.0, DoS > 10," +
+    " not already worse off )",
   avg_dos: "mean( Position ÷ ADS )",
   inventory_value: "Σ Position × unit price",
 });
@@ -218,6 +342,33 @@ export function normalizeInventoryRiskDashboard(payload) {
       healthy_skus: 0,
       sku_count: 0,
       ...(payload.kpis ?? {}),
+    },
+    /*
+     * `projection` and `simulation` default to empty rather than throwing, and
+     * `schema_version` stays at 1 because of it: a backend built before these
+     * existed renders a board with two quiet panels, not a crash. Version 2 is
+     * for a field being removed or changing type.
+     */
+    projection: {
+      days: payload.projection?.days ?? 0,
+      points: payload.projection?.points ?? [],
+      metrics: {
+        position: 0,
+        inbound: 0,
+        avg_dos: 0,
+        at_risk_value: 0,
+        ...(payload.projection?.metrics ?? {}),
+      },
+      days_to_empty: payload.projection?.days_to_empty ?? null,
+    },
+    simulation: {
+      applied: payload.simulation?.applied === true,
+      levers: { ...BASELINE_LEVERS, ...(payload.simulation?.levers ?? {}) },
+      baseline: payload.simulation?.baseline ?? null,
+      scenario: payload.simulation?.scenario ?? null,
+      baseline_projection: payload.simulation?.baseline_projection ?? null,
+      projection: payload.simulation?.projection ?? null,
+      index: payload.simulation?.index ?? [],
     },
     at_risk_by_state: payload.at_risk_by_state ?? [],
     value_by_category: payload.value_by_category ?? [],

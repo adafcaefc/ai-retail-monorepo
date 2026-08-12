@@ -31,8 +31,8 @@ export const DATA_SOURCE = "fixture";
  * no artificial latency. Tests that need to observe a loading state should
  * supply their own controlled promise rather than have production code wait.
  */
-async function loadFromFixture(scope) {
-  return buildDashboardFromFixture(fixture, scope);
+async function loadFromFixture(scope, options) {
+  return buildDashboardFromFixture(fixture, scope, options);
 }
 
 /**
@@ -52,12 +52,21 @@ async function loadFromApi(scope) {
 /**
  * Load the Inventory Risk dashboard for one scope.
  *
+ * `options.levers` is a What-If position; `options.driveWholePage` decides
+ * whether it reaches the rest of the board or stays inside the simulator
+ * panel. Neither is part of the scope, and neither is sent to the API — the
+ * server has no simulation route yet, and when it does, this is the one
+ * function that has to learn about it.
+ *
  * @param {Partial<import("./contract.js").InventoryRiskScope>} [scope]
+ * @param {{levers?: object, driveWholePage?: boolean}} [options]
  * @returns {Promise<import("./contract.js").InventoryRiskDashboard>}
  */
-export async function loadInventoryRiskDashboard(scope = {}) {
+export async function loadInventoryRiskDashboard(scope = {}, options = {}) {
   const payload =
-    DATA_SOURCE === "api" ? await loadFromApi(scope) : await loadFromFixture(scope);
+    DATA_SOURCE === "api"
+      ? await loadFromApi(scope)
+      : await loadFromFixture(scope, options);
 
   return normalizeInventoryRiskDashboard(payload);
 }

@@ -1,7 +1,7 @@
-import RetailDashboard from "../retail/RetailDashboard.jsx";
+import ReplenishmentDashboard from "./ReplenishmentDashboard.jsx";
 
 export default {
   id: "retail.replenishment",
   chatLabel: "Replenishment",
-  dashboardComponent: RetailDashboard,
+  dashboardComponent: ReplenishmentDashboard,
 };

@@ -7,10 +7,19 @@ import DimensionCharts from "./components/DimensionCharts.jsx";
 import ExpiryTimelinePanel from "./components/ExpiryTimelinePanel.jsx";
 import InventoryRiskFilters from "./components/InventoryRiskFilters.jsx";
 import InventoryRiskSkeleton from "./components/InventoryRiskSkeleton.jsx";
+import ProjectedOnHandPanel from "./components/ProjectedOnHandPanel.jsx";
+import RiskAppliedScenarioBanner from "./components/RiskAppliedScenarioBanner.jsx";
 import RiskKpiGrid from "./components/RiskKpiGrid.jsx";
 import RiskRegisterTable from "./components/RiskRegisterTable.jsx";
+import RiskScenarioComparison from "./components/RiskScenarioComparison.jsx";
+import RiskWhatIfSimulator from "./components/RiskWhatIfSimulator.jsx";
 import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
-import { ALL, DEFAULT_SCOPE, GROSS_VS_NET_NOTE } from "./data/contract.js";
+import {
+  ALL,
+  BASELINE_LEVERS,
+  DEFAULT_SCOPE,
+  GROSS_VS_NET_NOTE,
+} from "./data/contract.js";
 import { loadInventoryRiskDashboard } from "./data/dashboardData.js";
 
 function optionLabel(options, value) {
@@ -29,6 +38,9 @@ const EMPTY_OPTIONS = Object.freeze({
   states: [],
 });
 
+/** A2 spec section 8d overlays the baseline plus at most four scenarios. */
+const MAX_SAVED_SCENARIOS = 4;
+
 export default function InventoryRiskDashboard() {
   const { t } = useLanguage();
   const [scope, setScope] = useState({ ...DEFAULT_SCOPE });
@@ -37,6 +49,17 @@ export default function InventoryRiskDashboard() {
   const [error, setError] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
 
+  /*
+   * Draft levers are what the sliders hold; applied levers are what the board
+   * was built from. Separating them is what makes Run mean something — moving
+   * a slider re-runs the workbook's formulas over 800 SKUs, and doing that on
+   * every pixel of a drag would make the control fight the user.
+   */
+  const [draftLevers, setDraftLevers] = useState({ ...BASELINE_LEVERS });
+  const [appliedLevers, setAppliedLevers] = useState({ ...BASELINE_LEVERS });
+  const [driveWholePage, setDriveWholePage] = useState(true);
+  const [scenarios, setScenarios] = useState([]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -44,7 +67,10 @@ export default function InventoryRiskDashboard() {
       setLoading(true);
       setError("");
       try {
-        const result = await loadInventoryRiskDashboard(scope);
+        const result = await loadInventoryRiskDashboard(scope, {
+          levers: appliedLevers,
+          driveWholePage,
+        });
         if (!cancelled) setDashboard(result);
       } catch (loadError) {
         if (!cancelled) {
@@ -61,8 +87,9 @@ export default function InventoryRiskDashboard() {
     };
     // `scope` is state, so its identity only changes when a filter actually
     // moves — depending on the object is both correct and simpler than listing
-    // its five fields.
-  }, [scope, refreshToken, t]);
+    // its five fields. The same holds for `appliedLevers`, which only changes
+    // on Run or Reset, never mid-drag.
+  }, [scope, appliedLevers, driveWholePage, refreshToken, t]);
 
   const patchScope = useCallback((patch) => {
     setScope((current) => ({ ...current, ...patch }));
@@ -71,6 +98,27 @@ export default function InventoryRiskDashboard() {
   const clearScope = useCallback(() => {
     setScope({ ...DEFAULT_SCOPE });
   }, []);
+
+  const resetLevers = useCallback(() => {
+    setDraftLevers({ ...BASELINE_LEVERS });
+    setAppliedLevers({ ...BASELINE_LEVERS });
+  }, []);
+
+  const saveScenario = useCallback(() => {
+    if (!dashboard?.simulation?.applied) return;
+    setScenarios((current) => {
+      const next = {
+        id: `sc-${Date.now()}`,
+        name: `${t("Scenario")} ${current.length + 1}`,
+        levers: { ...dashboard.simulation.levers },
+        kpis: dashboard.simulation.scenario,
+        projection: dashboard.simulation.projection,
+      };
+      // Oldest out first: the chart has five colours and reading a sixth line
+      // is worse than losing the one saved longest ago.
+      return [...current, next].slice(-MAX_SAVED_SCENARIOS);
+    });
+  }, [dashboard, t]);
 
   const options = dashboard?.filter_options ?? EMPTY_OPTIONS;
 
@@ -168,6 +216,16 @@ export default function InventoryRiskDashboard() {
         </div>
       ) : null}
 
+      {/*
+        Above the KPIs on purpose. Every tile below is a simulated figure once
+        levers drive the page, and a reader scrolling to a number should meet
+        the warning before the number, not after it.
+      */}
+      <RiskAppliedScenarioBanner
+        levers={dashboard.simulation.levers}
+        onClear={resetLevers}
+      />
+
       <RiskKpiGrid
         kpis={dashboard.kpis}
         // The reorder zone is Stockout plus Low, and the state filter takes one
@@ -177,6 +235,8 @@ export default function InventoryRiskDashboard() {
           patchScope({ state: scope.state === "Stockout" ? ALL : "Stockout" })
         }
       />
+
+      <ProjectedOnHandPanel projection={dashboard.projection} />
 
       <SuggestedBestAction
         routes={dashboard.best_actions}
@@ -223,6 +283,31 @@ export default function InventoryRiskDashboard() {
       <RiskRegisterTable
         rows={dashboard.risk_register}
         onSelect={(sku) => patchScope({ sku })}
+      />
+
+      <RiskWhatIfSimulator
+        simulation={dashboard.simulation}
+        draftLevers={draftLevers}
+        onLeverChange={(id, value) =>
+          setDraftLevers((current) => ({ ...current, [id]: value }))
+        }
+        onRun={() => setAppliedLevers({ ...draftLevers })}
+        onSave={saveScenario}
+        onReset={resetLevers}
+        driveWholePage={driveWholePage}
+        onDriveWholePageChange={setDriveWholePage}
+        canSave={dashboard.simulation.applied && scenarios.length < MAX_SAVED_SCENARIOS}
+        busy={loading}
+      />
+
+      <RiskScenarioComparison
+        // The workbook's own curve, never the simulated one: a comparison
+        // whose reference line moves with the sliders compares nothing.
+        baseline={dashboard.simulation.baseline_projection}
+        scenarios={scenarios}
+        onRemove={(id) =>
+          setScenarios((current) => current.filter((entry) => entry.id !== id))
+        }
       />
     </section>
   );

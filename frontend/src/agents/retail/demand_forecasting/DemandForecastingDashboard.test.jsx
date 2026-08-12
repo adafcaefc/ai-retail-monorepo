@@ -14,7 +14,22 @@ vi.mock("./data/dashboardData.js", () => ({
 import { LanguageProvider } from "../../../LanguageProvider.jsx";
 import DemandForecastingDashboard from "./DemandForecastingDashboard.jsx";
 import { visibleDemandScenarios } from "./components/DemandScenarioComparison.jsx";
-import { getMockDemandForecastingDashboard } from "./data/mockDashboard.js";
+import { normalizeDemandDashboard } from "./data/contract.js";
+import fixture from "./data/fixture.json";
+import { buildDashboardFromFixture } from "./data/selectors.js";
+
+/*
+ * The gateway is mocked, but what it returns is not: these render the real
+ * provider over the real workbook fixture. Asserting against a hand-written
+ * payload would only prove the payload matched itself.
+ */
+const board = (query, levers, options) =>
+  normalizeDemandDashboard(
+    buildDashboardFromFixture(fixture, query, { levers, ...options }),
+  );
+
+/** The chain's Forecast 7d, as the KPI tile prints it. */
+const CHAIN_FORECAST = "1,656,178";
 
 function renderDashboard() {
   return render(
@@ -28,14 +43,14 @@ describe("DemandForecastingDashboard", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     window.localStorage.clear();
-    mocks.load.mockImplementation((query, levers) => getMockDemandForecastingDashboard(query, levers));
-    mocks.runScenario.mockImplementation((query, levers) => getMockDemandForecastingDashboard(query, levers));
+    mocks.load.mockImplementation((query, levers, options) => board(query, levers, options));
+    mocks.runScenario.mockImplementation((query, levers) => board(query, levers));
   });
 
   it("renders six KPIs, both forecast panels, trending, and forecast detail", async () => {
     renderDashboard();
 
-    expect((await screen.findAllByText("1,656,179")).length).toBeGreaterThanOrEqual(2);
+    expect((await screen.findAllByText(CHAIN_FORECAST)).length).toBeGreaterThanOrEqual(2);
     expect(document.querySelectorAll(".demand-kpi")).toHaveLength(6);
     expect(screen.getByRole("heading", { name: "Demand forecast — actual vs AI" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Demand forecast · actual vs AI" })).toBeInTheDocument();
@@ -51,7 +66,7 @@ describe("DemandForecastingDashboard", () => {
     expect(screen.getByRole("heading", { name: "Suggested Best Action" })).toBeInTheDocument();
     expect(screen.getByText("No saved scenarios yet")).toBeInTheDocument();
     expect(screen.getByText("Saturday ×1.35")).toBeInTheDocument();
-    expect(screen.getAllByText("93.0%")).toHaveLength(2);
+    expect(screen.getAllByText("92.4%").length).toBeGreaterThanOrEqual(1);
     expect(document.querySelectorAll(".demand-detail-scroll tbody tr")).toHaveLength(100);
   });
 
@@ -65,18 +80,18 @@ describe("DemandForecastingDashboard", () => {
   it("shows an initial error and retries successfully", async () => {
     mocks.load
       .mockRejectedValueOnce(new Error("Demand data unavailable"))
-      .mockImplementation((query, levers) => getMockDemandForecastingDashboard(query, levers));
+      .mockImplementation((query, levers, options) => board(query, levers, options));
     renderDashboard();
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Demand data unavailable");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect((await screen.findAllByText("1,656,179")).length).toBeGreaterThanOrEqual(2);
+    expect((await screen.findAllByText(CHAIN_FORECAST)).length).toBeGreaterThanOrEqual(2);
     expect(mocks.load).toHaveBeenCalledTimes(2);
   });
 
   it("updates legal entity and resets dependent filters", async () => {
     renderDashboard();
-    await screen.findAllByText("1,656,179");
+    await screen.findAllByText(CHAIN_FORECAST);
 
     fireEvent.change(screen.getByLabelText("Legal entity"), { target: { value: "GRC" } });
 
@@ -85,39 +100,39 @@ describe("DemandForecastingDashboard", () => {
         legal_entity_id: "GRC",
         category_group: "ALL",
         store_id: "ALL",
-      }), expect.any(Object));
+      }), expect.any(Object), expect.any(Object));
     });
-    expect((await screen.findAllByText("GRC · Grocery Retail")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("GRC · Grocery Retail (Hypermarket)")).length).toBeGreaterThan(0);
   });
 
   it("updates grain and horizon independently", async () => {
     renderDashboard();
-    await screen.findAllByText("1,656,179");
+    await screen.findAllByText(CHAIN_FORECAST);
 
     const overview = screen.getByRole("heading", { name: "Demand forecast — actual vs AI" }).closest("section");
     const daily = within(overview).getByRole("button", { name: "Daily" });
     fireEvent.click(daily);
-    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ grain: "daily" }), expect.any(Object)));
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ grain: "daily" }), expect.any(Object), expect.any(Object)));
     expect(daily).toHaveAttribute("aria-pressed", "true");
 
     fireEvent.click(screen.getByRole("button", { name: "12w" }));
-    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ grain: "daily", horizon_weeks: 12 }), expect.any(Object)));
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ grain: "daily", horizon_weeks: 12 }), expect.any(Object), expect.any(Object)));
     expect(screen.getByRole("button", { name: "12w" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("submits SKU search and clear restores the default query", async () => {
     renderDashboard();
-    await screen.findAllByText("1,656,179");
+    await screen.findAllByText(CHAIN_FORECAST);
 
     const input = screen.getByRole("searchbox", { name: "SKU search" });
     fireEvent.change(input, { target: { value: "GRC-001" } });
     fireEvent.submit(input.closest("form"));
 
-    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ sku: "GRC-001" }), expect.any(Object)));
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ sku: "GRC-001" }), expect.any(Object), expect.any(Object)));
     expect((await screen.findAllByText("GRC-001")).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
-    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ sku: "", grain: "weekly", horizon_weeks: 8 }), expect.any(Object)));
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(expect.objectContaining({ sku: "", grain: "weekly", horizon_weeks: 8 }), expect.any(Object), expect.any(Object)));
     expect(input).toHaveValue("");
   });
 
@@ -126,16 +141,18 @@ describe("DemandForecastingDashboard", () => {
     await screen.findByRole("heading", { name: "Forecast by category" });
 
     const categoryPanel = screen.getByRole("heading", { name: "Forecast by category" }).closest("article");
-    fireEvent.click(within(categoryPanel).getByRole("button", { name: "Fresh Produce" }));
+    fireEvent.click(within(categoryPanel).getByRole("button", { name: "Bakery" }));
     await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(
-      expect.objectContaining({ category_group: "GRC-C01" }),
+      expect.objectContaining({ category_group: "GRC-C05" }),
+      expect.any(Object),
       expect.any(Object),
     ));
 
     const storePanel = screen.getByRole("heading", { name: "Forecast by store" }).closest("article");
-    fireEvent.click(within(storePanel).getByRole("button", { name: "GRC Jakarta 1" }));
+    fireEvent.click(within(storePanel).getByRole("button", { name: "Grocery 05 · Medan" }));
     await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(
-      expect.objectContaining({ category_group: "GRC-C01", store_id: "GRC-S1" }),
+      expect.objectContaining({ category_group: "GRC-C05", store_id: "S005" }),
+      expect.any(Object),
       expect.any(Object),
     ));
   });
@@ -156,7 +173,7 @@ describe("DemandForecastingDashboard", () => {
       expect.objectContaining({ grain: "weekly" }),
       expect.objectContaining({ demand: 20 }),
     ));
-    await waitFor(() => expect(document.querySelector(".demand-kpi-value")).not.toHaveTextContent("1,656,179"));
+    await waitFor(() => expect(document.querySelector(".demand-kpi-value")).not.toHaveTextContent(CHAIN_FORECAST));
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     await waitFor(() => expect(saveButton).toBeEnabled());
@@ -182,7 +199,7 @@ describe("DemandForecastingDashboard", () => {
     expect(screen.getByRole("button", { name: "Remove S2" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
-    await waitFor(() => expect(document.querySelector(".demand-kpi-value")).toHaveTextContent("1,656,179"));
+    await waitFor(() => expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST));
     expect(demand).toHaveValue("0");
   });
 
@@ -202,7 +219,7 @@ describe("DemandForecastingDashboard", () => {
     await waitFor(() => {
       expect(screen.queryByRole("status", { name: "What-If scenario applied" }))
         .not.toBeInTheDocument();
-      expect(document.querySelector(".demand-kpi-value")).toHaveTextContent("1,656,179");
+      expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST);
     });
     expect(screen.getByRole("slider", { name: "Demand shift" })).toHaveValue("0");
   });
@@ -281,12 +298,15 @@ describe("DemandForecastingDashboard", () => {
       .toHaveTextContent("Demand Forecasting API contract field dimensions is required.");
   });
 
-  it("renders mock best actions while every transactional control stays disabled", async () => {
+  it("renders best actions from real counts while every control stays disabled", async () => {
     renderDashboard();
     await screen.findByRole("heading", { name: "Suggested Best Action" });
 
-    expect(screen.getByText("Send 7-day forecast basket to Replenishment")).toBeInTheDocument();
-    expect(screen.getByText(/Raise safety stock on 302 stockout-risk SKUs/)).toBeInTheDocument();
+    expect(screen.getByText("Cover the reorder zone")).toBeInTheDocument();
+    // 302 below ROP and 355 trending, both counted from the workbook rather
+    // than written into the copy.
+    expect(screen.getByText(/302 SKUs sit below their reorder point/)).toBeInTheDocument();
+    expect(screen.getByText(/355 SKUs are trending above baseline/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send to Replenishment" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Flag to Inventory Risk" })).toBeDisabled();
 

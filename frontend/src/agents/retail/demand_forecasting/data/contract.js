@@ -10,10 +10,19 @@ export const DEMAND_GRAINS = [
 
 export const DEMAND_HORIZONS = [4, 8, 12, 16];
 
+/**
+ * Every lever at rest, which is where `Constants` B16-B21 sit.
+ *
+ * Promo and markdown used to open at 15 and 25, copied from the mockup's
+ * `baseOv()`. Those are the values of the *scenario* the workbook publishes on
+ * `What-If · Per Agent`, not of its baseline — so the board opened on a
+ * simulation while claiming to show the workbook, and the same slider position
+ * meant two different things here and on Inventory Risk.
+ */
 export const DEFAULT_DEMAND_LEVERS = Object.freeze({
   demand: 0,
-  promo: 15,
-  markdown: 25,
+  promo: 0,
+  markdown: 0,
   inbound: 0,
   lead: 0,
   safety: 0,
@@ -176,6 +185,15 @@ function normalizeSimulation(simulation = {}, fallbackForecast) {
     scenario_levers: normalizeDemandLevers(simulation.scenario_levers),
     baseline: metrics(baseline),
     scenario: metrics(scenario),
+    /*
+     * Metrics no lever can reach, named rather than left to be discovered.
+     *
+     * Accuracy and Trending are constants typed into the A1 sheet, so no
+     * formula takes a lever anywhere near them. A slider that visibly does
+     * nothing reads as a bug; one that says why does not.
+     */
+    unmodelled: (Array.isArray(simulation.unmodelled) ? simulation.unmodelled : [])
+      .map(String),
     baseline_forecast: normalizeSeries(simulation.baseline_forecast || fallbackForecast),
   };
 }

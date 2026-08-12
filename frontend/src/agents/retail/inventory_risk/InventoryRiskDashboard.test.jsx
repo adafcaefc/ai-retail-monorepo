@@ -51,6 +51,16 @@ async function renderSettled() {
   return result;
 }
 
+/*
+ * KPI labels are not unique on the board and should not be: the What-If
+ * simulator reports the same four measures for its scenario, and calling them
+ * something else there would be a worse answer than a scoped query here.
+ */
+function kpiTile(label) {
+  const grid = document.querySelector(".risk-kpi-grid");
+  return within(grid).getByText(label).closest(".risk-kpi");
+}
+
 const grocery = fixture.reference_by_vertical.find(
   (row) => row.legal_entity_id === "GRC",
 );
@@ -192,12 +202,8 @@ describe("InventoryRiskDashboard", () => {
   it("prices overstock and expiry underneath their counts", async () => {
     await renderSettled();
 
-    const overstock = screen
-      .getByText("Overstock SKUs")
-      .closest(".risk-kpi");
-    const expiry = screen
-      .getByText("Expiry-risk units")
-      .closest(".risk-kpi");
+    const overstock = kpiTile("Overstock SKUs");
+    const expiry = kpiTile("Expiry-risk units");
 
     // A count alone cannot be weighed against anything; the money line is what
     // makes the tile actionable.
@@ -210,21 +216,21 @@ describe("InventoryRiskDashboard", () => {
   it("shows the days-of-supply target band", async () => {
     await renderSettled();
 
-    const tile = screen.getByText("Avg days of supply").closest(".risk-kpi");
+    const tile = kpiTile("Avg days of supply");
     expect(within(tile).getByText(/target 7–21d/)).toBeInTheDocument();
   });
 
   it("carries each KPI's formula on the tile itself", async () => {
     await renderSettled();
 
-    const tile = screen.getByText("Stockout-risk SKUs").closest(".risk-kpi");
+    const tile = kpiTile("Stockout-risk SKUs");
     expect(tile).toHaveAttribute("title", expect.stringContaining("Position < ROP"));
   });
 
   it("drills to the reorder zone from the stockout tile, and back again", async () => {
     await renderSettled();
 
-    const tile = screen.getByText("Stockout-risk SKUs").closest(".risk-kpi");
+    const tile = kpiTile("Stockout-risk SKUs");
     expect(tile.tagName).toBe("BUTTON");
 
     fireEvent.click(tile);
@@ -237,7 +243,7 @@ describe("InventoryRiskDashboard", () => {
     });
 
     // Clicking again clears it rather than trapping the reader in the filter.
-    fireEvent.click(screen.getByText("Stockout-risk SKUs").closest(".risk-kpi"));
+    fireEvent.click(kpiTile("Stockout-risk SKUs"));
     await waitFor(() => {
       expect(screen.getByText("All retail inventory")).toBeInTheDocument();
     });
@@ -264,6 +270,102 @@ describe("InventoryRiskDashboard", () => {
 
     expect(primary.textContent).not.toMatch(/^[A-Z]{3}-\d{3}$/);
     expect(meta.textContent).toMatch(/^[A-Z]{3}-\d{3} · /);
+  });
+
+  it("projects stock forward and prints the strip under the chart", async () => {
+    await renderSettled();
+
+    const panel = screen
+      .getByText("Projected on-hand vs demand")
+      .closest(".risk-panel");
+
+    expect(within(panel).getByText("Position")).toBeInTheDocument();
+    expect(within(panel).getByText("Inbound")).toBeInTheDocument();
+    expect(within(panel).getByText("At risk")).toBeInTheDocument();
+    // The panel must say there is no history rather than draw one.
+    expect(within(panel).getByText(/nothing to plot before day 0/)).toBeInTheDocument();
+  });
+
+  it("offers all six levers and disables the one the workbook cannot model", async () => {
+    await renderSettled();
+
+    expect(screen.getByLabelText("Demand surge")).toBeEnabled();
+    expect(screen.getByLabelText("Inbound cover")).toBeEnabled();
+    // A2 spec 8a lists a markdown lever; formula.json has no markdown term.
+    expect(screen.getByLabelText("Markdown clear")).toBeDisabled();
+  });
+
+  it("keeps the board on the workbook until Run is pressed", async () => {
+    await renderSettled();
+
+    const before = kpiTile("Stockout-risk SKUs").textContent;
+    fireEvent.change(screen.getByLabelText("Demand surge"), {
+      target: { value: "40" },
+    });
+
+    // Dragging a slider re-runs 800 SKUs; doing that per pixel would make the
+    // control fight the user, so nothing moves until Run.
+    expect(kpiTile("Stockout-risk SKUs").textContent).toBe(before);
+    expect(screen.queryByText(/simulated figures/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(kpiTile("Stockout-risk SKUs").textContent).not.toBe(before);
+    });
+  });
+
+  it("says the board is showing a scenario, and takes it back", async () => {
+    await renderSettled();
+
+    fireEvent.change(screen.getByLabelText("Demand surge"), {
+      target: { value: "40" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("These are simulated figures, not the workbook position."),
+      ).toBeInTheDocument();
+    });
+    // The banner names the levers, so a screenshot carries its own context.
+    expect(screen.getByText(/Demand surge \+40%/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to workbook" }));
+
+    await waitFor(() => {
+      expect(screen.queryByText(/simulated figures/)).not.toBeInTheDocument();
+    });
+  });
+
+  it("saves a scenario and overlays it against the baseline", async () => {
+    await renderSettled();
+
+    // Nothing to save until a lever has actually moved.
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Demand surge"), {
+      target: { value: "30" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    const panel = await screen.findByLabelText("Compare scenarios", {
+      selector: "section",
+    });
+    await waitFor(() => {
+      expect(panel.querySelectorAll(".risk-scenario-list li")).toHaveLength(1);
+    });
+    expect(within(panel).getByText(/1 \/ 4/)).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: /Remove/ }));
+    await waitFor(() => {
+      expect(panel.querySelectorAll(".risk-scenario-list li")).toHaveLength(0);
+    });
   });
 
   it("explains each register figure where the figure is", async () => {

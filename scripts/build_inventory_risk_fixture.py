@@ -17,9 +17,21 @@ never re-derives them.
 In particular the state classification (Stockout / Low / Expiry / Overstock /
 Slow-mover / Healthy) and the three KPI predicates are resolved HERE, into
 `state` plus the `is_*` booleans on every item row. The React side only ever
-counts flags and sums columns. No threshold (`DoS > 15`, `growth < 1.0`,
-`Position < 0.6 x ROP`) is allowed to exist in JavaScript, because a second
-copy of a rule is a rule that will silently drift from the workbook.
+counts flags and sums columns.
+
+WHERE THE RULES LIVE
+Nowhere in this file. `DoS > 15`, `DoS > 10` and `growth < 1.0` used to be
+typed out below, which made this script a second definition of rules the
+workbook already owns -- and a second definition is one that will eventually
+disagree with the first. They are gone. Every `is_*` flag is now either a
+comparison the workbook's own KPI formula makes (`Position < ROP`, straight
+from `A2 Inventory Risk!B`) or a reading of the state the workbook already
+resolved.
+
+The one place the thresholds live is `resources/dbtemp/formula.json`,
+`f07-inventory-state`. `verify_engine_chain` re-derives all 800 rows from it
+and six sibling formulas before anything is written, so the link between that
+file and this fixture is asserted rather than assumed.
 
 RECONCILIATION
 Before writing anything, the six KPIs are recomputed per vertical from the
@@ -44,6 +56,11 @@ from pathlib import Path
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO / "backend"))
+
+from src.formulas import repository  # noqa: E402
+from src.formulas.expression import evaluate, parse  # noqa: E402
+
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
 TARGET = (
     REPO
@@ -64,6 +81,28 @@ AGENT_ID = "retail.inventory_risk"
 # is a markdown/assortment problem.
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
 REPLENISH_STATES = frozenset({"Stockout", "Low"})
+
+# Every formula this fixture needs, all of them from the catalogue.
+#
+# f20 to f22 are ENGINE columns I, L and N. They were briefly transcribed here
+# instead, because the workbook's `Formulas` sheet lists nineteen rows and does
+# not include them -- but they are real workbook formulas with real cells, so
+# the right home was always `resources/formula.md`, with five cell-cited worked
+# examples apiece like every other entry. That is where they now live.
+#
+# Nothing in this file states a rule any more.
+CATALOGUE_FORMULAS = (
+    "f01-ads-per-store",
+    "f03-open-po-per-store",
+    "f04-position",
+    "f05-rop",
+    "f06-maximum-inventory",
+    "f07-inventory-state",
+    "f12-at-risk-value",
+    "f20-days-of-supply",
+    "f21-inventory-value",
+    "f22-expiry-units",
+)
 
 
 def read_source() -> dict[str, list[dict[str, Any]]]:
@@ -106,9 +145,249 @@ def resolve_vertical_labels(
     return resolved
 
 
+def constants_from_cells(
+    constants: list[dict[str, Any]],
+    wanted: dict[str, str],
+) -> dict[str, Any]:
+    """Pull named model parameters out of `Constants` by cell address."""
+    by_cell = {row["source_cell"]: row for row in constants}
+    resolved = {}
+    for name, cell in wanted.items():
+        if cell not in by_cell:
+            raise SystemExit(f"FAIL  Constants!{cell} ({name}) is not in the extract")
+        resolved[name] = by_cell[cell]["value"]
+    return resolved
+
+
+def chain_store_size(stores: list[dict[str, Any]]) -> dict[str, float]:
+    """Total store-size index per vertical.
+
+    `f01-ads-per-store` reads a single store's size index. A chain-net row is
+    that same formula summed over every store in the vertical, and because
+    `base_ads` and `seasonality` are SKU attributes rather than store ones,
+    the sum factorises: pass the vertical's total size index as `store_size`
+    and f01 returns the chain-net ADS unchanged.
+
+    Do not substitute `sku_master.sum_vert_size` here. It carries the same
+    quantity rounded to four decimals (Grocery: 20.8447 against a true
+    20.8445), which is close enough to look right and far enough to make the
+    verification below fail.
+    """
+    totals: dict[str, float] = {}
+    for store in stores:
+        totals[store["vertical_id"]] = (
+            totals.get(store["vertical_id"], 0.0) + store["size"]
+        )
+    return totals
+
+
+def verify_engine_chain(
+    engine: list[dict[str, Any]],
+    sku_master: dict[str, dict[str, Any]],
+    store_size: dict[str, float],
+) -> dict[str, str]:
+    """Rebuild every chain-net row from `formula.json` and insist it matches.
+
+    This script reads its figures straight out of the workbook rather than
+    computing them, which is the right way round. But the What-If panel
+    downstream *does* recompute them, from these same expressions, the moment a
+    lever leaves zero. If the expressions and this fixture ever describe
+    different rules, the board would change its mind about a SKU as soon as a
+    slider moved, with nothing on screen to explain why.
+
+    So the whole chain is re-derived here at zero levers -- ADS, open PO, ROP,
+    Max, state -- and compared against the 800 rows about to be written. Zero
+    levers is the setting the workbook itself was calculated at (`Constants`
+    B16-B21), so agreement here means the engine and the workbook start from
+    the same place.
+
+    `backend/tests/test_formula_conformance.py` makes the same argument against
+    the 16,000-row per-store grid. This one costs a second and keeps the
+    guarantee attached to the artefact it protects: a fixture that cannot prove
+    this is not written at all.
+    """
+    formulas = {formula["id"]: formula for formula in repository.load()}
+    wanted = CATALOGUE_FORMULAS
+    missing = [key for key in wanted if key not in formulas]
+    if missing:
+        raise SystemExit(
+            f"FAIL  formula.json is missing {', '.join(missing)}; the rules"
+            " this fixture depends on have no home"
+        )
+
+    expressions = {key: formulas[key]["expression"] for key in wanted}
+    asts = {key: parse(expression) for key, expression in expressions.items()}
+    failures: list[str] = []
+
+    def agrees(computed: Any, stored: Any) -> bool:
+        if isinstance(stored, str):
+            return computed == stored
+        return abs(float(computed) - float(stored)) <= 1e-6
+
+    for row in engine:
+        sku = sku_master[row["sku_id"]]
+        size = store_size[row["vertical_id"]]
+
+        checks: list[tuple[str, Any, Any]] = [
+            (
+                "ads",
+                evaluate(
+                    asts["f01-ads-per-store"],
+                    {
+                        "base_ads": sku["base_ads"],
+                        "seasonality": sku["seasonality"],
+                        "store_size": size,
+                        "demand_lever": 0,
+                        "promo_eligible": sku["promo"],
+                        "promo_lever": 0,
+                        "promo_depth": sku["cannib_pct"],
+                    },
+                ),
+                row["ads"],
+            ),
+            (
+                "open_po",
+                evaluate(
+                    asts["f03-open-po-per-store"],
+                    {
+                        # Ratio of one: a chain-net row already covers every
+                        # store, so there is no allocation left to do.
+                        "open_po_total": row["open_po"],
+                        "store_size": size,
+                        "total_store_size": size,
+                        "inbound_lever": 0,
+                    },
+                ),
+                row["open_po"],
+            ),
+        ]
+
+        reorder = {
+            "ads": row["ads"],
+            "lead_time_days": sku["lead_d"],
+            "lead_time_adjust": 0,
+            "safety_days": sku["safety_d"],
+            "safety_adjust": 0,
+        }
+        checks.append(("rop", evaluate(asts["f05-rop"], reorder), row["rop"]))
+        checks.append(
+            ("max", evaluate(asts["f06-maximum-inventory"], reorder), row["max"])
+        )
+        checks.append(
+            (
+                "state",
+                evaluate(
+                    asts["f07-inventory-state"],
+                    {
+                        "position": row["position"],
+                        "rop": row["rop"],
+                        "perishable": row["perish"],
+                        "days_of_supply": row["dos"],
+                        "shelf_life_days": sku["expiry_d"],
+                        "velocity": sku["growth"],
+                    },
+                ),
+                row["state"],
+            )
+        )
+        checks.append(
+            (
+                "at_risk",
+                evaluate(
+                    asts["f12-at-risk-value"],
+                    {
+                        "state": row["state"],
+                        "position": row["position"],
+                        "price": row["price"],
+                    },
+                ),
+                row["at_risk"],
+            )
+        )
+        # Definitional at zero levers, since this fixture derives on-hand as
+        # Position - Open PO. Checked anyway so the expression cannot ship
+        # unexercised: What-If runs it with a scaled Open PO, where it is not.
+        checks.append(
+            (
+                "position",
+                evaluate(
+                    asts["f04-position"],
+                    {
+                        "on_hand": row["position"] - row["open_po"],
+                        "open_po": row["open_po"],
+                    },
+                ),
+                row["position"],
+            )
+        )
+
+        # ENGINE columns I, L and N -- catalogue entries 20 to 22.
+        checks.append(
+            (
+                "dos",
+                evaluate(
+                    asts["f20-days-of-supply"],
+                    {"ads": row["ads"], "position": row["position"]},
+                ),
+                row["dos"],
+            )
+        )
+        checks.append(
+            (
+                "inv_value",
+                evaluate(
+                    asts["f21-inventory-value"],
+                    {"position": row["position"], "price": row["price"]},
+                ),
+                row["inv_value"],
+            )
+        )
+        checks.append(
+            (
+                "expiry_units",
+                evaluate(
+                    asts["f22-expiry-units"],
+                    {
+                        "perishable": row["perish"],
+                        "position": row["position"],
+                        "ads": row["ads"],
+                        "shelf_life_days": sku["expiry_d"],
+                    },
+                ),
+                row["expiry_u"],
+            )
+        )
+
+        for name, computed, stored in checks:
+            if not agrees(computed, stored):
+                failures.append(
+                    f"{row['sku_id']} / {name}: formula {computed!r},"
+                    f" workbook {stored!r}"
+                )
+
+    if failures:
+        print(
+            f"FAIL  formula.json disagrees with ENGINE on {len(failures)}"
+            f" value(s) across {len(engine)} rows:"
+        )
+        for line in failures[:5]:
+            print(f"      {line}")
+        raise SystemExit(1)
+
+    print(
+        f"  ok  {len(expressions)} catalogue formulas rebuild {len(engine)}"
+        " chain-net rows at zero levers"
+    )
+    # Returned so the fixture can carry the exact expressions that were just
+    # verified. Shipping them together is what stops the browser evaluating a
+    # formula.json that nobody checked against this data.
+    return expressions
+
+
 def build_items(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
+    store_size: dict[str, float],
 ) -> list[dict[str, Any]]:
     """One row per SKU at chain-net level, with every predicate pre-resolved."""
     items = []
@@ -146,11 +425,47 @@ def build_items(
                 "shelf_life_days": sku["expiry_d"],
                 "is_perishable": str(row["perish"]).strip().upper() == "Y",
                 "growth": growth,
-                # The three KPI predicates, resolved here so no threshold ever
-                # reaches JavaScript. Sources: A2 spec sections 2 and 3.
+                # The three KPI predicates, each written the way the workbook's
+                # own A2 sheet writes it -- so none of them restates a rule.
+                #
+                #   #1 Stockout-risk  A2!B = SUMPRODUCT((ENGINE!F < ENGINE!G))
+                #   #2 Overstock      A2!C = COUNTIFS(ENGINE!J, "Overstock")
+                #   #4 Slow-moving           ENGINE!J = "Slow-mover"
+                #
+                # Two of these used to be predicates over DoS instead, copied
+                # from the A2 spec's "Formula (card fx)" column. That column and
+                # the "Data di workbook" column beside it do not agree, and the
+                # spec presents them as if they did:
+                #
+                #   dos > 15                -> 40   state == "Overstock"  -> 40
+                #   growth < 1 and dos > 10 -> 62   state == "Slow-mover" -> 51
+                #
+                # Overstock agreed only by luck of this dataset (no perishable
+                # SKU sits above 15 days without being Expiry first). Slow-mover
+                # never agreed: 11 SKUs satisfy the raw predicate but were
+                # already claimed by a higher-severity state, so the card read
+                # 62 while the state chart and the register below it showed 51.
+                # The board contradicted itself.
                 "is_stockout_risk": row["position"] < row["rop"],
-                "is_overstock": dos > 15,
-                "is_slow_mover": growth < 1.0 and dos > 10,
+                "is_overstock": state == "Overstock",
+                "is_slow_mover": state == "Slow-mover",
+                # -- What-If inputs -------------------------------------
+                # Everything below exists so the browser can re-evaluate
+                # f01/f03/f05/f06/f07 when a lever moves. They are formula
+                # *parameters*, never answers: nothing reads them to decide
+                # anything, and `verify_engine_chain` has already proved that
+                # feeding them back through the expressions at zero levers
+                # returns the columns above unchanged.
+                "base_ads": sku["base_ads"],
+                "seasonality": sku["seasonality"],
+                # The vertical's total size index, not one store's. See
+                # `chain_store_size` for why f01 still applies.
+                "store_size": store_size[row["vertical_id"]],
+                "promo_eligible": sku["promo"],
+                "promo_depth": sku["cannib_pct"],
+                "lead_days": sku["lead_d"],
+                "safety_days": sku["safety_d"],
+                "perishable": row["perish"],
                 "next_agent": (
                     "3 Replenish" if state in REPLENISH_STATES else "5 Markdown"
                 ),
@@ -322,6 +637,8 @@ def main() -> int:
         "stores",
         "verticals",
         "a2_inventory_risk",
+        "constants",
+        "what_if_per_agent",
     )
     missing = [name for name in required if name not in tables]
     if missing:
@@ -334,8 +651,11 @@ def main() -> int:
 
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
     stores = {row["store_id"]: row for row in tables["stores"]}
+    store_size = chain_store_size(tables["stores"])
 
-    items = build_items(tables["engine"], sku_master)
+    expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
+
+    items = build_items(tables["engine"], sku_master, store_size)
     store_rows = build_store_rows(tables["engine_store"], stores)
 
     failures = reconcile(items, reference, label_of)
@@ -347,6 +667,8 @@ def main() -> int:
 
     checked = len(label_of) * 6
     print(f"  ok  reconciled {checked} KPI values across {len(label_of)} verticals")
+
+    entity_of = {label: vertical_id for vertical_id, label in label_of.items()}
 
     # Filter options carry their parent so the UI can reset a child selection
     # that the new parent makes invalid, without a second request.
@@ -373,6 +695,38 @@ def main() -> int:
             "stock levels as illustrative."
         ),
         "state_order": list(STATE_ORDER),
+        # Model parameters the browser needs but must not retype. Keyed off the
+        # `Constants` cell rather than its label, because a label is prose and
+        # gets reworded; B6 and B7 are addresses and do not.
+        "constants": constants_from_cells(
+            tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+        ),
+        # The expressions the What-If engine runs, copied from formula.json
+        # after `verify_engine_chain` proved they rebuild the rows below. The
+        # browser evaluates these rather than importing formula.json directly,
+        # so the rules and the data it was verified against cannot arrive out
+        # of step with each other.
+        "formulas": expressions,
+        # The workbook's own +20% demand scenario, carried so the What-If
+        # engine has something to be checked against. Every other figure in
+        # this file sits at zero levers, which cannot test a lever at all.
+        "what_if_reference": {
+            "levers": {"demand": 20, "promo": 15},
+            "note": next(
+                (row["note"] for row in tables["what_if_per_agent"]), ""
+            ),
+            "by_legal_entity": [
+                {
+                    "legal_entity_id": entity_of[row["vertical_label"]],
+                    "vertical_label": row["vertical_label"],
+                    "forecast_delta": row["forecast_delta"],
+                    "at_risk_delta": row["at_risk_delta"],
+                    "order_delta": row["order_delta"],
+                }
+                for row in tables["what_if_per_agent"]
+                if row["vertical_label"] in entity_of
+            ],
+        },
         "filter_options": {
             "legal_entities": [
                 {

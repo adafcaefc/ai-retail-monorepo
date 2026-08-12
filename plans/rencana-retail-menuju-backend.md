@@ -357,3 +357,38 @@ disunting, berarti kontraknya belum terpenuhi.
 - [`demand-forecasting-backend-handoff.md`](./demand-forecasting-backend-handoff.md) — kontrak lengkap Demand Forecasting
 - [`retail-dashboards-status-and-next-steps.md`](./retail-dashboards-status-and-next-steps.md) — status ketiga modul dan dasar datanya
 - [`../AGENTS.md`](../AGENTS.md) — arsitektur agent, tools, dan cara menambah agent baru
+
+
+
+Temuan yang perlu lo tahu
+1. Sheet A1 cuma punya satu rumus. Lima dari enam KPI-nya (Accuracy, Trend, Stockout-risk, Trending, Seasonality) adalah angka yang diketik tangan ke sel. Cuma Forecast 7d yang dihitung.
+
+2. time_series_24mo bukan riwayat. Tahun kedua identik byte-per-byte dengan tahun pertama di kedelapan vertical. Pertumbuhan YoY-nya nol secara konstruksi. Jadi papan A1 tidak menggambar garis "actual" — tidak ada aktual untuk digambar.
+
+3. Dua nilai pesanan di A3, beda ~20%. Sheet A3 pakai harga jual (Rp 4,46 M untuk Grocery), Replenishment Detail pakai harga beli (Rp 3,60 M). Keduanya benar. Papan menampilkan dua-duanya karena menyetujui PO senilai harga jual itu salah.
+
+4. Rp 4,45 miliar bisa dihemat dengan pindah ke vendor termurah per baris — angka nyata dari saving_vs_designated, ditampilkan per vendor supaya bisa ditindak.
+
+Yang masih dummy — daftar yang lo minta
+Yang hilang	Kenapa	Yang saya lakukan
+Riwayat penjualan SKU×toko×hari	Tidak ada di manapun	Tidak ada garis aktual sama sekali
+Akurasi 92,4%	Diketik, sama untuk 8 vertical	Diteruskan apa adanya, kartu bertuliskan "Workbook constant"
+Trend %	Diketik, dan deretnya bertrend nol	Diteruskan, dipakai di kurva, berlabel
+Seasonality idx	Diketik 114 vs turunan 108,3	Dua-duanya hidup — KPI pakai yang diketik, chart pakai yang diturunkan
+Lever markdown	Tidak ada sukunya di formula manapun	Slider tampil tapi mati, dengan penjelasan
+Empat hal yang perlu keputusan lo
+1. Bundle naik 368 → 523 KB gzip. Tiga fixture terpisah = 214 KB data, dan 800 SKU yang sama tersimpan tiga kali. Ini konsekuensi pilihan "fixture terpisah" — bisa dipangkas ~130 KB dengan satu berkas dimensi bersama kalau ukuran jadi masalah.
+
+2. Kartu Slow-moving berubah 62 → 51. Spec A2 memberi dua definisi berbeda di dua kolom bersebelahan; yang lama membuat kartu membantah chart di bawahnya.
+
+3. Slider promo/markdown A1 berubah dari 15/25 ke 0/0. Angka 15/25 itu setelan skenario yang diterbitkan workbook, bukan baseline-nya — papan lama membuka di simulasi sambil mengaku menampilkan workbook.
+
+4. Formula Manager sekarang menampilkan 22 formula, bukan 19. Tiga tambahan (DoS, Inventory value, Expiry units) adalah kolom ENGINE nyata; worked example-nya saya bangkitkan dari workbook, bukan diketik.
+
+Yang belum saya kerjakan
+A3 main chart (spec §4 "Requirement vs inbound supply") dan What-If A3 (§9) belum dibuat — polanya sudah ada dari A2, tinggal disalin. Backend builder untuk ketiganya juga belum; itu Fase 4 di rencana.
+
+Risiko
+Tidak ada yang merusak. Empat berkas yang saya hapus (mockDataset.js dkk) sudah ter-commit sebelumnya jadi bisa dikembalikan dengan git checkout. Tidak ada tulisan ke database, tidak ada yang dikirim ke luar, belum ada commit.
+
+Ledger lengkapnya — setiap angka di ketiga papan, dengan alamat selnya — ada di docs/RETAIL_FORMULA_SOURCES.md.

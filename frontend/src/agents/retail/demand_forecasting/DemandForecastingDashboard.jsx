@@ -52,7 +52,9 @@ export default function DemandForecastingDashboard() {
       setLoading(true);
       setError("");
       try {
-        const result = await loadDemandForecastingDashboard(query, appliedLevers);
+        const result = await loadDemandForecastingDashboard(query, appliedLevers, {
+          driveWholePage,
+        });
         if (!cancelled) setDashboard(result);
       } catch (loadError) {
         if (!cancelled) setError(loadError.message || t("Unable to load Demand Forecasting."));
@@ -78,6 +80,7 @@ export default function DemandForecastingDashboard() {
     appliedLevers.inbound,
     appliedLevers.lead,
     appliedLevers.safety,
+    driveWholePage,
     refreshToken,
     t,
   ]);
