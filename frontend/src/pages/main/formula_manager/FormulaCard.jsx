@@ -6,6 +6,20 @@ import { formatResult } from "./formatResult.js";
 import ValidatePanel from "./ValidatePanel.jsx";
 import workedExamples from "./workedExamples.json";
 
+// Short forms for the card; the editor carries the full sentences.
+const GRAIN_LABELS = {
+  store_sku: "store × SKU",
+  chain_sku: "SKU, chain-wide",
+  store_roster: "store roster"
+};
+
+const GRAIN_HINTS = {
+  store_sku: "One store's stock of one item — feed it per-store figures.",
+  chain_sku:
+    "One SKU netted across all stores — feed it chain-net figures, not one store's.",
+  store_roster: "One store's workforce roster."
+};
+
 function defaultValues(formula) {
   const values = {};
   for (const parameter of formula.parameters || []) {
@@ -89,6 +103,14 @@ export default function FormulaCard({ formula, onEdit, onDelete, deleting }) {
           <div>
             <h3>{formula.name}</h3>
             {formula.logic ? <p>{formula.logic}</p> : null}
+            {/* Grain on the face of the card, not buried in the editor: two
+                rules can share a parameter name and mean different things by
+                it, and this is the only thing that tells them apart. */}
+            {formula.grain ? (
+              <p className="formula-grain" title={GRAIN_HINTS[formula.grain]}>
+                per {GRAIN_LABELS[formula.grain] || formula.grain}
+              </p>
+            ) : null}
           </div>
         </div>
 

@@ -53,7 +53,13 @@ export default function FormulaManager() {
       return formulas;
     }
     return formulas.filter((formula) =>
-      [formula.name, formula.logic, formula.expression, formula.sheet]
+      [
+        formula.name,
+        formula.logic,
+        formula.expression,
+        formula.grain,
+        formula.sheet
+      ]
         .filter(Boolean)
         .some((field) => field.toLowerCase().includes(needle))
     );

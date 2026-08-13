@@ -3,9 +3,33 @@ import { useCallback, useEffect, useState } from "react";
 import Modal from "../../../components/Modal.jsx";
 import { validateFormula } from "../../../api/formulas.js";
 
+// What one row of a formula's inputs counts. This is the field that decides
+// which table a rule may be fed from, so it is a labelled choice rather than
+// free text: whoever adds a formula here does not have the source workbook and
+// cannot be expected to know that "ENGINE_STORE" means per-store.
+//
+// Deliberately starts empty. A grain nobody chose is worse than a missing one,
+// because sixteen of the twenty-two rules are store_sku and a default would be
+// right often enough to stop anyone checking.
+const GRAINS = [
+  {
+    value: "store_sku",
+    label: "Per store × SKU — one store's stock of one item"
+  },
+  {
+    value: "chain_sku",
+    label: "Chain-wide per SKU — netted across all stores"
+  },
+  {
+    value: "store_roster",
+    label: "Per store roster — one store's workforce"
+  }
+];
+
 const EMPTY = {
   name: "",
   logic: "",
+  grain: "",
   sheet: "",
   result_type: "number",
   expression: "",
@@ -19,6 +43,7 @@ function toDraft(formula) {
   return {
     name: formula.name || "",
     logic: formula.logic || "",
+    grain: formula.grain || "",
     sheet: formula.sheet || "",
     result_type: formula.result_type || "number",
     expression: formula.expression || "",
@@ -124,7 +149,15 @@ export default function FormulaEditor({ formula, onCancel, onSave, saving }) {
   );
 
   const invalid = report ? !report.valid : false;
-  const blocked = saving || invalid || !draft.name.trim() || !draft.expression.trim();
+  // Grain joins name and expression as a save blocker. The API rejects a
+  // missing one anyway (`Grain` is a required Literal), so leaving it out here
+  // would only turn a clear disabled button into a 422.
+  const blocked =
+    saving ||
+    invalid ||
+    !draft.name.trim() ||
+    !draft.expression.trim() ||
+    !draft.grain;
 
   return (
     <Modal
@@ -144,14 +177,6 @@ export default function FormulaEditor({ formula, onCancel, onSave, saving }) {
             />
           </label>
           <label className="formula-field">
-            <span>Sheet</span>
-            <input
-              value={draft.sheet}
-              onChange={(event) => setField("sheet", event.target.value)}
-              placeholder="ENGINE_STORE"
-            />
-          </label>
-          <label className="formula-field">
             <span>Result type</span>
             <select
               value={draft.result_type}
@@ -164,11 +189,38 @@ export default function FormulaEditor({ formula, onCancel, onSave, saving }) {
         </div>
 
         <label className="formula-field">
+          <span>Grain — what one row of the inputs counts</span>
+          <select
+            value={draft.grain}
+            onChange={(event) => setField("grain", event.target.value)}
+            required
+          >
+            <option value="" disabled>
+              Choose what this formula is calculated per…
+            </option>
+            {GRAINS.map((grain) => (
+              <option key={grain.value} value={grain.value}>
+                {grain.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="formula-field">
           <span>Documented logic</span>
           <input
             value={draft.logic}
             onChange={(event) => setField("logic", event.target.value)}
             placeholder="Plain-language description"
+          />
+        </label>
+
+        <label className="formula-field">
+          <span>Source sheet (optional)</span>
+          <input
+            value={draft.sheet}
+            onChange={(event) => setField("sheet", event.target.value)}
+            placeholder="Where this rule was transcribed from, if anywhere"
           />
         </label>
 

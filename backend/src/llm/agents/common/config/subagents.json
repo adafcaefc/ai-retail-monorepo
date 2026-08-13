@@ -20,7 +20,10 @@
             "collection",
             "finance",
             "leakage",
-            "cashflow"
+            "cashflow",
+            "retail_demand",
+            "retail_inventory",
+            "retail_replenishment"
           ],
           "description": "Parent domain agent for this action."
         },
@@ -146,7 +149,10 @@
             "collection",
             "finance",
             "leakage",
-            "cashflow"
+            "cashflow",
+            "retail_demand",
+            "retail_inventory",
+            "retail_replenishment"
           ],
           "description": "Parent domain agent."
         },
@@ -230,7 +236,10 @@
             "collection",
             "finance",
             "leakage",
-            "cashflow"
+            "cashflow",
+            "retail_demand",
+            "retail_inventory",
+            "retail_replenishment"
           ],
           "description": "Parent domain agent."
         },
@@ -274,6 +283,38 @@
     }
   },
   "constants": {
+    "RETAIL_MONITORING_OUTPUT_PROMPT": [
+      "PREVIOUS ALERTS",
+      "You receive previous_alerts: alerts already raised by earlier specialized monitoring agents in this run, plus any existing stored alerts for this domain.",
+      "Read previous_alerts carefully before creating new alerts.",
+      "Do not duplicate an issue that is already covered by previous_alerts, even if wording differs.",
+      "Be proactive: hunt for the sharpest distinct issues in your specialty rather than returning none.",
+      "If evidence is borderline but decision-relevant, raise an alert and state uncertainty in the issue text.",
+      "Only return the none alert when you truly cannot find any distinct specialty issue after tool investigation.",
+      "WHAT THIS DATASET CAN AND CANNOT SUPPORT",
+      "There is ONE snapshot day, 2026-07-01. There is no history and no prior period. Never raise an alert phrased as a trend, a deterioration, a change versus last week, or a movement over time: nothing here can evidence one.",
+      "Forecast accuracy of 92.4 percent is a typed constant that is identical for all eight verticals. It is not a backtest and not a measurement. Never present it as measured accuracy and never raise an alert claiming accuracy moved.",
+      "fact_sales_daily, fact_price_daily, fact_promotion, fact_purchase_receipt and the forecast_* tables are EMPTY on purpose. If your specialty needs one of them, say the evidence is unavailable rather than substituting a proxy without saying so.",
+      "fact_inventory_chain_daily is chain-net (800 rows, one per item, surplus already netted against shortage across stores). fact_inventory_daily is per store x item (16,000 rows) and sums to a GROSS figure roughly 1.25x the chain-net one. Never compare the two, and never present a per-store sum as a chain KPI. State which grain a figure is on whenever both exist.",
+      "BUSINESS RULES",
+      "The rules that classify state, set reorder point and size an order are stored, not remembered. Call get_formula for the expression and evaluate_formula to compute it. Do not restate a formula from memory and do not do the arithmetic yourself: the boards evaluate the same catalogue, and an answer computed any other way will not reconcile with what the reader is looking at.",
+      "Check a formula's grain before feeding it. A chain_sku rule takes chain-net inputs and a store_sku rule takes per-store inputs. Mixing them returns a plausible wrong number, not an error.",
+      "OUTPUT RULES",
+      "Your output is MonitoringOutput: a list of Alert objects.",
+      "Return at most 3 alerts. Fewer is better than padded. Each alert must be a distinct business issue.",
+      "BE BRIEF. Every extra word costs the reader time. issue: one sentence, at most 35 words, carrying the key numbers.",
+      "Do not create one alert per SKU. Group similar items into one issue, naming the largest few, but do not over-collapse unrelated themes.",
+      "For every real alert, include exactly one ActionSpec. Add a second only when it is a genuinely separate decision by a different owner.",
+      "ActionSpec fields: name, routes, agent, impact, spec, reason.",
+      "reason is your judgement call in at most 30 words: why this action comes before the others. Write no figures, amounts, percentages or dates in it. The system recomputes every number from the data and prints them under your sentence, so a number you write there is either redundant or contradicts the record - it is stripped either way.",
+      "spec must be a plan of at most 50 words naming the target SKUs, stores or vendors, the intended change, and the success metric. No preamble, no restating the alert, no executable SQL.",
+      "Actions are plans only with status planned when persisted. Never imply a purchase order, transfer, markdown or approval has been raised, released or executed.",
+      "Routes must be chosen from: ['Purchasing Manager', 'Procurement Director', 'Category Manager', 'Merchandising Director', 'Store Ops Manager', 'Supply Planning', 'Demand Agent', 'Inventory Agent', 'Replenishment Agent', 'Vendor Master', 'ERP', 'WMS', 'Store Operations', 'Audit Log', 'CFO']",
+      "Route by value, following the ERP approval matrix: a purchase order up to IDR 100mn goes to Purchasing Manager, up to 500mn to Procurement Director, above that to CFO. A markdown or price change up to 75mn goes to Category Manager, up to 400mn to Merchandising Director, above that to CFO. Name the tier the value actually falls in.",
+      "impact should be concise (at most 10 words), using '{metric}: {before} {+/- change} -> {after}' when numerical.",
+      "Set subagent to your assigned subagent_name.",
+      "If there are no new distinct alerts, return exactly one Alert: name='none', issue='no alert detected', subagent=your name, actions=[]."
+    ],
     "MONITORING_OUTPUT_PROMPT": [
       "PREVIOUS ALERTS",
       "You receive previous_alerts: alerts already raised by earlier specialized monitoring agents in this run, plus any existing stored alerts for this domain.",

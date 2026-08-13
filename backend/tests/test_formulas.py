@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
 from src.common.constants import AppPaths
 from src.formulas import repository, service
@@ -23,7 +24,12 @@ from src.formulas.expression import (
     parse,
     referenced_names,
 )
-from src.formulas.models import FormulaCreate, FormulaUpdate, Parameter
+from src.formulas.models import (
+    GRAIN_LABELS,
+    FormulaCreate,
+    FormulaUpdate,
+    Parameter,
+)
 
 REPO_ROOT = AppPaths.REPO_ROOT
 WORKED_EXAMPLES = (
@@ -201,17 +207,40 @@ def test_division_by_zero_is_reported() -> None:
 
 
 @pytest.fixture()
-def store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """Point the repository at a throwaway file so tests never touch dbtemp."""
-    path = tmp_path / "formula.json"
-    monkeypatch.setattr(AppPaths, "FORMULA_STORE", path)
-    return path
+def store(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """An in-memory stand-in for `retail.formula`.
+
+    These tests are about `service.py` -- slug derivation, uniqueness,
+    expression validation, default fallback -- none of which is about storage.
+    They used to point `AppPaths.FORMULA_STORE` at a tmp file; now that the
+    repository is Postgres, the equivalent move is to fake the two functions
+    the service actually calls rather than to make every one of them require a
+    reachable database. A unit suite that needs the network is a unit suite
+    people stop running.
+
+    The real round trip is covered by `test_formula_repository_round_trip`
+    below, which does talk to Postgres and skips when it cannot.
+    """
+    rows: list[dict[str, Any]] = []
+
+    def fake_load() -> list[dict[str, Any]]:
+        return [dict(row) for row in sorted(rows, key=lambda r: r.get("number", 0))]
+
+    def fake_save(formulas: list[dict[str, Any]]) -> None:
+        rows[:] = [dict(formula) for formula in formulas]
+
+    monkeypatch.setattr(repository, "load", fake_load)
+    monkeypatch.setattr(repository, "save", fake_save)
+    return rows
 
 
 def make_payload(**overrides: Any) -> FormulaCreate:
     fields: dict[str, Any] = {
         "name": "Coverage gap",
         "logic": "MAX(0, required - scheduled)",
+        # Required, no default: a rule whose grain nobody stated is one an
+        # agent cannot safely feed. See `models.Grain`.
+        "grain": "store_roster",
         "sheet": "Workforce",
         "result_type": "number",
         "expression": "MAX(0, required - scheduled)",
@@ -224,17 +253,38 @@ def make_payload(**overrides: Any) -> FormulaCreate:
     return FormulaCreate(**fields)
 
 
-def test_missing_store_file_reads_as_empty(store: Path) -> None:
-    assert not store.exists()
+def test_empty_store_reads_as_empty(store: list[dict[str, Any]]) -> None:
+    assert store == []
     assert service.list_formulas() == []
 
 
-def test_create_read_update_delete_round_trip(store: Path) -> None:
+def test_grain_is_required_and_constrained() -> None:
+    """The field the whole catalogue's safety rests on cannot be defaulted.
+
+    `grain` decides which table a rule may be fed from. Sixteen of the
+    twenty-two rules are store_sku, so a default would be right often enough
+    to stop anyone checking -- and wrong exactly on the chain-net rules where
+    it matters.
+    """
+    with pytest.raises(ValidationError):
+        FormulaCreate(
+            name="No grain",
+            expression="a + 1",
+            parameters=[Parameter(key="a", label="A")],
+        )
+
+    with pytest.raises(ValidationError):
+        # A plausible wrong value: the old sheet name, which is what someone
+        # would reach for if grain were still inferred from `sheet`.
+        make_payload(grain="ENGINE_STORE")
+
+
+def test_create_read_update_delete_round_trip(store: list[dict[str, Any]]) -> None:
     created = service.create_formula(make_payload())
     assert created["id"] == "coverage-gap"
     assert created["number"] == 1
 
-    # Survives a reload from disk, not just in-memory state.
+    # Survives a reload from the store, not just in-memory state.
     assert service.get_formula("coverage-gap")["name"] == "Coverage gap"
     assert len(service.list_formulas()) == 1
 
@@ -243,6 +293,7 @@ def test_create_read_update_delete_round_trip(store: Path) -> None:
         FormulaUpdate(
             name="Coverage shortfall",
             logic="MAX(0, required - scheduled)",
+            grain="store_roster",
             sheet="Workforce",
             result_type="number",
             expression="MAX(0, required - scheduled) * 1",
@@ -259,14 +310,15 @@ def test_create_read_update_delete_round_trip(store: Path) -> None:
     assert service.list_formulas() == []
 
 
-def test_saved_file_is_readable_json_with_a_version(store: Path) -> None:
+def test_saved_record_carries_grain(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
-    payload = json.loads(store.read_text(encoding="utf-8"))
-    assert payload["version"] == repository.VERSION
-    assert [item["id"] for item in payload["formulas"]] == ["coverage-gap"]
+    assert [item["id"] for item in store] == ["coverage-gap"]
+    assert store[0]["grain"] == "store_roster"
+    # Provenance survives too, but nothing reads it.
+    assert store[0]["sheet"] == "Workforce"
 
 
-def test_numbers_autoincrement_and_ids_deduplicate(store: Path) -> None:
+def test_numbers_autoincrement_and_ids_deduplicate(store: list[dict[str, Any]]) -> None:
     first = service.create_formula(make_payload())
     second = service.create_formula(
         make_payload(name="Coverage gap, revised", id="coverage-gap")
@@ -276,19 +328,19 @@ def test_numbers_autoincrement_and_ids_deduplicate(store: Path) -> None:
     assert second["id"] == "coverage-gap-2"
 
 
-def test_duplicate_name_is_rejected(store: Path) -> None:
+def test_duplicate_name_is_rejected(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     with pytest.raises(ValueError, match="already exists"):
         service.create_formula(make_payload(number=9))
 
 
-def test_duplicate_number_is_rejected(store: Path) -> None:
+def test_duplicate_number_is_rejected(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload(number=3))
     with pytest.raises(ValueError, match="already used"):
         service.create_formula(make_payload(name="Another", number=3))
 
 
-def test_missing_formula_raises_lookup_error(store: Path) -> None:
+def test_missing_formula_raises_lookup_error(store: list[dict[str, Any]]) -> None:
     for call in (
         lambda: service.get_formula("nope"),
         lambda: service.delete_formula("nope"),
@@ -298,19 +350,19 @@ def test_missing_formula_raises_lookup_error(store: Path) -> None:
             call()
 
 
-def test_undeclared_parameter_blocks_a_save(store: Path) -> None:
+def test_undeclared_parameter_blocks_a_save(store: list[dict[str, Any]]) -> None:
     with pytest.raises(ValueError, match="undeclared"):
         service.create_formula(
             make_payload(expression="required - scheduled + mystery")
         )
 
 
-def test_excel_expression_blocks_a_save(store: Path) -> None:
+def test_excel_expression_blocks_a_save(store: list[dict[str, Any]]) -> None:
     with pytest.raises(ValueError, match="not supported|Excel"):
         service.create_formula(make_payload(expression="=Workforce!M9-Workforce!L9"))
 
 
-def test_parameter_named_after_a_function_is_rejected(store: Path) -> None:
+def test_parameter_named_after_a_function_is_rejected(store: list[dict[str, Any]]) -> None:
     with pytest.raises(ValueError, match="clashes"):
         service.create_formula(
             make_payload(
@@ -353,7 +405,7 @@ def test_unused_parameter_is_reported_but_still_valid() -> None:
     assert report["unused"] == ["spare"]
 
 
-def test_evaluate_uses_supplied_values(store: Path) -> None:
+def test_evaluate_uses_supplied_values(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     outcome = service.evaluate_formula(
         "coverage-gap", {"required": 50, "scheduled": 20}
@@ -362,12 +414,12 @@ def test_evaluate_uses_supplied_values(store: Path) -> None:
     assert outcome["result_type"] == "number"
 
 
-def test_evaluate_falls_back_to_parameter_defaults(store: Path) -> None:
+def test_evaluate_falls_back_to_parameter_defaults(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     assert service.evaluate_formula("coverage-gap", {})["result"] == 10
 
 
-def test_evaluate_coerces_numeric_strings_from_form_inputs(store: Path) -> None:
+def test_evaluate_coerces_numeric_strings_from_form_inputs(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     outcome = service.evaluate_formula(
         "coverage-gap", {"required": "1,200", "scheduled": "200"}
@@ -375,13 +427,78 @@ def test_evaluate_coerces_numeric_strings_from_form_inputs(store: Path) -> None:
     assert outcome["result"] == 1000
 
 
-def test_evaluate_rejects_non_numeric_input(store: Path) -> None:
+def test_evaluate_rejects_non_numeric_input(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     with pytest.raises(ValueError, match="needs a number"):
         service.evaluate_formula("coverage-gap", {"required": "many"})
 
 
-def test_evaluate_returns_whole_numbers_without_a_decimal_tail(store: Path) -> None:
+def test_evaluate_returns_whole_numbers_without_a_decimal_tail(store: list[dict[str, Any]]) -> None:
     service.create_formula(make_payload())
     assert service.evaluate_formula("coverage-gap", {})["result"] == 10
     assert isinstance(service.evaluate_formula("coverage-gap", {})["result"], int)
+
+
+# -- the live table -----------------------------------------------------
+#
+# Everything above fakes the repository, because it is testing service logic.
+# These two talk to Postgres, and skip rather than fail when it is not
+# reachable -- an offline checkout should still be able to run the suite.
+
+
+def _catalogue_or_skip() -> list[dict[str, Any]]:
+    try:
+        rows = repository.load()
+    except Exception as error:  # noqa: BLE001
+        pytest.skip(f"retail.formula is not reachable: {error}")
+    if not rows:
+        pytest.skip(
+            "retail.formula is empty; seed it with "
+            "scripts/import_formulas_to_db.py"
+        )
+    return rows
+
+
+def test_formula_table_matches_the_workbook_transcript() -> None:
+    """The imported table equals `formula.json` field for field.
+
+    This is what makes the migration auditable. `formula.json` stays in the
+    tree as the transcript `test_formula_conformance.py` checks against the
+    workbook; the table is what runs. If the two drift, the conformance suite
+    is answering a question about a file nobody evaluates any more.
+
+    `grain` is excluded because the file has no such field -- it is derived
+    once, on import, and asserted separately below.
+    """
+    stored = {row["id"]: row for row in _catalogue_or_skip()}
+    transcript = {row["id"]: row for row in load_formulas()}
+
+    assert set(stored) == set(transcript)
+
+    for formula_id, expected in transcript.items():
+        actual = stored[formula_id]
+        for field in ("number", "name", "expression", "result_type"):
+            assert actual[field] == expected[field], (
+                f"{formula_id}.{field}: table has {actual[field]!r}, "
+                f"transcript has {expected[field]!r}"
+            )
+        assert actual["parameters"] == expected["parameters"], (
+            f"{formula_id}: parameters differ between table and transcript"
+        )
+
+
+def test_every_stored_formula_carries_a_usable_grain() -> None:
+    """No rule reaches an agent ungrained, and the split is the known one.
+
+    Grain decides which table a rule may be fed from, and feeding the wrong
+    one returns a plausible number rather than an error -- so an ungrained
+    rule is the failure this column exists to prevent, not a cosmetic gap.
+    """
+    rows = _catalogue_or_skip()
+    split: dict[str, int] = {}
+    for row in rows:
+        grain = row.get("grain")
+        assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
+        split[grain] = split.get(grain, 0) + 1
+
+    assert split == {"store_sku": 16, "chain_sku": 3, "store_roster": 3}

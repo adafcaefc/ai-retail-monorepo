@@ -441,6 +441,16 @@ def test_observability_uses_fingerprint_not_query_text(caplog):
 
 def test_frozen_jsonl_contract_contains_no_retrieval_or_vector_fields():
     path = Path(__file__).parents[2] / "generated" / "retail_documents_sample.jsonl"
+    if not path.exists():
+        # `/generated/` is gitignored, so this artifact does not exist on a
+        # fresh checkout -- it is written by
+        # `python -m src.retail_data_bootstrap generate-documents`. Skipping
+        # keeps the contract assertion meaningful wherever the file is
+        # present, without failing a clone that has never run the generator.
+        pytest.skip(
+            "generated/retail_documents_sample.jsonl is absent; run "
+            "`python -m src.retail_data_bootstrap generate-documents` first"
+        )
     row = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
     assert set(row) == {
         "doc_key", "doc_type", "retrieval_domain", "source_sheet",

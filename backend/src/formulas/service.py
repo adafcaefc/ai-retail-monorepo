@@ -101,6 +101,9 @@ def _as_dict(payload: FormulaCreate | FormulaUpdate) -> dict[str, Any]:
     return {
         "name": payload.name.strip(),
         "logic": payload.logic.strip(),
+        # Not stripped or normalized: `Grain` is a Literal, so pydantic has
+        # already rejected anything that is not one of the three.
+        "grain": payload.grain,
         "sheet": payload.sheet.strip(),
         "result_type": payload.result_type,
         "expression": payload.expression.strip(),
@@ -243,5 +246,8 @@ def evaluate_formula(formula_id: str, values: dict[str, Any]) -> dict[str, Any]:
         "id": formula_id,
         "result": result,
         "result_type": formula.get("result_type", "number"),
+        # Returned with the number, not left for the caller to look up. A
+        # result is only interpretable against the grain of its inputs.
+        "grain": formula.get("grain", "store_sku"),
         "values": resolved,
     }

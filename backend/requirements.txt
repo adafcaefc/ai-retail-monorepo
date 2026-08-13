@@ -1,11 +1,43 @@
+# Every version is pinned exactly. `uv pip install -r requirements.txt`.
+
+# --- web layer -------------------------------------------------------------
 fastapi==0.136.0
-pydantic-ai-slim[openai,mcp]==1.84.1
 uvicorn[standard]==0.44.0
 python-dotenv==1.2.2
+
+# --- agents ----------------------------------------------------------------
+# Brings pydantic and the openai client with it; `httpx` is pinned below
+# because `src/llm/model_provider.py` imports it directly rather than relying
+# on it arriving through openai.
+pydantic-ai-slim[openai,mcp]==1.84.1
+httpx==0.28.1
+
+# --- data ------------------------------------------------------------------
 psycopg[binary]==3.3.4
 SQLAlchemy==2.0.51
+# Parses and validates every agent-supplied SELECT before it reaches the
+# database (`common/tools/freeform_query.py`).
 sqlglot==28.0.0
 requests==2.32.5
 openpyxl==3.1.5
-pytest==8.4.2
+
+# --- retrieval / vector layer ----------------------------------------------
+# Both are imported at MODULE level, and `main.py` imports the retrieval router
+# unconditionally, so the app does not start without them -- the
+# RETAIL_RETRIEVAL_API_ENABLED flag gates the endpoint, not the import.
 mssql-python==1.13.0
+numpy==2.5.2
+
+# --- tests -----------------------------------------------------------------
+pytest==8.4.2
+
+# --- optional: local embedding generation ----------------------------------
+# `sentence-transformers` is imported lazily inside
+# `retail_data_bootstrap/embedding_provider.py::_load_model`, so it is needed
+# only to generate embeddings, not to run the app or the agents. It is left
+# out of the default install because it pulls PyTorch (~2GB). Install it
+# deliberately when you need that path, against the CPU-only PyTorch build:
+#
+#     uv pip install sentence-transformers==5.7.0
+#
+# Do not install the CUDA extras.

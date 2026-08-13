@@ -49,6 +49,10 @@ const COVERAGE_GAP = {
   number: 19,
   name: "Coverage gap",
   logic: "MAX(0, required - scheduled)",
+  // Grain is what one row of the inputs counts, and it is required: the
+  // editor will not save without it. `sheet` is provenance and reads as
+  // nothing.
+  grain: "store_roster",
   sheet: "Workforce",
   result_type: "number",
   expression: "MAX(0, required - scheduled)",
@@ -63,6 +67,7 @@ const ADS = {
   number: 1,
   name: "ADS per store",
   logic: "Base ADS x seasonality",
+  grain: "store_sku",
   sheet: "ENGINE_STORE",
   result_type: "number",
   expression: "base_ads * seasonality",
@@ -250,6 +255,15 @@ describe("Formula Manager", () => {
       target: { value: "ads" },
     });
 
+    // Grain has no default, so a new formula cannot be saved until its author
+    // says what one row of its inputs counts. Assert that before choosing one:
+    // the guard is the point of the field.
+    expect(screen.getByRole("button", { name: "Save formula" })).toBeDisabled();
+    fireEvent.change(
+      screen.getByLabelText(/Grain — what one row of the inputs counts/),
+      { target: { value: "store_sku" } },
+    );
+
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Save formula" })).toBeEnabled(),
     );
@@ -259,6 +273,7 @@ describe("Formula Manager", () => {
     expect(mocks.createFormula.mock.calls[0][0]).toMatchObject({
       name: "Doubled ADS",
       expression: "ads * 2",
+      grain: "store_sku",
       parameters: [{ key: "ads", label: "ads", type: "number" }],
     });
     // The list is refetched so the new row appears.

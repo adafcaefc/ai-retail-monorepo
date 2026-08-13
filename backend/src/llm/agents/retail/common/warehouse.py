@@ -10,8 +10,8 @@ it and is the only implementation of it anywhere.
 Porting that to Python would create a second implementation of the same
 arithmetic, which then has to be kept in step with the first forever. This
 project spent its whole first phase removing exactly that duplication for
-business rules — they live once, in `resources/dbtemp/formula.json`, read by
-both languages. Aggregation deserves the same treatment.
+business rules — they live once, in `retail.formula`, read by both languages
+and by the agents. Aggregation deserves the same treatment.
 
 The consequence is worth stating plainly: because both paths run the same
 selectors over the same rows, moving a board from its fixture to this API
@@ -21,19 +21,12 @@ that by comparing this payload to the checked-in fixture field by field.
 
 from __future__ import annotations
 
-import json
-from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
 
 from src.db.db import get_engine
 from src.llm.agents.common.dashboard_scope import DashboardScope
-
-# backend/src/llm/agents/retail/common/warehouse.py -> repo root is six up.
-REPO = Path(__file__).resolve().parents[6]
-FORMULA_CATALOGUE = REPO / "resources" / "dbtemp" / "formula.json"
 
 SCHEMA = "retail"
 
@@ -64,16 +57,25 @@ REPLENISH_STATES = frozenset({"Stockout", "Low"})
 SUPPORTED_FILTERS: frozenset[str] = frozenset({"legal_entity_id", "category_group"})
 
 
-@lru_cache(maxsize=1)
 def _catalogue() -> dict[str, str]:
-    """The whole catalogue, keyed by id — the same file the browser evaluates.
+    """The whole catalogue, keyed by id — the same rules the browser evaluates.
 
-    Cached: a 24 KB read that cannot change within a process, wanted by every
-    dashboard request.
+    Reads `retail.formula`, which is also what the Formula Manager writes and
+    what the agents' formula tools quote. It used to read
+    `resources/dbtemp/formula.json` directly, and that was fine while the
+    Formula Manager was the only other reader — but once an agent could cite a
+    rule, a file the API had rewritten in another process meant the board and
+    the agent could disagree about what a formula says. One store, one answer.
+
+    Deliberately not cached. The old `lru_cache(maxsize=1)` was correct for a
+    file that could not change within a process; a table the Formula Manager
+    edits can, and a board still drawing last hour's rule after someone fixed
+    it is the bug this move was meant to end. A 22-row read on a warmed pool is
+    not what makes a dashboard request slow.
     """
-    payload = json.loads(FORMULA_CATALOGUE.read_text(encoding="utf-8"))
-    entries = payload["formulas"] if isinstance(payload, dict) else payload
-    return {entry["id"]: entry["expression"] for entry in entries}
+    from src.formulas import repository
+
+    return {entry["id"]: entry["expression"] for entry in repository.load()}
 
 
 def formulas(wanted: tuple[str, ...]) -> dict[str, str]:
@@ -91,8 +93,8 @@ def formulas(wanted: tuple[str, ...]) -> dict[str, str]:
     missing = [name for name in wanted if name not in catalogue]
     if missing:
         raise ValueError(
-            f"formula.json is missing {', '.join(missing)}. "
-            "Regenerate it: python -m src.formulas.verification_pack --write"
+            f"retail.formula is missing {', '.join(missing)}. "
+            "Seed it: python scripts/import_formulas_to_db.py"
         )
     return {name: catalogue[name] for name in wanted}
 

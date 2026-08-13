@@ -88,11 +88,58 @@ LEAKAGE_ALLOWED_TABLES = (
     "newdata.agent_kpis",
 )
 
+# Retail reads the `retail` star schema, seeded from the v8.2 workbook. All
+# three boards share the dimensions and the formula catalogue; they differ in
+# which facts they are allowed to touch, so a Replenishment action cannot
+# rewrite an inventory position and vice versa.
+#
+# `retail.formula` is on every list. It is the rule set the boards evaluate and
+# the agents quote, so an agent that cannot read it can only restate a formula
+# from memory — which is exactly what the formula tools exist to stop.
+RETAIL_SHARED_TABLES: tuple[str, ...] = (
+    "audit.import_batches",
+    "retail.dim_vertical",
+    "retail.dim_item",
+    "retail.dim_store",
+    "retail.dim_calendar",
+    "retail.agent_kpi_reference",
+    "retail.formula",
+)
+
+DEMAND_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.fact_inventory_chain_daily",
+    "retail.fact_inventory_daily",
+    "retail.assortment",
+    "retail.fact_gmv_monthly",
+)
+
+INVENTORY_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.fact_inventory_chain_daily",
+    "retail.fact_inventory_daily",
+    "retail.assortment",
+)
+
+REPLENISHMENT_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.replenishment_proposal",
+    "retail.trade_agreement",
+    "retail.dim_vendor",
+    "retail.fact_inventory_chain_daily",
+)
+
 DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "finance": FINANCE_ALLOWED_TABLES,
     "cashflow": CASHFLOW_ALLOWED_TABLES,
     "collection": COLLECTIONS_ALLOWED_TABLES,
     "leakage": LEAKAGE_ALLOWED_TABLES,
+    # Keys are the descriptors' `db_domain` values: `simulate_action` passes
+    # `descriptor.db_domain` to `set_simulation_domain`, and `simulate_impact`
+    # resolves its allow-list from that rather than trusting the model.
+    "retail_demand": DEMAND_ALLOWED_TABLES,
+    "retail_inventory": INVENTORY_ALLOWED_TABLES,
+    "retail_replenishment": REPLENISHMENT_ALLOWED_TABLES,
 }
 
 # Domain whose agent is currently running. Simulation/execution tools read
@@ -747,7 +794,16 @@ def current_simulation_domain() -> str | None:
 
 
 def domain_for_table(table_name: str) -> str | None:
-    """Return the domain owning a table, ignoring shared audit tables."""
+    """Return the domain owning a table, ignoring shared audit tables.
+
+    This is a fallback, not an authority. The three retail domains overlap by
+    design — all of them read `retail.dim_item` — so a shared table resolves to
+    whichever domain is declared first. That is only ever consulted when no
+    caller set a scope; `_resolve_allowed_data` prefers
+    `current_simulation_domain()`, which `simulate_action` always sets from the
+    descriptor. The overlap therefore decides which allow-list an unscoped call
+    gets, and every one of them contains the table being asked about.
+    """
     normalized = _normalize_table_name(table_name)
     for domain, tables in DOMAIN_ALLOWED_TABLES.items():
         for table in tables:
@@ -877,34 +933,189 @@ def describe_payment_leakage_tables(
     )
 
 
+# What every retail query docstring has to say, because each of these is a way
+# to be confidently wrong about this dataset rather than merely unlucky.
+_RETAIL_QUERY_NOTES = """
+    THE DATA. One snapshot day, 2026-07-01, is the only date in every fact
+    table. There is no history, so no query can support a trend over time.
+    `fact_sales_daily`, `fact_price_daily`, `fact_promotion`,
+    `fact_purchase_receipt` and the `forecast_*` tables are EMPTY on purpose --
+    the workbook never carried them. Say a figure is unavailable rather than
+    inferring it from something else.
+
+    GRAIN. `fact_inventory_chain_daily` is chain-net: one row per item, 800
+    rows, with surplus in one store already netted against shortage in another.
+    `fact_inventory_daily` is per store x item, 16,000 rows, and summing it
+    gives a GROSS figure that legitimately exceeds the chain-net one -- at-risk
+    value differs by about 1.25x. They are different questions. Never compare
+    one against the other, and never present a sum of the per-store table as a
+    chain KPI.
+"""
+
+
+def query_retail_demand(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail demand tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_demand_forecast_snapshot for the standard view; use this for custom
+    filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.assortment, retail.agent_kpi_reference,
+    retail.formula, retail.fact_inventory_chain_daily,
+    retail.fact_inventory_daily, retail.fact_gmv_monthly, audit.import_batches.
+
+    Scope by vertical_id (GRC, GMR, FSH, HNB, ELC, HNL, DGT, OMN) or by
+    category_id. `ads` is the daily demand rate; the 7-day forecast is
+    ads * 7.45, which is formula f08-forecast-7-days.
+    """
+    return _domain_query(queries, allowed_tables=DEMAND_ALLOWED_TABLES)
+
+
+def query_retail_inventory(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail inventory tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_inventory_risk_snapshot for the standard view; use this for custom
+    filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.assortment, retail.agent_kpi_reference,
+    retail.formula, retail.fact_inventory_chain_daily,
+    retail.fact_inventory_daily, audit.import_batches.
+
+    `state` is one of Stockout, Low, Expiry, Overstock, Slow-mover, Healthy,
+    classified by formula f07-inventory-state. `at_risk_value` is zero for
+    Healthy rows by construction, so summing it over all rows is already the
+    at-risk total.
+    """
+    return _domain_query(queries, allowed_tables=INVENTORY_ALLOWED_TABLES)
+
+
+def query_retail_replenishment(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail replenishment tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_replenishment_snapshot for the standard view; use this for custom
+    filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.dim_vendor, retail.agent_kpi_reference,
+    retail.formula, retail.replenishment_proposal, retail.trade_agreement,
+    retail.fact_inventory_chain_daily, audit.import_batches.
+
+    `replenishment_proposal.is_reorder` marks the lines below reorder point.
+    Order quantities come in two units: order_qty_sales (how customers buy) and
+    order_qty_buy (how you buy from the vendor), related by dim_item.pack_factor
+    via formula f10-order-quantity-purchase-units. `saving_vs_designated` is the
+    per-line gain from sourcing at best_price_vendor instead of
+    designated_vendor.
+    """
+    return _domain_query(queries, allowed_tables=REPLENISHMENT_ALLOWED_TABLES)
+
+
+def describe_retail_demand_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail demand allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=DEMAND_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
+def describe_retail_inventory_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail inventory allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=INVENTORY_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
+def describe_retail_replenishment_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail replenishment allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=REPLENISHMENT_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
+# The shared caveats are appended rather than pasted into each docstring, so
+# the three cannot drift apart on the one thing they must all say.
+for _tool in (query_retail_demand, query_retail_inventory, query_retail_replenishment):
+    _tool.__doc__ = (_tool.__doc__ or "") + _RETAIL_QUERY_NOTES
+del _tool
+
+
 LOCAL_FREEFORM_QUERY_TOOLS = {
     "query_financial_performance": query_financial_performance,
     "query_cashflow": query_cashflow,
     "query_collections": query_collections,
     "query_payment_leakage": query_payment_leakage,
+    "query_retail_demand": query_retail_demand,
+    "query_retail_inventory": query_retail_inventory,
+    "query_retail_replenishment": query_retail_replenishment,
     "describe_financial_performance_tables": describe_financial_performance_tables,
     "describe_cashflow_tables": describe_cashflow_tables,
     "describe_collections_tables": describe_collections_tables,
     "describe_payment_leakage_tables": describe_payment_leakage_tables,
+    "describe_retail_demand_tables": describe_retail_demand_tables,
+    "describe_retail_inventory_tables": describe_retail_inventory_tables,
+    "describe_retail_replenishment_tables": describe_retail_replenishment_tables,
 }
 
 
 __all__ = [
     "CASHFLOW_ALLOWED_TABLES",
     "COLLECTIONS_ALLOWED_TABLES",
+    "DEMAND_ALLOWED_TABLES",
     "DOMAIN_QUERY_MAX_ROWS",
     "FINANCE_ALLOWED_TABLES",
+    "INVENTORY_ALLOWED_TABLES",
     "LEAKAGE_ALLOWED_TABLES",
     "LOCAL_FREEFORM_QUERY_TOOLS",
+    "REPLENISHMENT_ALLOWED_TABLES",
+    "RETAIL_SHARED_TABLES",
     "clear_schema_cache",
     "describe_cashflow_tables",
     "describe_collections_tables",
     "describe_financial_performance_tables",
     "describe_payment_leakage_tables",
+    "describe_retail_demand_tables",
+    "describe_retail_inventory_tables",
+    "describe_retail_replenishment_tables",
     "describe_tables",
     "freeform_query",
     "query_cashflow",
     "query_collections",
     "query_financial_performance",
     "query_payment_leakage",
+    "query_retail_demand",
+    "query_retail_inventory",
+    "query_retail_replenishment",
 ]

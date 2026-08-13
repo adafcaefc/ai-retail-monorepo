@@ -76,9 +76,12 @@
                         "Finance",
                         "Treasury",
                         "Collection",
-                        "Leakage"
+                        "Leakage",
+                        "Demand Forecasting",
+                        "Inventory Risk",
+                        "Replenishment"
                     ],
-                    "description": "The agent that is outputting this output."
+                    "description": "The agent that is outputting this output. Use your own display name: a Retail agent must never claim to be one of the Finance agents."
                 }
             }
         }
