@@ -57,6 +57,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+# Build configuration, not a secret: it holds one flag, and without it
+# `npm run build:standalone` silently produces an API build on a fresh clone.
+!frontend/.env.standalone
 
 # Python virtual environments
 .venv/

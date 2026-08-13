@@ -25,20 +25,13 @@ import {
 } from "./selectors.js";
 
 /*
- * Where the rows come from.
- *
- * "api" asks the backend, which reads Postgres; "fixture" reads the copy
- * checked in beside this file. Both then run the SAME selectors over the SAME
- * shape, which is what makes the switch safe: the backend builder returns rows
- * rather than a finished dashboard, and
- * `backend/tests/test_retail_dashboard_builders.py` asserts field for field
- * that its payload equals this fixture. Nothing on screen can move.
- *
- * Tests stay on the fixture because jsdom has no server to answer them, not
- * because the two disagree. `import.meta.env.MODE` is Vite's own flag and is
- * "test" under Vitest.
+ * Where the rows come from — one definition for all three boards, so the
+ * rule cannot drift between them. Re-exported because callers and tests
+ * import it from the board they are working on.
  */
-export const DATA_SOURCE = import.meta.env.MODE === "test" ? "fixture" : "api";
+import { DATA_SOURCE } from "../../common/dataSource.js";
+
+export { DATA_SOURCE };
 
 
 export function demandForecastingDataSource() {
@@ -74,21 +67,35 @@ export async function loadDemandForecastingDashboard(
 
 /**
  * Scenario preview: the same board under different levers, without applying
- * them to the page. No backend route is invented for it — when the API can
- * answer a scoped What-If, this is the second call site that has to learn.
+ * them to the page.
+ *
+ * No backend route, and none is needed. A lever moves the arithmetic, not the
+ * rows — `buildDashboardFromFixture` already applies levers, and the board
+ * above already passes them through in "api" mode. So the scenario is the same
+ * rows under a different set of levers, and the source of the rows is the only
+ * thing that varies here.
+ *
+ * This used to throw "backend integration is pending" whenever DATA_SOURCE was
+ * "api", which is every run outside the test suite. The board caught it and
+ * showed it as a scenario error, so Run scenario was dead in the browser and
+ * green in CI — the fixture path was the only one the tests could reach.
  */
 export async function loadDemandForecastingScenario(
   inputQuery = {},
   simulationLevers = {},
 ) {
-  if (DATA_SOURCE === "api") {
-    throw new Error("Demand Forecasting simulation backend integration is pending.");
-  }
+  const query = normalizeDemandQuery(inputQuery);
+  const rows =
+    DATA_SOURCE === "api"
+      ? await fetchDashboard(DEMAND_AGENT_ID, serializeScope(query))
+      : fixture;
+
   return normalizeDemandDashboard(
-    buildDashboardFromFixture(fixture, normalizeDemandQuery(inputQuery), {
+    buildDashboardFromFixture(rows, query, {
       levers: simulationLevers,
       driveWholePage: true,
     }),
+    { requirePhase2: DATA_SOURCE === "api" },
   );
 }
 

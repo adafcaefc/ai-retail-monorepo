@@ -6,13 +6,15 @@
  * are against `a1_demand_forecasting`, the workbook's own sheet, carried into
  * the fixture as `reference_by_vertical`.
  *
- * The API branch is not exercised: `DATA_SOURCE` is a module constant rather
- * than an environment flag (see `dashboardData.js` for why), so there is
- * nothing to stub. Inventory Risk makes the same trade. When the backend
- * builder lands, that branch gets a test against a real response.
+ * The API branch IS exercised now, at the bottom of this file. It was not, for
+ * as long as `DATA_SOURCE` was read at import time and every test ran in
+ * "test" mode — and that gap had a cost: `loadDemandForecastingScenario` threw
+ * "backend integration is pending" on the branch no test could reach, so Run
+ * scenario was broken in the browser and green here. Resetting the module
+ * registry under a stubbed MODE is what reaches it.
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEMAND_AGENT_ID, DEFAULT_DEMAND_LEVERS } from "./contract.js";
 import {
@@ -187,5 +189,66 @@ describe("dimensions", () => {
     const mean =
       seasonality.reduce((running, point) => running + point.index, 0) / 12;
     expect(mean).toBeCloseTo(100, 6);
+  });
+});
+
+/*
+ * The "api" branch, reached by resetting the module registry under a stubbed
+ * MODE. `DATA_SOURCE` is evaluated once at import, so the stub has to be in
+ * place before the dynamic import — a top-level import would already have
+ * bound it to "fixture".
+ *
+ * `fetch` answers with the fixture itself. That is the point rather than a
+ * shortcut: the backend builder returns rows in exactly this shape, and
+ * `backend/tests/test_retail_dashboard_builders.py` asserts field by field
+ * that it does. So a board driven by this response and a board driven by the
+ * file must agree, and anything these tests catch is the gateway's own doing.
+ */
+describe("the Demand Forecasting gateway in api mode", () => {
+  let load;
+  let scenario;
+  let fetchMock;
+
+  beforeEach(async () => {
+    vi.stubEnv("MODE", "production");
+    vi.resetModules();
+    fetchMock = vi.fn(async () => ({ ok: true, json: async () => fixture }));
+    vi.stubGlobal("fetch", fetchMock);
+    ({
+      loadDemandForecastingDashboard: load,
+      loadDemandForecastingScenario: scenario,
+    } = await import("./dashboardData.js"));
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it("asks the dashboard route, and sends only scope as query", async () => {
+    await load({ legal_entity_id: "GRC", grain: "weekly", horizon_weeks: 8 });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain(`/api/html/dashboard/${DEMAND_AGENT_ID}`);
+    expect(url).toContain("legal_entity_id=GRC");
+    // Grain, horizon and paging are how this board draws the rows, not which
+    // rows it asks for. Sending them is a 400 from the route's filter guard.
+    expect(url).not.toContain("grain");
+    expect(url).not.toContain("horizon_weeks");
+  });
+
+  it("runs a scenario over the API rows instead of refusing", async () => {
+    const preview = await scenario(
+      { legal_entity_id: "GRC" },
+      { ...DEFAULT_DEMAND_LEVERS, demand: 20 },
+    );
+
+    expect(preview.agent).toBe(DEMAND_AGENT_ID);
+    expect(preview.simulation.scenario_levers.demand).toBe(20);
+
+    const base = await load({ legal_entity_id: "GRC" });
+    expect(preview.kpis.find((kpi) => kpi.id === "forecast_next_7d").value)
+      .toBeGreaterThan(base.kpis.find((kpi) => kpi.id === "forecast_next_7d").value);
   });
 });

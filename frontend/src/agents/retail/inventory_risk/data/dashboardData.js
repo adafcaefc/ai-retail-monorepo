@@ -25,20 +25,13 @@ import {
 } from "./selectors.js";
 
 /*
- * Where the rows come from.
- *
- * "api" asks the backend, which reads Postgres; "fixture" reads the copy
- * checked in beside this file. Both then run the SAME selectors over the SAME
- * shape, which is what makes the switch safe: the backend builder returns rows
- * rather than a finished dashboard, and
- * `backend/tests/test_retail_dashboard_builders.py` asserts field for field
- * that its payload equals this fixture. Nothing on screen can move.
- *
- * Tests stay on the fixture because jsdom has no server to answer them, not
- * because the two disagree. `import.meta.env.MODE` is Vite's own flag and is
- * "test" under Vitest.
+ * Where the rows come from — one definition for all three boards, so the
+ * rule cannot drift between them. Re-exported because callers and tests
+ * import it from the board they are working on.
  */
-export const DATA_SOURCE = import.meta.env.MODE === "test" ? "fixture" : "api";
+import { DATA_SOURCE } from "../../common/dataSource.js";
+
+export { DATA_SOURCE };
 
 
 /**
