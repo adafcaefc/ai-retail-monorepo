@@ -6461,12 +6461,19 @@ img.ey-logo {
 
 .demand-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(125px, 1fr));
+  /* Three across, two rows — the mockup's own arrangement. Six narrow columns
+     left each card ~125px, which is not enough for a figure and a chart side
+     by side, so the chart was stacked underneath and shrank to a smudge. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 .demand-kpi {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -6474,6 +6481,21 @@ img.ey-logo {
   background: var(--surface-strong);
   padding: var(--space-3) var(--space-3) var(--space-2);
   box-shadow: var(--shadow-sm);
+  /* It is a <button> now — it opens the drill-down drawer — so the browser's
+     own button styling has to be undone rather than fought. */
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.demand-kpi:hover {
+  background: var(--surface);
+}
+
+.demand-kpi:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
 }
 
 .demand-kpi::before {
@@ -6484,9 +6506,11 @@ img.ey-logo {
   background: var(--gray-400);
 }
 
-.demand-kpi--good::before { background: var(--accent-success); }
-.demand-kpi--warn::before { background: var(--accent-warning); }
-.demand-kpi--bad::before { background: var(--accent-danger); }
+.demand-kpi::before { background: var(--demand-kpi-accent, var(--gray-400)); }
+.demand-kpi--good { --demand-kpi-accent: var(--accent-success); }
+.demand-kpi--warn { --demand-kpi-accent: var(--accent-warning); }
+.demand-kpi--bad { --demand-kpi-accent: var(--accent-danger); }
+.demand-kpi--neutral { --demand-kpi-accent: var(--accent-info); }
 
 .demand-kpi-label {
   overflow: hidden;
@@ -6526,25 +6550,7 @@ img.ey-logo {
   white-space: nowrap;
 }
 
-.demand-kpi-spark {
-  width: 100%;
-  height: 25px;
-  margin-top: var(--space-1);
-  overflow: visible;
-}
 
-.demand-kpi-spark polygon {
-  fill: var(--accent-info-soft);
-}
-
-.demand-kpi-spark polyline {
-  fill: none;
-  stroke: var(--primary);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-  vector-effect: non-scaling-stroke;
-}
 
 .demand-chart-grid {
   display: grid;
@@ -6948,6 +6954,1128 @@ img.ey-logo {
   .demand-forecasting-dashboard.is-refreshing .demand-chart-grid,
   .demand-forecasting-dashboard.is-refreshing .demand-trend-panel,
   .demand-forecasting-dashboard.is-refreshing .demand-detail-panel {
+    transition: none;
+  }
+}
+
+/* ==========================================================================
+   Inventory Risk (Agent 2) dashboard
+   --------------------------------------------------------------------------
+   Namespaced under .inventory-risk-dashboard and the .risk-* prefix so none of
+   it can reach the Demand board or the generic Workboard. The state palette is
+   declared once here and read by both the CSS chips and the Recharts fills
+   (presentation.js `stateColor` returns these same custom properties), so a
+   colour change lands in the chart and the chip together.
+   ========================================================================== */
+
+.inventory-risk-dashboard {
+  --risk-stockout: var(--red-500);
+  --risk-low: var(--amber-500);
+  --risk-expiry: var(--amber-600);
+  --risk-overstock: var(--blue-500);
+  --risk-slow-mover: var(--gray-500);
+  --risk-healthy: var(--green-500);
+
+  /* One accent per KPI tile, matching the mockup's six-colour strip. Two hues
+     have no existing token because nothing else in the app uses them; they are
+     declared here rather than as globals so they stay this board's business. */
+  --risk-kpi-stockout-risk-skus: var(--red-500);
+  --risk-kpi-overstock-skus: #5c2d91;
+  --risk-kpi-expiry-units: var(--amber-600);
+  --risk-kpi-slow-mover-skus: #0a9ed4;
+  --risk-kpi-avg-dos: var(--blue-500);
+  --risk-kpi-inventory-value: var(--green-600);
+
+  /* Projection and What-If. Baseline is deliberately the quieter of the pair:
+     the scenario is what the reader is being asked to look at. */
+  --risk-projection: var(--blue-500);
+  --risk-demand: #7c4dff;
+  --risk-baseline: var(--gray-400);
+  --risk-scenario: var(--blue-500);
+  --risk-compare-2: var(--amber-600);
+  --risk-compare-3: var(--green-600);
+  --risk-compare-4: #5c2d91;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/*
+ * Nothing on this board may be squeezed to fit.
+ *
+ * `.workboard` gives the section a bounded height and its own scrollbar. As a
+ * flex column inside that bound, every child defaults to `flex-shrink: 1`, and
+ * `.risk-panel` sets `overflow: hidden` — which resolves its automatic minimum
+ * size to zero. The two together let the panels compress until only their
+ * headers survived: the charts and the register rendered, but with no height
+ * to draw into. Pinning the children stops the compression, so the content
+ * keeps its size and the board scrolls instead.
+ */
+.inventory-risk-dashboard > * {
+  flex-shrink: 0;
+}
+
+.inventory-risk-dashboard.is-refreshing {
+  /* Keep the last good board on screen while the next one loads, dimmed
+     rather than replaced, so changing a filter does not collapse the layout. */
+  opacity: 0.62;
+  transition: opacity 120ms ease-out;
+}
+
+/* --- filter bar --------------------------------------------------------- */
+
+.risk-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.risk-filter-selects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.risk-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Field captions and the state legend share the Demand board's label
+   treatment, so the two filter bars read as one control strip. */
+.risk-filter-field > span,
+.risk-state-filter legend,
+.risk-search > label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.risk-filter-field select {
+  min-width: 160px;
+  max-width: 230px;
+  height: 34px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.risk-filter-field select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.risk-state-filter {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.risk-state-filter legend {
+  padding: 0;
+}
+
+/* Same focus ring as the Demand board, on the same kinds of control. */
+.risk-filter-field select:focus-visible,
+.risk-search input:focus-visible,
+.risk-search button:focus-visible,
+.risk-segmented button:focus-visible,
+.risk-button:focus-visible,
+.risk-watchlist button:focus-visible,
+.risk-pager button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.risk-segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+/* Demand groups its four horizons inside one pill container. This control
+   holds seven options that wrap, and each state carries a meaning-bearing
+   colour, so the chips stay individually outlined. Type, size and pressed
+   treatment follow the Demand segmented control. */
+.risk-segmented button {
+  min-width: 34px;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.risk-segmented button[aria-pressed="true"] {
+  border-color: var(--accent-info);
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.risk-search {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+/* Input and Search join into one control, as on the Demand board. */
+.risk-search > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.risk-search input {
+  min-width: 170px;
+  height: 34px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.risk-search button {
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.risk-search button,
+.risk-button {
+  min-height: 34px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--gray-0);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.risk-button--quiet {
+  border-color: var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
+.risk-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.risk-filter-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* --- scope and data notes ----------------------------------------------- */
+
+.risk-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.risk-data-note {
+  padding: 3px 9px;
+  border: 1px solid var(--accent-warning-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+}
+
+.risk-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.risk-scope-summary b {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-100);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.risk-scope-summary button,
+.risk-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--accent-info-strong);
+  font-size: var(--text-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.risk-inline-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent-danger-border);
+  border-radius: 10px;
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  font-size: var(--text-sm);
+}
+
+.risk-footnote {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --- KPI grid ----------------------------------------------------------- */
+
+.risk-kpi-grid {
+  display: grid;
+  /* Three across, two rows. Six columns left each tile too narrow to carry a
+     figure and its chart side by side, which is why A1 was widened too. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-kpi {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  /* The accent names the metric, the tone says whether it is a problem. Both
+     are needed: one colour cannot carry "this is overstock" and "this is bad"
+     at the same time. */
+  border-left: 3px solid var(--risk-kpi-accent, var(--gray-300));
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+.risk-kpi--actionable {
+  cursor: pointer;
+  font: inherit;
+}
+
+.risk-kpi--actionable:hover {
+  background: var(--surface);
+}
+
+.risk-kpi--actionable:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+
+/* The whole tile face opens its drill-down, so the button is the tile rather
+   than a control sitting inside one — a target the size of the thing it
+   describes. It carries no chrome of its own; the surrounding article already
+   draws the border and accent. */
+.risk-kpi-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-kpi-open:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 3px;
+}
+
+.risk-kpi:hover {
+  background: var(--surface);
+}
+
+/* The second, stronger action: filtering the whole board. Kept visually
+   subordinate to the tile face so the two intents cannot be confused. */
+.risk-kpi-scope {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.risk-kpi-scope:hover {
+  color: var(--text);
+  border-color: var(--gray-300);
+}
+
+.risk-kpi--bad .risk-kpi-value {
+  color: var(--accent-danger-strong);
+}
+
+.risk-kpi--warn .risk-kpi-value {
+  color: var(--accent-warning-strong);
+}
+
+.risk-kpi-caption--good {
+  color: var(--accent-success-strong);
+}
+
+.risk-kpi-caption--warn {
+  color: var(--accent-warning-strong);
+}
+
+.risk-kpi-caption--bad {
+  color: var(--accent-danger-strong);
+}
+
+.risk-kpi-label {
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.risk-kpi-value {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.risk-kpi-caption {
+  font-size: 0.62rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+/* --- panels and charts -------------------------------------------------- */
+
+.risk-chart-grid {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: var(--space-3);
+}
+
+.risk-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.risk-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.risk-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.risk-panel-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.risk-panel-note {
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.risk-chart {
+  width: 100%;
+  height: 220px;
+}
+
+.risk-chart--tall {
+  height: 280px;
+}
+
+.risk-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.risk-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 12%);
+  font-size: var(--text-xs);
+  color: var(--ink);
+}
+
+.risk-tooltip-total {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+}
+
+.risk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.risk-legend li {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.risk-legend i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.risk-legend b {
+  color: var(--ink);
+}
+
+/* --- state chips -------------------------------------------------------- */
+
+.risk-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-100);
+  color: var(--ink);
+  font-size: 0.62rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.risk-chip--stockout {
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+}
+
+.risk-chip--low,
+.risk-chip--expiry {
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+}
+
+.risk-chip--overstock {
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+}
+
+.risk-chip--slow-mover {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+.risk-chip--healthy {
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+}
+
+/* --- expiry watchlist --------------------------------------------------- */
+
+.risk-watchlist {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-watchlist button {
+  display: grid;
+  grid-template-columns: 82px 1fr 42px 62px;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--gray-50);
+  font-size: var(--text-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-watchlist button:hover {
+  background: var(--gray-100);
+}
+
+.risk-watchlist-sku {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.risk-watchlist-name {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-watchlist-days {
+  color: var(--accent-warning-strong);
+  text-align: right;
+}
+
+.risk-watchlist-units {
+  color: var(--ink);
+  text-align: right;
+}
+
+/* --- risk register ------------------------------------------------------ */
+
+.risk-table-scroll {
+  max-height: 460px;
+  overflow: auto;
+}
+
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.risk-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.risk-table th.num,
+.risk-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-table tbody td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+.risk-row {
+  cursor: pointer;
+}
+
+.risk-row:hover td {
+  background: var(--gray-50);
+}
+
+.risk-row:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: -2px;
+}
+
+/* Product name leads, code and category sit under it — a reader scanning the
+   register recognises the product, then reaches for the key. */
+.risk-sku-name-primary {
+  display: block;
+  font-weight: 600;
+}
+
+.risk-sku-meta {
+  display: block;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.risk-next-agent {
+  color: var(--accent-info-strong);
+  white-space: nowrap;
+}
+
+.risk-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  font-size: var(--text-xs);
+  color: var(--muted);
+}
+
+.risk-pager button {
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-strong);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.risk-pager button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* --- suggested best action ---------------------------------------------- */
+
+.risk-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: var(--space-2);
+}
+
+.risk-action {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.risk-action-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.risk-action-route {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent-info-strong);
+}
+
+.risk-action-value {
+  font-size: var(--text-sm);
+  font-weight: 650;
+  color: var(--ink);
+}
+
+.risk-action-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.risk-action-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-action-list button {
+  display: grid;
+  width: 100%;
+  align-items: baseline;
+  gap: var(--space-1);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm, 6px);
+  background: none;
+  grid-template-columns: 1fr auto;
+  font-size: 0.68rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-action-list button:hover {
+  background: var(--surface-strong);
+}
+
+.risk-action-sku-name {
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-action-sku-id {
+  display: block;
+  color: var(--muted);
+  font-size: 0.58rem;
+  grid-column: 1;
+}
+
+.risk-action-sku-value {
+  grid-row: 1 / span 2;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* --- skeleton ----------------------------------------------------------- */
+
+.risk-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.risk-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.risk-skeleton-panels {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: var(--space-3);
+}
+
+.risk-skeleton-dims {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- projection, What-If, compare (A2 spec 4 and 8) --------------------- */
+
+/* The figures under the main chart: Position, Inbound, Avg DoS, At risk. */
+.risk-metric-strip {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.risk-metric-strip dt {
+  color: var(--muted);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.risk-metric-strip dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* Reserved for statements about what a panel is NOT showing. Quiet, but never
+   hidden behind a hover: a caveat a reader has to discover is not a caveat. */
+.risk-panel-caveat {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.risk-simulator-head {
+  align-items: flex-start;
+}
+
+.risk-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.risk-drive-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.risk-lever-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.risk-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+
+.risk-lever > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.risk-lever b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.risk-lever output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-lever small {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.4;
+}
+
+/* The markdown lever: declared by the spec, absent from the workbook's
+   formulas. Dimmed rather than removed, so the question "where is it?" is
+   answered where it is asked. */
+.risk-lever--inert {
+  opacity: 0.5;
+}
+
+.risk-lever--inert input {
+  cursor: not-allowed;
+}
+
+.risk-simulator-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.risk-chart--sim {
+  height: 190px;
+}
+
+.risk-scenario-metrics {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.risk-scenario-metrics article {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.risk-scenario-metrics span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.risk-scenario-metrics strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.risk-scenario-metrics small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.risk-scenario-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 4px;
+  padding: 0;
+  list-style: none;
+}
+
+.risk-scenario-list li {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 10px minmax(0, 1fr) minmax(0, 1.2fr) auto auto;
+  gap: 8px;
+  font-size: 0.66rem;
+}
+
+.risk-scenario-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.risk-scenario-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.risk-scenario-levers,
+.risk-scenario-value {
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.risk-scenario-value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The board is showing a simulation. Loud on purpose — every figure below it
+   is a projection, and a reader must not screenshot one as the position. */
+.risk-applied-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+
+.risk-applied-flag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--amber-500);
+  color: #fff;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.risk-applied-banner p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+
+.risk-applied-scope {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+/* --- responsive --------------------------------------------------------- */
+
+@media (width <= 1180px) {
+  .risk-kpi-grid,
+  .risk-skeleton-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .risk-chart-grid,
+  .risk-skeleton-panels,
+  .risk-dimension-grid,
+  .risk-skeleton-dims,
+  .risk-simulator-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .risk-lever-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 720px) {
+  .risk-kpi-grid,
+  .risk-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-filter-actions {
+    margin-left: 0;
+  }
+
+  .risk-lever-grid,
+  .risk-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .risk-simulator-actions {
+    width: 100%;
+  }
+
+  .risk-simulator-actions .risk-button {
+    flex: 1;
+  }
+
+  /* The lever summary is the first thing to go: the swatch, the name and the
+     exposure still identify the line on the chart without it. */
+  .risk-scenario-list li {
+    grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  }
+
+  .risk-scenario-levers {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inventory-risk-dashboard.is-refreshing {
     transition: none;
   }
 }
@@ -7376,4 +8504,1430 @@ img.ey-logo {
   .demand-simulator-actions .demand-button {
     flex: 1;
   }
+}
+
+/* ==========================================================================
+   Replenishment (Agent 3)
+
+   Reuses the Inventory Risk layout vocabulary rather than inventing a second
+   one: the two boards are read by the same people, one after the other, and a
+   purchase order that looks like a different product is a purchase order that
+   gets misread.
+   ========================================================================== */
+
+.replenishment-dashboard {
+  /* One accent per route, in lead-time order: fastest reads warmest. */
+  --po-route-direct: var(--green-600);
+  --po-route-flow: var(--blue-500);
+  --po-route-cross: #5c2d91;
+  --po-bar: var(--blue-500);
+
+  /* Requirement against cover: the gap between them is the purchase order, so
+     they are the one pair on this board that must never read as the same
+     colour. */
+  --po-requirement: var(--red-600, #c62828);
+  --po-cover: var(--green-600);
+  --po-gap: var(--amber-600);
+
+  /* What-If. Baseline is deliberately the quieter of the pair: the scenario is
+     what the reader is being asked to look at. Same palette as Inventory Risk,
+     because the same person reads both. */
+  --po-baseline: var(--gray-400);
+  --po-scenario: var(--blue-500);
+  --po-compare-2: var(--amber-600);
+  --po-compare-3: var(--green-600);
+  --po-compare-4: #5c2d91;
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Same reason as the Inventory Risk board: inside the workboard bounded
+   height, every flex child would otherwise shrink to its header. */
+.replenishment-dashboard > * {
+  flex-shrink: 0;
+}
+
+.replenishment-dashboard.is-refreshing {
+  opacity: 0.62;
+}
+
+.po-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.po-filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.62rem;
+}
+
+.po-filters label > span {
+  color: var(--muted);
+}
+
+.po-filters select,
+.po-filters input[type="search"] {
+  min-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.po-toggle {
+  align-items: center;
+  flex-direction: row;
+  gap: 6px;
+  color: var(--ink);
+}
+
+.po-filter-actions {
+  display: flex;
+  margin-left: auto;
+  gap: 6px;
+}
+
+.po-button {
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.po-button--quiet {
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.po-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.po-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.62rem;
+}
+
+.po-data-note {
+  color: var(--muted);
+}
+
+.po-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.po-scope-summary b {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.po-scope-summary button,
+.po-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.po-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--red-500);
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+}
+
+.po-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.po-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gray-300);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+button.po-kpi {
+  cursor: pointer;
+}
+
+.po-kpi--good {
+  border-left-color: var(--green-600);
+}
+
+.po-kpi--warn {
+  border-left-color: var(--amber-500);
+}
+
+.po-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.po-kpi-value {
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.po-kpi-sub {
+  color: var(--muted);
+  font-size: 0.56rem;
+}
+
+.po-footnote,
+.po-panel-caveat {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+.po-chart-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+/* Four panels, so two columns rather than three — a 3-across grid leaves the
+   fourth stranded on its own row. Matches `.risk-dimension-grid`, which holds
+   the same four dimensions on Inventory Risk. */
+.po-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.po-panel {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.po-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.po-panel-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.po-panel-note {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-chart {
+  width: 100%;
+  height: 230px;
+}
+
+.po-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.po-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.po-chart-tooltip em {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.po-route-legend {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 3px;
+  padding: 0;
+  font-size: 0.64rem;
+  list-style: none;
+}
+
+.po-route-legend button {
+  display: grid;
+  width: 100%;
+  align-items: center;
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: 3px 5px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.64rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-route-legend button.is-active,
+.po-route-legend button:hover {
+  background: var(--surface);
+}
+
+.po-route-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.po-route-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.po-route-lead,
+.po-route-lines {
+  color: var(--muted);
+}
+
+.po-vendor-list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.po-vendor-list li {
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.po-vendor-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.68rem;
+}
+
+.po-vendor-terms {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+.po-vendor-figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-vendor-saving {
+  color: var(--green-600);
+  font-weight: 600;
+}
+
+.po-vendor-best {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.po-table-scroll {
+  overflow-x: auto;
+}
+
+.po-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.po-table th,
+.po-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.po-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.po-table .num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.po-row {
+  cursor: pointer;
+}
+
+.po-row:hover {
+  background: var(--surface);
+}
+
+.po-row-route {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+}
+
+.po-row-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.po-row-meta {
+  display: block;
+  margin-left: 12px;
+  color: var(--muted);
+  font-size: 0.56rem;
+}
+
+.po-vendor {
+  color: var(--ink);
+}
+
+.po-vendor-switch {
+  display: block;
+  color: var(--green-600);
+  font-size: 0.56rem;
+}
+
+.po-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.po-pager button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.po-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (width <= 1180px) {
+  .po-kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .po-chart-grid,
+  .po-dimension-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width <= 720px) {
+  .po-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .po-filter-actions {
+    margin-left: 0;
+  }
+}
+
+/* ==========================================================================
+   Replenishment · requirement chart, route tabs, What-If
+   --------------------------------------------------------------------------
+   Deliberately the same shapes as the Inventory Risk simulator. The two boards
+   are read one after the other by the same buyer, and a lever that looks
+   different is a lever they have to learn twice.
+   ========================================================================== */
+
+.po-chart--tall {
+  height: 280px;
+}
+.po-chart--sim {
+  height: 200px;
+}
+
+.po-metric-strip {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.po-metric-strip dt {
+  color: var(--muted);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.po-metric-strip dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shortfall the purchase order exists to close. Coloured because it is the
+   one line in the tooltip a reader is looking for. */
+.po-tooltip-gap {
+  color: var(--po-gap);
+  font-weight: 600;
+}
+
+/* --- Route tabs (spec 7) ------------------------------------------------- */
+
+.po-routebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.po-routetab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.po-routetab.is-active {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+.po-routetab small {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+.po-routetab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+/* Pushed to the far end so the exports never read as a fifth route. */
+.po-routebar-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* --- What-If (spec 9) ---------------------------------------------------- */
+
+.po-simulator-head {
+  align-items: flex-start;
+}
+.po-simulator-actions {
+  display: flex;
+  gap: 6px;
+}
+.po-drive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.po-lever-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.po-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+.po-lever > span {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.po-lever b {
+  color: var(--ink);
+}
+.po-lever output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.po-lever small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+.po-lever input[type="range"] {
+  width: 100%;
+}
+/* A lever that reaches no formula. Dimmed rather than removed: the mockup has
+   six sliders, and a reader who counts five would assume a bug rather than a
+   gap in the workbook. */
+.po-lever--inert {
+  opacity: 0.55;
+}
+.po-lever--inert input[type="range"] {
+  cursor: not-allowed;
+}
+
+.po-simulator-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.po-scenario-metrics {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.po-scenario-metrics article {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.po-scenario-metrics span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+.po-scenario-metrics strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+.po-scenario-metrics small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+/* --- Saved scenarios (spec 9d) ------------------------------------------- */
+
+.po-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.po-scenario-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.66rem;
+}
+.po-scenario-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+.po-scenario-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+.po-scenario-levers {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.po-scenario-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Applied-scenario banner (spec 9b) ----------------------------------- */
+
+.po-applied-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+.po-applied-banner p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+.po-applied-flag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--amber-600);
+  color: var(--surface);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.po-applied-scope {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+/* --- Skeleton ------------------------------------------------------------ */
+
+.po-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+}
+.po-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.po-skeleton-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.po-skeleton-dims {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- Narrow viewports ---------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .po-lever-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .po-simulator-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .po-skeleton-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .po-skeleton-panels,
+  .po-skeleton-dims {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .po-lever-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .po-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .po-routebar-actions {
+    margin-left: 0;
+  }
+  .po-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ==========================================================================
+   KPI drill-down drawer
+
+   Opened by any KPI tile. A right-hand panel rather than a centred dialog on
+   purpose: the tile that opened it stays visible, so the number and its
+   decomposition are readable at the same time.
+   ========================================================================== */
+
+.drill-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(15 23 42 / 38%);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drill-drawer {
+  width: min(460px, 100vw);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface-strong);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg, 0 10px 40px rgb(15 23 42 / 25%));
+}
+
+.drill-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+}
+
+.drill-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.drill-head p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-close {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.drill-close:hover {
+  color: var(--text);
+}
+
+.drill-body {
+  padding: var(--space-3);
+}
+
+.drill-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.drill-headline-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.drill-headline-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-formula {
+  display: block;
+  margin-bottom: var(--space-3);
+  padding: 8px 11px;
+  border-radius: var(--radius-md);
+  background: var(--chip, var(--surface));
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* Not a decorative caveat: it stops a reader summing an average's bars
+   against the headline and reporting the gap as a bug. */
+.drill-warning {
+  margin: 0 0 var(--space-3);
+  padding: 7px 10px;
+  border-left: 3px solid var(--accent-warning, #c77700);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-section {
+  margin-bottom: var(--space-4, 20px);
+}
+
+.drill-section h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drill-section-note,
+.drill-empty {
+  margin: 0 0 var(--space-1);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drill-bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 110px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.drill-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  text-align: right;
+}
+
+.drill-bar-track {
+  min-width: 0;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--gray-100);
+}
+
+.drill-bar-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--accent-info, #2f6bed);
+}
+
+.drill-bar-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.drill-skus {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.drill-skus li + li {
+  border-top: 1px solid var(--line);
+}
+
+.drill-skus button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drill-skus button:hover {
+  background: var(--surface);
+}
+
+.drill-sku-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.drill-sku-name b {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drill-sku-name small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.drill-sku-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (width <= 620px) {
+  .drill-drawer {
+    width: 100vw;
+  }
+
+  .drill-bars li {
+    grid-template-columns: minmax(0, 84px) minmax(0, 1fr) auto;
+  }
+}
+
+/* A3 KPI tiles carry the same two-action split as A2: the face opens the
+   drill-down, the pill re-scopes the board. */
+.po-kpi-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-kpi-open:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 3px;
+}
+
+.po-kpi-scope {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.po-kpi-scope:hover {
+  color: var(--text);
+  border-color: var(--gray-300);
+}
+
+/* KPI tile mini-charts. Distributions, not trends — the caption under each
+   names its axis so the shape cannot be misread as movement over time. */
+.kpi-spark {
+  display: block;
+  width: 100%;
+  height: 24px;
+  color: var(--risk-kpi-accent, var(--accent-info));
+  opacity: 0.85;
+}
+
+
+
+
+/* ==========================================================================
+   KPI tile mini-charts — laid out as the mockup does
+
+   The chart sits BESIDE the figure, not under it: the tile reads as one
+   object, and the number keeps the left edge where the eye lands first. It
+   takes roughly a third of the width and inherits the tile's accent, so the
+   colour already naming the metric names its chart too.
+
+   No visible caption. The axis name is on the tile's `title`, which keeps the
+   card clean while leaving the honest label one hover away — these are
+   distributions, and nothing here should be read as movement over time.
+   ========================================================================== */
+
+.risk-kpi-open,
+.po-kpi-open {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.risk-kpi-text,
+.po-kpi-text,
+.demand-kpi-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.risk-kpi-spark,
+.po-kpi-spark,
+.demand-kpi-spark-wrap {
+  flex: 0 0 34%;
+  max-width: 34%;
+  min-width: 0;
+  align-self: center;
+}
+
+/* Each board colours its charts from the token the tile already uses, so a
+   tile and its chart cannot drift apart. */
+.risk-kpi-spark .kpi-spark {
+  color: var(--risk-kpi-accent, var(--accent-info));
+}
+
+.po-kpi--good { --po-kpi-accent: var(--accent-success); }
+.po-kpi--warn { --po-kpi-accent: var(--accent-warning-strong); }
+.po-kpi--neutral { --po-kpi-accent: var(--accent-info); }
+
+/* One chart, three boards. Each board sets the accent token on its tile; the
+   SVG paints from `currentColor`, so a tile and its chart cannot drift apart. */
+.kpi-spark {
+  display: block;
+  width: 100%;
+  height: 30px;
+  overflow: visible;
+}
+
+.kpi-spark polygon {
+  fill: currentcolor;
+  opacity: 0.14;
+}
+
+.kpi-spark polyline {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (width <= 720px) {
+  /* Below this the figure needs the whole tile; the chart is the first thing
+     that can go without losing the number. */
+  .risk-kpi-spark,
+  .po-kpi-spark,
+  .demand-kpi-spark-wrap {
+    display: none;
+  }
+}
+
+/* A1's shared distribution charts inherit the same accent token as its own
+   filled-area sparkline, so both shapes read as the card's colour. */
+.demand-kpi-spark-wrap .kpi-spark {
+  color: var(--demand-kpi-accent, var(--accent-info));
+}
+
+.po-kpi-spark .kpi-spark {
+  color: var(--po-kpi-accent, var(--accent-info));
+}
+
+@media (width <= 1180px) {
+  .demand-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 720px) {
+  .demand-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Drawer motion.
+
+   The panel slides in from the edge it lives on and the backdrop fades, so the
+   drawer reads as arriving from off-screen rather than appearing on top of the
+   board. Short — 180ms — because this opens on a click the reader has already
+   decided on; anything slower puts a wait in front of an answer.
+
+   Honoured only when the reader has not asked for less motion. */
+@keyframes drill-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes drill-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.drill-backdrop {
+  animation: drill-fade-in 180ms ease-out;
+}
+
+.drill-drawer {
+  animation: drill-slide-in 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* The tiles themselves settle rather than snap, so a filter change reads as
+   the same board updating instead of a new one appearing. */
+.risk-kpi,
+.po-kpi,
+.demand-kpi {
+  transition:
+    background 140ms ease-out,
+    box-shadow 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.risk-kpi:hover,
+.po-kpi:hover,
+.demand-kpi:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md, 0 4px 14px rgb(15 23 42 / 12%));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drill-backdrop,
+  .drill-drawer {
+    animation: none;
+  }
+
+  .risk-kpi,
+  .po-kpi,
+  .demand-kpi {
+    transition: none;
+  }
+
+  .risk-kpi:hover,
+  .po-kpi:hover,
+  .demand-kpi:hover {
+    transform: none;
+  }
+}
+
+@media (width <= 1180px) {
+  .risk-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 720px) {
+  .risk-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------------- A3 quotes
+ *
+ * The trade-agreement panel. It sits full width under the two half-width
+ * charts rather than beside them: a row here is a four-column table inside a
+ * disclosure, and at half width the price column wraps under the vendor name,
+ * which is the one comparison the panel exists to make.
+ */
+.po-quotes {
+  margin-top: var(--space-3);
+}
+
+.po-quotes-terms,
+.po-quotes-empty,
+.po-quotes-more {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-quote-list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) 0 0;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.po-quote-list li {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.po-quote-list summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6px var(--space-2);
+  gap: var(--space-2);
+  cursor: pointer;
+  /* The marker is replaced by the row's own affordance: the whole summary is
+     the hit area, and a disclosure triangle beside a three-column row reads as
+     a fourth column. */
+  list-style: none;
+}
+
+.po-quote-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.po-quote-list summary:hover {
+  background: var(--surface-2);
+}
+
+.po-quote-sku {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.po-quote-sku small {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.po-quote-switch {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.po-quote-saving {
+  flex: 0 0 auto;
+  color: var(--green-600);
+  font-weight: 600;
+}
+
+.po-quote-basis {
+  margin: 0;
+  padding: 0 var(--space-2) 6px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-quote-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.po-quote-table th,
+.po-quote-table td {
+  padding: 4px var(--space-2);
+  border-top: 1px solid var(--line);
+  text-align: right;
+}
+
+.po-quote-table th[scope="row"],
+.po-quote-table th[scope="col"]:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+
+.po-quote-table thead th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.po-quote-designated {
+  background: var(--surface-2);
+}
+
+.po-quote-best th[scope="row"],
+.po-quote-best td {
+  color: var(--green-600);
+}
+
+.po-quote-flag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.po-quote-flag--best {
+  background: color-mix(in srgb, var(--green-600) 14%, transparent);
+  color: var(--green-600);
 }

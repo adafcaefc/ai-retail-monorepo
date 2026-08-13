@@ -58,6 +58,9 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+# Build configuration, not a secret: it holds one flag, and without it
+# `npm run build:standalone` silently produces an API build on a fresh clone.
+!frontend/.env.standalone
 
 # Python virtual environments
 .venv/
@@ -71,6 +74,10 @@ __pycache__/
 # Excel source data
 data/*.xlsx
 data/*.xls
+
+# Excel lock files, written next to a workbook while it is open
+~$*.xlsx
+~$*.xls
 
 # Generated import files
 data/import_logs/

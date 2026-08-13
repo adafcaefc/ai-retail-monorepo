@@ -64,12 +64,18 @@ CORPUS = corpus()
 
 
 def test_corpus_covers_every_documented_example() -> None:
-    """19 formulas x 5 examples, per formula.md's coverage summary."""
+    """22 formulas x 5 examples, per formula.md's coverage summary.
+
+    Nineteen of these transcribe the workbook's `Formulas` sheet. Twenty to
+    twenty-two are ENGINE columns I, L and N -- real workbook formulas the
+    sheet simply does not list, added when the Inventory Risk What-If panel
+    needed to recompute them and found no catalogue entry to run.
+    """
     formulas = load_formulas()
     examples = load_examples()
 
-    assert len(formulas) == 19
-    assert len(CORPUS) == 95
+    assert len(formulas) == 22
+    assert len(CORPUS) == 110
     assert all(len(examples[formula["id"]]) == 5 for formula in formulas)
 
 

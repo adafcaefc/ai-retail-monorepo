@@ -1,5 +1,14 @@
 export const DEMAND_AGENT_ID = "retail.demand_forecasting";
 
+/**
+ * The dashboard payload's own contract version, distinct from
+ * `fixture.json`'s `schema_version` (the source data's shape). Bumped to 2
+ * when `dimensions` (categories/stores/clusters/legal_entities/seasonality)
+ * was added — `validateDemandDashboardV2` below is what enforces that a
+ * response actually carries it.
+ */
+export const SCHEMA_VERSION = 2;
+
 export const DEMAND_GRAINS = [
   "daily",
   "weekly",
@@ -10,10 +19,19 @@ export const DEMAND_GRAINS = [
 
 export const DEMAND_HORIZONS = [4, 8, 12, 16];
 
+/**
+ * Every lever at rest, which is where `Constants` B16-B21 sit.
+ *
+ * Promo and markdown used to open at 15 and 25, copied from the mockup's
+ * `baseOv()`. Those are the values of the *scenario* the workbook publishes on
+ * `What-If · Per Agent`, not of its baseline — so the board opened on a
+ * simulation while claiming to show the workbook, and the same slider position
+ * meant two different things here and on Inventory Risk.
+ */
 export const DEFAULT_DEMAND_LEVERS = Object.freeze({
   demand: 0,
-  promo: 15,
-  markdown: 25,
+  promo: 0,
+  markdown: 0,
   inbound: 0,
   lead: 0,
   safety: 0,
@@ -77,6 +95,33 @@ export function normalizeDemandQuery(query = {}) {
     detail_offset: boundedInteger(query.detail_offset, 0, 0, 1000000),
     detail_limit: boundedInteger(query.detail_limit, 100, 1, 100),
   };
+}
+
+/**
+ * Serialize a query into the filters the backend `DashboardScope` accepts.
+ * `grain`, `horizon_weeks` and `detail_offset`/`detail_limit` shape the
+ * client-side view of the same rows; they are not a database column the
+ * server can filter by, so forwarding them raises "Unknown dashboard
+ * filter(s)" there. `ALL` and empty search are omitted the same way the
+ * other two Retail boards' `serializeScope` does.
+ *
+ * @param {Partial<DemandDashboardQuery>} query
+ * @returns {Record<string, string>}
+ */
+export function serializeScope(query) {
+  const merged = { ...DEFAULT_DEMAND_QUERY, ...(query ?? {}) };
+  const serialized = {};
+
+  for (const key of ["legal_entity_id", "category_group", "store_id"]) {
+    if (merged[key] && merged[key] !== "ALL") {
+      serialized[key] = merged[key];
+    }
+  }
+  if (merged.sku && merged.sku.trim()) {
+    serialized.sku = merged.sku.trim();
+  }
+
+  return serialized;
 }
 
 export function demandScenarioContext(query = {}) {
@@ -176,6 +221,15 @@ function normalizeSimulation(simulation = {}, fallbackForecast) {
     scenario_levers: normalizeDemandLevers(simulation.scenario_levers),
     baseline: metrics(baseline),
     scenario: metrics(scenario),
+    /*
+     * Metrics no lever can reach, named rather than left to be discovered.
+     *
+     * Accuracy and Trending are constants typed into the A1 sheet, so no
+     * formula takes a lever anywhere near them. A slider that visibly does
+     * nothing reads as a bug; one that says why does not.
+     */
+    unmodelled: (Array.isArray(simulation.unmodelled) ? simulation.unmodelled : [])
+      .map(String),
     baseline_forecast: normalizeSeries(simulation.baseline_forecast || fallbackForecast),
   };
 }
@@ -190,8 +244,8 @@ function demandContractError(field, detail = "is required") {
  * backend response cannot silently render as a successful empty dashboard.
  */
 export function validateDemandDashboardV2(payload) {
-  if (Number(payload?.schema_version) < 2) {
-    demandContractError("schema_version", "must be 2 or newer");
+  if (Number(payload?.schema_version) < SCHEMA_VERSION) {
+    demandContractError("schema_version", `must be ${SCHEMA_VERSION} or newer`);
   }
 
   const dimensionArrays = [

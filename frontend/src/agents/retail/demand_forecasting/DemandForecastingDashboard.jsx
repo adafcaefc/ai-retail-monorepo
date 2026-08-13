@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLanguage } from "../../../LanguageProvider.jsx";
 import DemandForecastFilters from "./components/DemandForecastFilters.jsx";
 import DemandForecastingSkeleton from "./components/DemandForecastingSkeleton.jsx";
+import DemandKpiDrilldown from "./components/DemandKpiDrilldown.jsx";
 import DemandKpiGrid from "./components/DemandKpiGrid.jsx";
 import DemandAppliedScenarioBanner from "./components/DemandAppliedScenarioBanner.jsx";
 import DemandDimensionPanels from "./components/DemandDimensionPanels.jsx";
@@ -21,6 +22,7 @@ import {
 } from "./data/contract.js";
 import {
   loadDemandForecastingDashboard,
+  loadDemandForecastingDrilldown,
   loadDemandForecastingScenario,
 } from "./data/dashboardData.js";
 
@@ -44,6 +46,9 @@ export default function DemandForecastingDashboard() {
   const [scenarioError, setScenarioError] = useState("");
   const [savedScenarios, setSavedScenarios] = useState([]);
   const nextScenarioId = useRef(1);
+  // The KPI tile currently broken down, or null. Built on demand — see
+  // `loadDemandForecastingDrilldown`.
+  const [drilldown, setDrilldown] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -52,7 +57,9 @@ export default function DemandForecastingDashboard() {
       setLoading(true);
       setError("");
       try {
-        const result = await loadDemandForecastingDashboard(query, appliedLevers);
+        const result = await loadDemandForecastingDashboard(query, appliedLevers, {
+          driveWholePage,
+        });
         if (!cancelled) setDashboard(result);
       } catch (loadError) {
         if (!cancelled) setError(loadError.message || t("Unable to load Demand Forecasting."));
@@ -78,6 +85,7 @@ export default function DemandForecastingDashboard() {
     appliedLevers.inbound,
     appliedLevers.lead,
     appliedLevers.safety,
+    driveWholePage,
     refreshToken,
     t,
   ]);
@@ -85,12 +93,28 @@ export default function DemandForecastingDashboard() {
   const patchQuery = useCallback((patch) => {
     setQuery((current) => ({ ...current, ...patch, detail_offset: 0 }));
     setScenarioResult(null);
+    // A filter change makes an open drawer describe rows that are no longer on
+    // screen, so it closes rather than going quietly stale.
+    setDrilldown(null);
   }, []);
 
   const clearQuery = useCallback(() => {
     setQuery({ ...DEFAULT_DEMAND_QUERY });
     setScenarioResult(null);
+    setDrilldown(null);
   }, []);
+
+  const openDrilldown = useCallback(
+    async (metricId) => {
+      setDrilldown(
+        await loadDemandForecastingDrilldown(query, metricId, {
+          levers: appliedLevers,
+          driveWholePage,
+        }),
+      );
+    },
+    [appliedLevers, driveWholePage, query],
+  );
 
   const runScenario = useCallback(async (levers = draftLevers, scenarioQuery = query) => {
     setScenarioBusy(true);
@@ -244,7 +268,13 @@ export default function DemandForecastingDashboard() {
         </div>
       ) : null}
 
-      <DemandKpiGrid kpis={dashboard.kpis} />
+      <DemandKpiGrid kpis={dashboard.kpis} onOpenDrilldown={openDrilldown} />
+
+      <DemandKpiDrilldown
+        drilldown={drilldown}
+        onClose={() => setDrilldown(null)}
+        onSelectSku={(sku) => patchQuery({ sku })}
+      />
 
       <div className="demand-chart-grid">
         <ForecastOverviewPanel

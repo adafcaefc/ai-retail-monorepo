@@ -29,6 +29,7 @@ DESCRIPTOR = AgentDescriptor(
     allowed_tables=(),
     tools=TOOLS,
     build_dashboard=dashboard.build,
+    supported_filters=dashboard.SUPPORTED_FILTERS,
     dashboard_only=False,
 )
 

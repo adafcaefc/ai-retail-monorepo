@@ -1641,5 +1641,226 @@
         "scheduled": "Workforce!L8"
       }
     }
+  ],
+  "f20-days-of-supply": [
+    {
+      "label": "SKU GRC-005, chain-net",
+      "address": "ENGINE!I10",
+      "expected": 4.200354,
+      "values": {
+        "ads": 631.613363,
+        "position": 2653
+      },
+      "sources": {
+        "ads": "ENGINE!E10",
+        "position": "ENGINE!F10"
+      }
+    },
+    {
+      "label": "SKU GRC-007, chain-net",
+      "address": "ENGINE!I12",
+      "expected": 3.211492,
+      "values": {
+        "ads": 222.015186,
+        "position": 713
+      },
+      "sources": {
+        "ads": "ENGINE!E12",
+        "position": "ENGINE!F12"
+      }
+    },
+    {
+      "label": "SKU GRC-001, chain-net",
+      "address": "ENGINE!I6",
+      "expected": 2.36682,
+      "values": {
+        "ads": 496.869179,
+        "position": 1176
+      },
+      "sources": {
+        "ads": "ENGINE!E6",
+        "position": "ENGINE!F6"
+      }
+    },
+    {
+      "label": "SKU GRC-036, chain-net",
+      "address": "ENGINE!I41",
+      "expected": 6.013465,
+      "values": {
+        "ads": 493.559031,
+        "position": 2968
+      },
+      "sources": {
+        "ads": "ENGINE!E41",
+        "position": "ENGINE!F41"
+      }
+    },
+    {
+      "label": "SKU GRC-037, chain-net",
+      "address": "ENGINE!I42",
+      "expected": 10.081444,
+      "values": {
+        "ads": 331.202554,
+        "position": 3339
+      },
+      "sources": {
+        "ads": "ENGINE!E42",
+        "position": "ENGINE!F42"
+      }
+    }
+  ],
+  "f21-inventory-value": [
+    {
+      "label": "SKU GRC-005, chain-net",
+      "address": "ENGINE!L10",
+      "expected": 52264100,
+      "values": {
+        "position": 2653,
+        "price": 19700
+      },
+      "sources": {
+        "position": "ENGINE!F10",
+        "price": "ENGINE!K10"
+      }
+    },
+    {
+      "label": "SKU GRC-007, chain-net",
+      "address": "ENGINE!L12",
+      "expected": 14188700,
+      "values": {
+        "position": 713,
+        "price": 19900
+      },
+      "sources": {
+        "position": "ENGINE!F12",
+        "price": "ENGINE!K12"
+      }
+    },
+    {
+      "label": "SKU GRC-001, chain-net",
+      "address": "ENGINE!L6",
+      "expected": 22226400,
+      "values": {
+        "position": 1176,
+        "price": 18900
+      },
+      "sources": {
+        "position": "ENGINE!F6",
+        "price": "ENGINE!K6"
+      }
+    },
+    {
+      "label": "SKU GRC-036, chain-net",
+      "address": "ENGINE!L41",
+      "expected": 73309600,
+      "values": {
+        "position": 2968,
+        "price": 24700
+      },
+      "sources": {
+        "position": "ENGINE!F41",
+        "price": "ENGINE!K41"
+      }
+    },
+    {
+      "label": "SKU GRC-037, chain-net",
+      "address": "ENGINE!L42",
+      "expected": 83141100,
+      "values": {
+        "position": 3339,
+        "price": 24900
+      },
+      "sources": {
+        "position": "ENGINE!F42",
+        "price": "ENGINE!K42"
+      }
+    }
+  ],
+  "f22-expiry-units": [
+    {
+      "label": "SKU GRC-005, chain-net",
+      "address": "ENGINE!N10",
+      "expected": 758.15991,
+      "values": {
+        "perishable": "Y",
+        "position": 2653,
+        "ads": 631.613363,
+        "shelf_life_days": 3
+      },
+      "sources": {
+        "perishable": "ENGINE!D10",
+        "position": "ENGINE!F10",
+        "ads": "ENGINE!E10",
+        "shelf_life_days": "SKU_Master!O10"
+      }
+    },
+    {
+      "label": "SKU GRC-007, chain-net",
+      "address": "ENGINE!N12",
+      "expected": 268.969627,
+      "values": {
+        "perishable": "Y",
+        "position": 713,
+        "ads": 222.015186,
+        "shelf_life_days": 2
+      },
+      "sources": {
+        "perishable": "ENGINE!D12",
+        "position": "ENGINE!F12",
+        "ads": "ENGINE!E12",
+        "shelf_life_days": "SKU_Master!O12"
+      }
+    },
+    {
+      "label": "SKU GRC-001, chain-net",
+      "address": "ENGINE!N6",
+      "expected": 0,
+      "values": {
+        "perishable": "Y",
+        "position": 1176,
+        "ads": 496.869179,
+        "shelf_life_days": 3
+      },
+      "sources": {
+        "perishable": "ENGINE!D6",
+        "position": "ENGINE!F6",
+        "ads": "ENGINE!E6",
+        "shelf_life_days": "SKU_Master!O6"
+      }
+    },
+    {
+      "label": "SKU GRC-036, chain-net",
+      "address": "ENGINE!N41",
+      "expected": 0,
+      "values": {
+        "perishable": "N",
+        "position": 2968,
+        "ads": 493.559031,
+        "shelf_life_days": 999
+      },
+      "sources": {
+        "perishable": "ENGINE!D41",
+        "position": "ENGINE!F41",
+        "ads": "ENGINE!E41",
+        "shelf_life_days": "SKU_Master!O41"
+      }
+    },
+    {
+      "label": "SKU GRC-037, chain-net",
+      "address": "ENGINE!N42",
+      "expected": 0,
+      "values": {
+        "perishable": "N",
+        "position": 3339,
+        "ads": 331.202554,
+        "shelf_life_days": 999
+      },
+      "sources": {
+        "perishable": "ENGINE!D42",
+        "position": "ENGINE!F42",
+        "ads": "ENGINE!E42",
+        "shelf_life_days": "SKU_Master!O42"
+      }
+    }
   ]
 }

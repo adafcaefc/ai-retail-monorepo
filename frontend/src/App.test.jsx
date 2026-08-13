@@ -412,7 +412,14 @@ describe("Retail dashboard and frontend-only chat", () => {
     expect(window.location.hash).toBe("");
   });
 
-  it("shows the standard Retail controls and opens a backend-safe Retail chat", async () => {
+  /*
+   * Both sides of the merge renamed this test, and both names had gone stale.
+   * "scaffolds" stopped being true once Replenishment started rendering a real
+   * purchase order, and naming only the controls drops what the loop below
+   * spends most of its length on: that the three boards are independently
+   * selectable and each renders its own.
+   */
+  it("switches between three Retail boards, every write control disabled", async () => {
     renderApp();
 
     await waitForSidebar();
@@ -516,9 +523,17 @@ describe("Retail dashboard and frontend-only chat", () => {
           screen.getByRole("heading", { name: "Demand forecast — actual vs AI" }),
         );
         expect(document.querySelectorAll(".demand-kpi")).toHaveLength(6);
+      } else if (module.id === "retail.inventory_risk") {
+        await screen.findByTestId("inventory-risk-dashboard");
+        expect(await screen.findByText("Inventory risk register")).toBeInTheDocument();
+        expect(document.querySelectorAll(".risk-kpi")).toHaveLength(6);
       } else {
-        const retailDashboard = screen.getByTestId("retail-dashboard");
-        expect(retailDashboard).toBeEmptyDOMElement();
+        // All three now read the same workbook. Replenishment was the last
+        // blank scaffold; it renders a purchase order rather than an empty
+        // section.
+        await screen.findByTestId("replenishment-dashboard");
+        expect(await screen.findByText("Purchase order preview")).toBeInTheDocument();
+        expect(document.querySelectorAll(".po-kpi")).toHaveLength(6);
       }
 
       const input = screen.getByRole("textbox", {
@@ -548,7 +563,12 @@ describe("Retail dashboard and frontend-only chat", () => {
     fireEvent.click(document.querySelector(".chat-close-button"));
     expect(document.querySelector("main")).toHaveClass("chat-closed");
     expect(buttonNamed("Replenishment")).toHaveClass("active");
-    expect(screen.getByTestId("retail-dashboard")).toBeInTheDocument();
+    expect(screen.getByTestId("replenishment-dashboard")).toBeInTheDocument();
+    // All three Retail modules now render a full board off the same workbook,
+    // so this walk costs roughly 12s in jsdom. It relies on the raised
+    // `testTimeout` in vitest.config.js rather than being trimmed: the point
+    // of the test is that selecting any module leaves the other two alone,
+    // which needs all three.
   });
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {

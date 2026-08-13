@@ -25,8 +25,8 @@ from fastapi.responses import (
     JSONResponse,
 )
 
-from src.api.finance_agents_html import (
-    router as finance_agents_html_router,
+from src.api.agents_html import (
+    router as agents_html_router,
 )
 
 from src.actions.router import (
@@ -113,7 +113,7 @@ app.add_middleware(
 # before frontend routes.
 
 app.include_router(
-    finance_agents_html_router
+    agents_html_router
 )
 
 app.include_router(

@@ -184,6 +184,322 @@ const CHROME = {
   "Generate forecast basket": "Buat keranjang proyeksi",
   "Unable to run scenario.": "Tidak dapat menjalankan skenario.",
 
+  // Inventory Risk dashboard. Reuses the Demand filter wording above where the
+  // control is the same one; only the risk-specific vocabulary is added here.
+  "Inventory risk filters": "Filter risiko persediaan",
+  "Inventory risk summary": "Ringkasan risiko persediaan",
+  "Inventory Risk dashboard": "Dasbor Risiko Persediaan",
+  "Unable to load Inventory Risk.": "Tidak dapat memuat Risiko Persediaan.",
+  "All retail inventory": "Semua persediaan retail",
+  "Workbook data": "Data workbook",
+  "Store scope needs the per-store dataset, not yet available.":
+    "Cakupan toko butuh dataset per toko, belum tersedia.",
+  State: "Status",
+
+  // The six inventory states. Kept as nouns, matching the register's chips.
+  Expiry: "Kedaluwarsa",
+  Overstock: "Kelebihan stok",
+  "Slow-mover": "Perputaran lambat",
+
+  // KPI tiles and their captions.
+  "Overstock SKUs": "SKU kelebihan stok",
+  "Expiry-risk units": "Unit berisiko kedaluwarsa",
+  "Slow-moving SKUs": "SKU perputaran lambat",
+  "Avg days of supply": "Rata-rata hari persediaan",
+  "Inventory value": "Nilai persediaan",
+  "At risk": "Berisiko",
+  "Position below reorder point": "Posisi di bawah titik pemesanan",
+  "Days of supply above 15": "Hari persediaan di atas 15",
+  "Units beyond shelf-life cover": "Unit melebihi masa simpan",
+  "Declining growth, high cover": "Pertumbuhan turun, cakupan tinggi",
+  "Mean position ÷ ADS": "Rata-rata posisi ÷ ADS",
+  excess: "kelebihan",
+  "write-off risk": "risiko write-off",
+  target: "target",
+  "Click to show only the reorder zone": "Klik untuk menampilkan zona pemesanan saja",
+
+  // Suggested best action.
+  "Suggested best action": "Tindakan terbaik yang disarankan",
+  "Routed to the owning agent": "Diteruskan ke agen pemiliknya",
+  "Nothing needs action in the current scope.":
+    "Tidak ada yang perlu ditindak pada cakupan saat ini.",
+  "Other at risk": "Berisiko lainnya",
+
+  // Charts.
+  "At-risk value by state": "Nilai berisiko per status",
+  "At-risk value by category": "Nilai berisiko per kategori",
+  "At-risk value by cluster": "Nilai berisiko per klaster",
+  "At-risk value by legal entity": "Nilai berisiko per entitas legal",
+  "At-risk value": "Nilai berisiko",
+  "Inventory value by category": "Nilai persediaan per kategori",
+  "Stockout-risk by store": "Risiko kehabisan stok per toko",
+  "Risk by dimension": "Risiko per dimensi",
+  "Chain-net, full position value": "Neto rantai, nilai posisi penuh",
+  "Other categories": "Kategori lain",
+  Other: "Lainnya",
+  Total: "Total",
+  "Top 10": "10 teratas",
+  Gross: "Bruto",
+  "Gross · top 12": "Bruto · 12 teratas",
+  "SKUs stocked": "SKU tersedia",
+
+  // Expiry timeline.
+  "Expiry timeline": "Lini masa kedaluwarsa",
+  "Units at risk": "Unit berisiko",
+  "No expiry exposure in the current scope.":
+    "Tidak ada paparan kedaluwarsa pada cakupan saat ini.",
+  "≤ 1 day": "≤ 1 hari",
+  "2–3 days": "2–3 hari",
+  "4–7 days": "4–7 hari",
+  "> 7 days": "> 7 hari",
+
+  // Risk register. The column tooltips carry the formula because "Position"
+  // and "ROP" mean different things in different retail systems.
+  "Inventory risk register": "Daftar risiko persediaan",
+  SKUs: "SKU",
+  "On-hand": "Stok di tangan",
+  "Open PO": "PO terbuka",
+  Position: "Posisi",
+  ROP: "ROP",
+  DoS: "Hari persediaan",
+  Value: "Nilai",
+  "Next agent": "Agen berikutnya",
+  "On-hand = Position − Open PO": "Stok di tangan = Posisi − PO terbuka",
+  "Open PO = ordered, not yet received":
+    "PO terbuka = sudah dipesan, belum diterima",
+  "Position = On-hand + Open PO": "Posisi = Stok di tangan + PO terbuka",
+  "ROP = ADS × (Lead + Safety)": "ROP = ADS × (Lead + Safety)",
+  "DoS = Position ÷ ADS": "Hari persediaan = Posisi ÷ ADS",
+  "Value = Position × price": "Nilai = Posisi × harga",
+  "3 Replenish": "3 Pengisian ulang",
+  "5 Markdown": "5 Penurunan harga",
+  Previous: "Sebelumnya",
+  Next: "Berikutnya",
+  Page: "Halaman",
+
+  // Replenishment (Agent 3). Order value appears twice on purpose — at cost
+  // and at retail — because the workbook states it twice and the two differ.
+  "Replenishment dashboard": "Dasbor pengisian ulang",
+  "Replenishment summary": "Ringkasan pengisian ulang",
+  "Unable to load Replenishment.": "Gagal memuat Pengisian Ulang.",
+  "Whole chain": "Seluruh rantai",
+  Route: "Rute",
+  "Only what needs ordering": "Hanya yang perlu dipesan",
+  "SKUs to reorder": "SKU perlu dipesan",
+  "Order units": "Unit pesanan",
+  "sales units": "unit jual",
+  "Order value at cost": "Nilai pesanan (harga beli)",
+  "what the PO pays": "yang dibayar PO",
+  "Order value at retail": "Nilai pesanan (harga jual)",
+  "what it is worth": "nilai jualnya",
+  "Fill rate": "Tingkat pemenuhan",
+  cover: "cakupan",
+  Recoverable: "Bisa dihemat",
+  "by switching vendor": "dengan pindah vendor",
+  "Order value by route": "Nilai pesanan per rute",
+  "Order value by category": "Nilai pesanan per kategori",
+  "Order value by store": "Nilai pesanan per toko",
+  "Order value by cluster": "Nilai pesanan per klaster",
+  "Order value by legal entity": "Nilai pesanan per entitas legal",
+  "Close": "Tutup",
+  "Prediction band width over the horizon": "Lebar rentang prediksi sepanjang horizon",
+  "Forecast curve the trend compounds into": "Kurva proyeksi tempat tren terakumulasi",
+  "Growth index, trending SKUs": "Indeks pertumbuhan, SKU sedang tren",
+  "Days of cover, lines to reorder": "Hari cover, baris yang perlu dipesan",
+  "Days of cover, all lines": "Hari cover, semua baris",
+  "Units by category, largest first": "Unit per kategori, terbesar dahulu",
+  "Cost by category, largest first": "Biaya per kategori, terbesar dahulu",
+  "Retail value by category, largest first": "Nilai jual per kategori, terbesar dahulu",
+  "Saving by vendor, largest first": "Penghematan per vendor, terbesar dahulu",
+  "Days of cover, at-risk SKUs": "Hari cover, SKU berisiko",
+  "Days of cover, overstocked SKUs": "Hari cover, SKU kelebihan stok",
+  "Days of cover, all SKUs": "Hari cover, semua SKU",
+  "Shelf life remaining": "Sisa masa simpan",
+  "Growth index, slow movers": "Indeks pertumbuhan, barang lambat",
+  "Value by category, largest first": "Nilai per kategori, terbesar dahulu",
+  "order lines in scope": "baris pesanan dalam cakupan",
+  "Show only lines to reorder": "Tampilkan hanya baris yang perlu dipesan",
+  "This metric is a rate, so the breakdowns below are each group's own rate and do not sum to the headline.": "Metrik ini berupa rasio, jadi rincian di bawah adalah rasio tiap grup dan tidak menjumlah ke angka utama.",
+  "The per-store grid prices at selling price and holds no vendor split, so this measure has no per-store figure to show.": "Grid per-toko memakai harga jual dan tidak memuat pembagian vendor, jadi ukuran ini tidak punya angka per toko.",
+  "Current value": "Nilai saat ini",
+  "across": "mencakup",
+  "SKUs in scope": "SKU dalam cakupan",
+  "Click to break this number down": "Klik untuk membedah angka ini",
+  "Show only the reorder zone": "Tampilkan hanya zona pemesanan ulang",
+  "12-period history of this metric": "Riwayat 12 periode metrik ini",
+  "This metric by category": "Metrik ini per kategori",
+  "This metric by store": "Metrik ini per toko",
+  "Top contributing SKUs": "SKU kontributor teratas",
+  "Filter the board to this SKU": "Saring papan ke SKU ini",
+  "Nothing in scope.": "Tidak ada dalam cakupan.",
+  "Each store's own position, derived per store — not an allocation.": "Posisi milik tiap toko, diturunkan per toko — bukan alokasi.",
+  "No history recorded. The source holds a single snapshot per SKU with no date column, so a trend here would be generated rather than measured.": "Tidak ada riwayat tercatat. Sumber data hanya menyimpan satu snapshot per SKU tanpa kolom tanggal, jadi tren di sini akan dikarang, bukan diukur.",
+  "This metric is an average, so the breakdowns below are each group's own average and do not sum to the headline.": "Metrik ini rata-rata, jadi rincian di bawah adalah rata-rata tiap grup dan tidak menjumlah ke angka utama.",
+  "at cost": "harga beli",
+  lead: "waktu tunggu",
+  "At cost": "Harga beli",
+  Lines: "Baris",
+  lines: "baris",
+  "Vendor sourcing": "Sumber vendor",
+  "recoverable across all vendors": "bisa dihemat di seluruh vendor",
+  "Every line is already on its cheapest quote":
+    "Semua baris sudah memakai penawaran termurah",
+  "if switched": "jika dialihkan",
+  "cheapest on file": "termurah yang tercatat",
+  OTIF: "OTIF",
+  // A3 · trade agreements. `designated` and `cheapest` are row flags, so they
+  // stay lower case: they read as labels on a price, not as sentences.
+  "Vendor quotes": "Penawaran vendor",
+  "lines could move to a cheaper vendor": "baris bisa pindah ke vendor lebih murah",
+  "already on best price": "sudah di harga terbaik",
+  "ordered lines are already on the cheapest quote on file.":
+    "baris pesanan sudah memakai penawaran termurah yang tercatat.",
+  "No line in this scope has an order to place.":
+    "Tidak ada baris pada cakupan ini yang perlu dipesan.",
+  "All quotes": "Semua penawaran",
+  valid: "berlaku",
+  "units on order": "unit dipesan",
+  "per unit cheaper": "lebih murah per unit",
+  "more lines with a cheaper quote, not shown":
+    "baris lain punya penawaran lebih murah, tidak ditampilkan",
+  Vendor: "Vendor",
+  "Unit price": "Harga satuan",
+  "Min qty": "Qty minimum",
+  Discount: "Diskon",
+  designated: "ditunjuk",
+  cheapest: "termurah",
+  "Purchase order preview": "Pratinjau pesanan pembelian",
+  "Nothing needs ordering in the current scope.":
+    "Tidak ada yang perlu dipesan pada cakupan ini.",
+  "Nothing in scope.": "Tidak ada dalam cakupan.",
+  Max: "Maks",
+  Order: "Pesan",
+  Buy: "Beli",
+  "Line cost": "Biaya baris",
+  Vendor: "Vendor",
+  recoverable: "bisa dihemat",
+  "Cheapest quote for this line": "Penawaran termurah untuk baris ini",
+  top: "teratas",
+  stores: "toko",
+  "Order value is shown twice: at selling price, which is what the A3 sheet totals, and at trade-agreement price, which is what the purchase order would actually cost.":
+    "Nilai pesanan ditampilkan dua kali: harga jual, yang dijumlahkan sheet A3, dan harga trade-agreement, yang sebenarnya dibayar pesanan pembelian.",
+  "Purchase quantities round up to whole packs, so a line buys a little more than its shortfall.":
+    "Kuantitas beli dibulatkan ke atas ke kelipatan kemasan, jadi satu baris membeli sedikit lebih banyak dari kekurangannya.",
+  "Workbook demonstration data, not a live ERP position. Order value is reported twice — at selling price, which is what the A3 sheet totals, and at trade-agreement price, which is what the purchase order would actually cost.":
+    "Data demonstrasi workbook, bukan posisi ERP langsung. Nilai pesanan dilaporkan dua kali — harga jual, yang dijumlahkan sheet A3, dan harga trade-agreement, yang sebenarnya dibayar pesanan pembelian.",
+
+  "Code or name": "Kode atau nama",
+
+  // Requirement vs inbound supply (A3 spec section 4).
+  "Requirement vs inbound supply": "Kebutuhan vs pasokan masuk",
+  Requirement: "Kebutuhan",
+  "Inbound + on-hand cover": "Cakupan stok + barang masuk",
+  "Gap to cover": "Selisih yang harus ditutup",
+  Covered: "Tercukupi",
+  "Cover runs out at": "Cakupan habis pada",
+  "Cover out": "Cakupan habis",
+  "Order qty": "Jumlah pesan",
+  "PO value": "Nilai PO",
+  Fill: "Pemenuhan",
+  "Inbound is placed on each SKU's lead day because the workbook records how much is on order but never when it arrives. Requirement is a flat ADS per day, which is all one ADS per SKU can support.":
+    "Barang masuk ditempatkan pada hari lead time tiap SKU karena workbook mencatat berapa yang dipesan tetapi tidak pernah kapan tibanya. Kebutuhan memakai ADS rata per hari, karena satu ADS per SKU hanya mendukung itu.",
+
+  // Route tabs and export (A3 spec section 7).
+  "Purchase order route": "Rute pesanan pembelian",
+  "All routes": "Semua rute",
+  "Export CSV": "Ekspor CSV",
+  "Export this route": "Ekspor rute ini",
+  "Export full PO": "Ekspor PO penuh",
+
+  // What-If (A3 spec section 9).
+  "Order value (cost)": "Nilai pesanan (harga beli)",
+  "Avg cover days": "Rata-rata hari cakupan",
+  "ADS × (1 + demand/100) — lifts ROP, Max and the order":
+    "ADS × (1 + demand/100) — menaikkan ROP, Maks, dan pesanan",
+  "Promo-eligible SKUs order more": "SKU yang ikut promo memesan lebih banyak",
+  "Open PO × (1 + inbound/100) — more inbound, smaller order":
+    "Open PO × (1 + inbound/100) — makin banyak masuk, makin kecil pesanan",
+  "Longer lead raises Max, so each line orders further ahead":
+    "Lead time lebih panjang menaikkan Maks, jadi tiap baris memesan lebih jauh ke depan",
+  "Safety days raise Max — bigger order, more capital":
+    "Hari pengaman menaikkan Maks — pesanan lebih besar, modal lebih besar",
+  "This is a simulated order, not one to send.":
+    "Ini pesanan simulasi, bukan yang untuk dikirim.",
+  "No modelled effect": "Tidak ada efek yang dimodelkan",
+  "the workbook carries no term for it, so the figures above cannot move.":
+    "workbook tidak punya sukunya, jadi angka di atas tidak bisa bergerak.",
+
+  // Projected on-hand vs demand (A2 spec section 4).
+  "Projected on-hand vs demand": "Proyeksi stok vs permintaan",
+  "Projected on-hand": "Proyeksi stok di tangan",
+  "Demand per day": "Permintaan per hari",
+  "Inbound landed": "Barang masuk yang tiba",
+  "Nothing in scope to project.": "Tidak ada yang bisa diproyeksikan pada cakupan ini.",
+  "Cover holds across the horizon": "Cakupan bertahan sepanjang horizon",
+  "Under one day of cover from": "Kurang dari satu hari cakupan sejak",
+  Inbound: "Barang masuk",
+  "Avg DoS": "Rata-rata hari persediaan",
+  "At risk": "Berisiko",
+  "Projected forward from today's position. The workbook holds one on-hand reading per SKU and no history, so there is nothing to plot before day 0.":
+    "Diproyeksikan maju dari posisi hari ini. Workbook hanya menyimpan satu angka stok per SKU dan tidak punya riwayat, jadi tidak ada yang bisa digambar sebelum hari ke-0.",
+
+  // What-If simulator (A2 spec section 8). The lever labels and their effects
+  // are the spec's own wording; the cell references stay untranslated because
+  // `Constants!B16` is an address, not prose.
+  "Levers re-run the workbook's formulas · no backend calls":
+    "Tuas menjalankan ulang formula workbook · tanpa panggilan backend",
+  Run: "Jalankan",
+  Save: "Simpan",
+  Reset: "Atur ulang",
+  "Move a lever before saving a scenario":
+    "Geser satu tuas dulu sebelum menyimpan skenario",
+  "Baseline versus scenario": "Dasar dibanding skenario",
+  Baseline: "Dasar",
+  Scenario: "Skenario",
+  Unchanged: "Tidak berubah",
+  "Demand surge": "Lonjakan permintaan",
+  "Promo pull": "Tarikan promo",
+  "Markdown clear": "Cuci gudang",
+  "Inbound cover": "Cakupan barang masuk",
+  "Lead time": "Waktu tunggu",
+  "Safety days": "Hari pengaman",
+  "ADS × (1 + demand/100) — DoS falls, stockouts rise":
+    "ADS × (1 + permintaan/100) — hari persediaan turun, kehabisan stok naik",
+  "Promo-eligible SKUs deplete faster": "SKU berpromo terkuras lebih cepat",
+  "No modelled effect — the workbook has no markdown term":
+    "Tidak dimodelkan — workbook tidak punya suku cuci gudang",
+  "Open PO × (1 + inbound/100) — fills Position":
+    "PO terbuka × (1 + barang masuk/100) — mengisi Posisi",
+  "ROP = ADS × (Lead + Δ + Safety) — pushes ROP up":
+    "ROP = ADS × (Lead + Δ + Safety) — mendorong ROP naik",
+  "ROP += safety — fewer stockouts, more capital":
+    "ROP += pengaman — kehabisan stok berkurang, modal bertambah",
+  "Expiry units": "Unit kedaluwarsa",
+
+  // Compare scenarios (A2 spec section 8d).
+  "Compare scenarios": "Bandingkan skenario",
+  saved: "tersimpan",
+  "Save a scenario to compare it against the baseline":
+    "Simpan skenario untuk membandingkannya dengan dasar",
+  Day: "Hari",
+  Remove: "Hapus",
+  "Scenarios are held in this browser tab only and are not saved anywhere.":
+    "Skenario hanya tersimpan di tab peramban ini dan tidak disimpan di mana pun.",
+
+  // The scenario banner. This one has to be unmissable: with levers driving
+  // the page, every figure above and below it is simulated.
+  "These are simulated figures, not the workbook position.":
+    "Angka-angka ini hasil simulasi, bukan posisi workbook.",
+  "Store and cluster charts stay on the baseline — they arrive pre-aggregated.":
+    "Chart toko dan klaster tetap pada dasar — datanya sudah teragregasi sejak awal.",
+  "Back to workbook": "Kembali ke workbook",
+
+  // The two caveats the board must carry, not bury (A2 spec section 10).
+  "Store and cluster breakdowns are gross: they sum local risk pockets and exceed the chain-net headline, which nets surplus against shortage across stores.":
+    "Rincian toko dan klaster bersifat bruto: menjumlahkan kantong risiko lokal dan melebihi angka utama neto rantai, yang saling menghapus surplus dan kekurangan antar toko.",
+  "At-risk value is the full position value of every non-healthy SKU, not an expected loss.":
+    "Nilai berisiko adalah nilai posisi penuh setiap SKU tidak sehat, bukan perkiraan kerugian.",
+
   // Chat starter prompts (QC-042). These are the first words in the chat
   // panel, and clicking a chip puts these exact words in the composer, so a
   // missing entry here would send English on behalf of a Bahasa reader.

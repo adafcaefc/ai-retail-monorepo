@@ -1,0 +1,736 @@
+/**
+ * Derive an Inventory Risk dashboard payload from the workbook fixture.
+ *
+ * Everything here is a count, a sum, a group, or a sort. No business rule is
+ * re-implemented: `state`, `is_stockout_risk`, `is_overstock` and
+ * `is_slow_mover` arrive already resolved from
+ * `scripts/build_inventory_risk_fixture.py`, which checks them against the
+ * workbook's own `A2 Inventory Risk` totals before writing. Keep it that way —
+ * a threshold typed into this file is a second definition of a rule, and the
+ * copy in JavaScript is the one nobody will notice drifting.
+ *
+ * Pure and synchronous: same fixture plus same scope gives the same result,
+ * every render and every test. No clock, no randomness.
+ */
+
+import {
+  AGENT_ID,
+  ALL,
+  DEFAULT_SCOPE,
+  EXPIRY_BUCKETS,
+  EXPIRY_WATCHLIST_SIZE,
+  HEALTHY_STATE,
+  PROJECTION_DAYS,
+  SCHEMA_VERSION,
+  STATE_ORDER,
+} from "./contract.js";
+import {
+  dosHistogram,
+  growthHistogram,
+  topGroups,
+} from "../../common/distributions.js";
+import { buildDrilldown } from "./drilldown.js";
+import { BASELINE_LEVERS, atStore, createEngine, isBaseline } from "./engine.js";
+
+/**
+ * STORE SCOPING IS SUPPORTED, WITHOUT SHIPPING THE GRID.
+ *
+ * This used to be `false`, on the grounds that scoping to one store needed the
+ * 16,000-row SKU x store grid and ~163 KB of payload with it. That was true of
+ * the dataset and false of the arithmetic: `ENGINE_STORE` is not an
+ * independent measurement, it is the SKU attributes crossed with the store
+ * attributes, and `atStore` in `engine.js` regenerates any row of it from four
+ * numbers the fixture now carries (`onhand_days` and `stock_factor` per SKU,
+ * `size_index` and `health_index` per store). About 960 values, not 16,000
+ * rows — and the fixture builder proves the reconstruction against every one
+ * of those rows before writing.
+ *
+ * WHAT THE HEADLINE MEANS AT EACH SETTING, because they are different
+ * questions and both are right:
+ *
+ *   store = ALL      chain-net. One row per SKU for the whole chain, which is
+ *                    what the `A2 Inventory Risk` sheet totals and what every
+ *                    reconciliation test asserts. Surplus in one store nets
+ *                    off shortage in another.
+ *   store = S001     that store's own position, derived per the above. A SKU
+ *                    healthy across the chain can be Stockout here, which is
+ *                    the entire point of asking.
+ *
+ * So selecting a store does not narrow the chain-net figure — it replaces it
+ * with a different measurement. Summing all stores will not return the
+ * chain-net total, for the reason GROSS_VS_NET_NOTE already states.
+ */
+export const SUPPORTS_STORE_SCOPE = true;
+
+function matchesSearch(item, term) {
+  const needle = term.trim().toLowerCase();
+  if (!needle) return true;
+  return (
+    item.sku_id.toLowerCase().includes(needle) ||
+    item.name.toLowerCase().includes(needle)
+  );
+}
+
+/** Apply the scope this provider can honour. See SUPPORTS_STORE_SCOPE. */
+export function scopeItems(items, scope) {
+  return items.filter((item) => {
+    if (
+      scope.legal_entity_id !== ALL &&
+      item.vertical_id !== scope.legal_entity_id
+    ) {
+      return false;
+    }
+    if (
+      scope.category_group !== ALL &&
+      item.category_id !== scope.category_group
+    ) {
+      return false;
+    }
+    if (scope.state !== ALL && item.state !== scope.state) {
+      return false;
+    }
+    return matchesSearch(item, scope.sku);
+  });
+}
+
+function scopeStores(stores, scope) {
+  // A named store narrows to itself, so the store and cluster charts describe
+  // the same slice the tiles do rather than the whole vertical behind it.
+  if (scope.store_id !== ALL) {
+    return stores.filter((store) => store.store_id === scope.store_id);
+  }
+  if (scope.legal_entity_id === ALL) return stores;
+  return stores.filter((store) => store.vertical_id === scope.legal_entity_id);
+}
+
+function sum(rows, key) {
+  return rows.reduce((total, row) => total + (row[key] ?? 0), 0);
+}
+
+/**
+ * The six A2 KPIs plus slow-mover, from pre-resolved flags only.
+ *
+ * Two of the tiles carry a money figure under their count:
+ * `overstock_excess_value` is only the position ABOVE Max, not the full value
+ * of every overstocked SKU — the workbook keeps both senses of "overstock"
+ * alive and this is the narrower one (A2 spec section 10 note 3).
+ * `expiry_value` prices the units already past their shelf-life cover.
+ */
+export function computeKpis(items) {
+  const count = items.length;
+  return {
+    stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
+    overstock_skus: items.filter((item) => item.is_overstock).length,
+    overstock_excess_value: items.reduce(
+      (total, item) =>
+        item.is_overstock && item.position > item.max
+          ? total + (item.position - item.max) * item.price
+          : total,
+      0,
+    ),
+    expiry_units: sum(items, "expiry_units"),
+    expiry_value: items.reduce(
+      (total, item) => total + item.expiry_units * item.price,
+      0,
+    ),
+    slow_mover_skus: items.filter((item) => item.is_slow_mover).length,
+    avg_dos: count ? sum(items, "dos") / count : 0,
+    inventory_value: sum(items, "inv_value"),
+    at_risk_value: sum(items, "at_risk_value"),
+    healthy_skus: items.filter((item) => item.state === HEALTHY_STATE).length,
+    sku_count: count,
+  };
+}
+
+/**
+ * A real mini-chart for each KPI tile.
+ *
+ * The tiles carried none, and the comment explaining why was right: the
+ * workbook has no date column, so a trend line here would be invented, and an
+ * invented trend on a risk board is worse than an empty space.
+ *
+ * A DISTRIBUTION needs no dates. Each of these is a histogram of the rows
+ * behind the number — which answers something the figure alone cannot: 302
+ * SKUs below reorder point reads very differently if they are all barely under
+ * than if half sit at zero cover. Days of cover is the shared axis for the
+ * stock tiles, so the shapes are comparable across the row.
+ *
+ * `kind` travels with each one so the tile can caption it honestly; nothing
+ * here is drawn as a series.
+ */
+export function computeKpiSparklines(items) {
+  return {
+    // Where the reorder zone actually sits on the cover axis.
+    stockout_risk_skus: {
+      kind: "distribution",
+      caption: "Days of cover, at-risk SKUs",
+      values: dosHistogram(items.filter((item) => item.is_stockout_risk)),
+    },
+    overstock_skus: {
+      kind: "distribution",
+      caption: "Days of cover, overstocked SKUs",
+      values: dosHistogram(items.filter((item) => item.is_overstock)),
+    },
+    // Already bucketed by the board's own expiry timeline — reusing its shape
+    // rather than inventing a second one keeps the tile and the panel in step.
+    expiry_units: {
+      kind: "distribution",
+      caption: "Shelf life remaining",
+      values: computeExpiryTimeline(items).buckets.map((bucket) => bucket.units),
+    },
+    slow_mover_skus: {
+      kind: "distribution",
+      caption: "Growth index, slow movers",
+      values: growthHistogram(items.filter((item) => item.is_slow_mover)),
+    },
+    // The whole chain on the cover axis: the mean the tile prints is one point
+    // on this curve, and the spread is what says whether that mean is honest.
+    avg_dos: {
+      kind: "distribution",
+      caption: "Days of cover, all SKUs",
+      values: dosHistogram(items),
+    },
+    inventory_value: {
+      kind: "distribution",
+      caption: "Value by category, largest first",
+      values: topGroups(items, "category_id", (rows) =>
+        rows.reduce((total, row) => total + row.inv_value, 0),
+      ),
+    },
+  };
+}
+
+/**
+ * Suggested Best Action (A2 spec section 1 point 8).
+ *
+ * Two routes, not a ranked list of one: Stockout and Low are a replenishment
+ * problem and go to Agent 3, while Expiry, Overstock and Slow-mover are a
+ * markdown/assortment problem and go to Agent 5. The split already exists per
+ * row as `next_agent`; this only groups it and sizes each side so the board
+ * can say which route is the bigger call today.
+ */
+export function computeBestActions(items) {
+  const routes = new Map();
+
+  for (const item of items) {
+    if (item.state === HEALTHY_STATE) continue;
+
+    let route = routes.get(item.next_agent);
+    if (!route) {
+      route = routes.set(item.next_agent, {
+        next_agent: item.next_agent,
+        sku_count: 0,
+        value: 0,
+        states: new Set(),
+        top_skus: [],
+      }).get(item.next_agent);
+    }
+    route.sku_count += 1;
+    route.value += item.at_risk_value;
+    route.states.add(item.state);
+    route.top_skus.push(item);
+  }
+
+  return [...routes.values()]
+    .map((route) => ({
+      next_agent: route.next_agent,
+      sku_count: route.sku_count,
+      value: route.value,
+      states: STATE_ORDER.filter((state) => route.states.has(state)),
+      top_skus: route.top_skus
+        .sort(
+          (a, b) => a.severity_rank - b.severity_rank || b.at_risk_value - a.at_risk_value,
+        )
+        .slice(0, 3)
+        .map((item) => ({
+          sku_id: item.sku_id,
+          name: item.name,
+          state: item.state,
+          value: item.at_risk_value,
+        })),
+    }))
+    .sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Stacked horizontal bar: one bar per state, segmented by category
+ * (A2 spec section 5a). States with no rows in scope are dropped rather than
+ * drawn as empty bars.
+ */
+export function computeAtRiskByState(items) {
+  const byState = new Map();
+
+  for (const item of items) {
+    let bucket = byState.get(item.state);
+    if (!bucket) {
+      bucket = { state: item.state, total: 0, segments: new Map() };
+      byState.set(item.state, bucket);
+    }
+    bucket.total += item.at_risk_value;
+
+    const segment = bucket.segments.get(item.category_id);
+    if (segment) {
+      segment.value += item.at_risk_value;
+    } else {
+      bucket.segments.set(item.category_id, {
+        category_id: item.category_id,
+        label: item.category_name,
+        value: item.at_risk_value,
+      });
+    }
+  }
+
+  return STATE_ORDER.filter((state) => byState.has(state)).map((state) => {
+    const bucket = byState.get(state);
+    return {
+      state,
+      total: bucket.total,
+      segments: [...bucket.segments.values()].sort((a, b) => b.value - a.value),
+    };
+  });
+}
+
+function groupByCategory(items, key) {
+  const grouped = new Map();
+  for (const item of items) {
+    const row = grouped.get(item.category_id);
+    if (row) {
+      row.value += item[key];
+    } else {
+      grouped.set(item.category_id, {
+        category_id: item.category_id,
+        label: item.category_name,
+        value: item[key],
+      });
+    }
+  }
+  return [...grouped.values()].sort((a, b) => b.value - a.value);
+}
+
+/** Donut share of inventory value by category (A2 spec section 5b). */
+export function computeValueByCategory(items) {
+  const rows = groupByCategory(items, "inv_value");
+  const total = rows.reduce((running, row) => running + row.value, 0);
+  return rows.map((row) => ({
+    ...row,
+    share: total ? row.value / total : 0,
+  }));
+}
+
+/** Vertical bar of at-risk value by category (A2 spec section 6). */
+export function computeAtRiskByCategory(items) {
+  return groupByCategory(items, "at_risk_value");
+}
+
+/**
+ * Gross per-store risk breakdown, worst first (A2 spec section 6).
+ *
+ * The four state segments add up to `sku_count` exactly — the fixture builder
+ * refuses to emit a store where they do not. That invariant is the point: an
+ * earlier version stacked a partial breakdown, so a dozen SKUs per store fell
+ * outside every bar and the chart quietly understated the store.
+ *
+ * `stockout_count + low_count === stockout_risk_count`, verified across all
+ * 16,000 source rows, so the reorder zone is the first two segments.
+ *
+ * See GROSS_VS_NET_NOTE in the contract: these totals exceed the chain-net
+ * headline on purpose.
+ */
+export function computeStockoutByStore(stores) {
+  return [...stores]
+    .map((store) => ({
+      store_id: store.store_id,
+      label: store.name,
+      cluster: store.cluster,
+      stockout_count: store.stockout_count,
+      low_count: store.low_count,
+      other_at_risk_count: store.other_at_risk_count,
+      healthy_count: store.healthy_count,
+      stockout_risk_count: store.stockout_risk_count,
+      at_risk_count: store.at_risk_count,
+      sku_count: store.sku_count,
+      at_risk_value: store.at_risk_value,
+    }))
+    .sort((a, b) => b.stockout_risk_count - a.stockout_risk_count);
+}
+
+/** Gross at-risk value by store cluster (A2 spec section 6). */
+export function computeAtRiskByCluster(stores) {
+  const grouped = new Map();
+  for (const store of stores) {
+    const row = grouped.get(store.cluster);
+    if (row) {
+      row.value += store.at_risk_value;
+      row.store_count += 1;
+    } else {
+      grouped.set(store.cluster, {
+        cluster: store.cluster,
+        value: store.at_risk_value,
+        store_count: 1,
+      });
+    }
+  }
+  return [...grouped.values()].sort((a, b) => b.value - a.value);
+}
+
+/** Roll store -> legal entity (A2 spec section 6, `#ch-dim-le`). */
+export function computeAtRiskByLegalEntity(stores, legalEntities) {
+  const labelOf = new Map(
+    legalEntities.map((entity) => [entity.value, entity.label]),
+  );
+  const grouped = new Map();
+
+  for (const store of stores) {
+    const row = grouped.get(store.vertical_id);
+    if (row) {
+      row.value += store.at_risk_value;
+    } else {
+      grouped.set(store.vertical_id, {
+        legal_entity_id: store.vertical_id,
+        label: labelOf.get(store.vertical_id) ?? store.vertical_id,
+        value: store.at_risk_value,
+      });
+    }
+  }
+  return [...grouped.values()].sort((a, b) => b.value - a.value);
+}
+
+/**
+ * Shelf-life buckets plus the shortest-dated watchlist (A2 spec section 6).
+ * Only perishable rows carrying expiry units participate; the workbook leaves
+ * the rest at zero.
+ */
+export function computeExpiryTimeline(items) {
+  const atRisk = items.filter((item) => item.expiry_units > 0);
+
+  const buckets = EXPIRY_BUCKETS.map((bucket) => ({
+    id: bucket.id,
+    label: bucket.label,
+    units: 0,
+  }));
+
+  for (const item of atRisk) {
+    const days = item.shelf_life_days ?? 0;
+    const index = EXPIRY_BUCKETS.findIndex(
+      (bucket) => bucket.max === null || days <= bucket.max,
+    );
+    buckets[index === -1 ? buckets.length - 1 : index].units += item.expiry_units;
+  }
+
+  const watchlist = [...atRisk]
+    .sort(
+      (a, b) =>
+        (a.shelf_life_days ?? 0) - (b.shelf_life_days ?? 0) ||
+        b.expiry_units - a.expiry_units,
+    )
+    .slice(0, EXPIRY_WATCHLIST_SIZE)
+    .map((item) => ({
+      sku_id: item.sku_id,
+      name: item.name,
+      shelf_life_days: item.shelf_life_days,
+      units: item.expiry_units,
+    }));
+
+  return { buckets, watchlist };
+}
+
+/** Severity first, then value (A2 spec section 5c). */
+export function computeRiskRegister(items) {
+  return [...items].sort(
+    (a, b) => a.severity_rank - b.severity_rank || b.inv_value - a.inv_value,
+  );
+}
+
+/**
+ * Build the full dashboard payload for one scope.
+ *
+ * @param {object} fixture Parsed `fixture.json`.
+ * @param {Partial<import("./contract.js").InventoryRiskScope>} [scope]
+ * @returns {object} A payload matching the dashboard contract.
+ */
+/**
+ * Projected on-hand against demand, A2 spec section 4.
+ *
+ * The replenishment cycle in one line: stock falls by a day's demand each day
+ * and steps back up when an open PO lands. Nothing here is a guess about the
+ * future — the fall is `ads`, the step is `open_po`, and it lands after
+ * `lead_days`, all three read per SKU from the workbook.
+ *
+ * Two honest limits, both worth saying out loud on the panel:
+ * demand is flat, because the workbook carries one ADS per SKU and no
+ * day-of-week or seasonal curve at this grain; and stock is floored at zero,
+ * so a SKU that runs out stays out rather than going negative and quietly
+ * subsidising the chain total.
+ */
+export function computeProjection(items, days = PROJECTION_DAYS) {
+  const demandPerDay = sum(items, "ads");
+  const points = [];
+
+  for (let day = 0; day <= days; day += 1) {
+    let onHand = 0;
+    let inbound = 0;
+
+    for (const item of items) {
+      const arrived = day >= item.lead_days ? item.open_po : 0;
+      onHand += Math.max(0, item.on_hand - item.ads * day + arrived);
+      inbound += arrived;
+    }
+
+    points.push({
+      day,
+      label: day === 0 ? "Today" : `D+${day}`,
+      on_hand: onHand,
+      inbound,
+      demand: demandPerDay,
+    });
+  }
+
+  const opening = points[0];
+  return {
+    days,
+    points,
+    // The strip under the chart, A2 spec section 4.
+    metrics: {
+      position: opening.on_hand + sum(items, "open_po"),
+      inbound: sum(items, "open_po"),
+      avg_dos: items.length ? sum(items, "dos") / items.length : 0,
+      at_risk_value: sum(items, "at_risk_value"),
+    },
+    // The first day the chain is projected to hold less than one day of cover.
+    days_to_empty:
+      points.find((point) => point.on_hand < demandPerDay)?.day ?? null,
+  };
+}
+
+/**
+ * Baseline against scenario, A2 spec section 8.
+ *
+ * `applyLevers` re-runs the workbook's own expressions per SKU; everything
+ * here just counts and sums the two sets of rows the same way `computeKpis`
+ * does, so a difference between the columns can only come from the formulas.
+ *
+ * The index bars are the panel's own shape (A2 spec 8c): baseline pinned at
+ * 100, scenario expressed against it, so four metrics on four different scales
+ * can share one axis. A baseline of zero has no index — reported as `null`
+ * rather than as a fabricated 100.
+ */
+export function computeSimulation(items, levers, applyLevers) {
+  const merged = { ...BASELINE_LEVERS, ...levers };
+  const applied = !isBaseline(merged);
+  const baseline = computeKpis(items);
+
+  /*
+   * At rest the scenario IS the baseline, and saying so is not just a saving.
+   * Re-running the engine here would produce figures that differ in the last
+   * float digit — 6251.887728735004 against a stored 6251.887728735005, from
+   * summing 800 re-evaluations instead of 800 readings — and the panel would
+   * report a delta of -1e-12 on a board that has not been touched.
+   */
+  const scenarioItems = applied
+    ? items.map((item) => applyLevers(item, merged))
+    : items;
+  const scenario = applied ? computeKpis(scenarioItems) : baseline;
+
+  const compared = [
+    { id: "stockout_risk_skus", label: "Stockout-risk SKUs", lowerIsBetter: true },
+    { id: "expiry_units", label: "Expiry units", lowerIsBetter: true },
+    { id: "overstock_skus", label: "Overstock SKUs", lowerIsBetter: true },
+    { id: "at_risk_value", label: "At-risk value", lowerIsBetter: true },
+  ];
+
+  return {
+    applied,
+    levers: merged,
+    baseline,
+    scenario,
+    /*
+     * Two curves, because Compare Scenarios (A2 spec 8d) needs a reference
+     * line that does not move. `baseline_projection` is always the workbook's
+     * own stock curve for this scope; `projection` is the scenario's.
+     *
+     * The board's top-level `projection` cannot serve as the reference: with
+     * "levers drive whole page" on, it is the simulated one, and a comparison
+     * whose baseline shifts with the sliders compares nothing.
+     *
+     * A scenario is only interesting as a shape over time — "does this run me
+     * out before the PO lands" — which four KPI totals cannot answer.
+     */
+    baseline_projection: computeProjection(items),
+    projection: applied ? computeProjection(scenarioItems) : null,
+    index: compared.map((metric) => ({
+      ...metric,
+      baseline_value: baseline[metric.id],
+      scenario_value: scenario[metric.id],
+      baseline_index: 100,
+      scenario_index: baseline[metric.id]
+        ? (scenario[metric.id] / baseline[metric.id]) * 100
+        : null,
+      delta: scenario[metric.id] - baseline[metric.id],
+    })),
+  };
+}
+
+/*
+ * One engine per fixture, not one per render.
+ *
+ * `createEngine` parses ten expressions. A slider drag rebuilds the dashboard
+ * on every frame, and re-parsing there would turn a smooth control into a
+ * stuttering one for no benefit — the expressions cannot change between
+ * renders.
+ */
+let cachedFormulas = null;
+let cachedEngine = null;
+
+function engineFor(formulas) {
+  if (formulas !== cachedFormulas) {
+    cachedEngine = createEngine(formulas);
+    cachedFormulas = formulas;
+  }
+  return cachedEngine;
+}
+
+/**
+ * Decompose one KPI tile, over exactly the rows the board is showing.
+ *
+ * Separate from `buildDashboardFromFixture` and computed on demand, because
+ * the per-store split runs the engine once per SKU per store — ~16,000 passes
+ * at chain scope. That is fine on a click and wasteful on every render, so the
+ * board does not carry six of them it may never open.
+ *
+ * It re-derives the scope rather than accepting the finished payload so that
+ * the drawer and the tile above it can never disagree about which rows they
+ * are describing: same scope in, same rows out, same engine.
+ */
+export function buildDrilldownFromFixture(
+  fixture,
+  scope = {},
+  metricId,
+  options = {},
+) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const applyLevers = engineFor(fixture.formulas);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulating = !isBaseline(levers) && options.driveWholePage !== false;
+
+  const storeRow =
+    merged.store_id === ALL
+      ? null
+      : fixture.stores.find((row) => row.store_id === merged.store_id);
+
+  const sourceItems =
+    storeRow === null
+      ? fixture.items
+      : fixture.items
+          .filter((item) => item.vertical_id === storeRow.vertical_id)
+          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
+
+  const scoped = scopeItems(sourceItems, merged);
+  const items = simulating
+    ? scoped.map((item) => applyLevers(item, levers))
+    : scoped;
+
+  return buildDrilldown(metricId, items, scopeStores(fixture.stores, merged), {
+    applyLevers,
+    // The store split reads the same filtered set the headline does, so a
+    // board scoped to one category shows that category across stores rather
+    // than quietly widening back to the whole shelf.
+    allItems: items,
+  });
+}
+
+export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const stores = scopeStores(fixture.stores, merged);
+  const legalEntities = fixture.filter_options.legal_entities;
+
+  const applyLevers = engineFor(fixture.formulas);
+
+  /*
+   * A named store replaces the chain-net rows with that store's own, derived
+   * through `atStore` and then run through the ordinary engine at rest.
+   *
+   * Running the engine at BASELINE_LEVERS here rather than skipping it is the
+   * point: the stored `state`, `rop` and `dos` on a fixture row describe the
+   * chain, so for one store they have to be re-derived even though no lever
+   * has moved. `computeSimulation` then treats these as its baseline, which is
+   * correct — the scenario is measured against the store you are looking at.
+   *
+   * The vertical filter is implicit: a store belongs to one vertical, so
+   * `scopeItems` narrowing on `legal_entity_id` would be redundant here, and
+   * items from other verticals are dropped by the store's own vertical.
+   */
+  const storeRow =
+    merged.store_id === ALL
+      ? null
+      : fixture.stores.find((row) => row.store_id === merged.store_id);
+
+  const sourceItems =
+    storeRow === null
+      ? fixture.items
+      : fixture.items
+          .filter((item) => item.vertical_id === storeRow.vertical_id)
+          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
+
+  const baselineItems = scopeItems(sourceItems, merged);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulation = computeSimulation(baselineItems, levers, applyLevers);
+
+  /*
+   * "Levers drive whole page" (A2 spec 8b). With it on, every panel below
+   * reads the re-simulated rows rather than the workbook's stored ones.
+   *
+   * Two things it cannot reach, and the UI has to admit as much: the store and
+   * cluster charts read `fixture.stores`, which is aggregated per store before
+   * it ever gets here, and the reference totals are the workbook's own and
+   * belong to the baseline by definition.
+   */
+  const driveWholePage = options.driveWholePage !== false;
+  const items =
+    simulation.applied && driveWholePage
+      ? baselineItems.map((item) => applyLevers(item, levers))
+      : baselineItems;
+
+  // Categories depend on the selected vertical, so the filter bar can reset a
+  // child selection the new parent invalidates without a second load.
+  const categories =
+    merged.legal_entity_id === ALL
+      ? fixture.filter_options.categories
+      : fixture.filter_options.categories.filter(
+          (category) => category.legal_entity_id === merged.legal_entity_id,
+        );
+  const storeOptions =
+    merged.legal_entity_id === ALL
+      ? fixture.filter_options.stores
+      : fixture.filter_options.stores.filter(
+          (store) => store.legal_entity_id === merged.legal_entity_id,
+        );
+
+  return {
+    schema_version: SCHEMA_VERSION,
+    agent: AGENT_ID,
+    as_of: fixture.generated_at,
+    is_mock: fixture.is_mock,
+    note: fixture.note,
+    scope: merged,
+    filter_options: {
+      legal_entities: legalEntities,
+      categories,
+      stores: storeOptions,
+      states: fixture.filter_options.states,
+    },
+    kpis: computeKpis(items),
+    kpi_sparklines: computeKpiSparklines(items),
+    projection: computeProjection(items),
+    simulation,
+    at_risk_by_state: computeAtRiskByState(items),
+    value_by_category: computeValueByCategory(items),
+    at_risk_by_category: computeAtRiskByCategory(items),
+    stockout_by_store: computeStockoutByStore(stores),
+    at_risk_by_cluster: computeAtRiskByCluster(stores),
+    at_risk_by_legal_entity: computeAtRiskByLegalEntity(stores, legalEntities),
+    expiry_timeline: computeExpiryTimeline(items),
+    best_actions: computeBestActions(items),
+    risk_register: computeRiskRegister(items),
+    reference_by_vertical: fixture.reference_by_vertical,
+  };
+}

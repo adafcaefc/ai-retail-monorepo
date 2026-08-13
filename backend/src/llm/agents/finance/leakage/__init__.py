@@ -60,6 +60,7 @@ DESCRIPTOR = AgentDescriptor(
     allowed_tables=LEAKAGE_ALLOWED_TABLES,
     tools=TOOLS,
     build_dashboard=dashboard.build,
+    supported_filters=dashboard.SUPPORTED_FILTERS,
 )
 
 __all__ = ["DESCRIPTOR"]

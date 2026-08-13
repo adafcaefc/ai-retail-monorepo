@@ -1,25 +1,6 @@
+import KpiSparkline from "../../../../components/KpiSparkline.jsx";
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-
-function Sparkline({ values }) {
-  if (values.length < 2) return null;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const range = max - min || 1;
-  const points = values.map((value, index) => {
-    const x = (index / (values.length - 1)) * 100;
-    const y = 22 - ((value - min) / range) * 18;
-    return `${x},${y}`;
-  });
-  const area = `0,24 ${points.join(" ")} 100,24`;
-
-  return (
-    <svg className="demand-kpi-spark" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true">
-      <polygon points={area} />
-      <polyline points={points.join(" ")} />
-    </svg>
-  );
-}
 
 function displayValue(kpi, language) {
   const digits = ["forecast_accuracy", "demand_trend"].includes(kpi.id) ? 1 : 0;
@@ -31,21 +12,49 @@ function displayValue(kpi, language) {
   return `${prefix}${value}${kpi.unit === "%" ? "%" : ""}`;
 }
 
-export default function DemandKpiGrid({ kpis }) {
+export default function DemandKpiGrid({ kpis, onOpenDrilldown }) {
   const { language, t } = useLanguage();
 
   return (
     <section className="demand-kpi-grid" aria-label={t("Demand forecast summary") }>
       {kpis.map((kpi) => (
-        <article key={kpi.id} className={`demand-kpi demand-kpi--${kpi.status}`}>
-          <div className="demand-kpi-label">{t(kpi.label)}</div>
-          <div className="demand-kpi-value">
-            {displayValue(kpi, language)}
-            {kpi.unit && kpi.unit !== "%" ? <small>{t(kpi.unit)}</small> : null}
+        /* Every tile opens its own decomposition, so the tile face is a
+           button. A1 has no second per-tile action, so unlike A2 and A3 there
+           is no scope pill beside it. */
+        <button
+          key={kpi.id}
+          type="button"
+          className={`demand-kpi demand-kpi--${kpi.status}`}
+          title={t("Click to break this number down")}
+          onClick={() => onOpenDrilldown?.(kpi.id)}
+        >
+          <div className="demand-kpi-text">
+            <div className="demand-kpi-label">{t(kpi.label)}</div>
+            <div className="demand-kpi-value">
+              {displayValue(kpi, language)}
+              {kpi.unit && kpi.unit !== "%" ? <small>{t(kpi.unit)}</small> : null}
+            </div>
+            <div className="demand-kpi-comparison">{t(kpi.comparison_label)}</div>
           </div>
-          <div className="demand-kpi-comparison">{t(kpi.comparison_label)}</div>
-          <Sparkline values={kpi.sparkline} />
-        </article>
+          {/*
+            A histogram, not a trend, wherever no real series exists. Three of
+            these tiles are typed constants and none of the six has a dated
+            source, so those show how the number is SPREAD — which needs no
+            history at all. The axis name sits in the tooltip so the shape is
+            never read as movement over time.
+          */}
+          {kpi.sparkline?.length ? (
+            <div
+              className="demand-kpi-spark-wrap"
+              title={kpi.sparkline_caption ? t(kpi.sparkline_caption) : undefined}
+            >
+              <KpiSparkline
+                values={kpi.sparkline}
+                kind={kpi.sparkline_kind ?? "series"}
+              />
+            </div>
+          ) : null}
+        </button>
       ))}
     </section>
   );

@@ -6,11 +6,16 @@
  * string entirely for that case rather than sent as a literal "ALL" the
  * backend has to special-case back out.
  *
- * The three keys match `server_filters[].id` on every dashboard response
- * (`legal_entity_id`, `period`, `category_group`) — an agent that does not
- * offer one of them simply never has that key set, and the backend ignores
- * a key it does not recognise for that agent (see each `build()`'s
- * docstring for which filters it actually reads).
+ * Every key must be a field of `DashboardScope` (backend
+ * `llm/agents/common/dashboard_scope.py`). A key outside that set is now a
+ * 400 rather than a silent drop, which is deliberate: the Retail boards send
+ * `store_id`, `state`, `route`, `sku` and `reorder_only`, and until the scope
+ * became an object those five were discarded by a route that accepted three
+ * positional parameters — filters that appeared to work over figures that had
+ * not moved.
+ *
+ * A filter the agent's data cannot narrow by is still answered, and named in
+ * `ignored_filters` on the response.
  */
 export async function fetchDashboard(agent, serverFilters = {}) {
   const params = new URLSearchParams();

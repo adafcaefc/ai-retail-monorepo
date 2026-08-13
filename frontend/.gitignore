@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# `npm run build:standalone -- --outDir dist-standalone`. A 3.2 MB generated
+# HTML file: rebuildable from source in seconds, and a diff nobody can read.
+dist-standalone
 .vite
 *.local
 

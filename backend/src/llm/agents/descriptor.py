@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from src.llm.agents.common.dashboard_scope import DashboardScope
+
 
 @dataclass(frozen=True)
 class MonitoringPass:
@@ -47,18 +49,22 @@ class AgentDescriptor:
 
     # Callables
     tools: dict[str, Callable]    # domain-specific tools (merged into LOCAL_TOOLS)
-    # (legal_entity_id, period, category_group) — every `build()` accepts all
-    # three positionally so the route can call any agent uniformly, even
-    # though not every agent's data supports every filter (an agent that
-    # doesn't just ignores the ones it was passed; see each build()'s
-    # docstring for which). All three default to `None` ("everything"), so
-    # every existing zero-arg call site keeps working unchanged.
-    build_dashboard: Callable[[str | None, str | None, str | None], dict]
+    # One labelled envelope, so the route can call any agent uniformly and a
+    # new filter costs a named field rather than a position. See
+    # `common/dashboard_scope.py` for why that distinction earns its keep.
+    build_dashboard: Callable[[DashboardScope], dict]
 
     # Backend capability
     # Dashboard-only modules may reuse the shared header and chat presentation,
     # but the frontend must not invoke chat, monitoring, actions, or data APIs.
     dashboard_only: bool = False
 
+    # Which `DashboardScope` fields this agent's data can actually narrow by.
+    # Anything a request asks for that is not listed here comes back to the
+    # caller as `ignored_filters` rather than being dropped in silence — a
+    # filter that appears to work and does nothing is worse than one that
+    # refuses.
+    supported_filters: frozenset[str] = frozenset()
 
-__all__ = ["AgentDescriptor", "MonitoringPass"]
+
+__all__ = ["AgentDescriptor", "DashboardScope", "MonitoringPass"]

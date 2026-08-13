@@ -1,6 +1,18 @@
-#same as finance_agents.py, but suited for the new architecture in html
+"""The HTTP surface every agent board is served through.
 
-#Models
+Chat, conversations, the agent list, and `GET /dashboard/{agent}` — the route
+all three Retail boards call.
+
+Named `finance_agents_html.py` until the Retail migration, which was misleading
+in the direction that costs the most: the finance modules in `modules.py` are
+all commented out, so a reader could reasonably have concluded this file was
+dead and deleted the only live dashboard endpoint in the app. The finance
+imports below are still real — the simulation routes they feed are reachable —
+but nothing here is finance-specific.
+"""
+
+# Models
+
 import asyncio
 import inspect
 import json
@@ -11,6 +23,7 @@ from fastapi import (
     APIRouter,
     HTTPException,
     Query,
+    Request,
 )
 
 from fastapi.responses import (
@@ -52,6 +65,7 @@ from src.llm.pipeline import (
 
 from src.llm.agents.finance.treasury.cashflow.models import CashFlowSimulationRequest
 from src.llm.agents import get_agent
+from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.finance.finance.dashboard import simulate_finance_scenario
 from src.llm.agents.finance.leakage.dashboard import simulate_leakage_scenario
 from src.llm.agents.finance.collection.tools.collection_data import (
@@ -506,17 +520,14 @@ async def list_agents() -> dict[str, Any]:
     }
 
 
-def _scoped_query_value(value: str | None) -> str | None:
-    """The dropdowns' own "clear" option round-trips as the literal string
-    "ALL" (see `_server_filter` in dashboard_blocks.py) — treated as no
-    filter here, not as a value the query layer would try to match against a
-    real column, where it would silently match nothing.
-    """
-    return value if value and value != "ALL" else None
+# Derived from the scope rather than typed out, so a new filter cannot be added
+# to `DashboardScope` and left out of the guard below.
+_KNOWN_QUERY_PARAMS: frozenset[str] = frozenset(DashboardScope().__dataclass_fields__)
 
 
 @router.get("/dashboard/{agent}")
 async def get_agent_dashboard(
+    request: Request,
     agent: str,
     legal_entity_id: str | None = Query(
         default=None,
@@ -529,44 +540,91 @@ async def get_agent_dashboard(
     period: str | None = Query(
         default=None,
         description=(
-            "Narrow the dashboard to one month ('2026-03-01'). Finance and "
-            "Leakage only — other agents accept and ignore it, since their "
-            "underlying data has no month to narrow by. Omitted or 'ALL' "
-            "returns the full reporting window."
+            "Narrow the dashboard to one month ('2026-03-01'). Omitted or "
+            "'ALL' returns the full reporting window."
         ),
     ),
     category_group: str | None = Query(
         default=None,
-        description=(
-            "Narrow the dashboard to one product category group. Finance "
-            "only. Omitted or 'ALL' returns every category."
-        ),
+        description="Narrow to one product category group. Omitted or 'ALL' returns every one.",
+    ),
+    store_id: str | None = Query(
+        default=None,
+        description="Retail. Narrow to one store. Omitted or 'ALL' returns every store.",
+    ),
+    state: str | None = Query(
+        default=None,
+        description="Retail. Narrow to one inventory state (Stockout, Low, Expiry, …).",
+    ),
+    route: str | None = Query(
+        default=None,
+        description="Retail. Narrow to one purchase route (direct, flow, cross).",
+    ),
+    sku: str | None = Query(
+        default=None,
+        description="Retail. Narrow to SKUs matching this code or name.",
+    ),
+    reorder_only: bool = Query(
+        default=False,
+        description="Retail. Return only lines below their reorder point.",
     ),
 ) -> dict[str, Any]:
-    scoped_entity_id = _scoped_query_value(legal_entity_id)
-    scoped_period = _scoped_query_value(period)
-    scoped_category_group = _scoped_query_value(category_group)
+    """One dashboard payload for one agent, narrowed to one scope.
+
+    Filters an agent's data cannot support come back named in
+    `ignored_filters` rather than being dropped. Silently returning unfiltered
+    figures under a filtered heading is the failure this route used to have,
+    and it is invisible from the client side — the response is still a 200 and
+    still well-formed, only wrong.
+    """
     try:
         descriptor = get_agent(agent)
     except ValueError as error:
-        raise HTTPException(
-            status_code=404,
-            detail=str(error),
-        ) from error
-    try:
-        return descriptor.build_dashboard(
-            scoped_entity_id, scoped_period, scoped_category_group
-        )
-    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+
+    # FastAPI drops query parameters it was not told about, before any of this
+    # runs — so a misspelt filter would still return a clean 200 carrying
+    # chain-wide figures under a narrowed heading. `DashboardScope.from_query`
+    # cannot catch that on its own; the raw query string is the only place the
+    # mistake is still visible.
+    unknown = sorted(set(request.query_params) - _KNOWN_QUERY_PARAMS)
+    if unknown:
         raise HTTPException(
             status_code=400,
-            detail=str(error),
-        ) from error
+            detail=(
+                f"Unknown dashboard filter(s): {', '.join(unknown)}. "
+                f"Known filters: {', '.join(sorted(_KNOWN_QUERY_PARAMS))}."
+            ),
+        )
+
+    try:
+        scope = DashboardScope.from_query(
+            legal_entity_id=legal_entity_id,
+            period=period,
+            category_group=category_group,
+            store_id=store_id,
+            state=state,
+            route=route,
+            sku=sku,
+            reorder_only=reorder_only,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    try:
+        payload = descriptor.build_dashboard(scope)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except Exception as error:
         raise HTTPException(
             status_code=503,
             detail=f"Dashboard data unavailable: {error}",
         ) from error
+
+    ignored = scope.ignored_by(descriptor.supported_filters)
+    if ignored:
+        payload = {**payload, "ignored_filters": list(ignored)}
+    return payload
 
 
 @router.post(
