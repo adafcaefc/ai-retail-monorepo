@@ -9,3 +9,5 @@ requests==2.32.5
 openpyxl==3.1.5
 pytest==8.4.2
 mssql-python==1.13.0
+# Use with the already-installed CPU-only PyTorch build; do not install CUDA extras.
+sentence-transformers==5.7.0

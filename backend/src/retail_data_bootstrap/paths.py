@@ -13,6 +13,7 @@ DEFAULT_INVENTORY_PATH = GENERATED_DIR / "workbook_inventory.json"
 DEFAULT_DOCUMENTS_PATH = GENERATED_DIR / "retail_documents.jsonl"
 DEFAULT_SAMPLE_PATH = GENERATED_DIR / "retail_documents_sample.jsonl"
 DEFAULT_MIGRATION_PATH = AppPaths.REPO_ROOT / "sql" / "retail" / "001_create_retail_schema.sql"
+DEFAULT_AI_MIGRATION_PATH = AppPaths.REPO_ROOT / "sql" / "ai" / "001_create_ai_vector_schema.sql"
 
 
 def resolve_workbook_path(value: str | Path | None = None) -> Path:
