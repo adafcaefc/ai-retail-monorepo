@@ -231,6 +231,47 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             store_params,
         )
 
+        # Every quote on file for the SKUs in scope. `saving_vs_designated`
+        # above is a difference between two of these; carrying only the
+        # difference is what left a buyer unable to see who to switch to.
+        #
+        # Ordered by SKU rather than by the vertical order the lines follow:
+        # this is a lookup keyed by SKU, not a table anybody scrolls. Cheapest
+        # first within a SKU, so the panel does not sort and the fixture can be
+        # compared row for row.
+        quotes = _rows(
+            connection,
+            f"""
+            SELECT t.item_key, t.vendor_account, v.vendor_short,
+                   t.unit_price, t.min_qty_break, t.discount_pct,
+                   t.is_designated
+            FROM {SCHEMA}.trade_agreement t
+            JOIN {SCHEMA}.dim_item i ON i.item_id = t.item_key
+            JOIN {SCHEMA}.dim_vendor v ON v.vendor_account = t.vendor_account
+            WHERE TRUE{where}
+            ORDER BY t.item_key, t.unit_price, t.vendor_account
+            """,
+            {key: value for key, value in params.items() if key != "day"},
+        )
+
+        # Four columns the workbook holds identical across all 2,400 rows, so
+        # they travel once rather than 2,400 times. Read with a DISTINCT rather
+        # than assumed: if the source ever varies one, this raises instead of
+        # picking a value and presenting it as everyone's terms.
+        terms = _rows(
+            connection,
+            f"""
+            SELECT DISTINCT currency, lead_time_days, valid_from, valid_to
+            FROM {SCHEMA}.trade_agreement
+            """,
+        )
+        if len(terms) != 1:
+            raise ValueError(
+                f"retail.trade_agreement has {len(terms)} distinct term sets, "
+                "expected 1. They have to move onto the quote rows here and in "
+                "scripts/build_replenishment_fixture.py together."
+            )
+
         vendors = _rows(
             connection,
             f"""
@@ -261,6 +302,24 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "routes": [dict(route) for route in ROUTES],
         "filter_options": options,
         "lines": build_lines(rows),
+        "quote_terms": {
+            "currency": terms[0]["currency"],
+            "lead_time_days": terms[0]["lead_time_days"],
+            "valid_from": terms[0]["valid_from"].isoformat(),
+            "valid_to": terms[0]["valid_to"].isoformat(),
+        },
+        "quotes": [
+            {
+                "sku_id": row["item_key"],
+                "vendor": row["vendor_short"],
+                "vendor_account": row["vendor_account"],
+                "unit_price": _float(row["unit_price"]),
+                "min_qty_break": _float(row["min_qty_break"]),
+                "discount_pct": _float(row["discount_pct"]),
+                "is_designated": bool(row["is_designated"]),
+            }
+            for row in quotes
+        ],
         "stores": [
             {
                 "store_id": row["store_id"],

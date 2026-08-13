@@ -36,6 +36,34 @@ longer read. Surfacing the real scorecard columns is worth doing, but it needs
 a `retail.vendor_scorecard` table so the API can answer with the same figures;
 half of it in the fixture only would put the two paths out of step.
 
+THE QUOTES BEHIND `saving_vs_designated`
+The board reported a recoverable saving per line without ever carrying the
+prices it is a difference between: `Trade Agreement` was seeded into Postgres,
+indexed, and queried by nobody. A buyer asked to move a line to another vendor
+could not see what that vendor charges, what its minimum break is, or by how
+much it undercuts the incumbent.
+
+`build_quotes` carries all 2,400. `verify_quotes` then rebuilds three figures
+the workbook states independently and refuses to write the fixture unless all
+800 lines agree exactly:
+
+    best_price            = min(unit_price) across the SKU's three quotes
+    unit_price_trade      = the quote of the vendor marked Designated
+    saving_vs_designated  = (designated - best) x order_qty_buy x pack_factor
+
+The last one is worth spelling out because it is not the shortfall. The
+workbook prices the saving on the whole packs a purchase order actually buys,
+so it reconciles against `amount` and not against `order_qty_sales`. Getting
+that wrong is a quiet twelvefold error on some SKUs.
+
+ONE THING THE PANEL MUST NOT DO
+`best_price` is the lowest LIST price. The workbook ignores `discount_pct` when
+it picks the winner, and applying the discount would change which vendor is
+cheapest on 159 of 800 SKUs. Both columns ship; the discount is shown and the
+saving stays on the workbook's own basis. Publishing a rival saving computed a
+different way would put two numbers on one board with nothing to say which is
+the answer.
+
 ROUTES COME FROM LEAD TIME, NOT FROM A CATEGORY LIST
 A3 spec section 2 classifies routes as `fresh -> Direct`, `catId in {BEV, HOU}
 -> Flow-Through`, else `Cross-Dock`. `BEV` and `HOU` do not exist in this
@@ -397,6 +425,108 @@ def reconcile(lines, reference, label_of) -> list[str]:
     return failures
 
 
+# Columns `Trade Agreement` holds identical across all 2,400 rows. Carried
+# once instead of repeated 2,400 times -- but checked on every build, because
+# "it was constant when I looked" is how a fixture starts lying. When the Azure
+# source makes any of them vary, the build stops and says which one.
+CONSTANT_QUOTE_TERMS = ("currency", "lead_time_d", "valid_from", "valid_to")
+
+
+def quote_terms(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    terms: dict[str, Any] = {}
+    for column in CONSTANT_QUOTE_TERMS:
+        seen = {row[column] for row in rows}
+        if len(seen) != 1:
+            raise SystemExit(
+                f"FAIL  Trade Agreement.{column} is no longer one value "
+                f"({len(seen)} distinct). Move it onto the quote rows here and "
+                "in backend/src/llm/agents/retail/replenishment/dashboard.py, "
+                "or the two paths will disagree."
+            )
+        terms[column] = seen.pop()
+    return {
+        "currency": terms["currency"],
+        "lead_time_days": terms["lead_time_d"],
+        "valid_from": terms["valid_from"],
+        "valid_to": terms["valid_to"],
+    }
+
+
+def build_quotes(trade_agreements: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every vendor quote on file, one row per (SKU, vendor).
+
+    Sorted cheapest first within a SKU so the panel does not have to, and so
+    the fixture and the API -- which sorts in SQL -- can be compared row for
+    row. `vendor` is the short name because that is what an order line names
+    in `designated_vendor`; the account travels with it for the eventual join
+    against D365.
+    """
+    return [
+        {
+            "sku_id": row["item"],
+            "vendor": row["vendor"],
+            "vendor_account": row["vendor_account"],
+            "unit_price": row["unit_price"],
+            "min_qty_break": row["min_qty_break"],
+            "discount_pct": row["discount_pct"],
+            "is_designated": row["designated"] == "Y",
+        }
+        for row in sorted(
+            trade_agreements,
+            key=lambda row: (row["item"], row["unit_price"], row["vendor_account"]),
+        )
+    ]
+
+
+def verify_quotes(
+    quotes: list[dict[str, Any]],
+    lines: list[dict[str, Any]],
+    sku_master: dict[str, dict[str, Any]],
+) -> list[str]:
+    """Rebuild the three sourcing figures from the quotes, or refuse to build.
+
+    The order line states `best_price`, `unit_price_trade` and
+    `saving_vs_designated` as finished numbers. If the quotes now shipping
+    beside them cannot reproduce those three, one of the two is wrong and the
+    board would show a saving next to prices that do not add up to it.
+    """
+    by_sku: dict[str, list[dict[str, Any]]] = {}
+    for quote in quotes:
+        by_sku.setdefault(quote["sku_id"], []).append(quote)
+
+    failures: list[str] = []
+    for line in lines:
+        sku = line["sku_id"]
+        offers = by_sku.get(sku)
+        if not offers:
+            failures.append(f"{sku}: no trade agreement on file")
+            continue
+
+        designated = [offer for offer in offers if offer["is_designated"]]
+        if len(designated) != 1:
+            failures.append(f"{sku}: {len(designated)} designated vendors, expected 1")
+            continue
+
+        best = min(offer["unit_price"] for offer in offers)
+        incumbent = designated[0]["unit_price"]
+        # Whole packs, not the shortfall -- see THE QUOTES BEHIND above.
+        units = line["order_qty_buy"] * sku_master[sku]["pack_factor"]
+
+        if abs(line["best_price"] - best) > 1e-6:
+            failures.append(f"{sku}: best_price {line['best_price']} != {best}")
+        if abs(line["unit_price_trade"] - incumbent) > 1e-6:
+            failures.append(
+                f"{sku}: unit_price_trade {line['unit_price_trade']} != "
+                f"designated quote {incumbent}"
+            )
+        expected = (incumbent - best) * units
+        if abs(line["saving_vs_designated"] - expected) > 0.5:
+            failures.append(
+                f"{sku}: saving {line['saving_vs_designated']} != {expected}"
+            )
+    return failures
+
+
 def main() -> int:
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
@@ -412,6 +542,7 @@ def main() -> int:
         "replenishment_detail",
         "a3_replenishment",
         "vendors",
+        "trade_agreements",
         "constants",
     )
     missing = [name for name in required if name not in tables]
@@ -458,6 +589,16 @@ def main() -> int:
         )
 
     vendors = {row["vendor"]: row for row in tables["vendors"]}
+
+    quotes = build_quotes(tables["trade_agreements"])
+    terms = quote_terms(tables["trade_agreements"])
+    quote_failures = verify_quotes(quotes, lines, sku_master)
+    if quote_failures:
+        print(f"FAIL  {len(quote_failures)} line(s) disagree with their quotes:")
+        for failure in quote_failures[:10]:
+            print(f"      {failure}")
+        return 1
+    print(f"  ok  {len(quotes)} quotes reconcile to all {len(lines)} order lines")
 
     fixture = {
         "schema_version": SCHEMA_VERSION,
@@ -509,6 +650,8 @@ def main() -> int:
         },
         "lines": lines,
         "stores": store_rows,
+        "quote_terms": terms,
+        "quotes": quotes,
         "vendors": [
             {
                 "vendor": name,

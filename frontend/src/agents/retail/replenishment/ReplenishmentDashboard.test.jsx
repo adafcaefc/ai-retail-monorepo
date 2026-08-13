@@ -495,3 +495,61 @@ describe("the simulation at rest", () => {
     expect(simulation.unmodelled).toContain("markdown");
   });
 });
+
+/*
+ * Asserted through the rendered board, not through the selector.
+ *
+ * `computeSourcing` was correct and the panel still showed nothing the first
+ * time a block like this was added: `normalizeReplenishmentDashboard` returns
+ * an explicit object, so a block the selectors produce and the normalizer does
+ * not list is dropped silently between them. A selector test passes throughout.
+ * This is the shape of test that does not.
+ */
+describe("the vendor quote panel", () => {
+  it("renders the quotes the saving is a difference between", async () => {
+    await renderSettled();
+
+    const panel = screen.getByLabelText("Vendor quotes");
+    const rows = within(panel).getAllByRole("listitem");
+    expect(rows.length).toBeGreaterThan(0);
+
+    // The workbook holds one validity window and one lead time across all
+    // 2,400 quotes, so the panel states them once instead of per row.
+    expect(within(panel).getByText(/IDR/)).toBeInTheDocument();
+  });
+
+  it("opens a line onto its three quotes, flagged", async () => {
+    await renderSettled();
+
+    const panel = screen.getByLabelText("Vendor quotes");
+    const first = within(panel).getAllByRole("listitem")[0];
+
+    fireEvent.click(first.querySelector("summary"));
+
+    const table = within(first).getByRole("table");
+    // Three vendors quote every SKU in this dataset: the incumbent, the
+    // cheapest, and one more.
+    expect(within(table).getAllByRole("row")).toHaveLength(4); // header + 3
+    expect(within(table).getByText("designated")).toBeInTheDocument();
+    expect(within(table).getByText("cheapest")).toBeInTheDocument();
+  });
+
+  it("shows the incumbent and the vendor it would move to", async () => {
+    const board = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const top = board.sourcing.skus[0];
+
+    await renderSettled();
+    const panel = screen.getByLabelText("Vendor quotes");
+    const first = within(panel).getAllByRole("listitem")[0];
+
+    expect(within(first).getByText(top.sku_id, { exact: false })).toBeInTheDocument();
+    // Named twice by design: once in the summary as the vendor being moved
+    // away from, once in the table as the row holding the incumbent price.
+    expect(
+      within(first).getAllByText(top.designated_vendor, { exact: false }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(first).getAllByText(top.best_price_vendor, { exact: false }).length,
+    ).toBeGreaterThan(0);
+  });
+});

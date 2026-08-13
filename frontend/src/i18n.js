@@ -347,6 +347,27 @@ const CHROME = {
   "if switched": "jika dialihkan",
   "cheapest on file": "termurah yang tercatat",
   OTIF: "OTIF",
+  // A3 · trade agreements. `designated` and `cheapest` are row flags, so they
+  // stay lower case: they read as labels on a price, not as sentences.
+  "Vendor quotes": "Penawaran vendor",
+  "lines could move to a cheaper vendor": "baris bisa pindah ke vendor lebih murah",
+  "already on best price": "sudah di harga terbaik",
+  "ordered lines are already on the cheapest quote on file.":
+    "baris pesanan sudah memakai penawaran termurah yang tercatat.",
+  "No line in this scope has an order to place.":
+    "Tidak ada baris pada cakupan ini yang perlu dipesan.",
+  "All quotes": "Semua penawaran",
+  valid: "berlaku",
+  "units on order": "unit dipesan",
+  "per unit cheaper": "lebih murah per unit",
+  "more lines with a cheaper quote, not shown":
+    "baris lain punya penawaran lebih murah, tidak ditampilkan",
+  Vendor: "Vendor",
+  "Unit price": "Harga satuan",
+  "Min qty": "Qty minimum",
+  Discount: "Diskon",
+  designated: "ditunjuk",
+  cheapest: "termurah",
   "Purchase order preview": "Pratinjau pesanan pembelian",
   "Nothing needs ordering in the current scope.":
     "Tidak ada yang perlu dipesan pada cakupan ini.",

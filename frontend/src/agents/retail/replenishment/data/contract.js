@@ -286,6 +286,19 @@ export function normalizeReplenishmentDashboard(payload) {
     kpi_sparklines: payload.kpi_sparklines ?? {},
     vendors: payload.vendors ?? [],
     vendor_split: payload.vendor_split ?? [],
+    /*
+     * Declared, or it is dropped — this returns an explicit object, so a block
+     * the selectors add and this list omits never reaches a component. That is
+     * exactly how the KPI charts went missing on Inventory Risk, and the
+     * regression test for it asserts through the rendered board rather than
+     * through the selector, because a selector test would have passed.
+     */
+    sourcing: payload.sourcing ?? {
+      terms: null,
+      skus: [],
+      switchable_lines: 0,
+      on_best_lines: 0,
+    },
     purchase_order: payload.purchase_order ?? [],
     reference_by_vertical: payload.reference_by_vertical ?? [],
   };

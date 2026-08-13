@@ -243,6 +243,77 @@ export function computeVendorSplit(lines) {
 }
 
 /**
+ * The quotes a saving is a difference between.
+ *
+ * `computeVendorSplit` above says how much is recoverable per vendor;
+ * this says which SKU, at whose price, against whose. Until `trade_agreement`
+ * reached a payload, the board could state the saving but not the evidence —
+ * a buyer was asked to move a line to a vendor whose price was not on screen.
+ *
+ * The saving is read off the line rather than recomputed here. `engine.js`
+ * already re-derives it from f11 under a lever, and `engine.test.js` holds it
+ * to the workbook's stored column at rest, so taking it from the line is what
+ * keeps this panel, the KPI tile and the vendor split showing one number.
+ *
+ * The ranking is by list price, which is the workbook's own basis. Applying
+ * `discount_pct` would name a different winner on 159 of 800 SKUs — so the
+ * discount is shown as a column and never folded into the comparison. One
+ * board cannot carry two answers to "who is cheapest" without saying which.
+ */
+export function computeSourcing(lines, quotes, terms) {
+  if (!quotes?.length) {
+    return { terms: terms ?? null, skus: [], switchable_lines: 0, on_best_lines: 0 };
+  }
+
+  const bySku = new Map();
+  for (const quote of quotes) {
+    const offers = bySku.get(quote.sku_id);
+    if (offers) offers.push(quote);
+    else bySku.set(quote.sku_id, [quote]);
+  }
+
+  const skus = [];
+  let onBest = 0;
+  for (const line of lines) {
+    // Lines with nothing on order have no saving to recover, whatever the
+    // price gap: the panel proposes a switch, not a purchase.
+    if (line.order_qty_buy <= 0) continue;
+
+    const offers = bySku.get(line.sku_id);
+    if (!offers) continue;
+
+    if (!(line.saving_vs_designated > 0)) {
+      onBest += 1;
+      continue;
+    }
+
+    skus.push({
+      sku_id: line.sku_id,
+      name: line.name,
+      category_label: line.category_label,
+      designated_vendor: line.designated_vendor,
+      best_price_vendor: line.best_price_vendor,
+      unit_price_trade: line.unit_price_trade,
+      best_price: line.best_price,
+      order_qty_buy: line.order_qty_buy,
+      buy_uom: line.buy_uom,
+      // What the saving is priced on: whole packs, not the shortfall.
+      order_units: line.order_qty_buy * line.pack_factor,
+      saving: line.saving_vs_designated,
+      quotes: offers,
+    });
+  }
+
+  skus.sort((a, b) => b.saving - a.saving);
+  return {
+    terms: terms ?? null,
+    skus,
+    switchable_lines: skus.length,
+    on_best_lines: onBest,
+  };
+}
+
+/**
  * A3 spec 5c: the purchase order itself, biggest commitment first.
  *
  * Sorted by cost rather than by shortfall: a buyer works down a PO by what it
@@ -584,6 +655,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     ),
     vendors: fixture.vendors,
     vendor_split: computeVendorSplit(live),
+    sourcing: computeSourcing(live, fixture.quotes, fixture.quote_terms),
     purchase_order: computePurchaseOrder(live),
     reference_by_vertical: fixture.reference_by_vertical,
   };

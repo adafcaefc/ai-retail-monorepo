@@ -9796,3 +9796,138 @@ button.po-kpi {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ---------------------------------------------------------------- A3 quotes
+ *
+ * The trade-agreement panel. It sits full width under the two half-width
+ * charts rather than beside them: a row here is a four-column table inside a
+ * disclosure, and at half width the price column wraps under the vendor name,
+ * which is the one comparison the panel exists to make.
+ */
+.po-quotes {
+  margin-top: var(--space-3);
+}
+
+.po-quotes-terms,
+.po-quotes-empty,
+.po-quotes-more {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-quote-list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--space-2) 0 0;
+  gap: 6px;
+  padding: 0;
+  list-style: none;
+}
+
+.po-quote-list li {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.po-quote-list summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 6px var(--space-2);
+  gap: var(--space-2);
+  cursor: pointer;
+  /* The marker is replaced by the row's own affordance: the whole summary is
+     the hit area, and a disclosure triangle beside a three-column row reads as
+     a fourth column. */
+  list-style: none;
+}
+
+.po-quote-list summary::-webkit-details-marker {
+  display: none;
+}
+
+.po-quote-list summary:hover {
+  background: var(--surface-2);
+}
+
+.po-quote-sku {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.po-quote-sku small {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.po-quote-switch {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.po-quote-saving {
+  flex: 0 0 auto;
+  color: var(--green-600);
+  font-weight: 600;
+}
+
+.po-quote-basis {
+  margin: 0;
+  padding: 0 var(--space-2) 6px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.po-quote-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.po-quote-table th,
+.po-quote-table td {
+  padding: 4px var(--space-2);
+  border-top: 1px solid var(--line);
+  text-align: right;
+}
+
+.po-quote-table th[scope="row"],
+.po-quote-table th[scope="col"]:first-child {
+  text-align: left;
+  font-weight: 500;
+}
+
+.po-quote-table thead th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.po-quote-designated {
+  background: var(--surface-2);
+}
+
+.po-quote-best th[scope="row"],
+.po-quote-best td {
+  color: var(--green-600);
+}
+
+.po-quote-flag {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 0.55rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.po-quote-flag--best {
+  background: color-mix(in srgb, var(--green-600) 14%, transparent);
+  color: var(--green-600);
+}

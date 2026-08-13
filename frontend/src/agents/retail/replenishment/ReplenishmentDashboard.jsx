@@ -12,6 +12,7 @@ import ReplenishmentSkeleton from "./components/ReplenishmentSkeleton.jsx";
 import ReplenishmentWhatIfSimulator from "./components/ReplenishmentWhatIfSimulator.jsx";
 import RequirementVsInboundPanel from "./components/RequirementVsInboundPanel.jsx";
 import RouteBreakdownPanel from "./components/RouteBreakdownPanel.jsx";
+import VendorQuotePanel from "./components/VendorQuotePanel.jsx";
 import VendorSourcingPanel from "./components/VendorSourcingPanel.jsx";
 import {
   ALL,
@@ -271,6 +272,9 @@ export default function ReplenishmentDashboard() {
           vendors={dashboard.vendors ?? []}
         />
       </div>
+
+      {/* Directly under the per-vendor totals: the same money, itemised. */}
+      <VendorQuotePanel sourcing={dashboard.sourcing} />
 
       <OrderDimensionCharts
         byCategory={dashboard.by_category}
