@@ -1,0 +1,57 @@
+# Local Postgres for development — the ALTERNATIVE path.
+#
+# Not needed if PostgreSQL is already installed. Check before reaching for this:
+#
+#     Get-Service -Name '*postgres*'
+#     & 'C:\Program Files\PostgreSQL\<version>\bin\pg_isready.exe' -h localhost
+#
+# A native install and this container both want port 5432, so running both at
+# once gives you two databases behind one address and a very confusing
+# afternoon. Use one.
+#
+# The retail schema targets Postgres specifically — `create_retail_schema.py`
+# writes schema-qualified DDL (`retail.dim_vertical`), which SQLite cannot
+# express. So it is Postgres either way.
+#
+#     docker compose up -d
+#     ../.venv/Scripts/python.exe scripts/create_retail_schema.py
+#     ../.venv/Scripts/python.exe scripts/seed_retail_dims_from_json.py
+#
+# Then point the backend at it, in `backend/.env`:
+#
+#     DATABASE_URL=postgresql+psycopg://retail:devonly@localhost:5432/ai_retail
+#
+# Changing that line is what keeps a `create_retail_schema.py` run off the
+# Azure server it points at by default — the script is idempotent, but
+# idempotent against the wrong database is still the wrong database.
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: ai-retail-pg
+
+    environment:
+      POSTGRES_DB: ai_retail
+      POSTGRES_USER: retail
+      # Development only, and it should stay that way: this file is committed,
+      # so anything written here is public to everyone with repo access.
+      POSTGRES_PASSWORD: devonly
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - retail_pgdata:/var/lib/postgresql/data
+
+    # The seed scripts fail confusingly against a server that is listening but
+    # not yet accepting queries, so hold the container "starting" until it is.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retail -d ai_retail"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+volumes:
+  retail_pgdata:

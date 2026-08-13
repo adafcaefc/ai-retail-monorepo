@@ -71,7 +71,7 @@ API errors are surfaced to the user and never fall back to the fixture.
 |---|---|---|---|---|---|
 | `legal_entity_id` | string | `ALL` or a `filter_options.legal_entities[].value` ID | `ALL` | No | Legal Entity / Retail Vertical select, or Legal Entity chart drilldown |
 | `category_group` | string | `ALL` or a `filter_options.categories[].value` ID | `ALL` | No | Category select, or Category chart drilldown |
-| `store_id` | string | `ALL` or a `filter_options.stores[].value` ID | `ALL` | No | Store select — **currently disabled in the UI, see section 11** |
+| `store_id` | string | `ALL` or a `filter_options.stores[].value` ID | `ALL` | No | Store select — applied client-side by re-deriving that store's rows, see section 11 |
 | `state` | string enum | `ALL`, `Stockout`, `Low`, `Expiry`, `Overstock`, `Slow-mover`, `Healthy` | `ALL` | No | State select, or At-risk-by-state chart |
 | `sku` | string | SKU ID or case-insensitive item-name search text; trimmed | empty string | No | SKU search, expiry watchlist selection, or register row selection |
 
@@ -605,27 +605,53 @@ The frontend applies no client-side filtering in API mode, so the backend owns
 the match. Keep it a substring match, not a prefix or exact match, or the
 search box will appear to break.
 
-## 11. Store scope — the one deliberate gap
+## 11. Store scope — resolved, and not the way this section first assumed
 
-`scope.store_id` is accepted, echoed, and part of the contract, but the store
-select is **disabled in the UI today** with the tooltip *"Store scope needs the
-per-store dataset, not yet available."*
+This section used to describe the store select as disabled, because scoping to
+one store looked like it required the 16,000-row SKU × store grid and ~163 KB
+of payload with it.
 
-The reason is delivery, not availability. `fixture.items` is chain-net — one
-row per SKU across the whole chain, with no store dimension. Scoping the
-register to one store needs the 16,000-row SKU × store grid, roughly 163 KB
-gzipped on top of the current fixture, shipped to every browser for interim
-data.
+That was true of the *dataset* and false of the *arithmetic*. `ENGINE_STORE` is
+not an independent measurement — it is the SKU attributes crossed with the
+store attributes, and three products regenerate any row of it:
 
-**A backend builder removes this constraint entirely.** It can query the grid
-server-side and return only the scoped slice. When the API honours `store_id`:
+```
+ads      = base_ads × seasonality × store.size_index
+on_hand  = base_ads × onhand_days × stock_factor
+           × store.health_index × store.size_index
+open_po  = open_po_chain × (store.size_index / Σ size_index in vertical)
+```
 
-1. Set `SUPPORTS_STORE_SCOPE = true` in
-   `frontend/src/agents/retail/inventory_risk/data/selectors.js`.
-2. The select enables itself; no contract change, no component change.
+Checked against all 16,000 rows at zero difference for `ads`, `on_hand` and
+`position`, and within 1e-3 for `open_po` (the workbook stores it rounded).
+`scripts/build_inventory_risk_fixture.py::verify_store_derivation` re-runs that
+check on every build and refuses to write the fixture if it drifts.
 
-The store and cluster charts are unaffected either way — they already read
-pre-aggregated per-store rows.
+So the board carries **four extra numbers** — `onhand_days` and `stock_factor`
+per SKU, `size_index` and `health_index` per store, about 960 values — instead
+of the grid those values generate. `atStore` in `data/engine.js` applies them;
+everything downstream (ROP, Max, DoS, state, the KPI flags) is the ordinary
+formula chain fed one store's inputs.
+
+`SUPPORTS_STORE_SCOPE` is now `true` and the select is live.
+
+**What the headline means at each setting**, because they answer different
+questions and both are right:
+
+| `store_id` | Meaning |
+|---|---|
+| `ALL` | Chain-net. What the `A2 Inventory Risk` sheet totals and every reconciliation test asserts. Surplus in one store nets off shortage in another. |
+| `S001` | That store's own position. A SKU healthy across the chain can be `Stockout` here — which is the entire reason to ask. |
+
+Selecting a store therefore does not *narrow* the chain-net figure, it
+*replaces* it with a different measurement. Summing every store will not return
+the chain-net total, for the reason `GROSS_VS_NET_NOTE` already states.
+
+**The backend's part is to send the four columns, not to filter.** `store_id`
+stays outside `SUPPORTED_FILTERS` and is applied by the selectors, exactly as
+`state` and `sku` already are.
+
+The store and cluster charts follow the selection: one store selected, one bar.
 
 ## 12. Error contract
 
@@ -716,7 +742,7 @@ scope, because a user can compare them by switching boards:
 - [ ] Keep `share` a fraction in `0..1`, not a percentage.
 - [ ] Send `dos` at full precision; let the UI round.
 - [ ] Send `is_mock: false` and a truthful `note` only when the data is genuinely live.
-- [ ] Honour `store_id`, then flip `SUPPORTS_STORE_SCOPE` to `true` in the frontend.
+- [x] Store scope: send `onhand_days` / `stock_factor` on items and `size_index` / `health_index` on stores. The selectors derive the store row; the route does not filter by `store_id`. See section 11.
 - [ ] Add backend contract tests using `plans/inventory-risk-api-example.json` as a shape reference.
 - [ ] Confirm the response passes `normalizeInventoryRiskDashboard(payload)`.
 - [ ] Return 400/404/422/503 using the repository JSON `detail` convention.

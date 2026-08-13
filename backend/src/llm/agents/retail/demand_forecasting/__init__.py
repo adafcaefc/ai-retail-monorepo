@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from src.llm.agents.descriptor import AgentDescriptor
-from src.llm.agents.retail.retail import dashboard
+from src.llm.agents.retail.demand_forecasting import dashboard
 
 DESCRIPTOR = AgentDescriptor(
     id="retail.demand_forecasting",
@@ -24,6 +24,7 @@ DESCRIPTOR = AgentDescriptor(
     allowed_tables=(),
     tools={},
     build_dashboard=dashboard.build,
+    supported_filters=dashboard.SUPPORTED_FILTERS,
     dashboard_only=True,
 )
 

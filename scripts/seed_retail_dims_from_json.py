@@ -146,8 +146,10 @@ def main() -> int:
             "dashboard_label": row["dashboard_label"],
             "sales_per_fte": row["sales_per_fte"],
             "d365_data_area": None,
+            # Preserves the sheet's ordering, which the dashboards follow.
+            "sort_order": index,
         }
-        for row in tables["verticals"]["rows"]
+        for index, row in enumerate(tables["verticals"]["rows"])
     ]
 
     vendors = [
@@ -222,6 +224,26 @@ def main() -> int:
                 "margin_pct": row["margin_pct"],
                 "seasonality_index": row["seasonality"],
                 "lifecycle": None,
+                # What-If parameters. `f07` classifies a slow mover by growth;
+                # `f01` prices a promo lift from the other two. Carried on the
+                # item because they describe the item, not any one day of it.
+                "growth_index": row["growth"],
+                "is_promo_eligible": str(row["promo"]).strip().upper() == "Y",
+                "cannibalisation_pct": row["cannib_pct"],
+                "elasticity": row["elasticity"],
+                # A1 badges a SKU with up to three signals; this is one of them.
+                "is_viral": str(row["viral"]).strip().upper() == "Y",
+                # The pair that makes a store-scoped board possible without the
+                # 16,000-row grid:
+                #
+                #   on_hand(sku, store) = base_ads * onhand_days * stock_factor
+                #                         * store.health_index * store.size_index
+                #
+                # Checked against every ENGINE_STORE row at zero difference, so
+                # a store-scoped position is the workbook's own figure and not
+                # an approximation of it.
+                "onhand_days": row["onhand_days"],
+                "stock_factor": row["stockf"],
             }
         )
 
