@@ -28,7 +28,7 @@ on:
 
 env:
   # Repository/path of the image inside the registry.
-  IMAGE_NAME: ai-finance-forum-backend
+  IMAGE_NAME: ai-retail-monorepo
   # Used when ACA_CONTAINERS secret is not set.
   DEFAULT_CONTAINER_NAME: aca-ai-finance-forum-backend
 
