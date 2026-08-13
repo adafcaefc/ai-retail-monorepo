@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
@@ -687,15 +688,19 @@ def _leakage_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build(
-    legal_entity_id: str | None = None,
-    period: str | None = None,
-    category_group: str | None = None,  # noqa: ARG001 - not applicable; see get_payment_leakage_snapshot's docstring
-) -> dict[str, Any]:
+# Leakage has a month but no category dimension; see
+# get_payment_leakage_snapshot's docstring.
+SUPPORTED_FILTERS: frozenset[str] = frozenset({"legal_entity_id", "period"})
+
+
+def build(scope: DashboardScope | None = None) -> dict[str, Any]:
+    scope = scope or DashboardScope()
     return _enriched(
         _leakage_dashboard(
             _call_with_timeout(
-                lambda: get_payment_leakage_snapshot(legal_entity_id, period)
+                lambda: get_payment_leakage_snapshot(
+                    scope.legal_entity_id, scope.period
+                )
             )
         )
     )

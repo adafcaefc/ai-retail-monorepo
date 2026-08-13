@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
@@ -394,15 +395,17 @@ def _treasury_dashboard(baseline: dict[str, Any]) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
-def build(
-    legal_entity_id: str | None = None,
-    period: str | None = None,  # noqa: ARG001 - not applicable; see get_baseline's docstring
-    category_group: str | None = None,  # noqa: ARG001 - not applicable
-) -> dict[str, Any]:
+# The cashflow baseline is a position, not a series: no month to narrow by and
+# no category dimension. See get_baseline's docstring.
+SUPPORTED_FILTERS: frozenset[str] = frozenset({"legal_entity_id"})
+
+
+def build(scope: DashboardScope | None = None) -> dict[str, Any]:
+    scope = scope or DashboardScope()
     return _enriched(
         _treasury_dashboard(
             _call_with_timeout(
-                lambda: get_cashflow_baseline(legal_entity_id)
+                lambda: get_cashflow_baseline(scope.legal_entity_id)
             )
         )
     )

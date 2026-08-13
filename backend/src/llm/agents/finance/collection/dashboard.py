@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.common.dashboard_blocks import (
     _bar_chart,
     _call_with_timeout,
@@ -396,15 +397,19 @@ def _collections_dashboard(snap: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def build(
-    legal_entity_id: str | None = None,
-    period: str | None = None,  # noqa: ARG001 - not applicable; see get_collections_snapshot's docstring
-    category_group: str | None = None,  # noqa: ARG001 - not applicable
-) -> dict[str, Any]:
+# Collections narrow by entity and nothing else: the snapshot has no month to
+# filter on and no category dimension (see get_collections_snapshot's
+# docstring). Declared here so the route can tell a caller its `period` was not
+# applied, rather than leaving that fact in a comment nobody reads.
+SUPPORTED_FILTERS: frozenset[str] = frozenset({"legal_entity_id"})
+
+
+def build(scope: DashboardScope | None = None) -> dict[str, Any]:
+    scope = scope or DashboardScope()
     return _enriched(
         _collections_dashboard(
             _call_with_timeout(
-                lambda: get_collections_snapshot(legal_entity_id)
+                lambda: get_collections_snapshot(scope.legal_entity_id)
             )
         )
     )
