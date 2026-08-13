@@ -1,0 +1,12 @@
+import {{PageName}} from "./{{PageName}}.jsx";
+
+export default {
+  id: "{{folder}}.{{name}}",
+  folder: "{{folder}}",
+  name: "{{Display Name}}",
+  component: {{PageName}},
+  // Only set this if the folder's glob-sort position would wrongly win the
+  // default-screen slot (see AGENTS.md's note on the Data Source page). Omit
+  // otherwise -- default is 0.
+  // order: 1,
+};
