@@ -9,6 +9,8 @@ import {
 
 import {
   approveAction,
+  clearAlerts,
+  fetchActionHistory,
   fetchActions,
   fetchAlertsWithActions,
   fetchMonitoringAgents,
@@ -69,6 +71,8 @@ export default function AlertsPanel({
   const [actionOpen, setActionOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   const [step, setStep] = useState(0);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -121,9 +125,11 @@ export default function AlertsPanel({
         // the backend normalises magnitudes within whatever list it is
         // handed (see impact/scoring.rank).
         const [payload, monitorsPayload, rankedPayload] = await Promise.all([
-          fetchAlertsWithActions(agentId),
+          fetchAlertsWithActions(agentId, { status: "planned" }),
           fetchMonitoringAgents(agentId),
-          fetchActions(agentId).catch(() => ({ items: [] })),
+          fetchActions(agentId, { status: "planned" }).catch(() => ({
+            items: [],
+          })),
         ]);
         if (!cancelled) {
           setAlerts(payload.items || []);
@@ -148,7 +154,10 @@ export default function AlertsPanel({
     return () => {
       cancelled = true;
     };
-  }, [agentId, backendEnabled, monitoring.runId]);
+    // Reload when THIS agent's own populate completes, not any board's --
+    // runVersions is per-agent so one board's recalculate cannot reset
+    // another board's open Agent Action wizard/selection.
+  }, [agentId, backendEnabled, monitoring.runVersions?.[agentId]]);
 
   // Surface monitoring progress as a transient toast instead of a
   // dashboard-blocking banner. Only fire on the running -> settled
@@ -238,7 +247,9 @@ export default function AlertsPanel({
     }
     setError("");
     try {
-      const payload = await fetchAlertsWithActions(agentId);
+      const payload = await fetchAlertsWithActions(agentId, {
+        status: "planned",
+      });
       setAlerts(payload.items || []);
     } catch (loadError) {
       setError(loadError.message || "Unable to load alerts.");
@@ -269,13 +280,35 @@ export default function AlertsPanel({
     setError("");
 
     try {
-      const payload = await fetchActions(agentId);
+      const payload = await fetchActionHistory(agentId);
       setHistory(Array.isArray(payload.items) ? payload.items : []);
     } catch (historyError) {
       setHistory([]);
       setError(historyError.message || "Unable to load action history.");
     } finally {
       setHistoryLoading(false);
+    }
+  }
+
+  async function handleDeleteAll() {
+    if (!backendEnabled || deleteBusy) {
+      return;
+    }
+
+    setDeleteBusy(true);
+    setError("");
+    try {
+      await clearAlerts(agentId);
+      setDeleteConfirmOpen(false);
+      await reloadAlerts();
+      if (historyOpen) {
+        const payload = await fetchActionHistory(agentId);
+        setHistory(Array.isArray(payload.items) ? payload.items : []);
+      }
+    } catch (deleteError) {
+      setError(deleteError.message || "Delete failed.");
+    } finally {
+      setDeleteBusy(false);
     }
   }
 
@@ -393,7 +426,7 @@ export default function AlertsPanel({
       }
       await reloadAlerts({ silent: true });
       if (historyOpen) {
-        const payload = await fetchActions(agentId);
+        const payload = await fetchActionHistory(agentId);
         setHistory(Array.isArray(payload.items) ? payload.items : []);
       }
     } catch (approveError) {
@@ -601,6 +634,22 @@ export default function AlertsPanel({
                   onClick={openHistory}
                 >
                   <span>Audit History</span>
+                </button>
+
+                {/* The only remaining way to remove alert/action history --
+                    recalculate is purely additive now, so this is the one
+                    deliberate, explicit exception, gated by its own
+                    confirmation modal below. */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="alerts-more-item danger"
+                  onClick={() => {
+                    setMoreOpen(false);
+                    setDeleteConfirmOpen(true);
+                  }}
+                >
+                  <span>Delete all alerts…</span>
                 </button>
               </div>
             </>
@@ -862,6 +911,38 @@ export default function AlertsPanel({
               </table>
             </div>
           )}
+        </Modal>
+      ) : null}
+
+      {deleteConfirmOpen ? (
+        <Modal
+          title="Delete all alerts?"
+          subtitle={`This permanently deletes every ${agentName} alert and action, including approved history. This cannot be undone.`}
+          onClose={() => (deleteBusy ? null : setDeleteConfirmOpen(false))}
+        >
+          {displayError ? (
+            <p className="alerts-error" role="alert">
+              {displayError}
+            </p>
+          ) : null}
+          <div className="action-step-footer">
+            <button
+              type="button"
+              className="alerts-btn"
+              disabled={deleteBusy}
+              onClick={() => setDeleteConfirmOpen(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="alerts-btn danger"
+              disabled={deleteBusy}
+              onClick={handleDeleteAll}
+            >
+              {deleteBusy ? "Deleting…" : "Delete everything"}
+            </button>
+          </div>
         </Modal>
       ) : null}
     </>

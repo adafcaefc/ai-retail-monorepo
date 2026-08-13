@@ -23,6 +23,16 @@ logger = logging.getLogger(__name__)
 # are recovered inside the agent; previous_error is fed on each outer retry.
 SIMULATE_MAX_ATTEMPTS = 3
 
+# chat.alerts/chat.actions only grow now (see populate_alerts), so what one
+# monitoring pass sees has to be capped or its token cost grows with every
+# run forever. Full history is always in the DB and in Audit History
+# regardless; this only bounds one LLM call's context.
+MAX_MONITORING_CONTEXT = 40
+
+
+class PopulateAlreadyRunningError(RuntimeError):
+    """A populate_alerts call is already holding this domain's advisory lock."""
+
 
 def allowed_data_for_agent(agent: str) -> dict[str, Any]:
     """Build the simulate/execute allow-list JSON with live column names."""
@@ -194,6 +204,8 @@ def list_actions(
 def list_actions_for_alert(
     session: Session,
     alert_id: str,
+    *,
+    status: str | None = None,
 ) -> list[dict[str, Any]]:
     alert = repository.get_alert(session, alert_id)
     if alert is None:
@@ -201,10 +213,49 @@ def list_actions_for_alert(
     return _recompute_impacts(
         session,
         _dedupe(
-            _canonicalize(repository.get_actions(session, alert_id=alert_id)),
+            _canonicalize(
+                repository.get_actions(
+                    session,
+                    alert_id=alert_id,
+                    status=status,
+                )
+            ),
             "action",
         ),
     )
+
+
+def list_alert_history(
+    session: Session,
+    *,
+    agent: str | None = None,
+) -> list[dict[str, Any]]:
+    """Every stored alert for a domain, newest first, with no same-name dedup.
+
+    Nothing is deleted from chat.alerts any more (see populate_alerts), so a
+    later run's alert can legitimately share an older one's title. `_dedupe`
+    (QC-021) exists for the live view's aliased-agent-key duplication, not for
+    this — applying it here would silently hide the earlier row from Audit
+    History.
+    """
+    keys = agent_keys(agent) if agent else None
+    return _canonicalize(repository.get_alerts(session, agent=keys))
+
+
+def list_action_history(
+    session: Session,
+    *,
+    agent: str | None = None,
+) -> list[dict[str, Any]]:
+    """Every stored action for a domain, newest first, undeduped and unranked.
+
+    Same reasoning as list_alert_history for skipping `_dedupe`. The impact
+    recompute/rank pass list_actions runs for the live view is skipped too:
+    it exists to grade a next-best-action choice, and History only ever
+    renders created_at/action/routes/status.
+    """
+    keys = agent_keys(agent) if agent else None
+    return _canonicalize(repository.get_actions(session, agent=keys))
 
 
 def approve_action(
@@ -245,6 +296,44 @@ def _prior_from_stored(alert: dict[str, Any]) -> dict[str, str]:
         "issue": str(alert.get("issue") or ""),
         "subagent": str(alert.get("subagent") or ""),
     }
+
+
+def _prior_action_from_stored(
+    action: dict[str, Any],
+    alerts_by_id: dict[str, dict[str, Any]],
+) -> dict[str, str]:
+    """One stored action as PriorAction prompt context, no DB access.
+
+    Carries the alert it addresses (name/issue) alongside the action itself,
+    so a monitoring pass can tell "this exact issue already has a planned or
+    approved action" from previous_alerts and current_actions together,
+    without either payload alone being enough.
+    """
+    alert = alerts_by_id.get(str(action.get("alert_id") or ""))
+    return {
+        "action": str(action.get("action") or ""),
+        "status": str(action.get("status") or ""),
+        "spec": str(action.get("spec") or ""),
+        "impact": str(action.get("impact") or ""),
+        "alert_name": str(alert.get("name") or "") if alert else "",
+        "alert_issue": str(alert.get("issue") or "") if alert else "",
+    }
+
+
+def _monitoring_context(
+    stored_actions: list[dict[str, Any]],
+    alerts_by_id: dict[str, dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Build current_actions for the monitoring prompt: capped, newest first.
+
+    `stored_actions` is already newest-first (repository.get_actions' own
+    ORDER BY); capping here is what keeps prompt cost from growing with every
+    past run now that nothing is deleted (see MAX_MONITORING_CONTEXT).
+    """
+    return [
+        _prior_action_from_stored(action, alerts_by_id)
+        for action in stored_actions[:MAX_MONITORING_CONTEXT]
+    ]
 
 
 def _alert_row(
@@ -300,12 +389,15 @@ def _persist_run(
     session: Session,
     *,
     pending: list[tuple[dict[str, Any], list[dict[str, Any]]]],
+    run_id: int | None = None,
 ) -> list[dict[str, Any]]:
     """
     Write a whole monitoring run: one executemany per table, one commit.
 
     Row-at-a-time inserts cost a network round trip each, which against a
-    remote Postgres dominated the persistence phase.
+    remote Postgres dominated the persistence phase. Purely additive: this
+    never deletes anything, so every row this call writes carries `run_id`
+    and nothing already stored is touched.
     """
     if not pending:
         session.commit()
@@ -314,6 +406,7 @@ def _persist_run(
     alert_ids = repository.save_alerts(
         session,
         [alert_row for alert_row, _ in pending],
+        run_id=run_id,
         commit=False,
     )
 
@@ -326,6 +419,7 @@ def _persist_run(
     action_ids = repository.save_actions(
         session,
         action_rows,
+        run_id=run_id,
         commit=False,
     )
     session.commit()
@@ -376,110 +470,181 @@ async def populate_alerts(
     """
     Run all specialized monitoring agents for a domain concurrently.
 
-    Every monitor receives the same previous_alerts snapshot (alerts already
-    stored for the domain) so specialists avoid duplicates against known
-    issues. Agent runs happen in parallel; DB persistence is sequential.
+    Purely additive: nothing already in chat.alerts/chat.actions is ever
+    touched here. Every monitor receives previous_alerts (alerts already
+    stored for the domain) and current_actions (recent actions, with their
+    status/spec/impact and the alert each addresses), so a pass can judge for
+    itself whether an issue is already covered rather than re-raising it —
+    that judgement is prompt-only, not a code-level identity match.
+
+    A session-level Postgres advisory lock keyed by the domain, held on its
+    own dedicated connection (not `session`), stops two concurrent populates
+    for the same domain from racing: `session` commits multiple times over
+    the course of a run, and each commit can hand its DBAPI connection back
+    to the pool, so a lock tied to `session` would not reliably mean anything
+    by the second commit. Not acquired -> PopulateAlreadyRunningError, no run
+    row created. Acquired -> a chat.monitoring_runs row is opened (STARTED)
+    and every alert/action this call writes is stamped with its id; the row
+    is closed COMPLETED with counts on success or FAILED with the error on
+    any exception, and the lock is always released in `finally`.
     """
     descriptor = get_agent(agent)
     domain = descriptor.id
     passes = descriptor.monitoring_passes
     chivon = get_chivon()
 
-    previous_alerts = [
-        _prior_from_stored(item)
-        for item in repository.get_alerts(session, agent=domain)
-    ]
-    previous_count = len(previous_alerts)
-    allowed_tables = list(descriptor.allowed_tables)
-    domain_snapshot, table_schema = await _prefetch_domain_context(descriptor)
+    from src.db.db import get_engine
 
-    async def _run_pass(monitoring_pass: MonitoringPass) -> dict[str, Any]:
-        payload = {
-            "subagent_name": monitoring_pass.agent_name,
-            "instructions": monitoring_pass.instructions,
-            "allowed_tables": allowed_tables,
-            "previous_alerts": list(previous_alerts),
-            "domain_snapshot": domain_snapshot,
-            "table_schema": table_schema,
-        }
-        try:
-            result = await chivon.run_async(
-                monitoring_pass.agent_name,
-                payload,
-            )
-            output = _dump_output(result.output)
-            return {
-                "monitoring_pass": monitoring_pass,
-                "raw_alerts": output.get("alerts") or [],
-                "error": None,
+    lock_connection = get_engine().connect()
+    if not repository.try_advisory_lock(lock_connection, domain):
+        lock_connection.close()
+        raise PopulateAlreadyRunningError(
+            f"A monitoring populate is already running for {domain!r}."
+        )
+
+    # None until create_monitoring_run succeeds, so a failure in that call
+    # itself (rather than in the run it would have tracked) has no run row to
+    # mark FAILED — the except clause below checks for exactly that.
+    run_id: int | None = None
+    try:
+        run_id = repository.create_monitoring_run(lock_connection, agent=domain)
+
+        stored_alerts = repository.get_alerts(session, agent=domain)
+        stored_actions = repository.get_actions(session, agent=domain)
+        alerts_by_id = {str(item["id"]): item for item in stored_alerts}
+
+        previous_alerts = [
+            _prior_from_stored(item)
+            for item in stored_alerts[:MAX_MONITORING_CONTEXT]
+        ]
+        previous_count = len(previous_alerts)
+        current_actions = _monitoring_context(stored_actions, alerts_by_id)
+        allowed_tables = list(descriptor.allowed_tables)
+        domain_snapshot, table_schema = await _prefetch_domain_context(
+            descriptor
+        )
+
+        async def _run_pass(monitoring_pass: MonitoringPass) -> dict[str, Any]:
+            payload = {
+                "subagent_name": monitoring_pass.agent_name,
+                "instructions": monitoring_pass.instructions,
+                "allowed_tables": allowed_tables,
+                "previous_alerts": list(previous_alerts),
+                "current_actions": list(current_actions),
+                "domain_snapshot": domain_snapshot,
+                "table_schema": table_schema,
             }
-        except Exception as error:  # noqa: BLE001
-            return {
-                "monitoring_pass": monitoring_pass,
-                "raw_alerts": [],
-                "error": str(error),
-            }
-
-    run_outputs = await asyncio.gather(
-        *[_run_pass(monitoring_pass) for monitoring_pass in passes]
-    )
-
-    # Collect every row first, then write the whole run in two executemany
-    # statements. Row-at-a-time inserts cost a round trip each.
-    pending: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
-    pass_spans: list[tuple[dict[str, Any], int, int]] = []
-    pass_results: list[dict[str, Any]] = []
-
-    for run_output in run_outputs:
-        monitoring_pass = run_output["monitoring_pass"]
-        raw_alerts = run_output["raw_alerts"]
-        pass_error = run_output["error"]
-        start = len(pending)
-
-        for raw in raw_alerts:
-            if hasattr(raw, "model_dump"):
-                alert = raw.model_dump(mode="json")
-            elif isinstance(raw, dict):
-                alert = raw
-            else:
-                continue
-            if _is_none_alert(alert):
-                continue
-            pending.append(
-                (
-                    _alert_row(
-                        domain=domain,
-                        alert=alert,
-                        subagent_name=monitoring_pass.agent_name,
-                    ),
-                    _action_rows(domain=domain, alert=alert),
+            try:
+                result = await chivon.run_async(
+                    monitoring_pass.agent_name,
+                    payload,
                 )
-            )
+                output = _dump_output(result.output)
+                return {
+                    "monitoring_pass": monitoring_pass,
+                    "raw_alerts": output.get("alerts") or [],
+                    "error": None,
+                }
+            except Exception as error:  # noqa: BLE001
+                return {
+                    "monitoring_pass": monitoring_pass,
+                    "raw_alerts": [],
+                    "error": str(error),
+                }
 
-        pass_entry: dict[str, Any] = {
-            "monitoring_agent": monitoring_pass.agent_name,
-            "instructions": monitoring_pass.instructions,
-            "previous_alert_count": previous_count,
-            "created_count": len(pending) - start,
-            "alerts": [],
+        run_outputs = await asyncio.gather(
+            *[_run_pass(monitoring_pass) for monitoring_pass in passes]
+        )
+
+        # Collect every row first, then write the whole run in two
+        # executemany statements. Row-at-a-time inserts cost a round trip
+        # each.
+        pending: list[tuple[dict[str, Any], list[dict[str, Any]]]] = []
+        pass_spans: list[tuple[dict[str, Any], int, int]] = []
+        pass_results: list[dict[str, Any]] = []
+
+        for run_output in run_outputs:
+            monitoring_pass = run_output["monitoring_pass"]
+            raw_alerts = run_output["raw_alerts"]
+            pass_error = run_output["error"]
+            start = len(pending)
+
+            for raw in raw_alerts:
+                if hasattr(raw, "model_dump"):
+                    alert = raw.model_dump(mode="json")
+                elif isinstance(raw, dict):
+                    alert = raw
+                else:
+                    continue
+                if _is_none_alert(alert):
+                    continue
+                pending.append(
+                    (
+                        _alert_row(
+                            domain=domain,
+                            alert=alert,
+                            subagent_name=monitoring_pass.agent_name,
+                        ),
+                        _action_rows(domain=domain, alert=alert),
+                    )
+                )
+
+            pass_entry: dict[str, Any] = {
+                "monitoring_agent": monitoring_pass.agent_name,
+                "instructions": monitoring_pass.instructions,
+                "previous_alert_count": previous_count,
+                "created_count": len(pending) - start,
+                "alerts": [],
+            }
+            if pass_error:
+                pass_entry["error"] = pass_error
+            pass_results.append(pass_entry)
+            pass_spans.append((pass_entry, start, len(pending)))
+
+        actions_created = sum(len(rows) for _, rows in pending)
+        created_alerts = _persist_run(session, pending=pending, run_id=run_id)
+
+        for pass_entry, start, end in pass_spans:
+            pass_entry["alerts"] = created_alerts[start:end]
+
+        repository.complete_monitoring_run(
+            lock_connection,
+            run_id,
+            monitoring_passes=len(passes),
+            alerts_created=len(created_alerts),
+            actions_created=actions_created,
+        )
+
+        return {
+            "agent": domain,
+            "run_id": run_id,
+            "monitoring_passes": len(passes),
+            "created_count": len(created_alerts),
+            "items": created_alerts,
+            "passes": pass_results,
         }
-        if pass_error:
-            pass_entry["error"] = pass_error
-        pass_results.append(pass_entry)
-        pass_spans.append((pass_entry, start, len(pending)))
-
-    created_alerts = _persist_run(session, pending=pending)
-
-    for pass_entry, start, end in pass_spans:
-        pass_entry["alerts"] = created_alerts[start:end]
-
-    return {
-        "agent": domain,
-        "monitoring_passes": len(passes),
-        "created_count": len(created_alerts),
-        "items": created_alerts,
-        "passes": pass_results,
-    }
+    except Exception as error:  # noqa: BLE001
+        if run_id is not None:
+            repository.fail_monitoring_run(
+                lock_connection, run_id, error_message=str(error)
+            )
+        raise
+    finally:
+        # rollback first: if create/complete/fail_monitoring_run itself
+        # failed mid-statement, lock_connection's transaction is left
+        # aborted, and Postgres refuses every further command -- including
+        # the unlock -- until it is rolled back. Skipping that step would
+        # make advisory_unlock raise, which (being in a finally, before
+        # close()) would leak this connection and its lock permanently.
+        try:
+            lock_connection.rollback()
+            repository.advisory_unlock(lock_connection, domain)
+        except Exception:  # noqa: BLE001
+            logger.exception(
+                "Failed to release the monitoring advisory lock for %r", domain
+            )
+        finally:
+            lock_connection.close()
 
 
 async def _prefetch_simulation_context(
@@ -645,11 +810,15 @@ async def simulate_action(
 
 
 __all__ = [
+    "MAX_MONITORING_CONTEXT",
+    "PopulateAlreadyRunningError",
     "allowed_data_for_agent",
     "approve_action",
     "clear_alerts",
+    "list_action_history",
     "list_actions",
     "list_actions_for_alert",
+    "list_alert_history",
     "list_alerts",
     "list_monitoring_agents",
     "populate_alerts",

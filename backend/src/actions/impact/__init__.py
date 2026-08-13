@@ -19,9 +19,12 @@ level has to be derived from something checkable rather than asserted
 pure "improve visibility" advice keeps its stored wording rather than being
 given an invented number.
 
-Everything here lives on the read path and is never written back: a monitoring
-run rewrites `chat.actions` wholesale, so a stored score would survive exactly
-until the next Recalculate.
+Everything here lives on the read path and is never written back. That is not
+because a monitoring run replaces `chat.actions` (it does not: populate_alerts
+only ever appends, see `actions/service.py`) but because `chat.actions` only
+grows, so a persisted score would drift stale the moment a later run added
+context, and it would need to record which scope (e.g. status=planned) it was
+ranked within to mean anything on a later read.
 """
 
 from __future__ import annotations
@@ -106,10 +109,11 @@ def enrich_actions(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     gets exactly what it expects; a caller that asked for everything gets each
     agent's list ranked within itself.
 
-    Nothing here is written back to the database. A monitoring run replaces
-    `chat.actions` wholesale, so a stored rank would survive until the next
-    Recalculate and no longer — the same reasoning that put the Treasury
-    impact correction on the read path in the first place.
+    Nothing here is written back to the database. `chat.actions` only grows
+    now (populate_alerts appends; nothing deletes it), so a stored rank would
+    need to say which scope it was computed within to stay meaningful — the
+    same reasoning that put the Treasury impact correction on the read path
+    in the first place.
     """
     from src.actions.impact import scoring
 

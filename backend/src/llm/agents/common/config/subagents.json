@@ -82,6 +82,34 @@
         }
       }
     },
+    "PriorAction": {
+      "fields": {
+        "action": {
+          "type": "str",
+          "description": "Title of an action already stored for this domain."
+        },
+        "status": {
+          "type": "str",
+          "description": "Its current workflow status: planned or approved."
+        },
+        "spec": {
+          "type": "str",
+          "description": "The stored action's execution spec."
+        },
+        "impact": {
+          "type": "str",
+          "description": "The stored action's expected impact statement."
+        },
+        "alert_name": {
+          "type": "str",
+          "description": "Name of the alert this action addresses."
+        },
+        "alert_issue": {
+          "type": "str",
+          "description": "Issue text of the alert this action addresses."
+        }
+      }
+    },
     "MonitoringInput": {
       "fields": {
         "subagent_name": {
@@ -108,6 +136,15 @@
           },
           "default": [],
           "description": "Alerts already found by earlier monitoring agents or already stored for this domain. Do not duplicate these."
+        },
+        "current_actions": {
+          "type": "list",
+          "items": {
+            "type": "ref",
+            "ref": "PriorAction"
+          },
+          "default": [],
+          "description": "Actions already stored for this domain (most recent first), each with its status, spec, impact, and the alert it addresses. Nothing is ever deleted, so this may include stale entries alongside live ones."
         },
         "domain_snapshot": {
           "type": "json",
@@ -291,6 +328,11 @@
       "Be proactive: hunt for the sharpest distinct issues in your specialty rather than returning none.",
       "If evidence is borderline but decision-relevant, raise an alert and state uncertainty in the issue text.",
       "Only return the none alert when you truly cannot find any distinct specialty issue after tool investigation.",
+      "CURRENT ACTIONS",
+      "You also receive current_actions: actions already stored for this domain, most recent first, each with its status (planned or approved), spec, impact, and the alert it addresses.",
+      "Nothing is ever deleted from storage, so current_actions may hold a stale entry alongside live ones. Being present is not itself proof it is still relevant.",
+      "When an existing planned or approved action already substantially addresses the same root cause you are about to raise, do not raise that issue again.",
+      "Genuinely new or escalated evidence is not 'already covered': a bigger figure, a different vendor, SKU or store, or a recurrence after the stored action should have resolved it. Raise it, and state in the issue text what is different from the existing action.",
       "WHAT THIS DATASET CAN AND CANNOT SUPPORT",
       "There is ONE snapshot day, 2026-07-01. There is no history and no prior period. Never raise an alert phrased as a trend, a deterioration, a change versus last week, or a movement over time: nothing here can evidence one.",
       "Forecast accuracy of 92.4 percent is a typed constant that is identical for all eight verticals. It is not a backtest and not a measurement. Never present it as measured accuracy and never raise an alert claiming accuracy moved.",
@@ -323,6 +365,11 @@
       "Be proactive: hunt for the sharpest distinct issues in your specialty rather than returning none.",
       "If evidence is borderline but CFO-relevant, raise an alert and state uncertainty in the issue text.",
       "Only return the none alert when you truly cannot find any distinct specialty issue after tool investigation.",
+      "CURRENT ACTIONS",
+      "You also receive current_actions: actions already stored for this domain, most recent first, each with its status (planned or approved), spec, impact, and the alert it addresses.",
+      "Nothing is ever deleted from storage, so current_actions may hold a stale entry alongside live ones. Being present is not itself proof it is still relevant.",
+      "When an existing planned or approved action already substantially addresses the same root cause you are about to raise, do not raise that issue again.",
+      "Genuinely new or escalated evidence is not 'already covered': a bigger figure, a different vendor, customer or line item, or a recurrence after the stored action should have resolved it. Raise it, and state in the issue text what is different from the existing action.",
       "OUTPUT RULES",
       "Your output is MonitoringOutput: a list of Alert objects.",
       "Return at most 3 alerts. Fewer is better than padded. Each alert must be a distinct business issue.",

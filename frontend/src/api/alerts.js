@@ -14,18 +14,25 @@ export async function fetchAlerts(agentId) {
   return parseJson(response, "Alerts request failed");
 }
 
-export async function fetchAlertActions(alertId) {
+export async function fetchAlertActions(alertId, { status } = {}) {
   const response = await fetch(
-    `/api/alerts/${encodeURIComponent(alertId)}/actions`
+    `/api/alerts/${encodeURIComponent(alertId)}/actions${statusQuery(status)}`
   );
   return parseJson(response, "Alert actions request failed");
 }
 
-export async function fetchActions(agentId) {
+export async function fetchActions(agentId, { status } = {}) {
   const response = await fetch(
-    `/api/actions?agent=${encodeURIComponent(agentId)}`
+    `/api/actions?agent=${encodeURIComponent(agentId)}${statusQuery(status, "&")}`
   );
   return parseJson(response, "Actions history request failed");
+}
+
+export async function fetchActionHistory(agentId) {
+  const response = await fetch(
+    `/api/actions/history?agent=${encodeURIComponent(agentId)}`
+  );
+  return parseJson(response, "Action history request failed");
 }
 
 export async function clearAlerts(agentId) {
@@ -42,11 +49,6 @@ export async function populateAlerts(agentId) {
     { method: "POST" }
   );
   return parseJson(response, "Populate alerts request failed");
-}
-
-export async function resetAndRepopulateAlerts(agentId) {
-  await clearAlerts(agentId);
-  return populateAlerts(agentId);
 }
 
 export async function approveAction(actionId) {
@@ -68,14 +70,14 @@ export async function simulateAction(actionId) {
 /**
  * Load alerts for an agent and attach each alert's actions.
  */
-export async function fetchAlertsWithActions(agentId) {
+export async function fetchAlertsWithActions(agentId, { status } = {}) {
   const payload = await fetchAlerts(agentId);
   const alerts = Array.isArray(payload.items) ? payload.items : [];
 
   const withActions = await Promise.all(
     alerts.map(async (alert) => {
       try {
-        const actionsPayload = await fetchAlertActions(alert.id);
+        const actionsPayload = await fetchAlertActions(alert.id, { status });
         return {
           ...alert,
           actions: Array.isArray(actionsPayload.items)
@@ -97,10 +99,19 @@ export async function fetchAlertsWithActions(agentId) {
   };
 }
 
+function statusQuery(status, prefix = "?") {
+  return status ? `${prefix}status=${encodeURIComponent(status)}` : "";
+}
+
 async function parseJson(response, fallback) {
   if (!response.ok) {
     const detail = await safeDetail(response);
-    throw new Error(detail || `${fallback} (${response.status})`);
+    const error = new Error(detail || `${fallback} (${response.status})`);
+    // Callers that need to branch on the failure (a 409 "already running"
+    // populate is not the same kind of failure as a 500) read this instead
+    // of pattern-matching the message text.
+    error.status = response.status;
+    throw error;
   }
   return response.json();
 }

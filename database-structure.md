@@ -44,6 +44,8 @@ erDiagram
     audit_import_batches ||--o{ collections_recommendations : contains
     chat_conversations ||--o{ chat_messages : contains
     chat_alerts ||--o{ chat_actions : triggers
+    chat_monitoring_runs ||--o{ chat_alerts : wrote
+    chat_monitoring_runs ||--o{ chat_actions : wrote
 ```
 
 ## Shared Audit Schema
@@ -400,8 +402,9 @@ Unique key: (`import_batch_id`, `recommendation_order`).
 | `payment_leakage.*` | Every table has an `import_batch_id` index; additional indexes cover invoice, vendor, severity, flagged status, and worklist priority; business uniqueness is enforced per batch |
 | `chat.conversations` | `id`, `title`, `created_at`, `updated_at` |
 | `chat.messages` | `id`, `conversation_id`, `sender`, `channel`, `message`, `created_at` |
-| `chat.alerts` | `id`, `name`, `subagent`, `agent`, `issue`, `date_created` |
-| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `spec`, `impact`, `simulation_summary`, `created_at` |
+| `chat.alerts` | `id`, `name`, `subagent`, `agent`, `issue`, `date_created`, `run_id`, `(agent, date_created DESC)` |
+| `chat.actions` | `id`, `action`, `agent`, `routes`, `alert_id`, `status`, `spec`, `impact`, `simulation_summary`, `created_at`, `run_id`, `(agent, created_at DESC)` |
+| `chat.monitoring_runs` | `id`, `(agent, started_at DESC)` |
 | `financial_performance.assumptions` | `id`, `import_batch_id`, `assumption_group`, `assumption_name`, `numeric_value`, `text_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.kpis` | `id`, `import_batch_id`, `metric_name`, `metric_order`, `budget_value`, `actual_value`, `change_value`, `unit`, `notes`, `source_sheet`, `created_at` |
 | `financial_performance.operating_expenses` | `id`, `import_batch_id`, `cost_line`, `cost_line_order`, `budget_amount_idr_mn`, `actual_amount_idr_mn`, `variance_idr_mn`, `source_sheet`, `created_at` |
@@ -447,7 +450,11 @@ The live chat history is stored in PostgreSQL, not only in frontend state. The b
 
 ### `chat.alerts`
 
-One row is one issue raised by a monitoring agent. Verified from the live catalog on 24 July 2026.
+One row is one issue raised by a monitoring agent. Append-only: a monitoring
+run never deletes a row here, it only inserts new ones (the one exception is
+the explicit, human-confirmed "Delete all alerts" action, scoped to one
+domain). Verified from the live catalog on 24 July 2026; `run_id` added by
+`scripts/migrate_monitoring_runs.py`.
 
 | Column | Type | Null | Notes |
 |---|---|---:|---|
@@ -457,10 +464,11 @@ One row is one issue raised by a monitoring agent. Verified from the live catalo
 | `agent` | `VARCHAR` | Yes | Owning agent, such as `finance`, `cashflow`, or `collection` |
 | `issue` | `TEXT` | Yes | Quantified description of the issue |
 | `date_created` | `TIMESTAMPTZ` | Yes | |
+| `run_id` | `BIGINT` | Yes | FK to `chat.monitoring_runs(id)`, `ON DELETE SET NULL`; null for rows written before this column existed |
 
 ### `chat.actions`
 
-One row is one proposed action. `routes` is a PostgreSQL array of owner names, and `alert_id` associates the action with an alert when present.
+One row is one proposed action. `routes` is a PostgreSQL array of owner names, and `alert_id` associates the action with an alert when present. Append-only, same as `chat.alerts` above.
 
 | Column | Type | Null | Notes |
 |---|---|---:|---|
@@ -474,16 +482,33 @@ One row is one proposed action. `routes` is a PostgreSQL array of owner names, a
 | `impact` | `TEXT` | Yes | Expected impact statement |
 | `simulation_summary` | `JSONB` | Yes | Supporting simulation values when present |
 | `created_at` | `TIMESTAMPTZ` | Yes | |
+| `run_id` | `BIGINT` | Yes | FK to `chat.monitoring_runs(id)`, `ON DELETE SET NULL`; null for rows written before this column existed |
 
 `src/llm/tools/finance_data.py:get_alert_action_plan` reads both tables and groups actions under their alert.
 
+### `chat.monitoring_runs`
+
+One row per `populate_alerts` call, added by `scripts/migrate_monitoring_runs.py`. Mirrors `audit.import_batches`: it is what makes "the previous alerts/actions batch is saved, not overwritten" a queryable fact, and what a Postgres advisory lock (`pg_try_advisory_lock(hashtext(agent)::bigint)`) guards one domain from running twice at once.
+
+| Column | Type | Null | Notes |
+|---|---|---:|---|
+| `id` | `BIGSERIAL` | No | Primary key |
+| `agent` | `VARCHAR(60)` | No | Domain agent the run populated |
+| `run_status` | `VARCHAR(30)` | No | `STARTED`, `COMPLETED`, or `FAILED`; default `STARTED` |
+| `started_at` | `TIMESTAMPTZ` | No | Default `now()` |
+| `completed_at` | `TIMESTAMPTZ` | Yes | Set when the run reaches `COMPLETED` or `FAILED` |
+| `monitoring_passes` | `INTEGER` | No | How many specialized monitoring passes ran; default `0` |
+| `alerts_created` | `INTEGER` | No | Alerts inserted by this run; default `0` |
+| `actions_created` | `INTEGER` | No | Actions inserted by this run; default `0` |
+| `error_message` | `TEXT` | Yes | Set when `run_status = 'FAILED'` |
+
 ## Live Table Count
 
-The catalog query returned 37 application tables:
+The catalog query returned 37 application tables as of 24 July 2026, before `scripts/migrate_monitoring_runs.py` added `chat.monitoring_runs`:
 
 - `audit`: 1 table
 - `cashflow`: 7 tables
-- `chat`: 4 tables
+- `chat`: 4 tables (5 once `chat.monitoring_runs` is applied)
 - `collections`: 7 tables
 - `financial_performance`: 11 tables
 - `payment_leakage`: 7 tables
