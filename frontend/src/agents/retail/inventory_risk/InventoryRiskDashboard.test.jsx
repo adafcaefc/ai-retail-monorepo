@@ -173,10 +173,34 @@ describe("InventoryRiskDashboard", () => {
     expect(row.querySelector(".risk-sku-meta").textContent).toMatch(/^GRC-001 · /);
   });
 
-  it("disables the store filter while the per-store dataset is unavailable", async () => {
+  it("scopes the board to one store, showing that store's own position", async () => {
+    /*
+     * This filter used to be disabled, on the grounds that scoping to a store
+     * needed the 16,000-row grid. It does not: `atStore` regenerates any row
+     * of that grid from four attributes, and the fixture builder checks the
+     * reconstruction against every one of them.
+     *
+     * S001 is a Grocery store carrying 100 SKUs, against the chain's 800, so
+     * the register shrinking is the visible proof the scope reached the rows
+     * and not just the chip.
+     */
     await renderSettled();
 
-    expect(screen.getByLabelText("Store")).toBeDisabled();
+    const select = screen.getByLabelText("Store");
+    expect(select).toBeEnabled();
+
+    fireEvent.change(select, { target: { value: "S001" } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Store")).toHaveValue("S001");
+    });
+    // ENGINE_STORE's own tally for S001: 19 Stockout + 27 Low sit below ROP.
+    await waitFor(() => {
+      const tile = screen
+        .getAllByText("Stockout-risk SKUs")[0]
+        .closest(".risk-kpi");
+      expect(within(tile).getByText("46")).toBeInTheDocument();
+    });
   });
 
   it("pages the register rather than rendering all 800 rows at once", async () => {
@@ -223,17 +247,27 @@ describe("InventoryRiskDashboard", () => {
   it("carries each KPI's formula on the tile itself", async () => {
     await renderSettled();
 
-    const tile = kpiTile("Stockout-risk SKUs");
-    expect(tile).toHaveAttribute("title", expect.stringContaining("Position < ROP"));
+    // The formula rides the tile face, which is the button that opens the
+    // drill-down — the article around it is the frame, not the control.
+    const face = kpiTile("Stockout-risk SKUs").querySelector(".risk-kpi-open");
+    expect(face).toHaveAttribute("title", expect.stringContaining("Position < ROP"));
   });
 
   it("drills to the reorder zone from the stockout tile, and back again", async () => {
     await renderSettled();
 
-    const tile = kpiTile("Stockout-risk SKUs");
-    expect(tile.tagName).toBe("BUTTON");
+    /*
+     * Two actions now live on this tile and they are deliberately separate
+     * controls: the face opens the decomposition, this one re-scopes the whole
+     * board. A single click that could do either would leave the reader
+     * guessing which they were about to get.
+     */
+    const scopeButton = () =>
+      within(kpiTile("Stockout-risk SKUs")).getByRole("button", {
+        name: "Show only the reorder zone",
+      });
 
-    fireEvent.click(tile);
+    fireEvent.click(scopeButton());
     await waitFor(() => {
       const rows = document.querySelectorAll(".risk-row");
       expect(rows.length).toBeGreaterThan(0);
@@ -243,9 +277,52 @@ describe("InventoryRiskDashboard", () => {
     });
 
     // Clicking again clears it rather than trapping the reader in the filter.
-    fireEvent.click(kpiTile("Stockout-risk SKUs"));
+    fireEvent.click(scopeButton());
     await waitFor(() => {
       expect(screen.getByText("All retail inventory")).toBeInTheDocument();
+    });
+  });
+
+  it("draws a chart on every KPI tile, through the normalizer", async () => {
+    /*
+     * `normalizeInventoryRiskDashboard` returns an explicit object, so a block
+     * the selectors add and the normalizer omits is dropped in silence —
+     * which is exactly how these charts went missing on this board while
+     * working on the other two. Asserting through the rendered dashboard, not
+     * the selector, is what makes that catchable.
+     */
+    await renderSettled();
+
+    const grid = document.querySelector(".risk-kpi-grid");
+    expect(grid.querySelectorAll(".risk-kpi")).toHaveLength(6);
+    expect(grid.querySelectorAll(".kpi-spark")).toHaveLength(6);
+  });
+
+  it("opens a drill-down drawer that decomposes the tile it was opened from", async () => {
+    await renderSettled();
+
+    fireEvent.click(kpiTile("Inventory value").querySelector(".risk-kpi-open"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("Inventory value")).toBeInTheDocument();
+    // The formula the tile hints at, stated in full inside the drawer.
+    expect(within(drawer).getByText(/Σ Position × unit price/)).toBeInTheDocument();
+    expect(within(drawer).getByText("This metric by category")).toBeInTheDocument();
+    expect(within(drawer).getByText("This metric by store")).toBeInTheDocument();
+    expect(within(drawer).getByText("Top contributing SKUs")).toBeInTheDocument();
+
+    /*
+     * The mockup fills this section with a seeded random walk. This dataset
+     * holds one snapshot per SKU and no date column, so the drawer says there
+     * is no history rather than drawing one nobody can tell is fictional.
+     */
+    expect(
+      within(drawer).getByText(/No history recorded/),
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(drawer).getByRole("button", { name: "Close" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
   });
 

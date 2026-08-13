@@ -16,12 +16,30 @@ import {
   DEMAND_AGENT_ID,
   normalizeDemandDashboard,
   normalizeDemandQuery,
+  serializeScope,
 } from "./contract.js";
 import fixture from "./fixture.json";
-import { buildDashboardFromFixture } from "./selectors.js";
+import {
+  buildDashboardFromFixture,
+  buildDrilldownFromFixture,
+} from "./selectors.js";
 
-/** @type {"fixture" | "api"} */
-export const DATA_SOURCE = "fixture";
+/*
+ * Where the rows come from.
+ *
+ * "api" asks the backend, which reads Postgres; "fixture" reads the copy
+ * checked in beside this file. Both then run the SAME selectors over the SAME
+ * shape, which is what makes the switch safe: the backend builder returns rows
+ * rather than a finished dashboard, and
+ * `backend/tests/test_retail_dashboard_builders.py` asserts field for field
+ * that its payload equals this fixture. Nothing on screen can move.
+ *
+ * Tests stay on the fixture because jsdom has no server to answer them, not
+ * because the two disagree. `import.meta.env.MODE` is Vite's own flag and is
+ * "test" under Vitest.
+ */
+export const DATA_SOURCE = import.meta.env.MODE === "test" ? "fixture" : "api";
+
 
 export function demandForecastingDataSource() {
   return DATA_SOURCE;
@@ -35,8 +53,15 @@ export async function loadDemandForecastingDashboard(
   const query = normalizeDemandQuery(inputQuery);
 
   if (DATA_SOURCE === "api") {
-    const payload = await fetchDashboard(DEMAND_AGENT_ID, query);
-    return normalizeDemandDashboard(payload, { requirePhase2: true });
+    // Rows, not a finished dashboard — through the same selectors as below.
+    const rows = await fetchDashboard(DEMAND_AGENT_ID, serializeScope(query));
+    return normalizeDemandDashboard(
+      buildDashboardFromFixture(rows, query, {
+        levers: simulationLevers,
+        driveWholePage: options.driveWholePage,
+      }),
+      { requirePhase2: true },
+    );
   }
 
   return normalizeDemandDashboard(
@@ -65,4 +90,27 @@ export async function loadDemandForecastingScenario(
       driveWholePage: true,
     }),
   );
+}
+
+/**
+ * Break one KPI tile down, for the drill-down drawer.
+ *
+ * A separate call rather than a block on the board payload: six breakdowns the
+ * reader may never open is work done on every load for nothing.
+ *
+ * @param {Partial<import("./contract.js").DemandDashboardQuery>} query
+ * @param {string} metricId
+ * @param {{levers?: object, driveWholePage?: boolean}} [options]
+ */
+export async function loadDemandForecastingDrilldown(query, metricId, options = {}) {
+  const normalized = normalizeDemandQuery(query);
+  const rows =
+    DATA_SOURCE === "api"
+      ? await fetchDashboard(DEMAND_AGENT_ID, serializeScope(normalized))
+      : fixture;
+
+  return buildDrilldownFromFixture(rows, normalized, metricId, {
+    levers: options.levers,
+    driveWholePage: options.driveWholePage,
+  });
 }

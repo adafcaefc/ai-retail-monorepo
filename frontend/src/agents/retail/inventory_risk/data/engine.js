@@ -42,6 +42,47 @@ export function isBaseline(levers) {
 }
 
 /**
+ * Re-point a chain-net item at ONE store, so the engine derives that store's
+ * row instead of the chain's.
+ *
+ * `ENGINE_STORE` is not an independent measurement — it is the SKU attributes
+ * crossed with the store attributes, and three products regenerate it:
+ *
+ *     ads      = base_ads x seasonality x store.size          (f01)
+ *     on_hand  = base_ads x onhand_days x stock_factor
+ *                x store.health x store.size
+ *     open_po  = open_po_chain x (store.size / vertical total) (f03)
+ *
+ * Only the third is a formula this module runs; the first falls out of f01
+ * once `store_size` is one store's index rather than the vertical's total,
+ * and the second is computed here because the workbook has no formula id for
+ * it (it is a data-generation rule, not a business rule).
+ *
+ * `scripts/build_inventory_risk_fixture.py` checks all three against every one
+ * of the 16,000 `ENGINE_STORE` rows before the fixture is written, so what
+ * comes back is the workbook's own per-store position, not an estimate of it.
+ *
+ * Everything downstream — ROP, Max, DoS, state, the three KPI flags — is then
+ * the ordinary chain: the same expressions, fed one store's inputs.
+ */
+export function atStore(item, store) {
+  return {
+    ...item,
+    // f01 and f03 both read this; it is now one store, not the whole vertical.
+    store_size: store.size_index,
+    // The denominator of f03's allocation ratio stays the vertical total,
+    // which is what `item.store_size` held before this call.
+    total_store_size: item.store_size,
+    on_hand:
+      item.base_ads *
+      item.onhand_days *
+      item.stock_factor *
+      store.health_index *
+      store.size_index,
+  };
+}
+
+/**
  * Bind an engine to one fixture's expressions.
  *
  * Parsing is done once here rather than per row: a slider drag re-runs this
@@ -76,11 +117,13 @@ export function createEngine(formulas) {
     });
 
     const openPo = run("f03-open-po-per-store", {
-      // A chain-net row already covers every store, so there is no allocation
-      // left to do and the size ratio is one.
       open_po_total: item.open_po,
       store_size: item.store_size,
-      total_store_size: item.store_size,
+      // A chain-net row already covers every store, so there is no allocation
+      // left to do and the size ratio is one — which is what the fallback
+      // gives. A row scoped to one store (see `atStore`) sets both halves
+      // instead, and f03 allocates the chain's open PO by size share.
+      total_store_size: item.total_store_size ?? item.store_size,
       inbound_lever: lever.inbound,
     });
 

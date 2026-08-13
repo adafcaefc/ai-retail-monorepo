@@ -24,24 +24,43 @@ import {
   SCHEMA_VERSION,
   STATE_ORDER,
 } from "./contract.js";
-import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
+import {
+  dosHistogram,
+  growthHistogram,
+  topGroups,
+} from "../../common/distributions.js";
+import { buildDrilldown } from "./drilldown.js";
+import { BASELINE_LEVERS, atStore, createEngine, isBaseline } from "./engine.js";
 
 /**
- * STORE SCOPING IS NOT SUPPORTED BY THIS PROVIDER.
+ * STORE SCOPING IS SUPPORTED, WITHOUT SHIPPING THE GRID.
  *
- * `fixture.items` is chain-net: one row per SKU across the whole chain, with
- * no store dimension. Scoping KPIs to a single store needs the 16,000-row
- * SKU x store grid, which costs ~163 KB gzipped on top of this fixture — for
- * interim data, and for exactly the dimension the D365 endpoint does not yet
- * return at all.
+ * This used to be `false`, on the grounds that scoping to one store needed the
+ * 16,000-row SKU x store grid and ~163 KB of payload with it. That was true of
+ * the dataset and false of the arithmetic: `ENGINE_STORE` is not an
+ * independent measurement, it is the SKU attributes crossed with the store
+ * attributes, and `atStore` in `engine.js` regenerates any row of it from four
+ * numbers the fixture now carries (`onhand_days` and `stock_factor` per SKU,
+ * `size_index` and `health_index` per store). About 960 values, not 16,000
+ * rows — and the fixture builder proves the reconstruction against every one
+ * of those rows before writing.
  *
- * So `scope.store_id` is accepted and echoed back (the contract keeps it, the
- * API will honour it) but does not filter here. The store and cluster charts
- * are unaffected: they read `fixture.stores`, which is already aggregated per
- * store. To turn it on later, add the grid to the fixture builder and filter
- * `items` through it — no contract or component change is required.
+ * WHAT THE HEADLINE MEANS AT EACH SETTING, because they are different
+ * questions and both are right:
+ *
+ *   store = ALL      chain-net. One row per SKU for the whole chain, which is
+ *                    what the `A2 Inventory Risk` sheet totals and what every
+ *                    reconciliation test asserts. Surplus in one store nets
+ *                    off shortage in another.
+ *   store = S001     that store's own position, derived per the above. A SKU
+ *                    healthy across the chain can be Stockout here, which is
+ *                    the entire point of asking.
+ *
+ * So selecting a store does not narrow the chain-net figure — it replaces it
+ * with a different measurement. Summing all stores will not return the
+ * chain-net total, for the reason GROSS_VS_NET_NOTE already states.
  */
-export const SUPPORTS_STORE_SCOPE = false;
+export const SUPPORTS_STORE_SCOPE = true;
 
 function matchesSearch(item, term) {
   const needle = term.trim().toLowerCase();
@@ -75,6 +94,11 @@ export function scopeItems(items, scope) {
 }
 
 function scopeStores(stores, scope) {
+  // A named store narrows to itself, so the store and cluster charts describe
+  // the same slice the tiles do rather than the whole vertical behind it.
+  if (scope.store_id !== ALL) {
+    return stores.filter((store) => store.store_id === scope.store_id);
+  }
   if (scope.legal_entity_id === ALL) return stores;
   return stores.filter((store) => store.vertical_id === scope.legal_entity_id);
 }
@@ -115,6 +139,64 @@ export function computeKpis(items) {
     at_risk_value: sum(items, "at_risk_value"),
     healthy_skus: items.filter((item) => item.state === HEALTHY_STATE).length,
     sku_count: count,
+  };
+}
+
+/**
+ * A real mini-chart for each KPI tile.
+ *
+ * The tiles carried none, and the comment explaining why was right: the
+ * workbook has no date column, so a trend line here would be invented, and an
+ * invented trend on a risk board is worse than an empty space.
+ *
+ * A DISTRIBUTION needs no dates. Each of these is a histogram of the rows
+ * behind the number — which answers something the figure alone cannot: 302
+ * SKUs below reorder point reads very differently if they are all barely under
+ * than if half sit at zero cover. Days of cover is the shared axis for the
+ * stock tiles, so the shapes are comparable across the row.
+ *
+ * `kind` travels with each one so the tile can caption it honestly; nothing
+ * here is drawn as a series.
+ */
+export function computeKpiSparklines(items) {
+  return {
+    // Where the reorder zone actually sits on the cover axis.
+    stockout_risk_skus: {
+      kind: "distribution",
+      caption: "Days of cover, at-risk SKUs",
+      values: dosHistogram(items.filter((item) => item.is_stockout_risk)),
+    },
+    overstock_skus: {
+      kind: "distribution",
+      caption: "Days of cover, overstocked SKUs",
+      values: dosHistogram(items.filter((item) => item.is_overstock)),
+    },
+    // Already bucketed by the board's own expiry timeline — reusing its shape
+    // rather than inventing a second one keeps the tile and the panel in step.
+    expiry_units: {
+      kind: "distribution",
+      caption: "Shelf life remaining",
+      values: computeExpiryTimeline(items).buckets.map((bucket) => bucket.units),
+    },
+    slow_mover_skus: {
+      kind: "distribution",
+      caption: "Growth index, slow movers",
+      values: growthHistogram(items.filter((item) => item.is_slow_mover)),
+    },
+    // The whole chain on the cover axis: the mean the tile prints is one point
+    // on this curve, and the spread is what says whether that mean is honest.
+    avg_dos: {
+      kind: "distribution",
+      caption: "Days of cover, all SKUs",
+      values: dosHistogram(items),
+    },
+    inventory_value: {
+      kind: "distribution",
+      caption: "Value by category, largest first",
+      values: topGroups(items, "category_id", (rows) =>
+        rows.reduce((total, row) => total + row.inv_value, 0),
+      ),
+    },
   };
 }
 
@@ -507,13 +589,89 @@ function engineFor(formulas) {
   return cachedEngine;
 }
 
+/**
+ * Decompose one KPI tile, over exactly the rows the board is showing.
+ *
+ * Separate from `buildDashboardFromFixture` and computed on demand, because
+ * the per-store split runs the engine once per SKU per store — ~16,000 passes
+ * at chain scope. That is fine on a click and wasteful on every render, so the
+ * board does not carry six of them it may never open.
+ *
+ * It re-derives the scope rather than accepting the finished payload so that
+ * the drawer and the tile above it can never disagree about which rows they
+ * are describing: same scope in, same rows out, same engine.
+ */
+export function buildDrilldownFromFixture(
+  fixture,
+  scope = {},
+  metricId,
+  options = {},
+) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const applyLevers = engineFor(fixture.formulas);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulating = !isBaseline(levers) && options.driveWholePage !== false;
+
+  const storeRow =
+    merged.store_id === ALL
+      ? null
+      : fixture.stores.find((row) => row.store_id === merged.store_id);
+
+  const sourceItems =
+    storeRow === null
+      ? fixture.items
+      : fixture.items
+          .filter((item) => item.vertical_id === storeRow.vertical_id)
+          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
+
+  const scoped = scopeItems(sourceItems, merged);
+  const items = simulating
+    ? scoped.map((item) => applyLevers(item, levers))
+    : scoped;
+
+  return buildDrilldown(metricId, items, scopeStores(fixture.stores, merged), {
+    applyLevers,
+    // The store split reads the same filtered set the headline does, so a
+    // board scoped to one category shows that category across stores rather
+    // than quietly widening back to the whole shelf.
+    allItems: items,
+  });
+}
+
 export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
-  const baselineItems = scopeItems(fixture.items, merged);
   const stores = scopeStores(fixture.stores, merged);
   const legalEntities = fixture.filter_options.legal_entities;
 
   const applyLevers = engineFor(fixture.formulas);
+
+  /*
+   * A named store replaces the chain-net rows with that store's own, derived
+   * through `atStore` and then run through the ordinary engine at rest.
+   *
+   * Running the engine at BASELINE_LEVERS here rather than skipping it is the
+   * point: the stored `state`, `rop` and `dos` on a fixture row describe the
+   * chain, so for one store they have to be re-derived even though no lever
+   * has moved. `computeSimulation` then treats these as its baseline, which is
+   * correct — the scenario is measured against the store you are looking at.
+   *
+   * The vertical filter is implicit: a store belongs to one vertical, so
+   * `scopeItems` narrowing on `legal_entity_id` would be redundant here, and
+   * items from other verticals are dropped by the store's own vertical.
+   */
+  const storeRow =
+    merged.store_id === ALL
+      ? null
+      : fixture.stores.find((row) => row.store_id === merged.store_id);
+
+  const sourceItems =
+    storeRow === null
+      ? fixture.items
+      : fixture.items
+          .filter((item) => item.vertical_id === storeRow.vertical_id)
+          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
+
+  const baselineItems = scopeItems(sourceItems, merged);
   const levers = { ...BASELINE_LEVERS, ...options.levers };
   const simulation = computeSimulation(baselineItems, levers, applyLevers);
 
@@ -561,6 +719,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       states: fixture.filter_options.states,
     },
     kpis: computeKpis(items),
+    kpi_sparklines: computeKpiSparklines(items),
     projection: computeProjection(items),
     simulation,
     at_risk_by_state: computeAtRiskByState(items),

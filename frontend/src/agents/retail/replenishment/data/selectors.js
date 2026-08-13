@@ -8,7 +8,19 @@
  * written. Nothing here re-decides any of it.
  */
 
-import { AGENT_ID, ALL, DEFAULT_SCOPE, ROUTE_ORDER, SCHEMA_VERSION } from "./contract.js";
+import {
+  AGENT_ID,
+  ALL,
+  BASELINE_LEVERS,
+  DEFAULT_SCOPE,
+  REQUIREMENT_DAYS,
+  ROUTE_ORDER,
+  SCHEMA_VERSION,
+  SIMULATION_METRICS,
+} from "./contract.js";
+import { dosHistogram, topGroups } from "../../common/distributions.js";
+import { buildDrilldown } from "./drilldown.js";
+import { createEngine, isBaseline } from "./engine.js";
 
 const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 0);
 
@@ -166,6 +178,43 @@ export function computeByCluster(stores) {
 }
 
 /**
+ * Order value rolled store -> legal entity (mockup `ch-dim-le`).
+ *
+ * Summed from the store rows rather than the chain-net lines, so it sits on
+ * the same basis as the cluster and store panels beside it — the mockup's own
+ * `Σ stores in entity`. That makes it GROSS like those two, and it will
+ * therefore exceed the chain-net headline for the same documented reason.
+ *
+ * Grouping the lines instead would be exact but would put one chart in the
+ * grid on a different basis from the other three, which is the harder error to
+ * notice: four bars that look comparable and are not.
+ */
+export function computeByLegalEntity(stores, legalEntities = []) {
+  const labelOf = new Map(
+    legalEntities.map((entity) => [entity.value, entity.label]),
+  );
+  const grouped = new Map();
+
+  for (const store of stores) {
+    const bucket = grouped.get(store.vertical_id) || {
+      id: store.vertical_id,
+      label: labelOf.get(store.vertical_id) ?? store.vertical_id,
+      store_count: 0,
+      order_value_retail: 0,
+      order_units: 0,
+    };
+    bucket.store_count += 1;
+    bucket.order_value_retail += store.order_value_retail;
+    bucket.order_units += store.order_units;
+    grouped.set(store.vertical_id, bucket);
+  }
+
+  return [...grouped.values()].sort(
+    (a, b) => b.order_value_retail - a.order_value_retail,
+  );
+}
+
+/**
  * Where the money would go, and where it could go instead.
  *
  * Grouped by the vendor the trade agreement designates, with the part that a
@@ -226,7 +275,236 @@ export function computePurchaseOrder(lines) {
     }));
 }
 
-export function buildDashboardFromFixture(fixture, scope = {}) {
+/**
+ * A3 spec section 4: what the chain needs against what is already coming.
+ *
+ * Two cumulative curves over the horizon. *Requirement* is demand accumulating
+ * at a flat ADS per day — flat because one ADS per SKU is all the workbook
+ * holds. *Cover* is what is on the shelf now plus each SKU's open PO once it
+ * lands on its lead day, which is why that curve steps rather than slopes.
+ *
+ * Where requirement overtakes cover is the gap a purchase order exists to
+ * fill, and the day it happens is the honest headline: `cover_runs_out`.
+ *
+ * The mockup multiplies requirement by 1.02. That factor appears nowhere in
+ * the workbook and stands for nothing, so it is not reproduced — a 2% lift
+ * invented in a prototype would read here as a measured safety margin.
+ */
+export function computeRequirement(lines, days = REQUIREMENT_DAYS) {
+  const demandPerDay = sum(lines, "ads");
+  const onHand = sum(lines, "on_hand");
+  const points = [];
+
+  for (let day = 0; day <= days; day += 1) {
+    let landed = 0;
+    for (const line of lines) {
+      if (day >= line.lead_days) landed += line.open_po ?? 0;
+    }
+
+    points.push({
+      day,
+      label: day === 0 ? "Today" : `D+${day}`,
+      requirement: demandPerDay * day,
+      cover: onHand + landed,
+      inbound_landed: landed,
+    });
+  }
+
+  const shortfall = points.find((point) => point.requirement > point.cover);
+
+  return {
+    days,
+    points,
+    demand_per_day: demandPerDay,
+    // The first day cumulative demand exceeds everything on hand and inbound.
+    cover_runs_out: shortfall ? shortfall.day : null,
+    // The gap at the end of the horizon: what this scope is short by, before
+    // any order is raised.
+    gap_at_horizon: Math.max(
+      0,
+      points[points.length - 1].requirement - points[points.length - 1].cover,
+    ),
+  };
+}
+
+/**
+ * Baseline against scenario, A3 spec section 9.
+ *
+ * `applyLevers` re-runs the workbook's own expressions per line; everything
+ * here counts and sums the two sets exactly as `computeKpis` does, so any
+ * difference between the columns can only have come from the formulas.
+ *
+ * The index bars are the panel's shape: baseline pinned at 100, scenario
+ * against it, so four metrics on four different scales share one axis. A
+ * baseline of zero has no index and is reported as `null` rather than as a
+ * fabricated 100.
+ */
+export function computeSimulation(lines, universe, levers, applyLevers) {
+  const merged = { ...BASELINE_LEVERS, ...levers };
+  const applied = !isBaseline(merged);
+  const baseline = computeKpis(lines, universe);
+
+  /*
+   * At rest the scenario IS the baseline. Re-running the engine here would
+   * produce figures differing in the last float digit — 302 re-evaluations
+   * summed instead of 302 readings — and the panel would report a delta on a
+   * board nobody has touched.
+   */
+  const scenarioLines = applied ? lines.map((line) => applyLevers(line, merged)) : lines;
+  const scenarioUniverse = applied
+    ? universe.map((line) => applyLevers(line, merged))
+    : universe;
+
+  /*
+   * Under a scenario the reorder set itself moves: a line that was healthy at
+   * rest can fall below ROP once lead time rises. So the scenario's KPIs are
+   * taken over the re-filtered set, not over the baseline's 302 rows — holding
+   * the old membership would report a new order value for an old order.
+   */
+  const scenarioScoped = applied
+    ? scenarioLines.filter((line) => line.is_reorder)
+    : lines;
+  const scenario = applied
+    ? computeKpis(scenarioScoped, scenarioUniverse)
+    : baseline;
+
+  return {
+    applied,
+    levers: merged,
+    baseline,
+    scenario,
+    /*
+     * Two curves, because Compare Scenarios (A3 spec 9d) needs a reference
+     * that does not move. The board's own `requirement` cannot serve: with
+     * "levers drive whole page" on it is the simulated one, and a comparison
+     * whose baseline shifts with the sliders compares nothing.
+     */
+    baseline_requirement: computeRequirement(universe),
+    requirement: applied ? computeRequirement(scenarioUniverse) : null,
+    index: SIMULATION_METRICS.map((metric) => ({
+      ...metric,
+      baseline_value: baseline[metric.id],
+      scenario_value: scenario[metric.id],
+      baseline_index: 100,
+      scenario_index: baseline[metric.id]
+        ? (scenario[metric.id] / baseline[metric.id]) * 100
+        : null,
+      delta: scenario[metric.id] - baseline[metric.id],
+    })),
+    /*
+     * Named so the panel can say why a slider did nothing, rather than leaving
+     * a reader to conclude the board is broken. `markdown` reaches no formula
+     * in the catalogue — the workbook has no markdown term anywhere.
+     */
+    unmodelled: ["markdown"],
+  };
+}
+
+/*
+ * One engine per fixture, not one per render.
+ *
+ * `createEngine` parses nine expressions. A slider drag rebuilds the dashboard
+ * every frame, and re-parsing there would turn a smooth control into a
+ * stuttering one for nothing — the expressions cannot change between renders.
+ */
+let cachedFormulas = null;
+let cachedEngine = null;
+
+function engineFor(formulas) {
+  if (formulas !== cachedFormulas) {
+    cachedEngine = createEngine(formulas);
+    cachedFormulas = formulas;
+  }
+  return cachedEngine;
+}
+
+/**
+ * Decompose one KPI tile, over exactly the lines the board is showing.
+ *
+ * Note which set each metric gets. Fill rate and cover are measured over the
+ * scope WITHOUT the reorder filter — `universe` — because a fill rate computed
+ * over the reorder list alone is always zero, which is the same trap
+ * `computeKpis` documents. Everything else describes the order itself.
+ */
+/**
+ * A distribution per KPI tile — never a trend. See the Inventory Risk twin for
+ * the full reasoning; the short version is that this workbook has no date
+ * column, so a sparkline can only honestly describe spread, not movement.
+ *
+ * `lines` is the order set the headline used; `universe` is the same scope
+ * without the reorder filter, which is what fill rate and cover are measured
+ * over.
+ */
+export function computeKpiSparklines(lines, universe) {
+  return {
+    skus_to_reorder: {
+      kind: "distribution",
+      caption: "Days of cover, lines to reorder",
+      values: dosHistogram(universe.filter((line) => line.is_reorder)),
+    },
+    order_units: {
+      kind: "distribution",
+      caption: "Units by category, largest first",
+      values: topGroups(lines, "category_id", (rows) =>
+        rows.reduce((total, row) => total + (row.order_qty_sales ?? 0), 0),
+      ),
+    },
+    order_value_cost: {
+      kind: "distribution",
+      caption: "Cost by category, largest first",
+      values: topGroups(lines, "category_id", (rows) =>
+        rows.reduce((total, row) => total + (row.order_value_cost ?? 0), 0),
+      ),
+    },
+    order_value_retail: {
+      kind: "distribution",
+      caption: "Retail value by category, largest first",
+      values: topGroups(lines, "category_id", (rows) =>
+        rows.reduce((total, row) => total + (row.order_value_retail ?? 0), 0),
+      ),
+    },
+    // Fill rate is a property of the whole scope, so its shape is the cover
+    // spread of every line — the lines to the left are the ones failing it.
+    fill_rate_pct: {
+      kind: "distribution",
+      caption: "Days of cover, all lines",
+      values: dosHistogram(universe),
+    },
+    recoverable_saving: {
+      kind: "distribution",
+      caption: "Saving by vendor, largest first",
+      values: topGroups(lines, "designated_vendor", (rows) =>
+        rows.reduce((total, row) => total + (row.saving_vs_designated ?? 0), 0),
+      ),
+    },
+  };
+}
+
+export function buildDrilldownFromFixture(
+  fixture,
+  scope = {},
+  metricId,
+  options = {},
+) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const applyLevers = engineFor(fixture.formulas);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulating = !isBaseline(levers) && options.driveWholePage !== false;
+
+  const universe = scopeLines(fixture.lines, { ...merged, reorder_only: false });
+  const live = simulating
+    ? universe.map((line) => applyLevers(line, levers))
+    : universe;
+
+  const rows =
+    metricId === "fill_rate_pct"
+      ? live
+      : live.filter((line) => !merged.reorder_only || line.is_reorder);
+
+  return buildDrilldown(metricId, rows, scopeStores(fixture.stores, merged));
+}
+
+export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
   const lines = scopeLines(fixture.lines, merged);
 
@@ -234,6 +512,35 @@ export function buildDashboardFromFixture(fixture, scope = {}) {
   // reorder filter, because those two describe the chain rather than the order.
   const universe = scopeLines(fixture.lines, { ...merged, reorder_only: false });
   const stores = scopeStores(fixture.stores, merged);
+
+  const applyLevers = engineFor(fixture.formulas);
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const simulation = computeSimulation(lines, universe, levers, applyLevers);
+
+  /*
+   * "Levers drive whole page" (A3 spec 9b). With it on, every panel below
+   * reads the re-simulated lines rather than the workbook's stored ones.
+   *
+   * Two things it cannot reach, and the board admits as much: the store and
+   * cluster charts read `fixture.stores`, already aggregated per store before
+   * it arrives here, and `reference_by_vertical` is the workbook's own total,
+   * which belongs to the baseline by definition.
+   */
+  const driveWholePage = options.driveWholePage !== false;
+  const simulating = simulation.applied && driveWholePage;
+
+  /*
+   * Re-simulate the unfiltered scope, then re-apply the reorder filter — in
+   * that order. A lever that lengthens lead time pushes lines below ROP that
+   * were healthy at rest, and filtering first would hide exactly the lines the
+   * scenario was raised to find.
+   */
+  const liveUniverse = simulating
+    ? universe.map((line) => applyLevers(line, levers))
+    : universe;
+  const live = simulating
+    ? liveUniverse.filter((line) => !merged.reorder_only || line.is_reorder)
+    : lines;
 
   const categories =
     merged.legal_entity_id === ALL
@@ -263,14 +570,21 @@ export function buildDashboardFromFixture(fixture, scope = {}) {
       stores: storeOptions,
       routes: fixture.filter_options.routes,
     },
-    kpis: computeKpis(lines, universe),
-    by_route: computeByRoute(lines, fixture.routes),
+    kpis: computeKpis(live, liveUniverse),
+    kpi_sparklines: computeKpiSparklines(live, liveUniverse),
+    requirement: computeRequirement(liveUniverse),
+    simulation,
+    by_route: computeByRoute(live, fixture.routes),
     by_store: computeByStore(stores),
-    by_category: computeByCategory(lines),
+    by_category: computeByCategory(live),
     by_cluster: computeByCluster(stores),
+    by_legal_entity: computeByLegalEntity(
+      stores,
+      fixture.filter_options.legal_entities,
+    ),
     vendors: fixture.vendors,
-    vendor_split: computeVendorSplit(lines),
-    purchase_order: computePurchaseOrder(lines),
+    vendor_split: computeVendorSplit(live),
+    purchase_order: computePurchaseOrder(live),
     reference_by_vertical: fixture.reference_by_vertical,
   };
 }

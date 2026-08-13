@@ -6461,12 +6461,19 @@ img.ey-logo {
 
 .demand-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(125px, 1fr));
+  /* Three across, two rows — the mockup's own arrangement. Six narrow columns
+     left each card ~125px, which is not enough for a figure and a chart side
+     by side, so the chart was stacked underneath and shrank to a smudge. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-2);
 }
 
 .demand-kpi {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -6474,6 +6481,21 @@ img.ey-logo {
   background: var(--surface-strong);
   padding: var(--space-3) var(--space-3) var(--space-2);
   box-shadow: var(--shadow-sm);
+  /* It is a <button> now — it opens the drill-down drawer — so the browser's
+     own button styling has to be undone rather than fought. */
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.demand-kpi:hover {
+  background: var(--surface);
+}
+
+.demand-kpi:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
 }
 
 .demand-kpi::before {
@@ -6484,9 +6506,11 @@ img.ey-logo {
   background: var(--gray-400);
 }
 
-.demand-kpi--good::before { background: var(--accent-success); }
-.demand-kpi--warn::before { background: var(--accent-warning); }
-.demand-kpi--bad::before { background: var(--accent-danger); }
+.demand-kpi::before { background: var(--demand-kpi-accent, var(--gray-400)); }
+.demand-kpi--good { --demand-kpi-accent: var(--accent-success); }
+.demand-kpi--warn { --demand-kpi-accent: var(--accent-warning); }
+.demand-kpi--bad { --demand-kpi-accent: var(--accent-danger); }
+.demand-kpi--neutral { --demand-kpi-accent: var(--accent-info); }
 
 .demand-kpi-label {
   overflow: hidden;
@@ -6526,25 +6550,7 @@ img.ey-logo {
   white-space: nowrap;
 }
 
-.demand-kpi-spark {
-  width: 100%;
-  height: 25px;
-  margin-top: var(--space-1);
-  overflow: visible;
-}
 
-.demand-kpi-spark polygon {
-  fill: var(--accent-info-soft);
-}
-
-.demand-kpi-spark polyline {
-  fill: none;
-  stroke: var(--primary);
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
-  vector-effect: non-scaling-stroke;
-}
 
 .demand-chart-grid {
   display: grid;
@@ -7256,7 +7262,9 @@ img.ey-logo {
 
 .risk-kpi-grid {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Three across, two rows. Six columns left each tile too narrow to carry a
+     figure and its chart side by side, which is why A1 was widened too. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
 }
 
@@ -7290,6 +7298,53 @@ img.ey-logo {
 .risk-kpi--actionable:focus-visible {
   outline: 2px solid var(--accent-info);
   outline-offset: 2px;
+}
+
+/* The whole tile face opens its drill-down, so the button is the tile rather
+   than a control sitting inside one — a target the size of the thing it
+   describes. It carries no chrome of its own; the surrounding article already
+   draws the border and accent. */
+.risk-kpi-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.risk-kpi-open:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 3px;
+}
+
+.risk-kpi:hover {
+  background: var(--surface);
+}
+
+/* The second, stronger action: filtering the whole board. Kept visually
+   subordinate to the tile face so the two intents cannot be confused. */
+.risk-kpi-scope {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.risk-kpi-scope:hover {
+  color: var(--text);
+  border-color: var(--gray-300);
 }
 
 .risk-kpi--bad .risk-kpi-value {
@@ -8467,6 +8522,22 @@ img.ey-logo {
   --po-route-cross: #5c2d91;
   --po-bar: var(--blue-500);
 
+  /* Requirement against cover: the gap between them is the purchase order, so
+     they are the one pair on this board that must never read as the same
+     colour. */
+  --po-requirement: var(--red-600, #c62828);
+  --po-cover: var(--green-600);
+  --po-gap: var(--amber-600);
+
+  /* What-If. Baseline is deliberately the quieter of the pair: the scenario is
+     what the reader is being asked to look at. Same palette as Inventory Risk,
+     because the same person reads both. */
+  --po-baseline: var(--gray-400);
+  --po-scenario: var(--blue-500);
+  --po-compare-2: var(--amber-600);
+  --po-compare-3: var(--green-600);
+  --po-compare-4: #5c2d91;
+
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -8661,9 +8732,12 @@ button.po-kpi {
   gap: var(--space-3);
 }
 
+/* Four panels, so two columns rather than three — a 3-across grid leaves the
+   fourth stranded on its own row. Matches `.risk-dimension-grid`, which holds
+   the same four dimensions on Inventory Risk. */
 .po-dimension-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
 }
 
@@ -8930,5 +9004,795 @@ button.po-kpi {
 
   .po-filter-actions {
     margin-left: 0;
+  }
+}
+
+/* ==========================================================================
+   Replenishment · requirement chart, route tabs, What-If
+   --------------------------------------------------------------------------
+   Deliberately the same shapes as the Inventory Risk simulator. The two boards
+   are read one after the other by the same buyer, and a lever that looks
+   different is a lever they have to learn twice.
+   ========================================================================== */
+
+.po-chart--tall {
+  height: 280px;
+}
+.po-chart--sim {
+  height: 200px;
+}
+
+.po-metric-strip {
+  display: grid;
+  margin: 0;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+.po-metric-strip dt {
+  color: var(--muted);
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.po-metric-strip dd {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The shortfall the purchase order exists to close. Coloured because it is the
+   one line in the tooltip a reader is looking for. */
+.po-tooltip-gap {
+  color: var(--po-gap);
+  font-weight: 600;
+}
+
+/* --- Route tabs (spec 7) ------------------------------------------------- */
+
+.po-routebar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+.po-routetab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.po-routetab.is-active {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+.po-routetab small {
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+.po-routetab-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+/* Pushed to the far end so the exports never read as a fifth route. */
+.po-routebar-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* --- What-If (spec 9) ---------------------------------------------------- */
+
+.po-simulator-head {
+  align-items: flex-start;
+}
+.po-simulator-actions {
+  display: flex;
+  gap: 6px;
+}
+.po-drive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.po-lever-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.po-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+.po-lever > span {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.po-lever b {
+  color: var(--ink);
+}
+.po-lever output {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.po-lever small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+.po-lever input[type="range"] {
+  width: 100%;
+}
+/* A lever that reaches no formula. Dimmed rather than removed: the mockup has
+   six sliders, and a reader who counts five would assume a bug rather than a
+   gap in the workbook. */
+.po-lever--inert {
+  opacity: 0.55;
+}
+.po-lever--inert input[type="range"] {
+  cursor: not-allowed;
+}
+
+.po-simulator-results {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.po-scenario-metrics {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.po-scenario-metrics article {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.po-scenario-metrics span {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+.po-scenario-metrics strong {
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+.po-scenario-metrics small {
+  color: var(--muted);
+  font-size: 0.58rem;
+}
+
+/* --- Saved scenarios (spec 9d) ------------------------------------------- */
+
+.po-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.po-scenario-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.66rem;
+}
+.po-scenario-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+.po-scenario-name {
+  color: var(--ink);
+  font-weight: 600;
+}
+.po-scenario-levers {
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.6rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.po-scenario-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Applied-scenario banner (spec 9b) ----------------------------------- */
+
+.po-applied-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+.po-applied-banner p {
+  flex: 1 1 260px;
+  margin: 0;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+.po-applied-flag {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--amber-600);
+  color: var(--surface);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.po-applied-scope {
+  flex: 1 1 100%;
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+/* --- Skeleton ------------------------------------------------------------ */
+
+.po-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+}
+.po-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.po-skeleton-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.po-skeleton-dims {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- Narrow viewports ---------------------------------------------------- */
+
+@media (max-width: 1100px) {
+  .po-lever-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .po-simulator-results {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .po-skeleton-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .po-skeleton-panels,
+  .po-skeleton-dims {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .po-lever-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .po-metric-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .po-routebar-actions {
+    margin-left: 0;
+  }
+  .po-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* ==========================================================================
+   KPI drill-down drawer
+
+   Opened by any KPI tile. A right-hand panel rather than a centred dialog on
+   purpose: the tile that opened it stays visible, so the number and its
+   decomposition are readable at the same time.
+   ========================================================================== */
+
+.drill-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgb(15 23 42 / 38%);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.drill-drawer {
+  width: min(460px, 100vw);
+  height: 100%;
+  overflow-y: auto;
+  background: var(--surface-strong);
+  border-left: 1px solid var(--line);
+  box-shadow: var(--shadow-lg, 0 10px 40px rgb(15 23 42 / 25%));
+}
+
+.drill-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+}
+
+.drill-head h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.drill-head p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-close {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.drill-close:hover {
+  color: var(--text);
+}
+
+.drill-body {
+  padding: var(--space-3);
+}
+
+.drill-headline {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.drill-headline-value {
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.drill-headline-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-formula {
+  display: block;
+  margin-bottom: var(--space-3);
+  padding: 8px 11px;
+  border-radius: var(--radius-md);
+  background: var(--chip, var(--surface));
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  color: var(--text);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/* Not a decorative caveat: it stops a reader summing an average's bars
+   against the headline and reporting the gap as a bug. */
+.drill-warning {
+  margin: 0 0 var(--space-3);
+  padding: 7px 10px;
+  border-left: 3px solid var(--accent-warning, #c77700);
+  border-radius: var(--radius-sm, 4px);
+  background: var(--surface);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-section {
+  margin-bottom: var(--space-4, 20px);
+}
+
+.drill-section h3 {
+  margin: 0 0 var(--space-1);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.drill-section-note,
+.drill-empty {
+  margin: 0 0 var(--space-1);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.drill-bars {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.drill-bars li {
+  display: grid;
+  grid-template-columns: minmax(0, 110px) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.drill-bar-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  text-align: right;
+}
+
+.drill-bar-track {
+  min-width: 0;
+  height: 13px;
+  border-radius: 3px;
+  background: var(--gray-100);
+}
+
+.drill-bar-fill {
+  display: block;
+  height: 100%;
+  min-width: 2px;
+  border-radius: 3px;
+  background: var(--accent-info, #2f6bed);
+}
+
+.drill-bar-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.drill-skus {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.drill-skus li + li {
+  border-top: 1px solid var(--line);
+}
+
+.drill-skus button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.drill-skus button:hover {
+  background: var(--surface);
+}
+
+.drill-sku-name {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.drill-sku-name b {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drill-sku-name small {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.drill-sku-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (width <= 620px) {
+  .drill-drawer {
+    width: 100vw;
+  }
+
+  .drill-bars li {
+    grid-template-columns: minmax(0, 84px) minmax(0, 1fr) auto;
+  }
+}
+
+/* A3 KPI tiles carry the same two-action split as A2: the face opens the
+   drill-down, the pill re-scopes the board. */
+.po-kpi-open {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.po-kpi-open:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 3px;
+}
+
+.po-kpi-scope {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.po-kpi-scope:hover {
+  color: var(--text);
+  border-color: var(--gray-300);
+}
+
+/* KPI tile mini-charts. Distributions, not trends — the caption under each
+   names its axis so the shape cannot be misread as movement over time. */
+.kpi-spark {
+  display: block;
+  width: 100%;
+  height: 24px;
+  color: var(--risk-kpi-accent, var(--accent-info));
+  opacity: 0.85;
+}
+
+
+
+
+/* ==========================================================================
+   KPI tile mini-charts — laid out as the mockup does
+
+   The chart sits BESIDE the figure, not under it: the tile reads as one
+   object, and the number keeps the left edge where the eye lands first. It
+   takes roughly a third of the width and inherits the tile's accent, so the
+   colour already naming the metric names its chart too.
+
+   No visible caption. The axis name is on the tile's `title`, which keeps the
+   card clean while leaving the honest label one hover away — these are
+   distributions, and nothing here should be read as movement over time.
+   ========================================================================== */
+
+.risk-kpi-open,
+.po-kpi-open {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.risk-kpi-text,
+.po-kpi-text,
+.demand-kpi-text {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.risk-kpi-spark,
+.po-kpi-spark,
+.demand-kpi-spark-wrap {
+  flex: 0 0 34%;
+  max-width: 34%;
+  min-width: 0;
+  align-self: center;
+}
+
+/* Each board colours its charts from the token the tile already uses, so a
+   tile and its chart cannot drift apart. */
+.risk-kpi-spark .kpi-spark {
+  color: var(--risk-kpi-accent, var(--accent-info));
+}
+
+.po-kpi--good { --po-kpi-accent: var(--accent-success); }
+.po-kpi--warn { --po-kpi-accent: var(--accent-warning-strong); }
+.po-kpi--neutral { --po-kpi-accent: var(--accent-info); }
+
+/* One chart, three boards. Each board sets the accent token on its tile; the
+   SVG paints from `currentColor`, so a tile and its chart cannot drift apart. */
+.kpi-spark {
+  display: block;
+  width: 100%;
+  height: 30px;
+  overflow: visible;
+}
+
+.kpi-spark polygon {
+  fill: currentcolor;
+  opacity: 0.14;
+}
+
+.kpi-spark polyline {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (width <= 720px) {
+  /* Below this the figure needs the whole tile; the chart is the first thing
+     that can go without losing the number. */
+  .risk-kpi-spark,
+  .po-kpi-spark,
+  .demand-kpi-spark-wrap {
+    display: none;
+  }
+}
+
+/* A1's shared distribution charts inherit the same accent token as its own
+   filled-area sparkline, so both shapes read as the card's colour. */
+.demand-kpi-spark-wrap .kpi-spark {
+  color: var(--demand-kpi-accent, var(--accent-info));
+}
+
+.po-kpi-spark .kpi-spark {
+  color: var(--po-kpi-accent, var(--accent-info));
+}
+
+@media (width <= 1180px) {
+  .demand-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 720px) {
+  .demand-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Drawer motion.
+
+   The panel slides in from the edge it lives on and the backdrop fades, so the
+   drawer reads as arriving from off-screen rather than appearing on top of the
+   board. Short — 180ms — because this opens on a click the reader has already
+   decided on; anything slower puts a wait in front of an answer.
+
+   Honoured only when the reader has not asked for less motion. */
+@keyframes drill-slide-in {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes drill-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.drill-backdrop {
+  animation: drill-fade-in 180ms ease-out;
+}
+
+.drill-drawer {
+  animation: drill-slide-in 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* The tiles themselves settle rather than snap, so a filter change reads as
+   the same board updating instead of a new one appearing. */
+.risk-kpi,
+.po-kpi,
+.demand-kpi {
+  transition:
+    background 140ms ease-out,
+    box-shadow 140ms ease-out,
+    transform 140ms ease-out;
+}
+
+.risk-kpi:hover,
+.po-kpi:hover,
+.demand-kpi:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md, 0 4px 14px rgb(15 23 42 / 12%));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drill-backdrop,
+  .drill-drawer {
+    animation: none;
+  }
+
+  .risk-kpi,
+  .po-kpi,
+  .demand-kpi {
+    transition: none;
+  }
+
+  .risk-kpi:hover,
+  .po-kpi:hover,
+  .demand-kpi:hover {
+    transform: none;
+  }
+}
+
+@media (width <= 1180px) {
+  .risk-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (width <= 720px) {
+  .risk-kpi-grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

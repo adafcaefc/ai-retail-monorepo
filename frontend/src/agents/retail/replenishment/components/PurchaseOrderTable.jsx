@@ -1,42 +1,100 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { LINE_FORMULAS, PACK_ROUNDING_NOTE } from "../data/contract.js";
+import { LINE_FORMULAS, PACK_ROUNDING_NOTE, ROUTE_ORDER } from "../data/contract.js";
+import { buildPurchaseOrderCsv, purchaseOrderFilename } from "../data/csv.js";
 import { formatIdr, formatIdrExact, formatUnits, routeColor } from "../presentation.js";
 
 const PAGE_SIZE = 40;
+const ALL_ROUTES = "all";
 
 /**
- * A3 spec 5c: the purchase order itself.
+ * Hand a CSV to the browser.
  *
- * Paged rather than scrolled — a purchase order is worked down, and 800 rows
- * in one scroll container loses a reader's place on every re-render.
- *
- * Each numeric column carries its formula on hover. "Position", "ROP" and
- * "Max" mean different things in different retail systems, and the arithmetic
- * that turns a shortfall into whole cases is exactly where a reader stops
- * trusting a screen if it cannot be checked in place.
+ * Guarded rather than assumed: `createObjectURL` is absent under jsdom, and a
+ * test that clicks Export should exercise the CSV, not die on a missing DOM
+ * API. When it is absent the file is simply not offered — nothing here is the
+ * only way to read these numbers.
  */
-export default function PurchaseOrderTable({ rows, onSelect }) {
+function download(filename, text) {
+  if (typeof URL?.createObjectURL !== "function") return false;
+
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
+
+/**
+ * A3 spec 5c and 7: the purchase order, split by route.
+ *
+ * The route bar is section 7's `poTab()` / `buildPOgroups()`. It groups this
+ * table only — the route dropdown in the filter bar scopes the whole board, and
+ * the two answer different questions: "show me the cross-dock board" against
+ * "I am placing the cross-dock order now".
+ *
+ * Paged rather than scrolled — a purchase order is worked down, and 800 rows in
+ * one scroll container loses a reader's place on every re-render.
+ *
+ * Each numeric column carries its formula on hover. "Position", "ROP" and "Max"
+ * mean different things in different retail systems, and the arithmetic that
+ * turns a shortfall into whole cases is exactly where a reader stops trusting a
+ * screen if it cannot be checked in place.
+ */
+export default function PurchaseOrderTable({ rows, routes, asOf, onSelect }) {
   const { language, t } = useLanguage();
   const [page, setPage] = useState(0);
+  const [tab, setTab] = useState(ALL_ROUTES);
 
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  const grouped = useMemo(() => {
+    const groups = new Map(ROUTE_ORDER.map((id) => [id, []]));
+    for (const row of rows) {
+      if (groups.has(row.route)) groups.get(row.route).push(row);
+    }
+    return groups;
+  }, [rows]);
+
+  const visibleRows = tab === ALL_ROUTES ? rows : (grouped.get(tab) ?? []);
+
+  const pages = Math.max(1, Math.ceil(visibleRows.length / PAGE_SIZE));
   const current = Math.min(page, pages - 1);
-  const visible = rows.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
+  const visible = visibleRows.slice(current * PAGE_SIZE, (current + 1) * PAGE_SIZE);
 
-  const totalCost = rows.reduce((running, row) => running + row.order_value_cost, 0);
-  const totalSaving = rows.reduce(
+  const totalCost = visibleRows.reduce((running, row) => running + row.order_value_cost, 0);
+  const totalSaving = visibleRows.reduce(
     (running, row) => running + row.saving_vs_designated,
     0,
   );
+
+  const routeLabel = (id) => routes?.find((route) => route.id === id)?.label ?? id;
+
+  const tabs = [
+    { id: ALL_ROUTES, label: t("All routes"), count: rows.length },
+    ...ROUTE_ORDER.map((id) => ({
+      id,
+      label: t(routeLabel(id)),
+      count: grouped.get(id)?.length ?? 0,
+    })),
+  ];
+
+  function exportRows(scopeId, exportable) {
+    download(
+      purchaseOrderFilename(scopeId, asOf),
+      buildPurchaseOrderCsv(exportable),
+    );
+  }
 
   return (
     <section className="po-panel po-order" aria-label={t("Purchase order preview")}>
       <header className="po-panel-head">
         <h3>{t("Purchase order preview")}</h3>
         <span className="po-panel-note">
-          {formatUnits(rows.length, language)} {t("lines")} ·{" "}
+          {formatUnits(visibleRows.length, language)} {t("lines")} ·{" "}
           {formatIdr(totalCost, language)} {t("at cost")}
           {totalSaving > 0
             ? ` · ${formatIdr(totalSaving, language)} ${t("recoverable")}`
@@ -44,7 +102,54 @@ export default function PurchaseOrderTable({ rows, onSelect }) {
         </span>
       </header>
 
-      {rows.length === 0 ? (
+      <div className="po-routebar" role="tablist" aria-label={t("Purchase order route")}>
+        {tabs.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            role="tab"
+            aria-selected={tab === entry.id}
+            className={tab === entry.id ? "po-routetab is-active" : "po-routetab"}
+            onClick={() => {
+              setTab(entry.id);
+              setPage(0);
+            }}
+          >
+            {entry.id === ALL_ROUTES ? null : (
+              <span
+                className="po-routetab-dot"
+                style={{ background: routeColor(entry.id) }}
+                aria-hidden="true"
+              />
+            )}
+            {entry.label}
+            <small>{formatUnits(entry.count, language)}</small>
+          </button>
+        ))}
+
+        <div className="po-routebar-actions">
+          <button
+            type="button"
+            className="po-button po-button--quiet"
+            onClick={() => exportRows(tab, visibleRows)}
+            disabled={visibleRows.length === 0}
+          >
+            {tab === ALL_ROUTES ? t("Export CSV") : t("Export this route")}
+          </button>
+          {tab === ALL_ROUTES ? null : (
+            <button
+              type="button"
+              className="po-button po-button--quiet"
+              onClick={() => exportRows(ALL_ROUTES, rows)}
+              disabled={rows.length === 0}
+            >
+              {t("Export full PO")}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {visibleRows.length === 0 ? (
         <p className="po-empty">{t("Nothing needs ordering in the current scope.")}</p>
       ) : (
         <>

@@ -80,12 +80,12 @@ export default function InventoryRiskFilters({
           options={options.stores}
           allLabel={t("All stores")}
           disabled={!SUPPORTS_STORE_SCOPE}
-          // Disabled rather than hidden: the filter is real, the current data
-          // source just cannot honour it. Saying so beats a control that
-          // silently changes nothing.
+          // Still keyed off the flag rather than always enabled: if a provider
+          // ever cannot honour store scope, a disabled control that says why
+          // beats one that silently changes nothing.
           title={
             SUPPORTS_STORE_SCOPE
-              ? undefined
+              ? t("Shows this store's own position, not the chain's share of it.")
               : t("Store scope needs the per-store dataset, not yet available.")
           }
           onChange={(value) => onPatch({ store_id: value })}

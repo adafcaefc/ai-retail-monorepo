@@ -1,3 +1,4 @@
+import KpiSparkline from "../../../../components/KpiSparkline.jsx";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import {
   AT_RISK_VALUE_NOTE,
@@ -21,11 +22,19 @@ import {
  * expiry are only actionable once you know what they cost, and a count alone
  * cannot be compared against anything.
  *
- * No sparklines. The workbook carries no date column, so any trend line here
- * would be invented, and an invented trend on a risk board is worse than no
- * trend. They return when daily history does.
+ * The mini-charts are DISTRIBUTIONS, never trends. There is still no date
+ * column in this workbook, so the original note here was right that a trend
+ * line would have to be invented — but a histogram of the rows behind the
+ * number needs no dates at all, and says something the figure cannot: whether
+ * the count is concentrated or spread. Each carries a caption naming its axis,
+ * so nothing reads as time. See `computeKpiSparklines`.
  */
-export default function RiskKpiGrid({ kpis, onDrillStockoutRisk }) {
+export default function RiskKpiGrid({
+  kpis,
+  sparklines = {},
+  onDrillStockoutRisk,
+  onOpenDrilldown,
+}) {
   const { language, t } = useLanguage();
 
   const dosBelow = kpis.avg_dos < DOS_TARGET.min;
@@ -81,43 +90,71 @@ export default function RiskKpiGrid({ kpis, onDrillStockoutRisk }) {
     <section className="risk-kpi-grid" aria-label={t("Inventory risk summary")}>
       {tiles.map((tile) => {
         const formula = KPI_FORMULAS[tile.id];
-        const title = [t(tile.label), formula, tile.captionNote]
+        const spark = sparklines[tile.id];
+        const title = [t(tile.label), formula, spark?.caption, tile.captionNote]
           .filter(Boolean)
           .join("\n");
 
         const body = (
           <>
-            <div className="risk-kpi-label">{t(tile.label)}</div>
-            <div className="risk-kpi-value">{tile.value}</div>
-            <div
-              className={`risk-kpi-caption${
-                tile.captionTone ? ` risk-kpi-caption--${tile.captionTone}` : ""
-              }`}
-            >
-              {tile.caption}
+            <div className="risk-kpi-text">
+              <div className="risk-kpi-label">{t(tile.label)}</div>
+              <div className="risk-kpi-value">{tile.value}</div>
+              <div
+                className={`risk-kpi-caption${
+                  tile.captionTone ? ` risk-kpi-caption--${tile.captionTone}` : ""
+                }`}
+              >
+                {tile.caption}
+              </div>
             </div>
+            {/*
+              Beside the figure, as the mockup places it, so the tile reads as
+              one object rather than a number with a footnote. The axis name
+              moves into the tooltip rather than vanishing: these are
+              distributions, and a reader who assumed a trend would be reading
+              a shape that says nothing about time.
+            */}
+            {spark?.values?.length ? (
+              <div className="risk-kpi-spark" title={t(spark.caption)}>
+                <KpiSparkline values={spark.values} kind={spark.kind} />
+              </div>
+            ) : null}
           </>
         );
 
         const style = { "--risk-kpi-accent": kpiAccent(tile.id) };
         const className = `risk-kpi risk-kpi--${kpiTone(tile.id, kpis[tile.id])}`;
 
-        // A tile that filters the board is a button; the rest are not, so a
-        // keyboard user is not offered five stops that do nothing.
-        return tile.onClick ? (
-          <button
-            key={tile.id}
-            type="button"
-            className={`${className} risk-kpi--actionable`}
-            style={style}
-            title={`${title}\n${t("Click to show only the reorder zone")}`}
-            onClick={tile.onClick}
-          >
-            {body}
-          </button>
-        ) : (
-          <article key={tile.id} className={className} style={style} title={title}>
-            {body}
+        /*
+         * Every tile now opens its own decomposition, so every tile is a
+         * button — the earlier split (one actionable tile, five inert
+         * articles) existed only because five of them had nothing to show.
+         *
+         * The stockout tile keeps its second, stronger action: a separate
+         * control scopes the board to the reorder zone. Opening a drawer and
+         * filtering the whole board are different intents and a reader should
+         * not have to guess which a click will do.
+         */
+        return (
+          <article key={tile.id} className={className} style={style}>
+            <button
+              type="button"
+              className="risk-kpi-open"
+              title={`${title}\n${t("Click to break this number down")}`}
+              onClick={() => onOpenDrilldown?.(tile.id)}
+            >
+              {body}
+            </button>
+            {tile.onClick ? (
+              <button
+                type="button"
+                className="risk-kpi-scope"
+                onClick={tile.onClick}
+              >
+                {t("Show only the reorder zone")}
+              </button>
+            ) : null}
           </article>
         );
       })}

@@ -384,6 +384,85 @@ def verify_engine_chain(
     return expressions
 
 
+def verify_store_derivation(
+    engine_store: list[dict[str, Any]],
+    engine: list[dict[str, Any]],
+    sku_master: dict[str, dict[str, Any]],
+    stores: dict[str, dict[str, Any]],
+    store_size: dict[str, float],
+) -> None:
+    """Prove one store's position is derivable, before promising it downstream.
+
+    The store filter used to be disabled with the note "needs the per-store
+    dataset, not yet available". That was true of the dataset and false of the
+    arithmetic: `ENGINE_STORE` is not an independent measurement, it is the SKU
+    attributes crossed with the store attributes. Three products reproduce it.
+
+        ads      = base_ads * seasonality * store.size
+        on_hand  = base_ads * onhand_days * stock_factor
+                   * store.health * store.size
+        open_po  = open_po_chain * (store.size / total_size_in_vertical)
+
+    So the board can scope to a store by carrying two extra numbers per SKU and
+    two per store -- about 960 values -- instead of the 16,000-row grid those
+    same values generate.
+
+    That is a strong claim, so it is checked rather than asserted, over every
+    row, every time this fixture is built. `open_po` gets a 1e-3 tolerance
+    because the workbook stores it rounded; the other two must be exact.
+
+    If this ever fails, the store filter is lying and must go back to disabled
+    -- do not widen the tolerance to make it pass.
+    """
+    chain = {row["sku_id"]: row for row in engine}
+    failures: list[str] = []
+
+    for row in engine_store:
+        sku = sku_master[row["sku_id"]]
+        store = stores[row["store_id"]]
+        ratio = store["size"] / store_size[store["vertical_id"]]
+
+        checks = (
+            ("ads", sku["base_ads"] * sku["seasonality"] * store["size"], row["ads"], 1e-9),
+            (
+                "on_hand",
+                sku["base_ads"]
+                * sku["onhand_days"]
+                * sku["stockf"]
+                * store["health"]
+                * store["size"],
+                row["on_hand"],
+                1e-9,
+            ),
+            (
+                "open_po",
+                chain[row["sku_id"]]["open_po"] * ratio,
+                row["open_po"],
+                1e-3,
+            ),
+        )
+        for name, computed, stored, tolerance in checks:
+            if abs(computed - stored) > tolerance:
+                failures.append(
+                    f"{row['sku_id']}@{row['store_id']} / {name}:"
+                    f" derived {computed!r}, workbook {stored!r}"
+                )
+
+    if failures:
+        print(
+            f"FAIL  the per-store derivation disagrees with ENGINE_STORE on"
+            f" {len(failures)} value(s) across {len(engine_store)} rows:"
+        )
+        for line in failures[:5]:
+            print(f"      {line}")
+        raise SystemExit(1)
+
+    print(
+        f"  ok  per-store derivation reproduces {len(engine_store)}"
+        " ENGINE_STORE rows from SKU x store attributes"
+    )
+
+
 def build_items(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
@@ -461,6 +540,19 @@ def build_items(
                 # The vertical's total size index, not one store's. See
                 # `chain_store_size` for why f01 still applies.
                 "store_size": store_size[row["vertical_id"]],
+                # -- Per-store derivation inputs ------------------------
+                # These two, with a store's own `size_index` and
+                # `health_index`, reproduce that store's on-hand exactly:
+                #
+                #   on_hand = base_ads * onhand_days * stock_factor
+                #             * store.health * store.size
+                #
+                # `verify_store_derivation` proves it over all 16,000
+                # ENGINE_STORE rows before this file is written. Carrying two
+                # numbers per SKU rather than the grid itself is what lets the
+                # store filter work without ~163 KB of extra payload.
+                "onhand_days": sku["onhand_days"],
+                "stock_factor": sku["stockf"],
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
                 "lead_days": sku["lead_d"],
@@ -503,6 +595,11 @@ def build_store_rows(
                 "vertical_id": store["vertical_id"],
                 "cluster": store["cluster"],
                 "channel": store["channel"],
+                # The two store attributes the per-store derivation needs.
+                # `size_index` also drives f01 and the f03 allocation ratio,
+                # so a store-scoped board reads them rather than a stored grid.
+                "size_index": store["size"],
+                "health_index": store["health"],
                 "sku_count": 0,
                 # Broken out per state so the store chart can stack segments
                 # that add up to sku_count. Rendering a partial breakdown as if
@@ -654,6 +751,9 @@ def main() -> int:
     store_size = chain_store_size(tables["stores"])
 
     expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
+    verify_store_derivation(
+        tables["engine_store"], tables["engine"], sku_master, stores, store_size
+    )
 
     items = build_items(tables["engine"], sku_master, store_size)
     store_rows = build_store_rows(tables["engine_store"], stores)

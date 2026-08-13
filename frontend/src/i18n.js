@@ -300,6 +300,41 @@ const CHROME = {
   "Order value by category": "Nilai pesanan per kategori",
   "Order value by store": "Nilai pesanan per toko",
   "Order value by cluster": "Nilai pesanan per klaster",
+  "Order value by legal entity": "Nilai pesanan per entitas legal",
+  "Close": "Tutup",
+  "Prediction band width over the horizon": "Lebar rentang prediksi sepanjang horizon",
+  "Forecast curve the trend compounds into": "Kurva proyeksi tempat tren terakumulasi",
+  "Growth index, trending SKUs": "Indeks pertumbuhan, SKU sedang tren",
+  "Days of cover, lines to reorder": "Hari cover, baris yang perlu dipesan",
+  "Days of cover, all lines": "Hari cover, semua baris",
+  "Units by category, largest first": "Unit per kategori, terbesar dahulu",
+  "Cost by category, largest first": "Biaya per kategori, terbesar dahulu",
+  "Retail value by category, largest first": "Nilai jual per kategori, terbesar dahulu",
+  "Saving by vendor, largest first": "Penghematan per vendor, terbesar dahulu",
+  "Days of cover, at-risk SKUs": "Hari cover, SKU berisiko",
+  "Days of cover, overstocked SKUs": "Hari cover, SKU kelebihan stok",
+  "Days of cover, all SKUs": "Hari cover, semua SKU",
+  "Shelf life remaining": "Sisa masa simpan",
+  "Growth index, slow movers": "Indeks pertumbuhan, barang lambat",
+  "Value by category, largest first": "Nilai per kategori, terbesar dahulu",
+  "order lines in scope": "baris pesanan dalam cakupan",
+  "Show only lines to reorder": "Tampilkan hanya baris yang perlu dipesan",
+  "This metric is a rate, so the breakdowns below are each group's own rate and do not sum to the headline.": "Metrik ini berupa rasio, jadi rincian di bawah adalah rasio tiap grup dan tidak menjumlah ke angka utama.",
+  "The per-store grid prices at selling price and holds no vendor split, so this measure has no per-store figure to show.": "Grid per-toko memakai harga jual dan tidak memuat pembagian vendor, jadi ukuran ini tidak punya angka per toko.",
+  "Current value": "Nilai saat ini",
+  "across": "mencakup",
+  "SKUs in scope": "SKU dalam cakupan",
+  "Click to break this number down": "Klik untuk membedah angka ini",
+  "Show only the reorder zone": "Tampilkan hanya zona pemesanan ulang",
+  "12-period history of this metric": "Riwayat 12 periode metrik ini",
+  "This metric by category": "Metrik ini per kategori",
+  "This metric by store": "Metrik ini per toko",
+  "Top contributing SKUs": "SKU kontributor teratas",
+  "Filter the board to this SKU": "Saring papan ke SKU ini",
+  "Nothing in scope.": "Tidak ada dalam cakupan.",
+  "Each store's own position, derived per store — not an allocation.": "Posisi milik tiap toko, diturunkan per toko — bukan alokasi.",
+  "No history recorded. The source holds a single snapshot per SKU with no date column, so a trend here would be generated rather than measured.": "Tidak ada riwayat tercatat. Sumber data hanya menyimpan satu snapshot per SKU tanpa kolom tanggal, jadi tren di sini akan dikarang, bukan diukur.",
+  "This metric is an average, so the breakdowns below are each group's own average and do not sum to the headline.": "Metrik ini rata-rata, jadi rincian di bawah adalah rata-rata tiap grup dan tidak menjumlah ke angka utama.",
   "at cost": "harga beli",
   lead: "waktu tunggu",
   "At cost": "Harga beli",
@@ -331,6 +366,47 @@ const CHROME = {
     "Kuantitas beli dibulatkan ke atas ke kelipatan kemasan, jadi satu baris membeli sedikit lebih banyak dari kekurangannya.",
   "Workbook demonstration data, not a live ERP position. Order value is reported twice — at selling price, which is what the A3 sheet totals, and at trade-agreement price, which is what the purchase order would actually cost.":
     "Data demonstrasi workbook, bukan posisi ERP langsung. Nilai pesanan dilaporkan dua kali — harga jual, yang dijumlahkan sheet A3, dan harga trade-agreement, yang sebenarnya dibayar pesanan pembelian.",
+
+  "Code or name": "Kode atau nama",
+
+  // Requirement vs inbound supply (A3 spec section 4).
+  "Requirement vs inbound supply": "Kebutuhan vs pasokan masuk",
+  Requirement: "Kebutuhan",
+  "Inbound + on-hand cover": "Cakupan stok + barang masuk",
+  "Gap to cover": "Selisih yang harus ditutup",
+  Covered: "Tercukupi",
+  "Cover runs out at": "Cakupan habis pada",
+  "Cover out": "Cakupan habis",
+  "Order qty": "Jumlah pesan",
+  "PO value": "Nilai PO",
+  Fill: "Pemenuhan",
+  "Inbound is placed on each SKU's lead day because the workbook records how much is on order but never when it arrives. Requirement is a flat ADS per day, which is all one ADS per SKU can support.":
+    "Barang masuk ditempatkan pada hari lead time tiap SKU karena workbook mencatat berapa yang dipesan tetapi tidak pernah kapan tibanya. Kebutuhan memakai ADS rata per hari, karena satu ADS per SKU hanya mendukung itu.",
+
+  // Route tabs and export (A3 spec section 7).
+  "Purchase order route": "Rute pesanan pembelian",
+  "All routes": "Semua rute",
+  "Export CSV": "Ekspor CSV",
+  "Export this route": "Ekspor rute ini",
+  "Export full PO": "Ekspor PO penuh",
+
+  // What-If (A3 spec section 9).
+  "Order value (cost)": "Nilai pesanan (harga beli)",
+  "Avg cover days": "Rata-rata hari cakupan",
+  "ADS × (1 + demand/100) — lifts ROP, Max and the order":
+    "ADS × (1 + demand/100) — menaikkan ROP, Maks, dan pesanan",
+  "Promo-eligible SKUs order more": "SKU yang ikut promo memesan lebih banyak",
+  "Open PO × (1 + inbound/100) — more inbound, smaller order":
+    "Open PO × (1 + inbound/100) — makin banyak masuk, makin kecil pesanan",
+  "Longer lead raises Max, so each line orders further ahead":
+    "Lead time lebih panjang menaikkan Maks, jadi tiap baris memesan lebih jauh ke depan",
+  "Safety days raise Max — bigger order, more capital":
+    "Hari pengaman menaikkan Maks — pesanan lebih besar, modal lebih besar",
+  "This is a simulated order, not one to send.":
+    "Ini pesanan simulasi, bukan yang untuk dikirim.",
+  "No modelled effect": "Tidak ada efek yang dimodelkan",
+  "the workbook carries no term for it, so the figures above cannot move.":
+    "workbook tidak punya sukunya, jadi angka di atas tidak bisa bergerak.",
 
   // Projected on-hand vs demand (A2 spec section 4).
   "Projected on-hand vs demand": "Proyeksi stok vs permintaan",

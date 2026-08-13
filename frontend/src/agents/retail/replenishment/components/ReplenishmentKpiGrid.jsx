@@ -1,3 +1,4 @@
+import KpiSparkline from "../../../../components/KpiSparkline.jsx";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { KPI_FORMULAS } from "../data/contract.js";
 import {
@@ -18,7 +19,12 @@ import {
  * a state: what the same purchase order would cost at each line's cheapest
  * quoted vendor instead of its designated one.
  */
-export default function ReplenishmentKpiGrid({ kpis, onDrillReorder }) {
+export default function ReplenishmentKpiGrid({
+  kpis,
+  sparklines = {},
+  onDrillReorder,
+  onOpenDrilldown,
+}) {
   const { language, t } = useLanguage();
 
   const tiles = [
@@ -66,22 +72,53 @@ export default function ReplenishmentKpiGrid({ kpis, onDrillReorder }) {
 
   return (
     <section className="po-kpi-grid" aria-label={t("Replenishment summary")}>
-      {tiles.map((tile) => {
-        const Tag = tile.drill && onDrillReorder ? "button" : "article";
-        return (
-          <Tag
-            key={tile.id}
-            type={Tag === "button" ? "button" : undefined}
-            className={`po-kpi po-kpi--${tile.tone || "neutral"}`}
-            title={KPI_FORMULAS[tile.id]}
-            onClick={tile.drill && onDrillReorder ? onDrillReorder : undefined}
+      {tiles.map((tile) => (
+        /*
+         * Every tile opens its own decomposition, so the tile face is always a
+         * button. The reorder tile keeps its second, stronger action as a
+         * separate control: opening a drawer and re-scoping the whole board
+         * are different intents, and one click cannot mean both.
+         */
+        <article
+          key={tile.id}
+          className={`po-kpi po-kpi--${tile.tone || "neutral"}`}
+        >
+          <button
+            type="button"
+            className="po-kpi-open"
+            title={[
+              KPI_FORMULAS[tile.id],
+              sparklines[tile.id] ? t(sparklines[tile.id].caption) : null,
+              t("Click to break this number down"),
+            ]
+              .filter(Boolean)
+              .join("\n")}
+            onClick={() => onOpenDrilldown?.(tile.id)}
           >
-            <span className="po-kpi-label">{t(tile.label)}</span>
-            <strong className="po-kpi-value">{tile.value}</strong>
-            {tile.sub ? <small className="po-kpi-sub">{tile.sub}</small> : null}
-          </Tag>
-        );
-      })}
+            <span className="po-kpi-text">
+              <span className="po-kpi-label">{t(tile.label)}</span>
+              <strong className="po-kpi-value">{tile.value}</strong>
+              {tile.sub ? <small className="po-kpi-sub">{tile.sub}</small> : null}
+            </span>
+            {/* Beside the figure, as the mockup places it. The axis name lives
+                in the tile tooltip, so a distribution is never mistaken for a
+                trend. */}
+            {sparklines[tile.id]?.values?.length ? (
+              <span className="po-kpi-spark">
+                <KpiSparkline
+                  values={sparklines[tile.id].values}
+                  kind={sparklines[tile.id].kind}
+                />
+              </span>
+            ) : null}
+          </button>
+          {tile.drill && onDrillReorder ? (
+            <button type="button" className="po-kpi-scope" onClick={onDrillReorder}>
+              {t("Show only lines to reorder")}
+            </button>
+          ) : null}
+        </article>
+      ))}
     </section>
   );
 }

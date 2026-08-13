@@ -71,18 +71,31 @@ function Panel({ title, rows, dataKey, onSelect, note }) {
 }
 
 /**
- * A3 spec sections 5b and 6.
+ * A3 spec sections 5b and 6 — the mockup's four dimension charts
+ * (`ch-dim-cat`, `ch-dim-store`, `ch-dim-clu`, `ch-dim-le`).
  *
- * Store and cluster figures are GROSS: they sum each store's own shortfall,
- * where the chain-net headline nets surplus in one store against shortage in
- * another. The two will not add up, on purpose — the same caveat Inventory
- * Risk carries, for the same reason.
+ * Store, cluster and legal-entity figures are GROSS: they sum each store's own
+ * shortfall, where the chain-net headline nets surplus in one store against
+ * shortage in another. The two will not add up, on purpose — the same caveat
+ * Inventory Risk carries, for the same reason.
+ *
+ * ALL FOUR PANELS PLOT ONE MEASURE, `order_value_retail`.
+ * The category panel used to plot `order_value_cost` while the other three
+ * plotted retail. Both numbers are real and the workbook states each of them
+ * (see the builder's module docstring), but they differ by about a fifth — so
+ * a reader comparing the tallest category bar against the tallest cluster bar
+ * was comparing a cost against a price. Store rows carry no trade price at
+ * all, which settles which of the two the grid can share: retail. The cost
+ * figure keeps its own home on the vendor sourcing panel, where a buyer wants
+ * exactly that.
  */
 export default function OrderDimensionCharts({
   byCategory,
   byStore,
   byCluster,
+  byLegalEntity = [],
   onSelectCategory,
+  onSelectLegalEntity,
 }) {
   const { language, t } = useLanguage();
 
@@ -91,7 +104,7 @@ export default function OrderDimensionCharts({
       <Panel
         title="Order value by category"
         rows={byCategory}
-        dataKey="order_value_cost"
+        dataKey="order_value_retail"
         onSelect={onSelectCategory}
         note={`${t("top")} ${Math.min(TOP_N, byCategory.length)}`}
       />
@@ -105,6 +118,12 @@ export default function OrderDimensionCharts({
         title="Order value by cluster"
         rows={byCluster}
         dataKey="order_value_retail"
+      />
+      <Panel
+        title="Order value by legal entity"
+        rows={byLegalEntity}
+        dataKey="order_value_retail"
+        onSelect={onSelectLegalEntity}
       />
     </div>
   );

@@ -43,13 +43,15 @@ import {
   DEMAND_GRAINS,
   DEMAND_HORIZONS,
   DEMAND_LEVER_DEFINITIONS,
+  SCHEMA_VERSION,
   normalizeDemandLevers,
   normalizeDemandQuery,
 } from "./contract.js";
+import { growthHistogram, topGroups } from "../../common/distributions.js";
+import { buildDrilldown } from "./drilldown.js";
 import { createDemandEngine, isDemandBaseline } from "./engine.js";
 
 const ALL = "ALL";
-const SCHEMA_VERSION = 1;
 
 /** Days in one period of each grain, and how many periods a horizon buys. */
 const GRAIN_DAYS = {
@@ -421,6 +423,28 @@ export function computeSimulation(items, levers, applyLevers, referenceBy) {
 
 // -- assembly ----------------------------------------------------------
 
+/**
+ * Decompose one KPI tile, over exactly the rows the board is showing.
+ *
+ * It rebuilds the board rather than re-deriving a scope by hand, because three
+ * of A1's six headline figures are per-vertical constants blended by forecast
+ * weight — reproducing that blend here would be a second implementation of it,
+ * and the two would eventually disagree. Taking the total off the finished KPI
+ * card keeps the drawer and the tile reading the same number by construction.
+ */
+export function buildDrilldownFromFixture(fixture, query = {}, metricId, options = {}) {
+  const board = buildDashboardFromFixture(fixture, query, options);
+  const merged = normalizeDemandQuery({ ...DEFAULT_DEMAND_QUERY, ...query });
+  const card = board.kpis.find((kpi) => kpi.id === metricId);
+
+  return buildDrilldown(
+    metricId,
+    scopeItems(fixture.items, merged),
+    scopeStores(fixture.stores, merged),
+    card?.value ?? 0,
+  );
+}
+
 export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
   const merged = normalizeDemandQuery({ ...DEFAULT_DEMAND_QUERY, ...query });
   const referenceBy = Object.fromEntries(
@@ -489,7 +513,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       grains: [...DEMAND_GRAINS],
       horizons_weeks: [...DEMAND_HORIZONS],
     },
-    kpis: buildKpiCards(kpis, curve, fixture.derivation),
+    kpis: buildKpiCards(kpis, curve, fixture.derivation, items, forecast),
     forecast,
     // Same series, always weekly, so the confidence panel is comparable across
     // grain changes rather than re-scaling under the reader.
@@ -517,8 +541,45 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
  * single typed constants with no history behind them, and inventing a wiggle
  * for them would be decorating a number with a shape that means nothing.
  */
-function buildKpiCards(kpis, curve, derivation) {
+function buildKpiCards(kpis, curve, derivation, items = [], forecast = null) {
   const seasonalSpark = curve.slice(0, 7);
+
+  /*
+   * The four tiles that used to sit bare.
+   *
+   * The note above was right that a TREND could not be drawn for them — three
+   * are typed constants and none has a dated source. But two of them do have a
+   * real series behind them, and the other two have a real distribution:
+   *
+   *   accuracy   the prediction band widens as sqrt(horizon), and that width
+   *              is computed FROM the accuracy figure — so the band is the
+   *              honest picture of what 92.4% buys you further out.
+   *   trend      the trend compounds into the forecast curve itself, which is
+   *              a real derived series rather than a wiggle.
+   *   stockout   cover = position / ADS, bucketed. Says whether the at-risk
+   *              SKUs are barely under or already empty.
+   *   trending   the growth index those SKUs were ranked on, bucketed.
+   *
+   * Nothing here is generated; `kind` names which of the two shapes each is.
+   */
+  const bandSpark = (forecast?.points ?? [])
+    .map((point) => (point.confidence_high ?? 0) - (point.confidence_low ?? 0))
+    .filter((width) => Number.isFinite(width));
+  const forecastSpark = (forecast?.points ?? [])
+    .map((point) => point.forecast ?? 0)
+    .filter((value) => Number.isFinite(value));
+
+  const cover = (item) => (item.ads > 0 ? item.position / item.ads : 0);
+  const coverHistogram = (rows) => {
+    const edges = [0.5, 2, 5, 8, 12, 15, 21, 30, Infinity];
+    const counts = edges.map(() => 0);
+    for (const row of rows) {
+      const value = cover(row);
+      const index = edges.findIndex((edge) => value <= edge);
+      counts[index === -1 ? counts.length - 1 : index] += 1;
+    }
+    return counts;
+  };
   const source = (id) =>
     derivation?.[id] === "typed-constant" ? "Workbook constant" : "Calculated";
 
@@ -541,7 +602,9 @@ function buildKpiCards(kpis, curve, derivation) {
       comparison_label: source("forecast_accuracy"),
       direction: "flat",
       status: kpis.forecast_accuracy >= 90 ? "good" : "warn",
-      sparkline: [],
+      sparkline: bandSpark,
+      sparkline_kind: "series",
+      sparkline_caption: "Prediction band width over the horizon",
     },
     {
       id: "demand_trend",
@@ -551,7 +614,9 @@ function buildKpiCards(kpis, curve, derivation) {
       comparison_label: source("demand_trend"),
       direction: kpis.demand_trend >= 0 ? "up" : "down",
       status: kpis.demand_trend >= 0 ? "good" : "warn",
-      sparkline: [],
+      sparkline: forecastSpark,
+      sparkline_kind: "series",
+      sparkline_caption: "Forecast curve the trend compounds into",
     },
     {
       id: "stockout_risk_skus",
@@ -561,7 +626,9 @@ function buildKpiCards(kpis, curve, derivation) {
       comparison_label: source("stockout_risk_skus"),
       direction: "flat",
       status: kpis.stockout_risk_skus ? "warn" : "good",
-      sparkline: [],
+      sparkline: coverHistogram(items.filter((item) => item.is_stockout_risk)),
+      sparkline_kind: "distribution",
+      sparkline_caption: "Days of cover, at-risk SKUs",
     },
     {
       id: "predicted_to_trend",
@@ -571,7 +638,9 @@ function buildKpiCards(kpis, curve, derivation) {
       comparison_label: source("predicted_to_trend"),
       direction: "up",
       status: "good",
-      sparkline: [],
+      sparkline: growthHistogram(items.filter((item) => item.is_trending)),
+      sparkline_kind: "distribution",
+      sparkline_caption: "Growth index, trending SKUs",
     },
     {
       id: "seasonality_index",

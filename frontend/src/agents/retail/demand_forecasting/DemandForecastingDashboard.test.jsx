@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   load: vi.fn(),
   runScenario: vi.fn(),
+  drilldown: vi.fn(),
 }));
 
 vi.mock("./data/dashboardData.js", () => ({
   loadDemandForecastingDashboard: mocks.load,
   loadDemandForecastingScenario: mocks.runScenario,
+  loadDemandForecastingDrilldown: mocks.drilldown,
 }));
 
 import { LanguageProvider } from "../../../LanguageProvider.jsx";
@@ -16,7 +18,10 @@ import DemandForecastingDashboard from "./DemandForecastingDashboard.jsx";
 import { visibleDemandScenarios } from "./components/DemandScenarioComparison.jsx";
 import { normalizeDemandDashboard } from "./data/contract.js";
 import fixture from "./data/fixture.json";
-import { buildDashboardFromFixture } from "./data/selectors.js";
+import {
+  buildDashboardFromFixture,
+  buildDrilldownFromFixture,
+} from "./data/selectors.js";
 
 /*
  * The gateway is mocked, but what it returns is not: these render the real
@@ -28,6 +33,15 @@ const board = (query, levers, options) =>
     buildDashboardFromFixture(fixture, query, { levers, ...options }),
   );
 
+/**
+ * The drawer builder is mocked at the gateway and real underneath, exactly as
+ * the board is — so these assertions cover the actual decomposition rather
+ * than a fixture of one.
+ */
+mocks.drilldown.mockImplementation(async (query, metricId) =>
+  buildDrilldownFromFixture(fixture, query, metricId),
+);
+
 /** The chain's Forecast 7d, as the KPI tile prints it. */
 const CHAIN_FORECAST = "1,656,178";
 
@@ -38,6 +52,52 @@ function renderDashboard() {
     </LanguageProvider>,
   );
 }
+
+async function renderSettled() {
+  const result = renderDashboard();
+  // The chain forecast prints on the tile and again in the What-If strip, so
+  // wait on "at least one" rather than "exactly one".
+  await screen.findAllByText(CHAIN_FORECAST);
+  return result;
+}
+
+describe("the KPI drill-down drawer", () => {
+  // The suite's own harness lives in the describe below; these need the same
+  // gateway wired before they render.
+  beforeEach(() => {
+    mocks.load.mockImplementation(async (query, levers, options) =>
+      board(query, levers, options),
+    );
+  });
+
+  it("decomposes a calculated tile, with no invented history", async () => {
+    await renderSettled();
+
+    fireEvent.click(screen.getByText("Forecast next 7 days").closest(".demand-kpi"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("This metric by category")).toBeInTheDocument();
+    expect(within(drawer).getByText("Top contributing SKUs")).toBeInTheDocument();
+    // The mockup fills this with a seeded random walk; A1 has no dated source.
+    expect(within(drawer).getByText(/No history recorded/)).toBeInTheDocument();
+  });
+
+  it("refuses to split a typed constant across categories", async () => {
+    await renderSettled();
+
+    // Accuracy is 92.4 in every vertical, typed into the A1 sheet. It has no
+    // per-SKU basis, so a category split of it would be invented detail.
+    fireEvent.click(screen.getByText("Forecast accuracy").closest(".demand-kpi"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(
+      within(drawer).getByText(/constant typed into the A1 sheet/),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByText("This metric by category"),
+    ).not.toBeInTheDocument();
+  });
+});
 
 describe("DemandForecastingDashboard", () => {
   beforeEach(() => {

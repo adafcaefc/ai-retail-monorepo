@@ -19,10 +19,27 @@ import {
   serializeScope,
 } from "./contract.js";
 import fixture from "./fixture.json";
-import { buildDashboardFromFixture } from "./selectors.js";
+import {
+  buildDashboardFromFixture,
+  buildDrilldownFromFixture,
+} from "./selectors.js";
 
-/** @type {"fixture" | "api"} */
-export const DATA_SOURCE = "fixture";
+/*
+ * Where the rows come from.
+ *
+ * "api" asks the backend, which reads Postgres; "fixture" reads the copy
+ * checked in beside this file. Both then run the SAME selectors over the SAME
+ * shape, which is what makes the switch safe: the backend builder returns rows
+ * rather than a finished dashboard, and
+ * `backend/tests/test_retail_dashboard_builders.py` asserts field for field
+ * that its payload equals this fixture. Nothing on screen can move.
+ *
+ * Tests stay on the fixture because jsdom has no server to answer them, not
+ * because the two disagree. `import.meta.env.MODE` is Vite's own flag and is
+ * "test" under Vitest.
+ */
+export const DATA_SOURCE = import.meta.env.MODE === "test" ? "fixture" : "api";
+
 
 /**
  * Workbook-derived data, computed locally.
@@ -36,17 +53,22 @@ async function loadFromFixture(scope, options) {
 }
 
 /**
- * The future path: the canonical dashboard route every other agent uses.
+ * The canonical dashboard route every agent is served through.
  *
- * `serializeScope` drops `ALL` and empty search, which is also what
- * `fetchDashboard` does, so a scope means the same thing on both sides.
- * Note the backend route currently forwards only `legal_entity_id`, `period`,
- * and `category_group` positionally into a module builder — `store_id`,
- * `state` and `sku` need the generic query-context extension agreed for the
- * Retail dashboards before this branch returns a correctly scoped payload.
+ * The response is the same row shape the fixture holds, so it goes through the
+ * identical selectors — the API does not return a finished dashboard, and it
+ * deliberately does not: the aggregation has one implementation, in
+ * `selectors.js`, and a second one in Python would have to be kept in step
+ * with it forever.
+ *
+ * `serializeScope` drops `ALL` and empty search, matching what `fetchDashboard`
+ * does, so a scope means the same thing on both sides. The server narrows by
+ * legal entity and category in SQL; the selectors apply the rest over the rows
+ * that come back.
  */
-async function loadFromApi(scope) {
-  return fetchDashboard("retail.inventory_risk", serializeScope(scope));
+async function loadFromApi(scope, options) {
+  const rows = await fetchDashboard("retail.inventory_risk", serializeScope(scope));
+  return buildDashboardFromFixture(rows, scope, options);
 }
 
 /**
@@ -65,8 +87,32 @@ async function loadFromApi(scope) {
 export async function loadInventoryRiskDashboard(scope = {}, options = {}) {
   const payload =
     DATA_SOURCE === "api"
-      ? await loadFromApi(scope)
+      ? await loadFromApi(scope, options)
       : await loadFromFixture(scope, options);
 
   return normalizeInventoryRiskDashboard(payload);
+}
+
+/**
+ * Break one KPI tile down, for the drill-down drawer.
+ *
+ * A separate call rather than a block on the dashboard payload: the per-store
+ * split runs the engine once per SKU per store, so computing all six on every
+ * load would cost ~96,000 evaluations for a drawer the reader may never open.
+ *
+ * Async for the same reason the loader is — in API mode it needs the rows —
+ * and it takes the same scope and lever options, so the drawer always
+ * describes the board as it currently stands.
+ *
+ * @param {Partial<import("./contract.js").InventoryRiskScope>} scope
+ * @param {string} metricId
+ * @param {{levers?: object, driveWholePage?: boolean}} [options]
+ */
+export async function loadInventoryRiskDrilldown(scope, metricId, options = {}) {
+  const rows =
+    DATA_SOURCE === "api"
+      ? await fetchDashboard("retail.inventory_risk", serializeScope(scope))
+      : fixture;
+
+  return buildDrilldownFromFixture(rows, scope, metricId, options);
 }

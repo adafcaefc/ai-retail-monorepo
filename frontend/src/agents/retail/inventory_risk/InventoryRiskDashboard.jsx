@@ -9,6 +9,7 @@ import InventoryRiskFilters from "./components/InventoryRiskFilters.jsx";
 import InventoryRiskSkeleton from "./components/InventoryRiskSkeleton.jsx";
 import ProjectedOnHandPanel from "./components/ProjectedOnHandPanel.jsx";
 import RiskAppliedScenarioBanner from "./components/RiskAppliedScenarioBanner.jsx";
+import RiskKpiDrilldown from "./components/RiskKpiDrilldown.jsx";
 import RiskKpiGrid from "./components/RiskKpiGrid.jsx";
 import RiskRegisterTable from "./components/RiskRegisterTable.jsx";
 import RiskScenarioComparison from "./components/RiskScenarioComparison.jsx";
@@ -20,7 +21,10 @@ import {
   DEFAULT_SCOPE,
   GROSS_VS_NET_NOTE,
 } from "./data/contract.js";
-import { loadInventoryRiskDashboard } from "./data/dashboardData.js";
+import {
+  loadInventoryRiskDashboard,
+  loadInventoryRiskDrilldown,
+} from "./data/dashboardData.js";
 
 function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
@@ -59,6 +63,9 @@ export default function InventoryRiskDashboard() {
   const [appliedLevers, setAppliedLevers] = useState({ ...BASELINE_LEVERS });
   const [driveWholePage, setDriveWholePage] = useState(true);
   const [scenarios, setScenarios] = useState([]);
+  // The KPI tile currently broken down, or null. Built on demand — see
+  // `loadInventoryRiskDrilldown` for why it is not part of the board payload.
+  const [drilldown, setDrilldown] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,11 +100,26 @@ export default function InventoryRiskDashboard() {
 
   const patchScope = useCallback((patch) => {
     setScope((current) => ({ ...current, ...patch }));
+    // A filter change makes an open drawer describe rows that are no longer on
+    // screen, so it closes rather than going quietly stale.
+    setDrilldown(null);
   }, []);
 
   const clearScope = useCallback(() => {
     setScope({ ...DEFAULT_SCOPE });
+    setDrilldown(null);
   }, []);
+
+  const openDrilldown = useCallback(
+    async (metricId) => {
+      const built = await loadInventoryRiskDrilldown(scope, metricId, {
+        levers: appliedLevers,
+        driveWholePage,
+      });
+      setDrilldown(built);
+    },
+    [appliedLevers, driveWholePage, scope],
+  );
 
   const resetLevers = useCallback(() => {
     setDraftLevers({ ...BASELINE_LEVERS });
@@ -228,12 +250,20 @@ export default function InventoryRiskDashboard() {
 
       <RiskKpiGrid
         kpis={dashboard.kpis}
+        sparklines={dashboard.kpi_sparklines}
         // The reorder zone is Stockout plus Low, and the state filter takes one
         // value — so the drill lands on Stockout, the more urgent half, rather
         // than inventing a compound filter the contract does not carry.
         onDrillStockoutRisk={() =>
           patchScope({ state: scope.state === "Stockout" ? ALL : "Stockout" })
         }
+        onOpenDrilldown={openDrilldown}
+      />
+
+      <RiskKpiDrilldown
+        drilldown={drilldown}
+        onClose={() => setDrilldown(null)}
+        onSelectSku={(sku) => patchScope({ sku })}
       />
 
       <ProjectedOnHandPanel projection={dashboard.projection} />

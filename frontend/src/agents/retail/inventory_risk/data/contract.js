@@ -329,6 +329,13 @@ export function normalizeInventoryRiskDashboard(payload) {
       stores: payload.filter_options?.stores ?? [],
       states: payload.filter_options?.states ?? [...STATE_ORDER],
     },
+    /*
+     * Declared, or it is dropped. This normalizer returns an explicit object,
+     * so any block the selectors add and this list omits never reaches a
+     * component — which is exactly how the KPI charts went missing on this
+     * board while working on the other two.
+     */
+    kpi_sparklines: payload.kpi_sparklines ?? {},
     kpis: {
       stockout_risk_skus: 0,
       overstock_skus: 0,

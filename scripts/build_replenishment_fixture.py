@@ -26,6 +26,16 @@ PO needs the cost; a merchandiser sizing the commitment needs the retail value.
 Reporting one as "order value" and hiding the other is how a board gets used to
 argue for the wrong decision, so both ship, both named.
 
+WHAT `vendor_scorecard` IS NOT USED FOR
+The vendor rows used to carry a `risk` field read as
+`scorecard[name].get("risk", "")`. `Vendor Scorecard` has no `risk` column --
+it has `score`, `otif_pct`, `fill_pct`, `defect_pct`, `at_risk_value` -- so
+that lookup returned an empty string on all eight vendors, every build, and the
+whole table was loaded to produce it. The field is gone and the table is no
+longer read. Surfacing the real scorecard columns is worth doing, but it needs
+a `retail.vendor_scorecard` table so the API can answer with the same figures;
+half of it in the fixture only would put the two paths out of step.
+
 ROUTES COME FROM LEAD TIME, NOT FROM A CATEGORY LIST
 A3 spec section 2 classifies routes as `fresh -> Direct`, `catId in {BEV, HOU}
 -> Flow-Through`, else `Cross-Dock`. `BEV` and `HOU` do not exist in this
@@ -401,9 +411,7 @@ def main() -> int:
         "verticals",
         "replenishment_detail",
         "a3_replenishment",
-        "uom_po_summary",
         "vendors",
-        "vendor_scorecard",
         "constants",
     )
     missing = [name for name in required if name not in tables]
@@ -450,7 +458,6 @@ def main() -> int:
         )
 
     vendors = {row["vendor"]: row for row in tables["vendors"]}
-    scorecard = {row["vendor"]: row for row in tables["vendor_scorecard"]}
 
     fixture = {
         "schema_version": SCHEMA_VERSION,
@@ -514,11 +521,9 @@ def main() -> int:
                 "defect_pct": row["defect_pct"],
                 "lead_adherence_pct": row["lead_adherence_pct"],
                 "payment_terms": row["payment_terms"],
-                "risk": scorecard.get(name, {}).get("risk", ""),
             }
             for name, row in sorted(vendors.items())
         ],
-        "uom_summary": tables["uom_po_summary"],
         "reference_by_vertical": [
             {
                 "legal_entity_id": vertical_id,

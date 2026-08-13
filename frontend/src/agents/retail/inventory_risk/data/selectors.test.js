@@ -131,18 +131,61 @@ describe("scoping", () => {
     expect(bySearch.risk_register[0].sku_id).toBe("GRC-001");
   });
 
-  it("leaves store scoping to the API, without breaking the store charts", () => {
-    // See SUPPORTS_STORE_SCOPE: chain-net items carry no store dimension, so
-    // a store selection must not silently narrow the KPIs here.
+  it("scopes to one store by re-deriving that store's rows", () => {
     const unscoped = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const withStore = buildDashboardFromFixture(
       fixture,
       scopeOf({ store_id: "S001" }),
     );
 
-    expect(withStore.kpis).toEqual(unscoped.kpis);
     expect(withStore.scope.store_id).toBe("S001");
-    expect(withStore.stockout_by_store).toHaveLength(160);
+    // S001 is a Grocery store and Grocery stocks 100 SKUs, so the register is
+    // that store's shelf rather than the chain's 800.
+    expect(withStore.kpis.sku_count).toBe(100);
+    expect(withStore.kpis.sku_count).toBeLessThan(unscoped.kpis.sku_count);
+    // Charts follow the tiles: one store selected, one bar.
+    expect(withStore.stockout_by_store).toHaveLength(1);
+    expect(unscoped.stockout_by_store).toHaveLength(160);
+  });
+
+  it("reproduces the workbook's own ENGINE_STORE figures for that store", () => {
+    /*
+     * The claim `SUPPORTS_STORE_SCOPE` makes is that a store's rows are
+     * DERIVED exactly, not estimated. These are `ENGINE_STORE`'s own values
+     * for S001, read out of the workbook extract — if the derivation drifts,
+     * the store filter is quietly showing invented numbers and this fails.
+     *
+     * The fixture builder asserts the same thing over all 16,000 rows; this
+     * asserts it survives the trip through the engine and the selectors.
+     */
+    const withStore = buildDashboardFromFixture(
+      fixture,
+      scopeOf({ store_id: "S001" }),
+    );
+    const row = withStore.risk_register.find((item) => item.sku_id === "GRC-001");
+
+    expect(row).toBeDefined();
+    expect(row.position).toBe(68);
+    expect(row.rop).toBe(88);
+    expect(row.max).toBe(204);
+    expect(row.state).toBe("Low");
+    expect(row.ads).toBeCloseTo(29.1668846784, 6);
+    expect(row.on_hand).toBeCloseTo(66.79353298333037, 6);
+    expect(row.dos).toBeCloseTo(2.3314111448576638, 6);
+
+    // The whole store, against ENGINE_STORE's own state tally for S001.
+    const states = withStore.risk_register.reduce((tally, item) => {
+      tally[item.state] = (tally[item.state] ?? 0) + 1;
+      return tally;
+    }, {});
+    expect(states).toEqual({
+      Stockout: 19,
+      Low: 27,
+      Expiry: 8,
+      "Slow-mover": 4,
+      Healthy: 42,
+    });
+    expect(withStore.kpis.stockout_risk_skus).toBe(46);
   });
 });
 

@@ -43,6 +43,17 @@ const grocery = fixture.reference_by_vertical.find(
   (row) => row.legal_entity_id === "GRC",
 );
 
+/*
+ * Scoped to the KPI grid on purpose. Three of the four labels the What-If strip
+ * compares are also KPI labels — the panel exists to show what a lever does to
+ * the headline figures, so of course it repeats them. An unscoped `getByText`
+ * would match both and fail on the ambiguity rather than on the number.
+ */
+function kpiTile(label) {
+  const grid = document.querySelector(".po-kpi-grid");
+  return within(grid).getByText(label).closest(".po-kpi");
+}
+
 describe("the fixture reconciles with the A3 sheet", () => {
   it("carries 800 lines and every vertical's reference totals", () => {
     expect(fixture.lines).toHaveLength(800);
@@ -133,6 +144,73 @@ describe("the two order values", () => {
   });
 });
 
+describe("the dimension grid (mockup ch-dim-cat / -store / -clu / -le)", () => {
+  it("carries all four dimensions, legal entity included", () => {
+    /*
+     * `by_legal_entity` was the one chart of the mockup's four this board
+     * never built, while A1 and A2 both had it. Nothing was missing from the
+     * data — the store rows already carried `vertical_id`.
+     */
+    const board = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+
+    expect(board.by_legal_entity.length).toBe(8);
+    for (const row of board.by_legal_entity) {
+      expect(row.order_value_retail).toBeGreaterThan(0);
+      expect(row.store_count).toBeGreaterThan(0);
+    }
+    // Sorted largest first, like every other dimension on the board.
+    const values = board.by_legal_entity.map((row) => row.order_value_retail);
+    expect([...values].sort((a, b) => b - a)).toEqual(values);
+  });
+
+  it("puts every dimension panel on the same measure", () => {
+    /*
+     * The category panel used to plot cost while store and cluster plotted
+     * retail — a fifth apart, in one grid, with nothing saying so. Whatever
+     * the panels plot, the store-derived dimensions must agree on a total,
+     * because they partition the same stores.
+     */
+    const board = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const total = (rows) =>
+      rows.reduce((running, row) => running + row.order_value_retail, 0);
+
+    expect(total(board.by_cluster)).toBeCloseTo(total(board.by_store), 6);
+    expect(total(board.by_legal_entity)).toBeCloseTo(total(board.by_store), 6);
+  });
+});
+
+describe("the KPI drill-down drawer", () => {
+  it("decomposes the tile it was opened from, with no invented history", async () => {
+    await renderSettled();
+
+    const tile = screen.getByText("Order value at retail").closest(".po-kpi");
+    fireEvent.click(tile.querySelector(".po-kpi-open"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(within(drawer).getByText("This metric by category")).toBeInTheDocument();
+    expect(within(drawer).getByText("Top contributing SKUs")).toBeInTheDocument();
+    // Retail value is one of the measures the per-store grid does carry.
+    expect(within(drawer).getByText("This metric by store")).toBeInTheDocument();
+    // The mockup fills this with a seeded random walk; this dataset has no
+    // dated source, so the drawer says so instead of drawing one.
+    expect(within(drawer).getByText(/No history recorded/)).toBeInTheDocument();
+  });
+
+  it("says why a measure has no per-store split rather than allocating one", async () => {
+    await renderSettled();
+
+    // Cost is priced from trade agreements, which the per-store grid has none
+    // of. Inventing a split here is exactly what the mockup did.
+    const tile = screen.getByText("Order value at cost").closest(".po-kpi");
+    fireEvent.click(tile.querySelector(".po-kpi-open"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(
+      within(drawer).getByText(/no per-store figure to show/),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("ReplenishmentDashboard", () => {
   it("renders the KPIs, the route split, sourcing and the order", async () => {
     await renderSettled();
@@ -149,8 +227,7 @@ describe("ReplenishmentDashboard", () => {
 
     // 302 of 800 lines sit below ROP; a buyer opening this board wants those.
     expect(screen.getByLabelText("Only what needs ordering")).toBeChecked();
-    const tile = screen.getByText("SKUs to reorder").closest(".po-kpi");
-    expect(within(tile).getByText("302")).toBeInTheDocument();
+    expect(within(kpiTile("SKUs to reorder")).getByText("302")).toBeInTheDocument();
   });
 
   it("labels the source rather than presenting workbook figures as live", async () => {
@@ -171,9 +248,8 @@ describe("ReplenishmentDashboard", () => {
     });
 
     await waitFor(() => {
-      const tile = screen.getByText("SKUs to reorder").closest(".po-kpi");
       expect(
-        within(tile).getByText(String(grocery.skus_to_reorder)),
+        within(kpiTile("SKUs to reorder")).getByText(String(grocery.skus_to_reorder)),
       ).toBeInTheDocument();
     });
   });
@@ -229,5 +305,193 @@ describe("ReplenishmentDashboard", () => {
   it("warns that purchase quantities round up to whole packs", async () => {
     await renderSettled();
     expect(screen.getByText(/round up to whole packs/)).toBeInTheDocument();
+  });
+});
+
+describe("requirement versus inbound supply (spec 4)", () => {
+  it("draws both curves and names when cover runs out", async () => {
+    await renderSettled();
+
+    const panel = screen
+      .getByText("Requirement vs inbound supply")
+      .closest(".po-panel");
+    expect(panel).toBeInTheDocument();
+
+    // The four figures spec 4 puts under the chart.
+    const strip = panel.querySelector(".po-metric-strip");
+    for (const label of ["Reorder", "Order qty", "PO value", "Fill"]) {
+      expect(within(strip).getByText(label)).toBeInTheDocument();
+    }
+  });
+
+  it("says the inbound date is assumed, because the workbook has none", async () => {
+    await renderSettled();
+    // The one modelled step on an otherwise measured board. If this caveat ever
+    // disappears the chart starts reading as a delivery schedule.
+    expect(
+      screen.getByText(/records how much is on order but never when it arrives/),
+    ).toBeInTheDocument();
+  });
+
+  it("accumulates requirement and steps cover up as inbound lands", () => {
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+
+    expect(requirement.points).toHaveLength(requirement.days + 1);
+    expect(requirement.points[0].requirement).toBe(0);
+
+    for (let index = 1; index < requirement.points.length; index += 1) {
+      const previous = requirement.points[index - 1];
+      const point = requirement.points[index];
+      // Demand only accumulates; cover only ever gains an arrival.
+      expect(point.requirement).toBeGreaterThan(previous.requirement);
+      expect(point.cover).toBeGreaterThanOrEqual(previous.cover);
+    }
+
+    /*
+     * Over every line in scope, not only the 302 being ordered. The chart
+     * answers "can the chain cover its demand", which the reorder subset
+     * cannot: those are by definition the lines that cannot.
+     */
+    const last = requirement.points[requirement.points.length - 1];
+    expect(last.cover).toBeCloseTo(
+      fixture.lines.reduce((total, line) => total + line.on_hand + line.open_po, 0),
+      6,
+    );
+  });
+});
+
+describe("the route tabs and export (spec 7)", () => {
+  it("offers all three routes plus the whole order", async () => {
+    await renderSettled();
+
+    const bar = screen.getByRole("tablist", { name: "Purchase order route" });
+    const tabs = within(bar).getAllByRole("tab");
+    expect(tabs.map((tab) => tab.textContent)).toEqual([
+      expect.stringContaining("All routes"),
+      expect.stringContaining("Direct Store Delivery"),
+      expect.stringContaining("Flow-Through"),
+      expect.stringContaining("Cross-Docking"),
+    ]);
+    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("narrows the order to one route without touching the board scope", async () => {
+    await renderSettled();
+
+    const before = document.querySelectorAll(".po-row").length;
+    fireEvent.click(screen.getByRole("tab", { name: /Direct Store Delivery/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("tab", { name: /Direct Store Delivery/ }),
+      ).toHaveAttribute("aria-selected", "true");
+    });
+
+    // The tab groups this table only. The board-level route filter is a
+    // separate control and must still read "All".
+    expect(screen.getByLabelText("Route")).toHaveValue("ALL");
+    expect(document.querySelectorAll(".po-row").length).toBeLessThanOrEqual(before);
+  });
+
+  it("offers a per-route export only once a route is chosen", async () => {
+    await renderSettled();
+
+    expect(screen.getByRole("button", { name: "Export CSV" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export full PO" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: /Cross-Docking/ }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Export this route" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByRole("button", { name: "Export full PO" })).toBeInTheDocument();
+  });
+});
+
+describe("What-If (spec 9)", () => {
+  it("opens at the workbook's own lever setting, which is zero", async () => {
+    await renderSettled();
+
+    for (const label of ["Demand surge", "Promo pull", "Inbound cover"]) {
+      expect(screen.getByLabelText(label)).toHaveValue("0");
+    }
+    // No scenario banner until something moves.
+    expect(screen.queryByText(/simulated order/)).toBeNull();
+  });
+
+  it("disables the markdown lever and says why", async () => {
+    await renderSettled();
+
+    expect(screen.getByLabelText("Markdown clear")).toBeDisabled();
+    expect(
+      screen.getByText(/the workbook carries no term for it/),
+    ).toBeInTheDocument();
+  });
+
+  it("re-runs the order and flags the board as simulated", async () => {
+    await renderSettled();
+
+    fireEvent.change(screen.getByLabelText("Lead time"), { target: { value: "6" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/simulated order, not one to send/)).toBeInTheDocument();
+    });
+
+    // A longer lead raises Max, so more lines fall below ROP than the 302 the
+    // workbook stores.
+    const reordered = Number(
+      within(kpiTile("SKUs to reorder")).getByText(/^\d+$/).textContent,
+    );
+    expect(reordered).toBeGreaterThan(302);
+  });
+
+  it("returns to the workbook position when the scenario is cleared", async () => {
+    await renderSettled();
+
+    fireEvent.change(screen.getByLabelText("Lead time"), { target: { value: "4" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() =>
+      expect(screen.getByText(/simulated order, not one to send/)).toBeInTheDocument(),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Back to workbook" }));
+
+    await waitFor(() => {
+      expect(within(kpiTile("SKUs to reorder")).getByText("302")).toBeInTheDocument();
+    });
+    expect(screen.queryByText(/simulated order/)).toBeNull();
+  });
+
+  it("cannot save a scenario until one exists", async () => {
+    await renderSettled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("says plainly that saved scenarios do not persist", async () => {
+    await renderSettled();
+    expect(
+      screen.getByText(/held in this browser tab only and are not saved anywhere/),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("the simulation at rest", () => {
+  it("returns the baseline object itself rather than recomputing it", () => {
+    const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+
+    expect(simulation.applied).toBe(false);
+    // Identity, not equality. Re-running 302 lines at zero levers would land
+    // within a float ulp of the stored figures and report a delta on a board
+    // nobody has touched.
+    expect(simulation.scenario).toBe(simulation.baseline);
+    expect(simulation.requirement).toBeNull();
+  });
+
+  it("names the lever that reaches no formula", () => {
+    const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    expect(simulation.unmodelled).toContain("markdown");
   });
 });
