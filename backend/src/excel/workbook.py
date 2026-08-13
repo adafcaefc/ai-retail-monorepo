@@ -86,14 +86,35 @@ _CACHE: _Cached | None = None
 
 
 def workbook_path() -> Path:
+    """The configured workbook, resolved against the repo rather than the CWD.
+
+    `EXCEL_WORKBOOK_PATH` is written relative in `.env.example` and in every
+    `.env` that follows it. Returning it unresolved made the answer depend on
+    where the process was started: uvicorn runs from `backend/` and found
+    nothing, and so did pytest -- which is why 110 tests in
+    `test_worked_example_cells.py` skipped themselves as "workbook not
+    deployed" while the 10 MB file sat exactly where it was configured to be.
+    A test that cannot reach its subject and reports success is worse than one
+    that fails.
+
+    `retail_data_bootstrap/paths.py:resolve_workbook_path` already did this
+    correctly. It cannot simply be called from here -- it imports
+    `DEFAULT_WORKBOOK_PATH` from this module -- so the rule is repeated, and
+    the two must move together.
+    """
     configured = (
         config.EXCEL_WORKBOOK_PATH or ""
     ).strip()
 
-    if configured:
-        return Path(configured)
+    if not configured:
+        return DEFAULT_WORKBOOK_PATH
 
-    return DEFAULT_WORKBOOK_PATH
+    candidate = Path(configured).expanduser()
+
+    if not candidate.is_absolute():
+        candidate = AppPaths.BACKEND_ROOT.parent / candidate
+
+    return candidate
 
 
 def _stamp(
