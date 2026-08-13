@@ -412,7 +412,14 @@ describe("Retail dashboard and frontend-only chat", () => {
     expect(window.location.hash).toBe("");
   });
 
-  it("groups three independently selectable Retail scaffolds with disabled chat", async () => {
+  /*
+   * Both sides of the merge renamed this test, and both names had gone stale.
+   * "scaffolds" stopped being true once Replenishment started rendering a real
+   * purchase order, and naming only the controls drops what the loop below
+   * spends most of its length on: that the three boards are independently
+   * selectable and each renders its own.
+   */
+  it("switches between three Retail boards, every write control disabled", async () => {
     renderApp();
 
     await waitForSidebar();

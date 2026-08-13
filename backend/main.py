@@ -41,6 +41,10 @@ from src.formulas.router import (
     router as formulas_router,
 )
 
+from src.retrieval.api import (
+    router as retrieval_router,
+)
+
 from src.excel.workbook import (
     warm as warm_workbook,
 )
@@ -122,6 +126,10 @@ app.include_router(
 
 app.include_router(
     formulas_router
+)
+
+app.include_router(
+    retrieval_router
 )
 
 
