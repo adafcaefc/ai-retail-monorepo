@@ -25,12 +25,26 @@ WORKDIR /app/backend
 # stripping recommends (or a later autoremove) leaves the driver .so present
 # on disk but unloadable -- unixODBC then misleadingly reports it as "file
 # not found" rather than naming the real missing dependency.
-RUN apt-get update && \
-    apt-get install -y curl gnupg2 unixodbc-dev && \
-    curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql18 && \
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        unixodbc \
+        unixodbc-dev \
+        libgssapi-krb5-2; \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+        | gpg --dearmor \
+        > /usr/share/keyrings/microsoft-prod.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
+        > /etc/apt/sources.list.d/mssql-release.list; \
+    apt-get update; \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18; \
+    echo "Installed ODBC drivers:"; \
+    odbcinst -q -d; \
+    odbcinst -q -d -n "ODBC Driver 18 for SQL Server"; \
+    find /opt/microsoft/msodbcsql18 -name 'libmsodbcsql-*.so.*' -type f; \
     rm -rf /var/lib/apt/lists/*
 
 # Dependency layer (cached unless requirements.txt changes)
