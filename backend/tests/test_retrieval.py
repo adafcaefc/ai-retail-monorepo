@@ -90,6 +90,16 @@ def test_route_override_is_safe_and_filters_intersect_strictly():
     )
     assert forced_vector.selected_route == SelectedRoute.VECTOR
     assert "EXPLICIT_ROUTE_OVERRIDE" in forced_vector.reason_codes
+    adaptive_vector = router.decide(
+        RetrievalRequest(
+            query="forecast accuracy methodology and backtested MAPE",
+            route_mode="vector",
+            retrieval_domain="business_rule",
+            doc_type="formula",
+        )
+    )
+    assert adaptive_vector.selected_route == SelectedRoute.VECTOR
+    assert "EXPLICIT_ROUTE_OVERRIDE" in adaptive_vector.reason_codes
     with pytest.raises(ValueError, match="conflicts"):
         router.decide(
             RetrievalRequest(
@@ -332,6 +342,7 @@ def test_embedding_provider_is_reused_and_active_profile_is_not_caller_selectabl
         semantic_search_fn=fake_semantic_search,
     )
     principal = PrincipalContext("test", True)
+    service.warm_embedding_provider()
     for _ in range(2):
         response = service.retrieve(
             RetrievalRequest(query="What does Days of Supply mean?"),
@@ -376,6 +387,21 @@ def test_vector_failure_does_not_substitute_sql_for_semantic_context():
     assert not response.semantic_results
     assert any(error.code == "ACTIVE_EMBEDDING_PROFILE_UNAVAILABLE" for error in response.errors)
     assert any(warning.code == "HYBRID_VECTOR_BRANCH_FAILED" for warning in response.warnings)
+
+
+def test_empty_retrieval_is_failed_not_complete():
+    def empty_search(*args, **kwargs):
+        return {"profile_key": kwargs.get("config", "unused"), "results": []}
+
+    service, _ = _service(search=empty_search)
+    response = service.retrieve(
+        RetrievalRequest(query="What does Days of Supply mean?"),
+        principal=PrincipalContext("test", True),
+    )
+    assert response.status == "FAILED"
+    assert response.result_counts.structured == 0
+    assert response.result_counts.semantic == 0
+    assert any(error.code == "NO_EVIDENCE_RETRIEVED" for error in response.errors)
 
 
 def test_unknown_sql_entity_prevents_broad_query_execution():

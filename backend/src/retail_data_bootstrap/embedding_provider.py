@@ -22,6 +22,19 @@ class EmbeddingProvider(ABC):
         return self.config.model_name
 
     @property
+    def is_warm(self) -> bool:
+        """Whether the provider has initialized its model in this process."""
+        return False
+
+    def warm_up(self) -> None:
+        """Initialize provider state without embedding a document or query.
+
+        Providers that do not need explicit initialization may keep the
+        default no-op implementation.  The local BGE provider overrides this
+        to load and validate its existing SentenceTransformer instance.
+        """
+
+    @property
     def dimensions(self) -> int:
         return self.config.dimensions
 
@@ -106,6 +119,14 @@ class LocalBgeEmbeddingProvider(EmbeddingProvider):
                     f"got {actual_dimensions}"
                 )
         return self._model
+
+    @property
+    def is_warm(self) -> bool:
+        return self._model is not None
+
+    def warm_up(self) -> None:
+        """Load and validate the resident BGE model without semantic search."""
+        self._load_model()
 
     @property
     def tokenizer(self):

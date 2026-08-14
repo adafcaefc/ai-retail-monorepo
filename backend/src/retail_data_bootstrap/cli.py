@@ -38,6 +38,7 @@ from .vector_store import (
 from src.retrieval.authorization import cli_principal
 from src.retrieval.evaluation import evaluate_routing
 from src.retrieval.models import EntityHint, EntityType, RetrievalRequest, RouteMode
+from src.retrieval.gateway import ChatRetrievalGateway
 from src.retrieval.service import retrieve_context
 
 
@@ -131,6 +132,12 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="TYPE=VALUE",
         help="Exact entity hint; TYPE is sku/store/vendor/legal_entity/category/brand/promotion.",
     )
+    retrieve_gateway = commands.add_parser(
+        "retrieve-gateway",
+        help="Run complete fast-path plus adaptive gateway retrieval.",
+    )
+    retrieve_gateway.add_argument("query")
+    retrieve_gateway.add_argument("--top-k", type=int, default=5)
     commands.add_parser(
         "evaluate-retrieval-routing",
         help="Evaluate the checked-in deterministic Phase 6 routing fixture.",
@@ -241,6 +248,14 @@ def main(argv: list[str] | None = None) -> int:
             entity_hints=_parse_entity_hints(args.entity),
         )
         result = retrieve_context(request, principal=cli_principal())
+        print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
+        return 0 if result.status.value != "FAILED" else 1
+    if args.command == "retrieve-gateway":
+        result = ChatRetrievalGateway().retrieve(
+            args.query,
+            top_k=args.top_k,
+            principal=cli_principal(),
+        )
         print(json.dumps(result.model_dump(mode="json"), ensure_ascii=False, indent=2))
         return 0 if result.status.value != "FAILED" else 1
     if args.command == "evaluate-retrieval-routing":

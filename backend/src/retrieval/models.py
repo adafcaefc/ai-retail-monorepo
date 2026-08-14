@@ -31,6 +31,7 @@ class SelectedRoute(StrEnum):
     SQL = "SQL"
     VECTOR = "VECTOR"
     HYBRID = "HYBRID"
+    PLANNER_REQUIRED = "PLANNER_REQUIRED"
     UNSUPPORTED = "UNSUPPORTED"
 
 
@@ -162,13 +163,24 @@ class SemanticResult(StrictModel):
 
 
 class RetrievalTiming(StrictModel):
+    gateway_ms: float = 0.0
     routing_ms: float = 0.0
     entity_resolution_ms: float = 0.0
     sql_ms: float = 0.0
     query_embedding_ms: float = 0.0
+    vector_distance_ms: float = 0.0
     vector_search_ms: float = 0.0
     vector_total_ms: float = 0.0
+    catalog_ms: float = 0.0
     serialization_ms: float = 0.0
+    planning_ms: float = 0.0
+    planner_model_ms: float = 0.0
+    planner_validation_ms: float = 0.0
+    fallback_decision_ms: float = 0.0
+    fallback_ms: float = 0.0
+    policy_ms: float = 0.0
+    compilation_ms: float = 0.0
+    evidence_aggregation_ms: float = 0.0
     total_ms: float = 0.0
 
 
@@ -191,4 +203,3 @@ class RetrievalResponse(StrictModel):
     errors: list[Diagnostic] = Field(default_factory=list)
     timing: RetrievalTiming = Field(default_factory=RetrievalTiming)
     result_counts: ResultCounts = Field(default_factory=ResultCounts)
-

@@ -27,7 +27,10 @@ MUTATION_RE = re.compile(
     re.IGNORECASE,
 )
 UNSAFE_RE = re.compile(
-    r"\b(arbitrary\s+sql|run\s+sql|select\s+\*|union\s+select|drop\s+table|tell\s+me\s+everything)\b",
+    r"\b(arbitrary\s+sql|run\s+sql|select\s+\*|union\s+select|drop\s+table|"
+    r"tell\s+me\s+everything|(?:all|every|entire|full)(?:\s+\w+){0,3}\s+"
+    r"(?:data|inventory|sales|records?|rows?|database|tables?|skus?|products?|stores?|vendors?)|"
+    r"passwords?|credentials?|secrets?|api\s+keys?)\b",
     re.IGNORECASE,
 )
 EXPLANATION_RE = re.compile(
@@ -39,6 +42,97 @@ CURRENT_RE = re.compile(
     r"workforce|forecast|proposed|highest|ranking|count|total|sum)\b",
     re.IGNORECASE,
 )
+
+# These terms identify a safe Retail/business-information question that may
+# need a metric combination or horizon not represented by the fixed Phase 6
+# capabilities. It is still a gate for adaptive planning, not a general-
+# purpose natural-language SQL classifier; unsafe requests are rejected before
+# this gate is considered.
+ADAPTIVE_RETAIL_RE = re.compile(
+    r"\b(retail\w*|sku\w*|product\w*|store\w*|vendor\w*|category\w*|"
+    r"brand\w*|promotion\w*|inventory\w*|stock\w*|replenish\w*|demand\w*|"
+    r"sales\w*|forecast\w*|basket\w*|mape|accuracy\w*|backtest\w*|margin\w*|"
+    r"revenue\w*|purchase\w*|order\w*|assortment\w*|pricing\w*|markdown\w*|"
+    r"gmroi|sell[- ]through\w*|service\s+level\w*|fill\s+rate\w*|otif|"
+    r"lead\s+time\w*|days\s+(?:of\s+)?cover\w*|working\s+capital\w*|"
+    r"staffing\w*|workforce\w*|labor\w*|labour\w*)\b",
+    re.IGNORECASE,
+)
+ADAPTIVE_COMPLEXITY_RE = re.compile(
+    r"\b(forecast|backtest(?:ed)?|mape|accuracy|basket|trend|compare|"
+    r"projection|next\s+\d+\s+(?:day|week|month)s?|over\s+the\s+next|"
+    r"by\s+(?:sku|product|store|category|vendor|brand)|across|"
+    r"by|per|between|versus|vs|combine|including|using|calculate|"
+    r"calculate\s+the|analy[sz]e|history|historical|average|total|sum|"
+    r"highest|lowest|best|top|rank(?:ed|ing)?)\b",
+    re.IGNORECASE,
+)
+FAST_PATH_INSUFFICIENT_RE = re.compile(
+    r"\b(backtest(?:ed)?|mape|accuracy|basket|trend|compare|comparison|projection|"
+    r"next\s+\d+\s+(?:day|week|month)s?|over\s+the\s+next|across|combine|"
+    r"including|analy[sz]e|by|per|between|versus|vs|forecast|demand|"
+    r"sales|margin|revenue|gmroi|sell[- ]through|service\s+level|"
+    r"highest|lowest|best|top|rank(?:ed|ing)?)\b",
+    re.IGNORECASE,
+)
+
+RANKING_DIMENSION_RE = re.compile(
+    r"\b(?:by|per|across)\s+(?:store|stores|category|categories|vendor|vendors|"
+    r"brand|brands|legal\s+entit(?:y|ies))\b|"
+    r"\b(?:stores|categories|vendors|brands|legal\s+entit(?:y|ies))\b",
+    re.IGNORECASE,
+)
+ENTITY_REQUIRED_CAPABILITIES = {
+    "sku.lookup",
+    "sku.inventory_current",
+    "sku.replenishment_current",
+    "store.lookup",
+    "store_sku.snapshot",
+    "vendor.lookup",
+    "category.lookup",
+    "brand.lookup",
+    "legal_entity.lookup",
+    "promotion.lookup",
+    "workforce.current",
+    "sales.monthly",
+    "trade_agreement.by_vendor",
+}
+CANONICAL_ENTITY_RE = re.compile(
+    r"\b(?:[A-Z]{3}-\d{3}|[A-Z]{3}-C\d{2}|S\d{3}|V\d{4}|(?:PRM|PROMO)-?\d{2,5})\b"
+)
+
+
+def _fast_path_is_insufficient(text: str, capabilities: list[str]) -> bool:
+    signals = set(FAST_PATH_INSUFFICIENT_RE.findall(text))
+    # The fixed monthly-sales capability already covers a bounded history for
+    # one resolved legal entity.  "sales" alone is therefore not an adaptive
+    # combination signal; sales plus another signal still escalates.
+    if capabilities == ["sales.monthly"]:
+        signals.discard("sales")
+    return bool(signals)
+
+
+def _fast_path_lacks_entity_reference(request: RetrievalRequest, capabilities: list[str]) -> bool:
+    """Do not treat an entity-bound Phase 6 lookup as an aggregate query."""
+    if not set(capabilities) & ENTITY_REQUIRED_CAPABILITIES:
+        return False
+    return not request.entity_hints and not CANONICAL_ENTITY_RE.search(request.query)
+
+
+def _planner_required(text: str, *, has_current: bool) -> bool:
+    """Return whether a safe informational Retail request needs planning.
+
+    A current-state word is not enough on its own: the existing SQL router
+    must get first refusal. This helper only runs after all fixed capabilities
+    have failed to match, and it intentionally requires both Retail vocabulary
+    and an analytical/multi-requirement signal.
+    """
+    if not ADAPTIVE_RETAIL_RE.search(text) or not ADAPTIVE_COMPLEXITY_RE.search(text):
+        return False
+    # Forecast/accuracy and horizon questions are planner candidates even
+    # without an explicit current-state word. Other analytical requests need
+    # a present/future business context signal to avoid routing generic prose.
+    return True
 
 
 def _semantic_intent(text: str) -> IntentMatch | None:
@@ -197,14 +291,37 @@ class DeterministicRouter:
             capabilities
             and capabilities[0] in {"inventory.at_risk", "replenishment.top_candidates"}
         )
+        ranking_needs_adaptive = ranking_capability and bool(RANKING_DIMENSION_RE.search(text))
+        fast_path_insufficient = bool(
+            capabilities
+            and _fast_path_is_insufficient(text, capabilities)
+            and ADAPTIVE_RETAIL_RE.search(text)
+            and not (ranking_capability and not ranking_needs_adaptive)
+        )
+        # Semantic definition/formula/entity questions keep their Phase 6
+        # VECTOR route even when a Retail noun also matches a broad SQL
+        # keyword. Only an otherwise-structured request is considered for
+        # aggregate planning here.
+        missing_fast_path_entity = (
+            semantic is None
+            and _fast_path_lacks_entity_reference(request, capabilities)
+        )
 
         auto_route = SelectedRoute.UNSUPPORTED
         reasons: list[str] = []
         intent = semantic.intent if semantic else sql_intent
-        if ranking_capability:
+        if ranking_capability and not ranking_needs_adaptive and not fast_path_insufficient:
             auto_route = SelectedRoute.SQL
             reasons = ["CURRENT_STATE_INTENT"]
             intent = sql_intent
+        elif fast_path_insufficient or missing_fast_path_entity:
+            auto_route = SelectedRoute.PLANNER_REQUIRED
+            intent = "adaptive_retail_query"
+            reasons = ["PLANNER_REQUIRED"]
+            if fast_path_insufficient:
+                reasons.append("FAST_PATH_INSUFFICIENT")
+            if missing_fast_path_entity:
+                reasons.append("FAST_PATH_REQUIRES_ENTITY")
         elif capabilities and (has_explanation or (semantic and has_current)):
             auto_route = SelectedRoute.HYBRID
             reasons = ["CURRENT_PLUS_EXPLANATION", "CURRENT_STATE_INTENT"]
@@ -212,6 +329,10 @@ class DeterministicRouter:
                 reasons.append(semantic.reason_code)
             if not filters.retrieval_domain:
                 filters = VectorFilters(retrieval_domain="business_rule")
+        elif semantic and has_current and _planner_required(text, has_current=has_current):
+            auto_route = SelectedRoute.PLANNER_REQUIRED
+            intent = "adaptive_retail_query"
+            reasons = ["PLANNER_REQUIRED"]
         elif semantic and not has_current:
             auto_route = SelectedRoute.VECTOR
             reasons = [semantic.reason_code]
@@ -227,6 +348,10 @@ class DeterministicRouter:
             auto_route = SelectedRoute.VECTOR
             intent = "explicit_semantic_filter"
             reasons = ["EXPLICIT_VECTOR_FILTER"]
+        elif _planner_required(text, has_current=has_current):
+            auto_route = SelectedRoute.PLANNER_REQUIRED
+            intent = "adaptive_retail_query"
+            reasons = ["PLANNER_REQUIRED"]
         else:
             reasons = ["UNSUPPORTED_STRUCTURED_INTENT"]
 
@@ -244,6 +369,22 @@ class DeterministicRouter:
             elif requested == SelectedRoute.HYBRID and not capabilities:
                 route = SelectedRoute.UNSUPPORTED
                 reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY", "INVALID_ROUTE_OVERRIDE"]
+            elif requested == SelectedRoute.VECTOR and auto_route == SelectedRoute.PLANNER_REQUIRED:
+                # Adaptive execution has already policy-validated a bounded
+                # semantic requirement and supplies an explicit domain/type.
+                # Permit that branch to force semantic retrieval even when
+                # the natural-language evidence query contains planner words
+                # such as "forecast" or "compare".  An unfiltered vector
+                # override remains rejected below this condition.
+                if request.retrieval_domain or request.doc_type:
+                    route = requested
+                    reasons = [*reasons, "EXPLICIT_ROUTE_OVERRIDE"]
+                else:
+                    route = SelectedRoute.UNSUPPORTED
+                    reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY"]
+            elif requested == SelectedRoute.SQL and auto_route == SelectedRoute.PLANNER_REQUIRED:
+                route = SelectedRoute.UNSUPPORTED
+                reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY"]
             else:
                 route = requested
                 reasons = [*reasons, "EXPLICIT_ROUTE_OVERRIDE"]

@@ -1,0 +1,279 @@
+{
+  "catalog_version": "2026-08-13.1",
+  "source_contract": "retail.* normalized structured facts",
+  "tables": [
+    {
+      "name": "retail.Sku",
+      "business_meaning": "SKU master and stable product attributes.",
+      "grain": "one row per SKU",
+      "keys": ["sku_id"],
+      "time_fields": [],
+      "approved_filters": ["sku_id", "legal_entity_id", "category_id", "vendor_account", "brand_name", "is_perishable"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "sku_id", "data_type": "string", "business_meaning": "Canonical SKU identifier.", "role": "key"},
+        {"name": "item_name", "data_type": "string", "business_meaning": "Product name.", "role": "attribute"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity.", "role": "dimension"},
+        {"name": "category_id", "data_type": "string", "business_meaning": "Product category.", "role": "dimension"},
+        {"name": "vendor_account", "data_type": "string", "business_meaning": "Main vendor account.", "role": "dimension"},
+        {"name": "brand_name", "data_type": "string", "business_meaning": "Product brand.", "role": "dimension"},
+        {"name": "is_perishable", "data_type": "boolean", "business_meaning": "Whether the product is perishable.", "role": "dimension"},
+        {"name": "price", "data_type": "decimal", "business_meaning": "Product price from the source snapshot.", "role": "attribute"}
+      ]
+    },
+    {
+      "name": "retail.InventorySnapshot",
+      "business_meaning": "Current chain-level inventory and replenishment-risk snapshot.",
+      "grain": "one row per SKU per source load",
+      "keys": ["sku_id"],
+      "time_fields": [],
+      "approved_filters": ["sku_id", "inventory_state"],
+      "allowed_aggregations": ["sum", "avg", "min", "max"],
+      "columns": [
+        {"name": "sku_id", "data_type": "string", "business_meaning": "SKU identifier.", "role": "key"},
+        {"name": "inventory_position", "data_type": "decimal", "business_meaning": "Current inventory position in sales units.", "role": "metric"},
+        {"name": "reorder_point", "data_type": "decimal", "business_meaning": "Current reorder point.", "role": "metric"},
+        {"name": "days_of_supply", "data_type": "decimal", "business_meaning": "Current days of supply.", "role": "metric"},
+        {"name": "inventory_state", "data_type": "string", "business_meaning": "Current inventory state label.", "role": "dimension"},
+        {"name": "at_risk_value", "data_type": "decimal", "business_meaning": "Structured at-risk inventory value.", "role": "metric"},
+        {"name": "inventory_value", "data_type": "decimal", "business_meaning": "Structured inventory value.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.StoreSkuSnapshot",
+      "business_meaning": "Current store-by-SKU operational snapshot, including forecast and order fields.",
+      "grain": "one row per SKU per store per source load",
+      "keys": ["sku_id", "store_id"],
+      "time_fields": [],
+      "approved_filters": ["sku_id", "store_id", "inventory_state"],
+      "allowed_aggregations": ["sum", "avg", "min", "max"],
+      "columns": [
+        {"name": "sku_id", "data_type": "string", "business_meaning": "SKU identifier.", "role": "dimension"},
+        {"name": "store_id", "data_type": "string", "business_meaning": "Store identifier.", "role": "dimension"},
+        {"name": "forecast_7d", "data_type": "decimal", "business_meaning": "Seven-day store-by-SKU demand forecast.", "role": "metric"},
+        {"name": "ads", "data_type": "decimal", "business_meaning": "Average daily sales.", "role": "metric"},
+        {"name": "inventory_position", "data_type": "decimal", "business_meaning": "Store-by-SKU inventory position.", "role": "metric"},
+        {"name": "inventory_state", "data_type": "string", "business_meaning": "Current store-by-SKU inventory state label.", "role": "dimension"},
+        {"name": "order_value", "data_type": "decimal", "business_meaning": "Proposed store-by-SKU order value.", "role": "metric"},
+        {"name": "promo_incremental_margin", "data_type": "decimal", "business_meaning": "Promotion incremental margin in the snapshot.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.ReplenishmentProposal",
+      "business_meaning": "Current SKU-level replenishment proposal and vendor comparison.",
+      "grain": "one row per SKU per source load",
+      "keys": ["sku_id"],
+      "time_fields": [],
+      "approved_filters": ["sku_id", "reorder_required", "designated_vendor_account", "best_price_vendor_account"],
+      "allowed_aggregations": ["sum", "avg", "min", "max"],
+      "columns": [
+        {"name": "sku_id", "data_type": "string", "business_meaning": "SKU identifier.", "role": "dimension"},
+        {"name": "reorder_required", "data_type": "boolean", "business_meaning": "Whether replenishment is required.", "role": "dimension"},
+        {"name": "order_sales_units", "data_type": "decimal", "business_meaning": "Proposed order quantity in sales units.", "role": "metric"},
+        {"name": "order_buy_units", "data_type": "decimal", "business_meaning": "Proposed order quantity in buying units.", "role": "metric"},
+        {"name": "designated_vendor_account", "data_type": "string", "business_meaning": "Designated vendor account.", "role": "dimension"},
+        {"name": "best_price_vendor_account", "data_type": "string", "business_meaning": "Best-price vendor account.", "role": "dimension"},
+        {"name": "amount", "data_type": "decimal", "business_meaning": "Proposed replenishment amount.", "role": "metric"},
+        {"name": "saving_vs_designated", "data_type": "decimal", "business_meaning": "Structured saving versus designated vendor.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.MonthlySales",
+      "business_meaning": "Monthly sales history normalized from the relative workbook time series.",
+      "grain": "one row per legal entity and relative period label",
+      "keys": ["period_label", "legal_entity_id"],
+      "time_fields": ["period_label"],
+      "approved_filters": ["legal_entity_id", "period_label"],
+      "allowed_aggregations": ["sum", "avg", "min", "max"],
+      "columns": [
+        {"name": "period_label", "data_type": "string", "business_meaning": "Relative workbook period such as Jan-Y1; not a calendar date.", "role": "time"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity.", "role": "dimension"},
+        {"name": "sales_amount", "data_type": "decimal", "business_meaning": "Sales amount for the relative period and entity.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.Promotion",
+      "business_meaning": "Promotion configuration, scope, mechanism, funding, and validity.",
+      "grain": "one row per promotion",
+      "keys": ["promotion_id"],
+      "time_fields": ["valid_from", "valid_to"],
+      "approved_filters": ["promotion_id", "legal_entity_id", "target_category", "discount_type", "valid_from", "valid_to"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "promotion_id", "data_type": "string", "business_meaning": "Promotion identifier.", "role": "key"},
+        {"name": "discount_type", "data_type": "string", "business_meaning": "Configured promotion discount type.", "role": "dimension"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity scope.", "role": "dimension"},
+        {"name": "target_category", "data_type": "string", "business_meaning": "Promotion category scope.", "role": "dimension"},
+        {"name": "mechanism", "data_type": "string", "business_meaning": "Promotion mechanism.", "role": "attribute"},
+        {"name": "expected_uplift_pct", "data_type": "decimal", "business_meaning": "Configured expected uplift, not an observed result.", "role": "metric"},
+        {"name": "valid_from", "data_type": "date", "business_meaning": "Promotion validity start.", "role": "time"},
+        {"name": "valid_to", "data_type": "date", "business_meaning": "Promotion validity end.", "role": "time"}
+      ]
+    },
+    {
+      "name": "retail.Vendor",
+      "business_meaning": "Vendor master, commercial terms, and service fields.",
+      "grain": "one row per vendor",
+      "keys": ["vendor_account"],
+      "time_fields": [],
+      "approved_filters": ["vendor_account", "vendor_code", "vendor_group"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "vendor_account", "data_type": "string", "business_meaning": "Vendor account identifier.", "role": "key"},
+        {"name": "vendor_code", "data_type": "string", "business_meaning": "Vendor business code.", "role": "attribute"},
+        {"name": "vendor_name", "data_type": "string", "business_meaning": "Vendor name.", "role": "attribute"},
+        {"name": "vendor_group", "data_type": "string", "business_meaning": "Vendor group.", "role": "dimension"},
+        {"name": "lead_time_days", "data_type": "integer", "business_meaning": "Configured vendor lead time.", "role": "metric"},
+        {"name": "moq_units", "data_type": "decimal", "business_meaning": "Configured minimum order quantity.", "role": "metric"},
+        {"name": "otif_pct", "data_type": "decimal", "business_meaning": "Vendor OTIF value in the source snapshot.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.Store",
+      "business_meaning": "Store master and legal-entity context.",
+      "grain": "one row per store",
+      "keys": ["store_id"],
+      "time_fields": [],
+      "approved_filters": ["store_id", "legal_entity_id", "channel", "cluster"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "store_id", "data_type": "string", "business_meaning": "Store identifier.", "role": "key"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity.", "role": "dimension"},
+        {"name": "channel", "data_type": "string", "business_meaning": "Store channel.", "role": "dimension"},
+        {"name": "cluster", "data_type": "string", "business_meaning": "Store cluster.", "role": "dimension"}
+      ]
+    },
+    {
+      "name": "retail.Category",
+      "business_meaning": "Entity-scoped product category master.",
+      "grain": "one row per legal entity and category",
+      "keys": ["category_id"],
+      "time_fields": [],
+      "approved_filters": ["category_id", "legal_entity_id", "is_perishable"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "category_id", "data_type": "string", "business_meaning": "Category identifier.", "role": "key"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity.", "role": "dimension"},
+        {"name": "category_name", "data_type": "string", "business_meaning": "Category name.", "role": "attribute"},
+        {"name": "is_perishable", "data_type": "boolean", "business_meaning": "Whether the category is perishable.", "role": "dimension"}
+      ]
+    },
+    {
+      "name": "retail.TradeAgreement",
+      "business_meaning": "SKU/vendor trade terms, prices, validity, and quantity breaks.",
+      "grain": "one row per SKU, vendor, validity start, and minimum quantity",
+      "keys": ["sku_id", "vendor_account", "valid_from", "min_quantity"],
+      "time_fields": ["valid_from", "valid_to"],
+      "approved_filters": ["sku_id", "vendor_account", "valid_from", "valid_to", "is_designated"],
+      "allowed_aggregations": ["min", "max"],
+      "columns": [
+        {"name": "sku_id", "data_type": "string", "business_meaning": "SKU identifier.", "role": "dimension"},
+        {"name": "vendor_account", "data_type": "string", "business_meaning": "Vendor account.", "role": "dimension"},
+        {"name": "unit_price", "data_type": "decimal", "business_meaning": "Agreed unit price.", "role": "metric"},
+        {"name": "lead_time_days", "data_type": "integer", "business_meaning": "Agreed lead time.", "role": "metric"},
+        {"name": "valid_from", "data_type": "date", "business_meaning": "Agreement validity start.", "role": "time"},
+        {"name": "valid_to", "data_type": "date", "business_meaning": "Agreement validity end.", "role": "time"},
+        {"name": "min_quantity", "data_type": "decimal", "business_meaning": "Minimum quantity for this price break.", "role": "key"},
+        {"name": "is_designated", "data_type": "boolean", "business_meaning": "Whether this is the designated vendor agreement.", "role": "dimension"}
+      ]
+    },
+    {
+      "name": "retail.WorkforceSnapshot",
+      "business_meaning": "Current store staffing requirement and coverage snapshot.",
+      "grain": "one row per store per source load",
+      "keys": ["store_id"],
+      "time_fields": [],
+      "approved_filters": ["store_id"],
+      "allowed_aggregations": ["sum", "avg", "min", "max"],
+      "columns": [
+        {"name": "store_id", "data_type": "string", "business_meaning": "Store identifier.", "role": "dimension"},
+        {"name": "scheduled_fte", "data_type": "decimal", "business_meaning": "Scheduled workforce.", "role": "metric"},
+        {"name": "required_fte", "data_type": "decimal", "business_meaning": "Required workforce.", "role": "metric"},
+        {"name": "gap_fte", "data_type": "decimal", "business_meaning": "Workforce coverage gap.", "role": "metric"},
+        {"name": "coverage_pct", "data_type": "decimal", "business_meaning": "Workforce coverage percentage.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.LegalEntity",
+      "business_meaning": "Retail legal entity and stable configuration context.",
+      "grain": "one row per legal entity",
+      "keys": ["legal_entity_id"],
+      "time_fields": [],
+      "approved_filters": ["legal_entity_id", "short_name"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Legal entity identifier.", "role": "key"},
+        {"name": "legal_entity_name", "data_type": "string", "business_meaning": "Legal entity name.", "role": "attribute"},
+        {"name": "short_name", "data_type": "string", "business_meaning": "Short entity name.", "role": "attribute"}
+      ]
+    },
+    {
+      "name": "retail.Brand",
+      "business_meaning": "Product brand identity.",
+      "grain": "one row per brand",
+      "keys": ["brand_name"],
+      "time_fields": [],
+      "approved_filters": ["brand_name"],
+      "allowed_aggregations": [],
+      "columns": [{"name": "brand_name", "data_type": "string", "business_meaning": "Brand name.", "role": "key"}]
+    },
+    {
+      "name": "retail.BrandEvent",
+      "business_meaning": "Named store and brand-event planning context.",
+      "grain": "one row per store and event",
+      "keys": ["store_id", "event_name"],
+      "time_fields": [],
+      "approved_filters": ["store_id", "legal_entity_id", "event_name"],
+      "allowed_aggregations": [],
+      "columns": [
+        {"name": "store_id", "data_type": "string", "business_meaning": "Store identifier.", "role": "dimension"},
+        {"name": "event_name", "data_type": "string", "business_meaning": "Named event.", "role": "dimension"},
+        {"name": "legal_entity_id", "data_type": "string", "business_meaning": "Retail legal entity.", "role": "dimension"},
+        {"name": "demand_lift", "data_type": "decimal", "business_meaning": "Configured event demand lift.", "role": "metric"}
+      ]
+    },
+    {
+      "name": "retail.SourceLoad",
+      "business_meaning": "Source workbook load lineage and completion status.",
+      "grain": "one row per source workbook hash",
+      "keys": ["source_load_id", "workbook_sha256"],
+      "time_fields": ["loaded_at", "completed_at"],
+      "approved_filters": ["workbook_sha256", "load_status", "source_type"],
+      "allowed_aggregations": ["count", "sum"],
+      "columns": [
+        {"name": "source_load_id", "data_type": "integer", "business_meaning": "Source load identifier used by row lineage.", "role": "key"},
+        {"name": "workbook_sha256", "data_type": "string", "business_meaning": "Source workbook content hash.", "role": "key"},
+        {"name": "source_type", "data_type": "string", "business_meaning": "Source medium type.", "role": "dimension"},
+        {"name": "load_status", "data_type": "string", "business_meaning": "Source load lifecycle status.", "role": "dimension"},
+        {"name": "loaded_at", "data_type": "datetime", "business_meaning": "Load lineage timestamp, not a business-effective timestamp.", "role": "time"},
+        {"name": "completed_at", "data_type": "datetime", "business_meaning": "Load completion timestamp, not a business-effective timestamp.", "role": "time"},
+        {"name": "row_count", "data_type": "integer", "business_meaning": "Rows loaded for the source workbook.", "role": "metric"}
+      ]
+    }
+  ],
+  "metrics": [
+    {"metric_id": "demand.forecast_7d", "name": "seven-day demand forecast", "aliases": ["forecast", "forecast demand", "7 day forecast"], "table": "retail.StoreSkuSnapshot", "column": "forecast_7d", "meaning": "Store-by-SKU forecast for seven days.", "grain": "SKU/store", "unit": "sales units", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["sku_id", "store_id"], "time_field": null},
+    {"metric_id": "sales.monthly_amount", "name": "monthly sales amount", "aliases": ["sales", "sales history", "monthly sales", "revenue"], "table": "retail.MonthlySales", "column": "sales_amount", "meaning": "Sales amount by relative workbook period and legal entity; period_label is not a calendar date and must be used as a dimension or exact approved filter.", "grain": "legal entity/relative period", "unit": "IDR", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["legal_entity_id", "period_label"], "time_field": null},
+    {"metric_id": "inventory.inventory_position", "name": "inventory position", "aliases": ["inventory", "stock position", "on hand"], "table": "retail.InventorySnapshot", "column": "inventory_position", "meaning": "Current chain inventory position.", "grain": "SKU", "unit": "sales units", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["sku_id", "inventory_state"], "time_field": null},
+    {"metric_id": "inventory.days_of_supply", "name": "days of supply", "aliases": ["dos", "days of supply"], "table": "retail.InventorySnapshot", "column": "days_of_supply", "meaning": "Current days of supply.", "grain": "SKU", "unit": "days", "allowed_aggregations": ["avg", "min", "max"], "dimensions": ["sku_id", "inventory_state"], "time_field": null},
+    {"metric_id": "inventory.at_risk_value", "name": "at-risk inventory value", "aliases": ["at risk", "inventory risk"], "table": "retail.InventorySnapshot", "column": "at_risk_value", "meaning": "Current structured at-risk inventory value.", "grain": "SKU", "unit": "IDR", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["sku_id", "inventory_state"], "time_field": null},
+    {"metric_id": "replenishment.order_buy_units", "name": "proposed replenishment quantity", "aliases": ["replenishment", "order quantity", "buy units"], "table": "retail.ReplenishmentProposal", "column": "order_buy_units", "meaning": "Current proposed order quantity in buying units.", "grain": "SKU", "unit": "buying units", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["sku_id", "reorder_required"], "time_field": null},
+    {"metric_id": "promotion.expected_uplift_pct", "name": "configured promotion uplift", "aliases": ["promotion uplift", "promotion"], "table": "retail.Promotion", "column": "expected_uplift_pct", "meaning": "Configured expected promotion uplift, not an observed outcome.", "grain": "promotion", "unit": "percent", "allowed_aggregations": ["avg", "min", "max"], "dimensions": ["promotion_id", "legal_entity_id", "target_category"], "time_field": "valid_from"},
+    {"metric_id": "workforce.gap_fte", "name": "workforce coverage gap", "aliases": ["workforce", "staffing", "fte gap"], "table": "retail.WorkforceSnapshot", "column": "gap_fte", "meaning": "Current required minus scheduled workforce.", "grain": "store", "unit": "FTE", "allowed_aggregations": ["sum", "avg", "min", "max"], "dimensions": ["store_id"], "time_field": null}
+  ],
+  "relationships": [
+    {"from_table": "retail.StoreSkuSnapshot", "from_columns": ["sku_id"], "to_table": "retail.Sku", "to_columns": ["sku_id"], "meaning": "Store-SKU snapshot belongs to SKU."},
+    {"from_table": "retail.StoreSkuSnapshot", "from_columns": ["store_id"], "to_table": "retail.Store", "to_columns": ["store_id"], "meaning": "Store-SKU snapshot belongs to store."},
+    {"from_table": "retail.InventorySnapshot", "from_columns": ["sku_id"], "to_table": "retail.Sku", "to_columns": ["sku_id"], "meaning": "Inventory snapshot belongs to SKU."},
+    {"from_table": "retail.ReplenishmentProposal", "from_columns": ["sku_id"], "to_table": "retail.Sku", "to_columns": ["sku_id"], "meaning": "Replenishment proposal belongs to SKU."},
+    {"from_table": "retail.Sku", "from_columns": ["legal_entity_id"], "to_table": "retail.LegalEntity", "to_columns": ["legal_entity_id"], "meaning": "SKU belongs to legal entity."},
+    {"from_table": "retail.Sku", "from_columns": ["category_id"], "to_table": "retail.Category", "to_columns": ["category_id"], "meaning": "SKU belongs to category."},
+    {"from_table": "retail.Sku", "from_columns": ["vendor_account"], "to_table": "retail.Vendor", "to_columns": ["vendor_account"], "meaning": "SKU has main vendor."},
+    {"from_table": "retail.Promotion", "from_columns": ["legal_entity_id"], "to_table": "retail.LegalEntity", "to_columns": ["legal_entity_id"], "meaning": "Promotion is scoped to legal entity."},
+    {"from_table": "retail.MonthlySales", "from_columns": ["legal_entity_id"], "to_table": "retail.LegalEntity", "to_columns": ["legal_entity_id"], "meaning": "Monthly sales belongs to legal entity."}
+  ],
+  "known_unavailable": [
+    {"term": "forecast accuracy", "aliases": ["accuracy", "mape", "backtested mape", "backtest accuracy"], "reason": "No approved historical forecast-error metric is present in the queryable retail.* catalog."},
+    {"term": "forecast basket", "aliases": ["basket", "basket composition", "forecast basket"], "reason": "The catalog has forecast units but no approved basket-composition metric."}
+  ]
+}
