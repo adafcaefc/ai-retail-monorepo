@@ -15,10 +15,17 @@ ENABLED_MODULES: tuple[str, ...] = (
     # "finance.treasury",
     # "finance.collection",
     # "finance.leakage",
+    # Built: chat, monitoring, actions and a Postgres-backed board.
     "retail.demand_forecasting",
     "retail.inventory_risk",
     "retail.replenishment",
     "retail.promotion_effectiveness",
+    # Navigation-only: reachable in the sidebar, nothing wired behind them yet.
+    "retail.pricing_markdown",
+    "retail.assortment_optimization",
+    "retail.workforce_optimizer",
+    "retail.vendor_brand_performance",
+    "retail.ai_explanation_summary",
 )
 
 __all__ = ["ENABLED_MODULES"]

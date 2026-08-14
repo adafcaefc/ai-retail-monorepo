@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 from src.api.agents_html import list_agents
 from src.llm.agents import AGENT_REGISTRY, LOCAL_TOOLS
@@ -18,6 +19,22 @@ RETAIL_MODULES = (
     ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
 )
 
+# Agents 5-9 of the mockup: sidebar destinations with nothing behind them yet
+# (`retail/common/placeholder.py`). Order is the mockup's, which is also the
+# order they have to be built in — each reads what the one before it produces.
+# Agent 4 (promotion_effectiveness) has moved to RETAIL_MODULES above.
+PLACEHOLDER_MODULES = (
+    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing..."),
+    ("retail.assortment_optimization", "Assortment Optimization", "Ask Assortment..."),
+    ("retail.workforce_optimizer", "Workforce Optimizer", "Ask Workforce..."),
+    (
+        "retail.vendor_brand_performance",
+        "Vendor & Brand Performance",
+        "Ask Vendor...",
+    ),
+    ("retail.ai_explanation_summary", "AI Explanation & Summary", "Ask Summary..."),
+)
+
 # Three specialists per board. Fewer than Finance's four, so the concerns the
 # fourth would have carried are folded into a sibling and named in its
 # `instructions` -- seasonality into trend, capital concentration into
@@ -25,10 +42,19 @@ RETAIL_MODULES = (
 PASSES_PER_MODULE = 3
 
 
-def test_retail_folder_contains_navigation_modules() -> None:
+def test_retail_folder_carries_the_mockups_nine_agents_in_order() -> None:
+    """Four built, five navigation-only, in the mockup's sidebar order.
+
+    This asserted exactly three modules while Agents 4-9 did not exist. They
+    are now reachable, which is the point of the change rather than a
+    loosening of the check: the list below is the mockup's own order, so a
+    module added out of sequence fails here.
+    """
     retail = [item for item in ENABLED_MODULES if item.startswith("retail.")]
 
-    assert retail == [item[0] for item in RETAIL_MODULES]
+    assert retail == [
+        item[0] for item in (*RETAIL_MODULES, *PLACEHOLDER_MODULES)
+    ]
     assert "retail.retail" not in ENABLED_MODULES
 
 
@@ -182,13 +208,80 @@ def test_retail_dashboards_declare_the_filters_they_apply() -> None:
         )
 
 
-def test_agents_api_exposes_retail_destinations() -> None:
+def test_placeholder_modules_are_navigation_only() -> None:
+    """Named and reachable; nothing behind them, and nothing pretending to be.
+
+    Every chivon key and plumbing name is empty rather than a plausible
+    string, because `populate_alerts` and `simulate_action` resolve those by
+    name at runtime — a guess would surface as a prefetch returning None
+    instead of a loud failure. `dashboard_only` is what stops anything
+    reaching for them in the first place.
+    """
+    for agent_id, display, prompt in PLACEHOLDER_MODULES:
+        descriptor = AGENT_REGISTRY[agent_id]
+
+        assert descriptor.folder == "retail"
+        assert descriptor.display == display
+        assert descriptor.prompt == prompt
+        assert descriptor.starter_prompts, f"{agent_id} has no starter prompts"
+
+        assert descriptor.dashboard_only is True
+        assert descriptor.chat_agent == ""
+        assert descriptor.simulation_agent == ""
+        assert descriptor.action_agent == ""
+        assert descriptor.monitoring_passes == ()
+        assert descriptor.db_domain == ""
+        assert descriptor.snapshot_tool == ""
+        assert descriptor.schema_tool == ""
+        assert descriptor.allowed_tables == ()
+        assert descriptor.tools == {}
+        assert descriptor.supported_filters == frozenset()
+
+
+def test_placeholder_dashboards_return_a_valid_empty_payload() -> None:
+    """A client that calls the dashboard route early gets empty panels.
+
+    Not a 500 and not a parse error — the same contract the built boards
+    answer, with nothing in it.
+    """
+    for agent_id, _, _ in PLACEHOLDER_MODULES:
+        payload = AGENT_REGISTRY[agent_id].build_dashboard(DashboardScope())
+
+        assert payload["agent"] == agent_id
+        assert payload["kpis"] == []
+        assert payload["views"] == {}
+        assert payload["filters"] == []
+        assert payload["simulator"] is None
+
+
+def test_placeholder_modules_declare_no_chivon_agents() -> None:
+    """The six carry no config JSON, so they must not name one either.
+
+    `test_every_declared_chivon_agent_exists` catches the reverse for the
+    built modules; this is the same guard from the empty side.
+    """
+    for agent_id, _, _ in PLACEHOLDER_MODULES:
+        folder, _, name = agent_id.partition(".")
+        config_dir = (
+            Path(__file__).resolve().parents[1]
+            / "src" / "llm" / "agents" / folder / name / "config"
+        )
+
+        assert not config_dir.exists(), f"{agent_id} has a config folder"
+
+
+def test_agents_api_exposes_all_nine_retail_destinations() -> None:
     payload = asyncio.run(list_agents())
     retail = [item for item in payload["items"] if item["folder"] == "retail"]
+    expected = (*RETAIL_MODULES, *PLACEHOLDER_MODULES)
 
-    assert [item["id"] for item in retail] == [item[0] for item in RETAIL_MODULES]
-    assert [item["display"] for item in retail] == [item[1] for item in RETAIL_MODULES]
-    # False is what the frontend reads to show chat, the Alerts panel and the
-    # Subagents control for these boards.
-    assert all(item["dashboard_only"] is False for item in retail)
+    assert [item["id"] for item in retail] == [item[0] for item in expected]
+    assert [item["display"] for item in retail] == [item[1] for item in expected]
+    # This flag is what the frontend reads to show chat, the Alerts panel and
+    # the Subagents control — on for the three built boards, off for the six
+    # that have nothing to answer with.
+    built = retail[: len(RETAIL_MODULES)]
+    placeholders = retail[len(RETAIL_MODULES) :]
+    assert all(item["dashboard_only"] is False for item in built)
+    assert all(item["dashboard_only"] is True for item in placeholders)
     assert all(item["id"] != "retail.retail" for item in payload["items"])

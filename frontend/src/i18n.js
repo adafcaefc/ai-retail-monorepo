@@ -541,6 +541,19 @@ const CHROME = {
     "Masalah kebocoran mana yang harus diselidiki lebih dahulu?",
   "Which vendor is riskiest, and why does it rank first?":
     "Vendor mana yang paling berisiko, dan kenapa ia di peringkat pertama?",
+
+  // Placeholder boards (Retail Agents 4-9). The per-agent bullet lists stay in
+  // English on purpose: they name backlog items, and translating a backlog
+  // twice is how the two copies drift apart. The chrome around them does not
+  // have that problem.
+  Agent: "Agent",
+  "This agent is a navigation entry only. Its dashboard, chat and monitoring are not built yet, so no figures are shown here — and none are implied.":
+    "Agent ini baru berupa entri navigasi. Dashboard, chat dan monitoring-nya belum dibangun, jadi tidak ada angka yang ditampilkan di sini — dan tidak ada yang disiratkan.",
+  "Planned for this board": "Rencana untuk board ini",
+  "Needs to exist first": "Harus ada lebih dulu",
+  "From mockup page": "Dari halaman mockup",
+  "Build order is a dependency, not a preference: this agent reads what those produce.":
+    "Urutan pembangunan adalah ketergantungan, bukan preferensi: agent ini membaca hasil dari agent-agent tersebut.",
 };
 
 // Payload wording: KPI labels, chart titles, filter and preset labels, levers.

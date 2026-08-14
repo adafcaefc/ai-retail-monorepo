@@ -5595,6 +5595,97 @@ img.ey-logo {
   color: var(--ink);
 }
 
+/* Placeholder board (Retail Agents 4-9)
+ * ---------------------------------------------------------------------------
+ * Reuses the plain .static-page scroll surface above, because that is what an
+ * unbuilt board is: a page, not a KPI grid. Deliberately quiet — no tiles, no
+ * sparklines, no greyed-out chart frames. A skeleton here would read as "still
+ * loading" for a board that is not coming this release.
+ */
+.placeholder-board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 900px;
+}
+
+.placeholder-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.placeholder-badge {
+  align-self: flex-start;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.placeholder-summary {
+  margin: 0;
+  font-size: var(--text-base);
+  color: var(--muted);
+}
+
+.placeholder-notice {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  font-size: var(--text-sm);
+  line-height: 1.55;
+  color: var(--ink);
+}
+
+.placeholder-columns {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.placeholder-card {
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.placeholder-card h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.placeholder-card ul {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.placeholder-source {
+  margin: var(--space-4) 0 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.placeholder-source code {
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+}
+
 /* Data Source (main.data_source)
  * ---------------------------------------------------------------------------
  * A read-only Excel viewer. Everything structural lives here; the workbook's
