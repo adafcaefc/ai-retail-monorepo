@@ -153,7 +153,9 @@ function emptyDashboard(agent) {
 
 // The static pages in src/pages are prepended to the agent list, so every
 // sidebar count here is "agents plus pages".
-const PAGE_COUNT = 3;
+// What If Simulator and Data Source are currently hidden (see
+// docs/DISABLED_FEATURES.md), leaving only Formula Manager.
+const PAGE_COUNT = 1;
 
 // One window of a sheet, shaped exactly like GET /api/excel/sheets/{name}.
 const SHEET_LIST = {
@@ -277,13 +279,12 @@ describe("Retail dashboard and frontend-only chat", () => {
       .slice(0, PAGE_COUNT)
       .map((button) => button.querySelector("strong").textContent);
 
-    // Data Source sorts last despite "data_source" winning the glob sort: it
-    // sets `order: 1` because the first page is the app's default screen, and
-    // it is the one page that cannot render without the backend. Asserted by
-    // position rather than by roster so adding a page does not touch this.
-    expect(pages).toContain("Data Source");
-    expect(pages[pages.length - 1]).toBe("Data Source");
-    expect(pages[0]).not.toBe("Data Source");
+    // Data Source and What If Simulator are hidden (docs/DISABLED_FEATURES.md),
+    // so Formula Manager is currently the only static page. These assertions
+    // return once Data Source is re-enabled:
+    // expect(pages).toContain("Data Source");
+    // expect(pages[pages.length - 1]).toBe("Data Source");
+    // expect(pages[0]).not.toBe("Data Source");
 
     // The leading page is the default screen: page body plus a plain topbar
     // that names the section rather than calling it a performance board.
@@ -324,7 +325,9 @@ describe("Retail dashboard and frontend-only chat", () => {
     }
   });
 
-  it("renders the Data Source viewer with the workbook's own formatting", async () => {
+  // Data Source is hidden (see docs/DISABLED_FEATURES.md); re-enable it there
+  // to bring this test back.
+  it.skip("renders the Data Source viewer with the workbook's own formatting", async () => {
     renderApp();
     await waitForSidebar();
 
@@ -386,7 +389,9 @@ describe("Retail dashboard and frontend-only chat", () => {
     });
   });
 
-  it("opens the worksheet a cell deep link names, not the default page", async () => {
+  // Data Source is hidden (see docs/DISABLED_FEATURES.md); re-enable it there
+  // to bring this test back.
+  it.skip("opens the worksheet a cell deep link names, not the default page", async () => {
     // The hash is the whole router: the Formula Manager's cell citations link
     // here rather than to the page's front door.
     window.location.hash = "#main.data_source?cell=ENGINE_STORE%21J4";

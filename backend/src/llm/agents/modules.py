@@ -19,7 +19,7 @@ ENABLED_MODULES: tuple[str, ...] = (
     "retail.demand_forecasting",
     "retail.inventory_risk",
     "retail.replenishment",
-    "retail.promotion_effectiveness",
+    # "retail.promotion_effectiveness",  # see docs/DISABLED_FEATURES.md
     # Navigation-only: reachable in the sidebar, nothing wired behind them yet.
     "retail.pricing_markdown",
     "retail.assortment_optimization",
