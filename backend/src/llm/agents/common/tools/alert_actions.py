@@ -1,10 +1,43 @@
-"""Cross-agent alert/action plan tools (list, simulate, approve)."""
+"""Cross-agent alert/action plan tools (list, simulate, approve).
+
+RESOLVING AN ACTION
+-------------------
+simulate and approve both act on a row already in chat.actions, so the caller
+has to name one. A title is matched exactly, then as a substring in either
+direction -- the agent's phrasing is usually longer than the stored title, not
+shorter, so a one-directional test misses the ordinary case.
+
+Matching never reaches into `spec`. The SKU ids, vendor names and thresholds an
+action turns on live there, which makes spec text tempting to match on and
+dangerous to match on: the same SKU appears in several specs, and a near miss
+would silently simulate the wrong remediation. So an unresolved name returns
+every stored action with its id and spec instead of guessing, in the shape
+formula_tools uses for a missing formula id -- the recovery the agent needs is
+just the right id, so hand it over rather than raising. Raising is worse than
+unhelpful here: a plain exception from a tool aborts the whole pydantic-ai run
+(pipeline.py catches it and reports failure), so the agent never reads the
+message and cannot correct itself.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
 from src.llm.agents.common.tools.db import _read_connection, _rows
+
+# How many stored actions travel back on an unresolved name, and how much of
+# each spec. The spec excerpt is what lets the agent map "DGT-046" onto the
+# action that targets it, so it has to be long enough to carry the ids.
+_CANDIDATE_LIMIT = 25
+_SPEC_EXCERPT = 220
+
+# A stored title is only matched inside a longer request when it is specific
+# enough for the containment to mean something. "Clarify accuracy KPI" landing
+# in a long question is a coincidence; "CFO approval: switch sourcing on top
+# DGT SKUs" is a reference. Short titles stay fully reachable by exact match
+# and by a quoted fragment -- they are only excluded from this one direction.
+_CONTAINABLE_TITLE_CHARS = 24
+_CONTAINABLE_TITLE_WORDS = 4
 
 
 def get_alert_action_plan(
@@ -84,13 +117,95 @@ def get_alert_action_plan(
     }
 
 
+class UnresolvedAction(LookupError):
+    """A named action did not resolve to exactly one stored row.
+
+    Carries the payload the tool returns instead of raising, so the agent gets
+    the stored ids back and can retry with one.
+    """
+
+    def __init__(self, payload: dict[str, Any]) -> None:
+        super().__init__(str(payload.get("error") or "Action not resolved."))
+        self.payload = payload
+
+
+def _title(item: dict[str, Any]) -> str:
+    return str(item.get("action") or "").strip()
+
+
+def _is_containable(title: str) -> bool:
+    """Whether finding this title inside a longer request means anything."""
+
+    return (
+        len(title) >= _CONTAINABLE_TITLE_CHARS
+        and len(title.split()) >= _CONTAINABLE_TITLE_WORDS
+    )
+
+
+def _digest(item: dict[str, Any]) -> dict[str, Any]:
+    """One stored action, trimmed to what choosing between them needs."""
+
+    spec = " ".join(str(item.get("spec") or "").split())
+    if len(spec) > _SPEC_EXCERPT:
+        spec = spec[:_SPEC_EXCERPT].rstrip() + "..."
+    return {
+        "action_id": str(item.get("id")),
+        "action": _title(item),
+        "agent": item.get("agent"),
+        "status": item.get("status"),
+        "routes": list(item.get("routes") or []),
+        "spec": spec,
+    }
+
+
+def _unresolved(
+    *,
+    error: str,
+    candidates: list[dict[str, Any]],
+    requested_action: str,
+    requested_action_id: str,
+) -> UnresolvedAction:
+    """Build the retry payload: the failure, then every id worth trying."""
+
+    return UnresolvedAction(
+        {
+            "error": error,
+            "resolved": False,
+            "requested_action": requested_action,
+            "requested_action_id": requested_action_id,
+            "stored_action_count": len(candidates),
+            "stored_actions": [
+                _digest(item) for item in candidates[:_CANDIDATE_LIMIT]
+            ],
+            "truncated": len(candidates) > _CANDIDATE_LIMIT,
+            "note_to_agent": (
+                "The action was not resolved, so nothing was simulated, "
+                "approved or changed. This is not a data source outage and "
+                "the stored actions below are live. An action's SKU ids, "
+                "vendors and thresholds live in its spec, not in its title, "
+                "so do not compose a title from the user's wording. Read the "
+                "specs, pick the action that covers what the user asked "
+                "about, and call again with its action_id. Never repeat this "
+                "call unchanged. If no stored action covers the request, tell "
+                "the user no such action is stored rather than simulating a "
+                "neighbouring one."
+            ),
+        }
+    )
+
+
 def _resolve_action(
     session: Any,
     *,
     action_id: str = "",
     action: str = "",
 ) -> dict[str, Any]:
-    """Resolve a stored action by id, falling back to title match."""
+    """Resolve a stored action by id, falling back to title match.
+
+    Raises UnresolvedAction, carrying the stored ids, when a name matches no
+    action or more than one. Callers return its payload rather than letting it
+    propagate.
+    """
 
     from src.actions import repository
 
@@ -99,9 +214,14 @@ def _resolve_action(
 
     if action_id:
         found = repository.get_action(session, action_id)
-        if found is None:
-            raise LookupError(f"Action {action_id!r} was not found.")
-        return found
+        if found is not None:
+            return found
+        raise _unresolved(
+            error=f"Action {action_id!r} was not found.",
+            candidates=repository.get_actions(session),
+            requested_action=action_title,
+            requested_action_id=action_id,
+        )
 
     if not action_title:
         raise ValueError(
@@ -109,35 +229,55 @@ def _resolve_action(
         )
 
     candidates = repository.get_actions(session)
-    exact = [
-        item
-        for item in candidates
-        if str(item.get("action") or "").strip().lower()
-        == action_title.lower()
-    ]
+    wanted = action_title.lower()
+
+    exact = [item for item in candidates if _title(item).lower() == wanted]
     if len(exact) == 1:
         return exact[0]
     if len(exact) > 1:
-        ids = ", ".join(str(item["id"]) for item in exact[:5])
-        raise ValueError(
-            f"Multiple actions titled {action_title!r}. "
-            f"Pass action_id. Candidates: {ids}"
+        raise _unresolved(
+            error=(
+                f"Multiple stored actions are titled {action_title!r}. "
+                "Pass action_id to say which one."
+            ),
+            candidates=exact,
+            requested_action=action_title,
+            requested_action_id=action_id,
         )
 
+    # Both directions: the agent may quote a fragment of a stored title, or
+    # wrap the whole title in a sentence of its own.
     partial = [
         item
         for item in candidates
-        if action_title.lower() in str(item.get("action") or "").lower()
+        if (title := _title(item).lower())
+        and (
+            wanted in title
+            or (_is_containable(title) and title in wanted)
+        )
     ]
     if len(partial) == 1:
         return partial[0]
     if len(partial) > 1:
-        ids = ", ".join(str(item["id"]) for item in partial[:5])
-        raise ValueError(
-            f"Multiple actions match {action_title!r}. "
-            f"Pass action_id. Candidates: {ids}"
+        raise _unresolved(
+            error=(
+                f"Several stored actions match {action_title!r}. "
+                "Pass action_id to say which one."
+            ),
+            candidates=partial,
+            requested_action=action_title,
+            requested_action_id=action_id,
         )
-    raise LookupError(f"No stored action matches {action_title!r}.")
+
+    raise _unresolved(
+        error=(
+            f"No stored action matches {action_title!r}. Titles are matched "
+            "as stored; a title composed from the request will not match."
+        ),
+        candidates=candidates,
+        requested_action=action_title,
+        requested_action_id=action_id,
+    )
 
 
 async def simulate_action_impact(
@@ -154,6 +294,12 @@ async def simulate_action_impact(
     shown before approval is confirmed. Do not wait for the user to say
     the word simulation.
 
+    Pass action_id whenever you have it. A title is matched against stored
+    titles only: an action's SKU ids, vendors and thresholds live in its spec,
+    so a title composed from the user's wording will not resolve. When it does
+    not, the result carries `resolved: false` and every stored action with its
+    action_id and spec; pick one from there and call again.
+
     Args:
         action_id: Identifier of the action being simulated, when known.
         action: Title of the action being simulated.
@@ -164,11 +310,14 @@ async def simulate_action_impact(
     from src.db.db import session_scope
 
     with session_scope() as session:
-        resolved = _resolve_action(
-            session,
-            action_id=action_id,
-            action=action,
-        )
+        try:
+            resolved = _resolve_action(
+                session,
+                action_id=action_id,
+                action=action,
+            )
+        except UnresolvedAction as unresolved:
+            return unresolved.payload
         result = await actions_service.simulate_action(
             session,
             str(resolved["id"]),
@@ -207,6 +356,11 @@ def request_action_approval(
     approved in the database. Nothing is executed; execution remains with
     the domain execution agent after approval.
 
+    Pass action_id whenever you have it. A title is matched against stored
+    titles only. When it does not resolve, the result carries `resolved: false`
+    and every stored action with its action_id; nothing is approved in that
+    case, so pick one from the list and call again.
+
     Args:
         action_id: Identifier of the approved action, when known.
         action: Title of the approved action.
@@ -217,11 +371,14 @@ def request_action_approval(
     from src.db.db import session_scope
 
     with session_scope() as session:
-        resolved = _resolve_action(
-            session,
-            action_id=action_id,
-            action=action,
-        )
+        try:
+            resolved = _resolve_action(
+                session,
+                action_id=action_id,
+                action=action,
+            )
+        except UnresolvedAction as unresolved:
+            return unresolved.payload
         updated = actions_service.approve_action(
             session,
             str(resolved["id"]),
@@ -254,6 +411,7 @@ COMMON_ALERT_ACTION_TOOLS = {
 
 __all__ = [
     "COMMON_ALERT_ACTION_TOOLS",
+    "UnresolvedAction",
     "get_alert_action_plan",
     "simulate_action_impact",
     "request_action_approval",
