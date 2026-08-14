@@ -18,7 +18,7 @@ ENABLED_MODULES: tuple[str, ...] = (
     "retail.demand_forecasting",
     "retail.inventory_risk",
     "retail.replenishment",
-    "retail.promotion_effectiveness",
+    # "retail.promotion_effectiveness",  # see docs/DISABLED_FEATURES.md
 )
 
 __all__ = ["ENABLED_MODULES"]
