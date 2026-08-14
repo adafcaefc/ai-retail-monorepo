@@ -634,3 +634,483 @@ details while preserving a useful operator-facing log.
 7. Future simulation route/method, statelessness, versioning, authorization,
    and persistence. No decision is required to deliver the read-only dashboard
    endpoint.
+
+---
+
+## Store Filter Error Analysis
+
+Investigation date: 2026-08-14
+
+### 1. Executive Summary
+
+The Store dropdown is holding and sending the correct canonical individual
+Store ID. For example, `S001` means `S001 · Grocery 01 · Jakarta Pusat`; it is
+not a Store name, cluster, or region.
+
+The primary root cause is at the backend scope/query boundary. The endpoint
+parses `store_id=S001` into `DashboardScope.store_id == "S001"`, but the Demand
+Forecasting descriptor declares `store_id` unsupported and its SQL scope helper
+does not generate a Store predicate. The builder therefore returns the same
+chain-level `fact_inventory_chain_daily` rows and the complete 160-store
+dimension for `S001`, `S002`, and All Stores.
+
+There is a second, reinforcing frontend defect: the API response is treated as
+already scoped, but `scopeItems()` and `scopeStores()` do not apply
+`query.store_id`. The frontend then rebuilds the dashboard from the unscoped
+rows and drops the backend's `ignored_filters` warning. This is a data-contract
+and query-scope failure, not a stale-cache problem.
+
+Impact is high for a Store-specific view: the forecast, inventory-risk,
+SKU/detail, dimension, suggested-action, and simulation outputs remain
+chain-wide or entity-wide while the scope chip says the selected Store. The
+selected Store can therefore display `1,656,178.22` chain forecast units even
+though the database has `25,948.94` units for S001 and `30,756.58` for S002.
+
+### 2. Expected Behavior
+
+When the user selects `S001 · Grocery 01 · Jakarta Pusat`, the expected flow is:
+
+```text
+option.value "S001"
+  -> query.store_id "S001"
+  -> GET /api/html/dashboard/retail.demand_forecasting?store_id=S001
+  -> DashboardScope.store_id "S001"
+  -> Store-scoped source rows and aggregations
+  -> response scope/store dimension identifies S001
+  -> frontend renders only S001's forecast and risk values
+```
+
+The same flow for `S002` must produce S002-specific results. All Stores must
+omit the query parameter (or normalize it to null) and use the documented
+chain-wide scope.
+
+### 3. Actual Behavior
+
+The frontend correctly changes its state and makes a new request, but the
+backend treats the non-empty Store filter as an unsupported filter for this
+agent. It still executes the chain query without a Store predicate and the
+per-Store query without `s.store_id = :store_id`.
+
+The live route returns HTTP 200 and explicitly reports
+`"ignored_filters": ["store_id"]`, but the frontend's API gateway uses the
+response as raw rows, calls `buildDashboardFromFixture(rows, query)`, and does
+not propagate `ignored_filters` to the rendered dashboard. Its local selectors
+also ignore `query.store_id`, so the resulting dashboard is still chain-wide.
+
+Observed live route behavior:
+
+| Request | HTTP | `ignored_filters` | chain items | Store rows | first Store IDs |
+| --- | ---: | --- | ---: | ---: | --- |
+| `/api/html/dashboard/retail.demand_forecasting` | 200 | absent | 800 | 160 | S001, S002, S003 |
+| `...?store_id=S001` | 200 | `["store_id"]` | 800 | 160 | S001, S002, S003 |
+| `...?store_id=S002` | 200 | `["store_id"]` | 800 | 160 | S001, S002, S003 |
+
+### 4. End-to-End Value Trace
+
+Concrete trace for `S001`:
+
+| Stage | Store value / meaning |
+| --- | --- |
+| Dropdown label | `S001 · Grocery 01 · Jakarta Pusat` |
+| Dropdown option value | `S001` |
+| Frontend filter state | `query.store_id = "S001"` |
+| Frontend effect/request trigger | `query.store_id` is a dependency of the dashboard-loading `useEffect`; changing it starts a new load |
+| HTTP parameter | `store_id=S001` |
+| Backend received value | FastAPI `store_id: str | None` receives `"S001"` |
+| Backend normalized value | `DashboardScope(store_id="S001")`; `"ALL"`/empty would normalize to `None` |
+| Descriptor/service argument | No separate service/repository exists; the route calls `descriptor.build_dashboard(scope)`, which is `demand_forecasting.dashboard.build(scope)` |
+| SQL scope helper result | `("", {})` for `DashboardScope(store_id="S001")`; no Store clause or bound Store parameter is produced |
+| Chain SQL column/predicate | No Store column exists in `fact_inventory_chain_daily`; query is filtered only by `c.cal_date = :day` (plus optional entity/category predicates) |
+| Per-Store SQL column/predicate | Joins `f.store_key = s.store_id`, but filters only `f.cal_date = :day`; there is no `s.store_id = :store_id` predicate |
+| SQL bound values | `day = "2026-07-01"`; no `store_id` bind value |
+| Backend returned rows | 800 chain-net item rows and all 160 Store rows; the Store rows include S001 and S002 rather than only S001 |
+| Backend warning | `ignored_filters: ["store_id"]` |
+| Frontend response processing | Rebuilds a dashboard from `items` and `stores`; `scopeItems` filters only legal entity, category, and SKU search; `scopeStores` filters only legal entity |
+| Frontend displayed scope | The locally reconstructed scope says `store_id = "S001"`, so the scope chip looks correct |
+| Frontend displayed data | KPI `forecast_next_7d = 1,656,178.21602674`, Detail total `800`, and Store dimension count `160` — chain/all-store values |
+
+The same trace with `S002` has the same backend SQL and the same frontend
+result. Only the HTTP request value and the ignored-filter warning's presence
+change from the All Stores request.
+
+### 5. Reproduction
+
+1. Open the Demand Forecasting page (`retail.demand_forecasting`) with the API
+   data source enabled.
+2. Leave Legal Entity and Category at All.
+3. Select `S001 · Grocery 01 · Jakarta Pusat` in the Store dropdown.
+4. Observe the browser request:
+
+   ```http
+   GET /api/html/dashboard/retail.demand_forecasting?store_id=S001
+   ```
+
+5. Observe the 200 response metadata:
+
+   ```json
+   {
+     "ignored_filters": ["store_id"],
+     "items": ["800 chain-level item rows"],
+     "stores": ["160 Store rows"]
+   }
+   ```
+
+6. The live database has this Store-level evidence for the same snapshot:
+
+   | Store | SKU rows | Store forecast 7d | `position < rop` risk SKUs |
+   | --- | ---: | ---: | ---: |
+   | S001 | 100 | 25,948.941032500927 | 46 |
+   | S002 | 100 | 30,756.578276753906 | 53 |
+
+7. Select S002. The request changes to
+   `...?store_id=S002`, but the response still contains 800 chain items and
+   160 Store rows, and the frontend still renders the same chain-wide KPI.
+
+The frontend selector was also executed directly with the checked-in response
+shape for All, S001, and S002. It produced, in every case, 800 items,
+`1,656,178.21602674` forecast units, 160 Store dimension rows, and the same
+first Detail SKU (`GRC-025`). With `legal_entity_id=GRC`, S001 and S002 both
+produced the GRC total `442,050.26262828155` and 100 items, rather than a
+Store-specific result.
+
+### 6. Evidence
+
+Frontend:
+
+- `frontend/src/agents/retail/demand_forecasting/components/DemandForecastFilters.jsx:61-67`
+  renders the Store `<select>` with `value={query.store_id}` and sends the
+  selected DOM value to `onPatch({ store_id: value })`.
+- `frontend/src/agents/retail/demand_forecasting/data/contract.js:84-97`
+  normalizes Store state as a string and defaults it to `"ALL"`.
+- `frontend/src/agents/retail/demand_forecasting/data/contract.js:111-124`
+  serializes the selected value as the `store_id` request field and omits only
+  `ALL`.
+- `frontend/src/api/dashboard.js:20-40` serializes that field with
+  `URLSearchParams` and calls the canonical dashboard route.
+- `frontend/src/agents/retail/demand_forecasting/DemandForecastingDashboard.jsx:53-91`
+  includes `query.store_id` in the load effect dependencies, so changing Store
+  does trigger a new request. There is no React Query, SWR, Redux, or other
+  response cache in this path.
+- `frontend/src/agents/retail/demand_forecasting/data/dashboardData.js:48-57`
+  confirms that API mode receives rows, then rebuilds the dashboard locally.
+- `frontend/src/agents/retail/demand_forecasting/data/selectors.js:86-101`
+  proves that local scoping checks only legal entity, category, and SKU search;
+  Store is not checked in either `scopeItems` or `scopeStores`.
+- `frontend/src/agents/retail/demand_forecasting/data/selectors.js:448-471`
+  builds KPIs from `baselineItems` and dimensions from `stores`, so an
+  unscoped backend payload remains unscoped on screen.
+
+Backend:
+
+- `backend/src/api/agents_html.py:551-553` declares the expected public
+  parameter as `store_id` and `:600-626` parses the scope, calls the builder,
+  and attaches `ignored_filters`.
+- `backend/src/llm/agents/common/dashboard_scope.py:44-50` defines
+  `store_id` as a Store join key; `:68-80` normalizes it; `:82-96` marks it as
+  applied when non-empty.
+- `backend/src/llm/agents/retail/demand_forecasting/__init__.py:62-63`
+  passes the builder's `SUPPORTED_FILTERS` to the descriptor.
+- `backend/src/llm/agents/retail/common/warehouse.py:53-57` declares only
+  `legal_entity_id` and `category_group` as supported, and
+  `:106-116` shows `_scope_clause()` can emit only those two predicates.
+- `backend/src/llm/agents/retail/demand_forecasting/dashboard.py:150-193`
+  contains the actual chain and Store SQL. The chain query reads
+  `fact_inventory_chain_daily` (one row per item, no Store key); the Store
+  query reads `fact_inventory_daily` joined to `dim_store`, but applies only
+  the snapshot date and optional legal-entity predicate.
+- `backend/src/llm/agents/retail/demand_forecasting/dashboard.py:219-251`
+  converts chain rows into `items` without a `store_id`; `:261-289` returns
+  the per-Store rows as a separate dimension block, not as the selected item
+  scope.
+
+Live evidence captured during this investigation:
+
+- Real FastAPI TestClient requests for All, S001, and S002 all returned 200;
+  selected requests returned `ignored_filters: ["store_id"]`, 800 items, and
+  160 stores.
+- Read-only database counts were 800 rows in
+  `retail.fact_inventory_chain_daily` and 16,000 rows in
+  `retail.fact_inventory_daily` for `2026-07-01`.
+- The chain forecast sum was `1,656,178.2160267404`; the Store sums above were
+  different and were not used to scope the returned chain items.
+
+### 7. Root Cause
+
+The frontend Store contract is internally consistent: `option.value` is the
+canonical Store ID, the state is `query.store_id`, and the HTTP field is
+`store_id`. No frontend-to-backend naming or label/value mismatch was found.
+
+The primary root cause is that the Demand Forecasting backend does not apply
+the Store ID it accepts. `DashboardScope` preserves `S001`, but
+`SUPPORTED_FILTERS` excludes `store_id`; `_scope_clause()` therefore emits no
+Store predicate; and both Demand SQL statements run at chain/all-store scope.
+The route correctly exposes this as `ignored_filters`, but still returns 200.
+
+The frontend has a matching assumption that is invalid for this filter:
+`scopeItems()` and `scopeStores()` assume the backend has already narrowed rows,
+but neither applies `query.store_id`. Because chain item rows carry no Store ID,
+the frontend cannot repair this by filtering the current payload. It displays a
+locally echoed Store scope over chain-wide data.
+
+The first semantic divergence is therefore:
+
+```text
+Backend normalized scope: store_id = S001
+        !=
+SQL scope: no Store predicate; chain/all-store rows
+```
+
+The second divergence is:
+
+```text
+Frontend displayed scope: store_id = S001
+        !=
+Frontend displayed rows: rows returned without Store scope
+```
+
+### 8. Contributing Factors
+
+- `ignored_filters` is an intentional backend warning, but
+  `dashboardData.js` reconstructs a new payload and drops that field before
+  `normalizeDemandDashboard()`/the React components can show it.
+- The endpoint's public description says Store filtering is supported, while
+  the Demand descriptor's `SUPPORTED_FILTERS` says it is not.
+- The backend response has no effective `scope` echo. The frontend creates its
+  own scope from the request, so the UI can claim S001 without server
+  confirmation.
+- The row contract mixes chain-net item rows and gross per-Store rows. A
+  chain-net table cannot represent an individual Store filter because it has no
+  Store dimension. The per-Store table does, through `store_key` joined to
+  `dim_store.store_id`.
+- Existing frontend tests assert that a Store click changes `store_id` in the
+  load call, but do not assert that the returned KPI, Detail rows, or dimension
+  scope changes. Existing backend tests intentionally assert that Store is an
+  ignored filter for Retail builders, which protects the current behavior
+  rather than the UI contract.
+- No evidence supports a stale-cache explanation: `query.store_id` is a load
+  dependency, `fetchDashboard()` performs a new fetch, and no client cache
+  library is used in this path.
+
+### 9. Scope of Impact
+
+| Demand Forecasting output | Impact for a selected Store | Evidence / reason |
+| --- | --- | --- |
+| Store dropdown and scope chip | Misleading only | The selected ID/label is correct, but it is not reflected in the rows |
+| API request | Not affected | `store_id=S001`/`S002` is sent correctly |
+| Forecast next 7d KPI | Affected | Chain `1,656,178.22` is shown instead of selected Store scope |
+| Forecast horizon/overview series | Affected | Series is generated from the unscoped chain item ADS sum |
+| Confidence series | Affected semantically; value may coincide | It is generated from the same unscoped items; accuracy is also a uniform typed constant `92.4` |
+| Forecast accuracy / MAPE | Scope affected, numeric difference not provable | This dataset has no backtest; the displayed 92.4% is typed at vertical level |
+| Demand trend | Affected semantically and generally numerically | It is blended from all returned chain items; S001's GRC value is 5.6, while All Stores is 6.303178995... |
+| Stockout-risk SKU KPI | Affected | Chain value is 302; Store-level source counts are 46 for S001 and 53 for S002 |
+| Inventory position / inbound / supply state | Affected | Detail rows come from chain-level position, open PO, ROP, and state |
+| Category/product breakdowns | Affected | Categories and Detail are grouped from unscoped chain item rows |
+| Detail table | Affected | Selected S001/S002 still shows 800 chain items when no legal entity is selected |
+| Forecast by Store chart | Affected for selected scope | It still shows all 160 Store rows; the selected Store is not isolated |
+| Cluster chart | Affected | It is grouped from all returned Store rows |
+| Legal Entity chart | Affected | With no entity selected it remains a chain-wide rollup, not the selected Store's entity scope |
+| Seasonality | Scope affected; no Store-level source is available | It is built from vertical GMV, not a Store-specific dataset |
+| Suggested actions/worklist | Affected | It is derived from unscoped chain items and risk/trend membership |
+| What-If simulation | Affected | Scenario calculations start from the same unscoped `items` array |
+| Actual demand/history | Not currently measurable | `fact_sales_daily` is empty and the forecast-only series renders `actual: null`; Store correctness cannot be validated for history until actuals exist |
+
+### 10. Recommended Fix
+
+Establish one canonical Store identifier at the request boundary and make
+Store scope a real backend capability:
+
+```text
+frontend option.value / query.store_id: "S001"
+        -> API store_id=S001
+        -> DashboardScope.store_id="S001"
+        -> retail.dim_store.store_id = fact_inventory_daily.store_key
+        -> Store-scoped rows and aggregations
+        -> effective response scope.store_id="S001"
+```
+
+The smallest correct architectural change is to decide and document the
+measure grain, then make the backend builder honor it. For a selected Store,
+the builder should use the per-Store source (`fact_inventory_daily` joined to
+`dim_store`, plus the needed item/category/reference joins) or a Store-aware
+view, shape those rows into the frontend row contract, and return only the
+selected Store in the Store dimension. For All Stores, it may continue using
+the chain-net source if chain-net is the intended headline measure. The UI must
+not silently compare a chain-net total with a Store gross total; the response
+must identify its effective grain.
+
+At the same time, either make the backend response fully scoped and keep the
+frontend's row-selector assumption explicit, or add a real `store_id` check to
+the frontend selectors for a payload that contains Store-keyed item rows. The
+current payload has no Store ID on `items`, so a frontend-only filter cannot be
+the fix.
+
+The backend should also return an effective `scope` and an explicit `grain`,
+and the frontend should preserve/display `ignored_filters` as an error or
+unsupported-filter state. Do not merely add `store_id` to
+`SUPPORTED_FILTERS` without adding the corresponding SQL/data scope.
+
+### 11. Regression Tests Required
+
+Frontend:
+
+- Assert the Store option `S001 · Grocery 01 · Jakarta Pusat` has value
+  `S001` and the All Stores option has value `ALL`.
+- Assert selecting S001 produces exactly `store_id=S001` in the request URL;
+  selecting S002 produces `store_id=S002`; All Stores omits the field.
+- Assert changing Store causes a new load and cannot reuse the previous
+  response/cache entry. There is no cache today, but this should remain an
+  explicit request contract.
+- With a Store-scoped fixture, assert S001 and S002 produce different KPI,
+  Detail, risk, and Store-dimension results.
+- Assert the frontend does not render a selected Store scope over rows whose
+  effective response scope is chain-wide or whose `ignored_filters` includes
+  `store_id`.
+
+Backend:
+
+- Assert `DashboardScope.from_query(store_id="S001")` preserves S001 and
+  `DashboardScope.from_query(store_id="ALL")` yields no applied Store filter.
+- Assert the Demand descriptor declares `store_id` supported only after the
+  builder actually implements it.
+- Assert the generated chain/per-Store query for S001 contains the intended
+  Store predicate and a bound Store ID, or intentionally selects a documented
+  Store-aware source.
+- Assert `build(DashboardScope(store_id="S001"))` returns only S001-scoped
+  rows and `build(DashboardScope(store_id="S002"))` returns only S002-scoped
+  rows; neither may include `ignored_filters`.
+- Assert All Stores has the documented omitted/null representation and
+  preserves chain-wide totals.
+
+Integration:
+
+- Send All, S001, and S002 through the real HTTP route.
+- Assert the effective response scope and returned Store IDs match the
+  request.
+- Assert S001 and S002 return distinct expected forecast and risk values.
+- Assert every Demand output (KPI, forecast series, confidence, category,
+  Store/cluster/entity dimensions, Detail, suggested actions, and simulation
+  baseline) is derived from the same effective Store scope.
+- Add a negative test for a mismatched or unknown Store ID and a test for a
+  Store outside a selected Legal Entity.
+
+### API Contract Recommendation
+
+| Contract field | Recommended value |
+| --- | --- |
+| Frontend field | `query.store_id`; dropdown `option.value` |
+| API parameter | `store_id` |
+| Type | string |
+| Example | `"S001"` |
+| Backend field | `DashboardScope.store_id` |
+| Database column | `retail.dim_store.store_id`, joined to `retail.fact_inventory_daily.store_key` for Store-grain facts |
+| Meaning | Canonical individual Store identifier; not Store name, cluster, region, or legal entity |
+| All-Stores representation | Frontend state `"ALL"`; omit from HTTP; backend normalize omitted/`"ALL"` to `null` |
+
+The response should echo the effective scope, including `scope.store_id`, and
+declare the measure grain. A selected Store must never return an unlabelled
+chain-net total under a Store-specific scope. The contract must also define
+whether Store-specific forecast totals are gross sums from
+`fact_inventory_daily` or another Store-grain forecast source; that decision
+cannot be inferred from the current UI and should be made before coding.
+
+### Implementation / Resolution
+
+Implementation date: 2026-08-14
+
+The recommended fix is implemented. The public contract remains unchanged:
+
+```text
+GET /api/html/dashboard/retail.demand_forecasting?store_id=S001
+```
+
+The route still normalizes the request to `DashboardScope(store_id="S001")`.
+Demand Forecasting now declares `store_id` in its own `SUPPORTED_FILTERS`, and
+the shared SQL scope helper accepts a real Store column only when a caller
+provides one. The chain query deliberately does not receive a fabricated Store
+predicate because `fact_inventory_chain_daily` has no Store key.
+
+For a selected Store, the builder now queries the actual Store-grain source:
+
+```sql
+FROM retail.fact_inventory_daily f
+JOIN retail.dim_store s ON s.store_id = f.store_key
+JOIN retail.dim_item i ON i.item_id = f.item_key
+JOIN retail.dim_vertical vt ON vt.vertical_id = i.vertical_id
+WHERE f.cal_date = %(day)s
+  AND s.store_id = %(store_id)s
+```
+
+The same `s.store_id = %(store_id)s` predicate is applied to the Store
+dimension query. `f.forecast_7d`, ADS, inventory position, open PO, ROP, state,
+item metadata, and the individual Store `size_index` are therefore selected
+before the frontend's existing calculations run. Returned Store-grain item
+rows carry `store_id`, and the returned Store dimension contains only the
+selected Store. `ignored_filters` no longer contains `store_id` after the
+builder successfully applies it. The response also echoes the normalized
+scope and carries explicit Store-scope limitations through the frontend, where
+they are displayed rather than hidden.
+
+#### Store-total source decision
+
+All Stores intentionally remains on `retail.fact_inventory_chain_daily`, one
+row per SKU. Its forecast sum is `1,656,178.21602674`, which is the existing
+chain KPI and the source that preserves the current KPI's chain-net meaning.
+The seed documentation explicitly says the 800-row chain fact is not safely
+reconstructed by summing the 16,000 Store rows: Store rows are rounded before
+aggregation and chain state/position is evaluated from chain inputs.
+
+For a selected Store, the semantically equivalent Store-grain source is
+`retail.fact_inventory_daily.forecast_7d` (ENGINE_STORE's f08 value), not a
+newly defined metric and not a numerically convenient split of the chain KPI.
+It is the same workbook seven-day forecast measure at Store × SKU grain and is
+the only loaded source that supplies that measure together with Store-scoped
+inventory and inbound inputs. This yields `25,948.94103250092` for S001 and
+`30,756.578276753906` for S002.
+
+#### Output scope after the fix
+
+Store-scoped inputs now feed the forecast KPI, forecast time series, forecast
+confidence levels/intervals, inventory and inbound quantities, supply-risk
+classification, category/product rankings, detail rows, Store/cluster/legal
+entity dimensions, suggested actions, and What-If baseline/simulation rows.
+The following remain explicitly limited because the schema/data does not
+provide a genuine Store-grain source:
+
+- historical actual demand: the loaded sales-history source has no rows, so
+  actuals remain null;
+- accuracy/MAPE and demand trend: the existing values are vertical-level
+  workbook constants, not Store-grain backtests;
+- seasonality: `fact_gmv_monthly` is vertical-level and has no Store key;
+- predicted-to-trend count: the ranking runs over selected Store items, but
+  the requested count is a vertical-level reference value.
+
+These limitations are returned as `scope_limitations` and displayed in the
+Store-scoped dashboard. They are not represented as if they were Store facts.
+
+#### Before/after live evidence
+
+The post-implementation TestClient capture used the seeded snapshot
+`2026-07-01`:
+
+| Request | Normalized scope | Ignored filters | Item rows | Returned Store IDs | Forecast KPI |
+| --- | --- | --- | ---: | --- | ---: |
+| `GET .../retail.demand_forecasting` | `{}` | none | 800 chain rows | S001–S160 (160) | 1,656,178.21602674 |
+| `GET ...?store_id=S001` | `{"store_id":"S001"}` | none | 100 Store × SKU rows | S001 only | 25,948.94103250092 |
+| `GET ...?store_id=S002` | `{"store_id":"S002"}` | none | 100 Store × SKU rows | S002 only | 30,756.578276753906 |
+
+The executed SQL capture showed bound parameters
+`{"day":"2026-07-01","store_id":"S001"}` and the predicate
+`AND s.store_id = %(store_id)s`; the S002 request had the corresponding S002
+bound value. S001 and S002 are therefore distinct at the query/input level,
+not merely relabelled response totals.
+
+#### Validation
+
+- Backend scope/parser, descriptor, Retail builder/route, and Store integration
+  suites: **58 passed**.
+- Store-specific live builder/API/SQL-listener tests: **4 passed** against the
+  seeded Postgres database.
+- Frontend Demand Forecasting suite: **30 passed**; the existing behavior
+  remains green and the new request-contract assertion verifies
+  `store_id=S001`.
+- Python syntax validation passed for the changed backend modules.

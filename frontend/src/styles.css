@@ -633,7 +633,7 @@ img.ey-logo {
 }
 
 .folder-toggle:hover {
-  color: var(--text);
+  color: var(--ink);
 }
 
 .folder-chevron {
@@ -6457,6 +6457,26 @@ img.ey-logo {
   cursor: pointer;
   font-size: inherit;
   font-weight: 700;
+}
+
+.demand-scope-limitations {
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent-warning);
+  border-radius: var(--radius-md);
+  background: var(--accent-warning-soft);
+  color: var(--text);
+  font-size: var(--text-xs);
+}
+
+.demand-scope-limitations strong {
+  display: block;
+  margin-bottom: var(--space-1);
+}
+
+.demand-scope-limitations ul {
+  margin: 0;
+  padding-left: var(--space-4);
 }
 
 .demand-inline-error {

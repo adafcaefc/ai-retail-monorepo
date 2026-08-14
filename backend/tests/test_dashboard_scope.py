@@ -7,6 +7,7 @@ import pytest
 from src.llm.agents import AGENT_REGISTRY
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.modules import ENABLED_MODULES
+from src.llm.agents.retail.common.warehouse import _scope_clause
 
 
 class TestNormalisation:
@@ -34,6 +35,13 @@ class TestNormalisation:
         assert scope.legal_entity_id == "GRC"
         assert scope.route == "direct"
         assert scope.applied() == ("legal_entity_id", "route")
+
+    def test_store_id_survives_as_the_canonical_store_key(self) -> None:
+        scope = DashboardScope.from_query(store_id="S001")
+
+        assert scope.store_id == "S001"
+        assert scope.as_query() == {"store_id": "S001"}
+        assert scope.applied() == ("store_id",)
 
     @pytest.mark.parametrize(
         ("raw", "expected"),
@@ -93,6 +101,26 @@ class TestIgnoredFilters:
         scope = DashboardScope.from_query(legal_entity_id="EYDS")
 
         assert scope.ignored_by(frozenset({"legal_entity_id", "period"})) == ()
+
+
+class TestScopeSql:
+    def test_store_predicate_is_emitted_only_for_a_store_grain_column(self) -> None:
+        scope = DashboardScope(store_id="S001")
+
+        clause, params = _scope_clause(
+            scope, "s.vertical_id", "i.category_id", "s.store_id"
+        )
+
+        assert "s.store_id = :store_id" in clause
+        assert params["store_id"] == "S001"
+
+    def test_chain_query_does_not_fake_a_store_predicate(self) -> None:
+        scope = DashboardScope(store_id="S001")
+
+        clause, params = _scope_clause(scope, "i.vertical_id", "i.category_id")
+
+        assert "store_id" not in clause
+        assert "store_id" not in params
 
     def test_every_registered_agent_declares_only_real_fields(self) -> None:
         """A `supported_filters` typo would silently promise a filter forever.

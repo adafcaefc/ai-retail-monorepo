@@ -238,6 +238,15 @@ describe("the Demand Forecasting gateway in api mode", () => {
     expect(url).not.toContain("horizon_weeks");
   });
 
+  it("sends the selected canonical Store id over the existing API contract", async () => {
+    const dashboard = await load({ store_id: "S001" });
+
+    const [url] = fetchMock.mock.calls[0];
+    expect(url).toContain("store_id=S001");
+    expect(url).not.toContain("store=S001");
+    expect(dashboard.scope.store_id).toBe("S001");
+  });
+
   it("runs a scenario over the API rows instead of refusing", async () => {
     const preview = await scenario(
       { legal_entity_id: "GRC" },
