@@ -30,10 +30,14 @@ def log_retrieval_event(**metadata: Any) -> None:
         "sql_ms",
         "query_embedding_ms",
         "vector_search_ms",
+        "vector_total_ms",
+        "planning_ms",
+        "policy_ms",
+        "compilation_ms",
+        "evidence_aggregation_ms",
         "total_ms",
         "fallback_used",
         "error_category",
     }
     safe = {key: value for key, value in metadata.items() if key in allowed}
     logger.info("retrieval_event %s", json.dumps(safe, sort_keys=True, default=str))
-

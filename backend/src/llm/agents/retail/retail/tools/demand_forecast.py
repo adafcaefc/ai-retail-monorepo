@@ -40,9 +40,13 @@ def query_demand_forecast(
             signal_range=signal,
             max_records=limit,
         )
-    except requests.exceptions.RequestException as error:
+    except (requests.exceptions.RequestException, KeyError) as error:
+        if isinstance(error, KeyError):
+            message = "The D365 forecast integration is not configured."
+        else:
+            message = f"Could not reach the D365 forecast service: {error}"
         return {
-            "error": f"Could not reach the D365 forecast service: {error}",
+            "error": message,
             "rows": [],
             "summary": {},
         }

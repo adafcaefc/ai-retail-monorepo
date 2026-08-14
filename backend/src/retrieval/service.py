@@ -178,6 +178,21 @@ class RetrievalService:
             self._log(request, response)
             return response
 
+        if decision.selected_route == SelectedRoute.PLANNER_REQUIRED:
+            errors.append(
+                Diagnostic(
+                    code="PLANNER_REQUIRED",
+                    message="The safe Retail request exceeds the fixed Phase 6 capabilities and requires adaptive planning.",
+                )
+            )
+            timing.total_ms = _elapsed_ms(total_started)
+            response = self._response(
+                request_id, decision, entities, structured_results, semantic_results,
+                citations, warnings, errors, timing,
+            )
+            self._log(request, response)
+            return response
+
         try:
             connection = self.connection_factory()
         except Exception:
@@ -369,6 +384,14 @@ class RetrievalService:
         errors,
         timing,
     ) -> RetrievalResponse:
+        if not structured_results and not semantic_results and not errors:
+            errors = [
+                Diagnostic(
+                    code="NO_EVIDENCE_RETRIEVED",
+                    message="No verified evidence was retrieved for the request.",
+                    branch="retrieval",
+                )
+            ]
         if errors and (structured_results or semantic_results):
             status = RetrievalStatus.PARTIAL
         elif errors:

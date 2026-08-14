@@ -378,6 +378,21 @@ def test_vector_failure_does_not_substitute_sql_for_semantic_context():
     assert any(warning.code == "HYBRID_VECTOR_BRANCH_FAILED" for warning in response.warnings)
 
 
+def test_empty_retrieval_is_failed_not_complete():
+    def empty_search(*args, **kwargs):
+        return {"profile_key": kwargs.get("config", "unused"), "results": []}
+
+    service, _ = _service(search=empty_search)
+    response = service.retrieve(
+        RetrievalRequest(query="What does Days of Supply mean?"),
+        principal=PrincipalContext("test", True),
+    )
+    assert response.status == "FAILED"
+    assert response.result_counts.structured == 0
+    assert response.result_counts.semantic == 0
+    assert any(error.code == "NO_EVIDENCE_RETRIEVED" for error in response.errors)
+
+
 def test_unknown_sql_entity_prevents_broad_query_execution():
     executor = FakeSqlExecutor()
     service, _ = _service(resolver=FakeResolver(missing=True), sql=executor)

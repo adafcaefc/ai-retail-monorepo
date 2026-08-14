@@ -31,6 +31,7 @@ class SelectedRoute(StrEnum):
     SQL = "SQL"
     VECTOR = "VECTOR"
     HYBRID = "HYBRID"
+    PLANNER_REQUIRED = "PLANNER_REQUIRED"
     UNSUPPORTED = "UNSUPPORTED"
 
 
@@ -169,6 +170,10 @@ class RetrievalTiming(StrictModel):
     vector_search_ms: float = 0.0
     vector_total_ms: float = 0.0
     serialization_ms: float = 0.0
+    planning_ms: float = 0.0
+    policy_ms: float = 0.0
+    compilation_ms: float = 0.0
+    evidence_aggregation_ms: float = 0.0
     total_ms: float = 0.0
 
 
@@ -191,4 +196,3 @@ class RetrievalResponse(StrictModel):
     errors: list[Diagnostic] = Field(default_factory=list)
     timing: RetrievalTiming = Field(default_factory=RetrievalTiming)
     result_counts: ResultCounts = Field(default_factory=ResultCounts)
-
