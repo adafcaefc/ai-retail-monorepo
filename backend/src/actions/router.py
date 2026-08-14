@@ -99,13 +99,19 @@ async def populate_alerts(
     """
     Run all specialized monitoring agents for a domain concurrently.
 
-    Each monitor receives previous_alerts (existing DB alerts for the domain)
-    so specialists avoid duplicates against known issues.
+    Purely additive: nothing is deleted first. Each monitor receives
+    previous_alerts and current_actions (existing DB alerts/actions for the
+    domain) so specialists avoid re-raising an issue that already has a
+    planned or approved action. Two overlapping calls for the same domain are
+    not both allowed to run: the second gets 409 while the first is in
+    flight.
     """
     try:
         return await service.populate_alerts(session, agent)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except service.PopulateAlreadyRunningError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except Exception as error:  # noqa: BLE001
         raise HTTPException(
             status_code=500,
@@ -125,9 +131,32 @@ def get_actions(
         description="Optional status filter: planned, approved (pending maps to planned)",
     ),
 ) -> dict[str, Any]:
-    """List all stored actions (history) with their current status."""
+    """List currently-live stored actions (deduped, ranked) with their status."""
     try:
         items = service.list_actions(session, agent=agent, status=status)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"items": items, "count": len(items)}
+
+
+@router.get("/actions/history")
+def get_action_history(
+    session: DatabaseSession,
+    agent: str | None = Query(
+        default=None,
+        description="Optional domain filter: finance, cashflow, collection, leakage",
+    ),
+) -> dict[str, Any]:
+    """
+    List every stored action for a domain, oldest duplicates included.
+
+    Unlike GET /actions, nothing here is deduped by name or reranked: nothing
+    is deleted from chat.actions any more, so a later run's action can share
+    an earlier one's title, and Audit History is where that full record has
+    to stay visible.
+    """
+    try:
+        items = service.list_action_history(session, agent=agent)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return {"items": items, "count": len(items)}
@@ -137,9 +166,13 @@ def get_actions(
 def get_actions_for_alert(
     alert_id: str,
     session: DatabaseSession,
+    status: str | None = Query(
+        default=None,
+        description="Optional status filter: planned, approved (pending maps to planned)",
+    ),
 ) -> dict[str, Any]:
     try:
-        items = service.list_actions_for_alert(session, alert_id)
+        items = service.list_actions_for_alert(session, alert_id, status=status)
     except LookupError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     return {

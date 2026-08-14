@@ -1,0 +1,53 @@
+"""Data tools for {{folder}}.{{name}}.
+
+Queries the latest completed import batch for this domain. If this tool's table(s)
+are also reachable via the freeform-SQL agent tool, add them to this domain's
+allow-list in agents/common/tools/freeform_query.py -- and only this domain's list.
+See engineering-standards/principles/security.md.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from sqlalchemy import text
+
+from src.db.db import get_engine
+from src.llm.agents.common.tools.db import _rows
+
+_LATEST_BATCH_SQL = """
+    SELECT import_batch_id
+    FROM audit.import_batches
+    WHERE importer_agent = :importer_agent
+      AND status = 'completed'
+    ORDER BY completed_at DESC
+    LIMIT 1
+"""
+
+
+def get_{{name}}_snapshot() -> dict[str, Any]:
+    """Example read-only tool: replace the query below with the real domain query."""
+    engine = get_engine()
+    with engine.connect() as connection:
+        batch = connection.execute(
+            text(_LATEST_BATCH_SQL),
+            {"importer_agent": "{{importer_agent_name}}"},
+        ).scalar_one_or_none()
+        if batch is None:
+            return {"rows": []}
+
+        rows = _rows(
+            connection,
+            """
+            SELECT *
+            FROM {{schema}}.{{table}}
+            WHERE import_batch_id = :batch
+            """,
+            {"batch": batch},
+        )
+        return {"rows": rows}
+
+
+TOOLS: dict[str, Any] = {
+    "get_{{name}}_snapshot": get_{{name}}_snapshot,
+}

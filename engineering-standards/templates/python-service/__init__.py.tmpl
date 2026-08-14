@@ -1,0 +1,38 @@
+"""{{DisplayName}} agent."""
+
+from __future__ import annotations
+
+from src.llm.agents.descriptor import AgentDescriptor
+from src.llm.agents.{{folder}}.{{name}} import dashboard
+from src.llm.agents.{{folder}}.{{name}}.tools import TOOLS
+
+DESCRIPTOR = AgentDescriptor(
+    id="{{folder}}.{{name}}",
+    folder="{{folder}}",
+    name="{{name}}",
+    display="{{DisplayName}}",
+    description="{{One-line description shown in the sidebar and mockup card.}}",
+    prompt="Ask {{DisplayName}} about {{topic}}...",
+    starter_prompts=(
+        "{{Starter prompt 1}}",
+        "{{Starter prompt 2}}",
+        "{{Starter prompt 3}}",
+    ),
+    chat_agent="{{folder}}.{{name}}.chat",
+    # Leave these empty ("" / ()) if this agent has no monitoring/simulation/action
+    # passes yet -- see retail.retail's __init__.py for the minimal live example.
+    simulation_agent="",
+    action_agent="",
+    monitoring_passes=(),
+    db_domain="",
+    snapshot_tool="",
+    schema_tool="",
+    import_agent_name="",
+    allowed_tables=(),
+    tools=TOOLS,
+    build_dashboard=dashboard.build,
+    supported_filters=dashboard.SUPPORTED_FILTERS,
+    dashboard_only=False,
+)
+
+__all__ = ["DESCRIPTOR"]

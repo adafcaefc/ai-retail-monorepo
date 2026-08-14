@@ -436,6 +436,60 @@ STATEMENTS: list[tuple[str, str]] = [
         )
         """,
     ),
+    # ----------------------------------------------------------- promotion (A4)
+    # Agent 4 reads two workbook sheets the curated schema had no home for. Both
+    # are demonstration data straight from the A4 Promotion and Promotion &
+    # Discount Detail sheets; `vertical_label` is the sheet's own wording and is
+    # resolved to `dim_vertical.vertical_id` via `dashboard_label` at read time,
+    # exactly as `agent_kpi_reference` is. `fact_promotion` exists too, but it is
+    # deliberately empty and models a per-item promotion fact, not the campaign
+    # plan these sheets hold -- do not repurpose it.
+    (
+        "promotion_detail",
+        f"""
+        CREATE TABLE IF NOT EXISTS {SCHEMA}.promotion_detail (
+            promo_id              TEXT PRIMARY KEY,
+            promo_name            TEXT NOT NULL,
+            discount_type         TEXT NOT NULL,
+            scope                 TEXT NOT NULL,
+            vertical_label        TEXT NOT NULL,
+            target_category       TEXT NOT NULL,
+            season                TEXT NOT NULL,
+            peak_month            TEXT NOT NULL,
+            mechanism             TEXT NOT NULL,
+            discount_pct          INTEGER,
+            value_rule            TEXT NOT NULL,
+            min_qty_threshold     TEXT NOT NULL,
+            supplier_funding_pct  INTEGER NOT NULL,
+            expected_uplift_pct   INTEGER NOT NULL,
+            pre_buy_uplift_units  INTEGER NOT NULL,
+            valid_from            DATE NOT NULL,
+            valid_to              DATE NOT NULL,
+            d365_construct        TEXT NOT NULL,
+            source_row            INTEGER NOT NULL,
+            CONSTRAINT ck_promo_detail_dates CHECK (valid_to >= valid_from)
+        )
+        """,
+    ),
+    (
+        "promotion_vertical_kpi",
+        f"""
+        CREATE TABLE IF NOT EXISTS {SCHEMA}.promotion_vertical_kpi (
+            vertical_label        TEXT PRIMARY KEY,
+            active_promo_skus     INTEGER NOT NULL,
+            uplift_pct            NUMERIC(10, 4) NOT NULL,
+            incremental_margin    NUMERIC(20, 4) NOT NULL,
+            roi_x                 NUMERIC(10, 4) NOT NULL,
+            cannib_pct            NUMERIC(10, 4) NOT NULL,
+            funding_pct           NUMERIC(10, 4) NOT NULL
+        )
+        """,
+    ),
+    (
+        "ix_promotion_detail_vertical",
+        f"CREATE INDEX IF NOT EXISTS ix_promotion_detail_vertical"
+        f" ON {SCHEMA}.promotion_detail (vertical_label)",
+    ),
     # ----------------------------------------------------------------- forecast
     (
         "forecast_run",
@@ -583,7 +637,11 @@ STATEMENTS: list[tuple[str, str]] = [
         f" ADD COLUMN IF NOT EXISTS growth_index NUMERIC(10, 4),"
         f" ADD COLUMN IF NOT EXISTS is_promo_eligible BOOLEAN NOT NULL DEFAULT FALSE,"
         f" ADD COLUMN IF NOT EXISTS cannibalisation_pct NUMERIC(10, 4),"
-        f" ADD COLUMN IF NOT EXISTS elasticity NUMERIC(10, 4)",
+        f" ADD COLUMN IF NOT EXISTS elasticity NUMERIC(10, 4),"
+        # SKU_Master col S (fund_pct). Needed by Agent 4's f13 promo margin,
+        # which takes per-SKU supplier funding as a fraction. Stored as a
+        # fraction (0.4862), matching sku_master and cannibalisation_pct.
+        f" ADD COLUMN IF NOT EXISTS funding_pct NUMERIC(10, 4)",
     ),
     # The two SKU attributes that let a board scope to ONE store without
     # shipping the 16,000-row grid.

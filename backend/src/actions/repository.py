@@ -98,7 +98,8 @@ def get_alerts(
             subagent,
             agent,
             issue,
-            date_created
+            date_created,
+            run_id
         FROM chat.alerts
     """
     if filters:
@@ -124,7 +125,8 @@ def get_alert(
                 subagent,
                 agent,
                 issue,
-                date_created
+                date_created,
+                run_id
             FROM chat.alerts
             WHERE id = :alert_id
             """
@@ -141,6 +143,7 @@ def save_alert(
     subagent: str,
     agent: str,
     issue: str,
+    run_id: int | None = None,
     commit: bool = True,
 ) -> str:
     """
@@ -160,7 +163,8 @@ def save_alert(
                 subagent,
                 agent,
                 issue,
-                date_created
+                date_created,
+                run_id
             )
             VALUES (
                 :id,
@@ -168,7 +172,8 @@ def save_alert(
                 :subagent,
                 :agent,
                 :issue,
-                NOW()
+                NOW(),
+                :run_id
             )
             """
         ),
@@ -178,6 +183,7 @@ def save_alert(
             "subagent": subagent,
             "agent": agent,
             "issue": issue,
+            "run_id": run_id,
         },
     )
     if commit:
@@ -189,6 +195,7 @@ def save_alerts(
     session: Session,
     alerts: list[dict[str, Any]],
     *,
+    run_id: int | None = None,
     commit: bool = True,
 ) -> list[str]:
     """
@@ -207,6 +214,7 @@ def save_alerts(
             "subagent": alert["subagent"],
             "agent": alert["agent"],
             "issue": alert["issue"],
+            "run_id": run_id,
         }
         for alert in alerts
     ]
@@ -219,7 +227,8 @@ def save_alerts(
                 subagent,
                 agent,
                 issue,
-                date_created
+                date_created,
+                run_id
             )
             VALUES (
                 :id,
@@ -227,7 +236,8 @@ def save_alerts(
                 :subagent,
                 :agent,
                 :issue,
-                NOW()
+                NOW(),
+                :run_id
             )
             """
         ),
@@ -280,7 +290,8 @@ def get_actions(
             impact,
             reason,
             simulation_summary,
-            created_at
+            created_at,
+            run_id
         FROM chat.actions
     """
     if filters:
@@ -317,7 +328,8 @@ def get_action(
                 spec,
                 impact,
                 simulation_summary,
-                created_at
+                created_at,
+                run_id
             FROM chat.actions
             WHERE id = :action_id
             """
@@ -346,6 +358,7 @@ def save_action(
     spec: str | None = None,
     impact: str | None = None,
     status: str = ACTION_STATUS_PLANNED,
+    run_id: int | None = None,
     commit: bool = True,
 ) -> str:
     """
@@ -366,7 +379,8 @@ def save_action(
                 status,
                 spec,
                 impact,
-                created_at
+                created_at,
+                run_id
             )
             VALUES (
                 :id,
@@ -377,7 +391,8 @@ def save_action(
                 :status,
                 :spec,
                 :impact,
-                NOW()
+                NOW(),
+                :run_id
             )
             """
         ),
@@ -390,6 +405,7 @@ def save_action(
             "status": _normalize_status(status),
             "spec": spec,
             "impact": impact,
+            "run_id": run_id,
         },
     )
     if commit:
@@ -401,6 +417,7 @@ def save_actions(
     session: Session,
     actions: list[dict[str, Any]],
     *,
+    run_id: int | None = None,
     commit: bool = True,
 ) -> list[str]:
     """
@@ -428,6 +445,7 @@ def save_actions(
             # reaches a screen, so this column never competes with the
             # computed numbers printed beside it (QC-055/QC-061).
             "reason": item.get("reason"),
+            "run_id": run_id,
         }
         for item in actions
     ]
@@ -444,7 +462,8 @@ def save_actions(
                 spec,
                 impact,
                 reason,
-                created_at
+                created_at,
+                run_id
             )
             VALUES (
                 :id,
@@ -456,7 +475,8 @@ def save_actions(
                 :spec,
                 :impact,
                 :reason,
-                NOW()
+                NOW(),
+                :run_id
             )
             """
         ),
@@ -572,13 +592,114 @@ def clear_alerts(
     }
 
 
+def try_advisory_lock(connection: Any, key: str) -> bool:
+    """
+    Attempt a session-level Postgres advisory lock keyed by `key`, non-blocking.
+
+    Session-level, not `pg_advisory_xact_lock`: it must outlive the several
+    commits `populate_alerts` makes while it runs, and it is released
+    explicitly by `advisory_unlock`, not by a transaction boundary. The lock
+    is tied to the underlying Postgres backend, so `connection` must be the
+    same physical connection for the whole lock/unlock pair — see
+    `service.populate_alerts` for why that rules out an ORM `Session`.
+    """
+    return bool(
+        connection.execute(
+            text("SELECT pg_try_advisory_lock(hashtext(:key)::bigint)"),
+            {"key": key},
+        ).scalar()
+    )
+
+
+def advisory_unlock(connection: Any, key: str) -> None:
+    """Release the lock taken by `try_advisory_lock` on the same connection."""
+    connection.execute(
+        text("SELECT pg_advisory_unlock(hashtext(:key)::bigint)"),
+        {"key": key},
+    )
+
+
+def create_monitoring_run(connection: Any, *, agent: str) -> int:
+    """
+    Insert a STARTED `chat.monitoring_runs` row and return its id.
+
+    Takes a raw Connection, not a Session, so it can share the physical
+    connection the advisory lock is held on for the whole populate_alerts run.
+    """
+    run_id = connection.execute(
+        text(
+            """
+            INSERT INTO chat.monitoring_runs (agent, run_status, started_at)
+            VALUES (:agent, 'STARTED', NOW())
+            RETURNING id
+            """
+        ),
+        {"agent": agent},
+    ).scalar_one()
+    connection.commit()
+    return int(run_id)
+
+
+def complete_monitoring_run(
+    connection: Any,
+    run_id: int,
+    *,
+    monitoring_passes: int,
+    alerts_created: int,
+    actions_created: int,
+) -> None:
+    connection.execute(
+        text(
+            """
+            UPDATE chat.monitoring_runs
+            SET run_status = 'COMPLETED',
+                completed_at = NOW(),
+                monitoring_passes = :monitoring_passes,
+                alerts_created = :alerts_created,
+                actions_created = :actions_created
+            WHERE id = :run_id
+            """
+        ),
+        {
+            "run_id": run_id,
+            "monitoring_passes": monitoring_passes,
+            "alerts_created": alerts_created,
+            "actions_created": actions_created,
+        },
+    )
+    connection.commit()
+
+
+def fail_monitoring_run(connection: Any, run_id: int, *, error_message: str) -> None:
+    connection.execute(
+        text(
+            """
+            UPDATE chat.monitoring_runs
+            SET run_status = 'FAILED',
+                completed_at = NOW(),
+                error_message = :error_message
+            WHERE id = :run_id
+            """
+        ),
+        # Truncated: an unbounded traceback string has no business filling a
+        # TEXT column meant for "what failed", and this keeps one runaway
+        # error from bloating the row.
+        {"run_id": run_id, "error_message": (error_message or "")[:4000]},
+    )
+    connection.commit()
+
+
 __all__ = [
     "ACTION_STATUS_APPROVED",
     "ACTION_STATUS_PLANNED",
     "ALLOWED_ACTION_STATUSES",
+    "advisory_unlock",
     "clear_alerts",
+    "complete_monitoring_run",
+    "create_monitoring_run",
     "delete_action",
     "delete_alert",
+    "fail_monitoring_run",
     "get_action",
     "get_actions",
     "get_alert",
@@ -587,6 +708,7 @@ __all__ = [
     "save_actions",
     "save_alert",
     "save_alerts",
+    "try_advisory_lock",
     "update_action_simulation_summary",
     "update_action_status",
 ]

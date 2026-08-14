@@ -231,6 +231,9 @@ def main() -> int:
                 "is_promo_eligible": str(row["promo"]).strip().upper() == "Y",
                 "cannibalisation_pct": row["cannib_pct"],
                 "elasticity": row["elasticity"],
+                # SKU_Master col S. Agent 4's f13 takes per-SKU supplier funding
+                # as a fraction; stored as a fraction to match cannibalisation_pct.
+                "funding_pct": row["fund_pct"],
                 # A1 badges a SKU with up to three signals; this is one of them.
                 "is_viral": str(row["viral"]).strip().upper() == "Y",
                 # The pair that makes a store-scoped board possible without the

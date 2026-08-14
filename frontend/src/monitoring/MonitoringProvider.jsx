@@ -8,23 +8,18 @@ import {
   useState
 } from "react";
 
-import {
-  fetchAlerts,
-  resetAndRepopulateAlerts
-} from "../api/alerts.js";
+import { fetchAlerts, populateAlerts } from "../api/alerts.js";
 import { useAgents } from "../agents/AgentsProvider.jsx";
 
 // How many problem toasts to pop at once; the rest collapse into a "+N more".
 const MAX_PROBLEM_TOASTS = 4;
 
 // Persist which problems have already been announced. Identity is by CONTENT,
-// not id, because alerts are re-populated (fresh ids) on every monitoring run.
+// not id, because alerts accumulate (fresh ids on every monitoring run, old
+// ones never removed).
 const SEEN_KEY = "ledgerline.seenProblems";
 
 const MonitoringContext = createContext(null);
-
-/** Page-session lock so StrictMode remounts do not double-start. */
-let pageAutoStartPromise = null;
 
 function problemKey(agentId, alert) {
   return `${agentId}::${(alert.name || "").trim()}::${(alert.issue || "").trim()}`
@@ -71,10 +66,16 @@ export function MonitoringProvider({ children }) {
   const [status, setStatus] = useState("idle");
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  const [runId, setRunId] = useState(0);
+  // Per-agent, not one shared counter: only a board whose populate actually
+  // completed gets its own entry bumped, so recalculating one board cannot
+  // reset another board's open Agent Action wizard/selection. AlertsPanel
+  // keys its reload effect off runVersions[agentId].
+  const [runVersions, setRunVersions] = useState({});
   const [problems, setProblems] = useState([]);
   const [moreProblems, setMoreProblems] = useState(0);
-  const runningRef = useRef(false);
+  // The in-flight recalculate promise, so a duplicate click while one is
+  // already running returns that same promise instead of starting a second.
+  const runningTaskRef = useRef(null);
 
   // After a monitoring run, collect alerts across all boards and surface only
   // the ones we have never announced before as problem toasts.
@@ -119,84 +120,125 @@ export function MonitoringProvider({ children }) {
     setProblems((current) => current.filter((item) => item.id !== id));
   }, []);
 
-  const runMonitoring = useCallback(async ({ force = false } = {}) => {
-    // The module list arrives asynchronously; nothing to monitor until it does.
+  // A returning user still gets toasts for issues an earlier manual
+  // Recalculate already raised, in this tab or another. This is a pure read
+  // of whatever monitoring already stored -- it never triggers a populate.
+  useEffect(() => {
+    if (monitoredAgentIds.length === 0) {
+      return;
+    }
+    refreshProblems().catch(() => {
+      // non-fatal: alerts still live in the bell
+    });
+    // Re-run only when the set of monitored agents actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [monitoredAgentIds.join(",")]);
+
+  // The only way monitoring ever runs now: the manual Recalculate button.
+  // There is no auto-start on mount or on agent switch any more.
+  const recalculate = useCallback(() => {
     if (monitoredAgentIds.length === 0) {
       return undefined;
     }
 
-    if (runningRef.current) {
-      return pageAutoStartPromise;
+    if (runningTaskRef.current) {
+      return runningTaskRef.current;
     }
 
-    if (!force && pageAutoStartPromise) {
-      return pageAutoStartPromise;
-    }
-
-    runningRef.current = true;
     setStatus("running");
     setError("");
     setNote("Running monitoring agents across all boards…");
 
     const task = (async () => {
-      try {
-        const results = await Promise.all(
-          monitoredAgentIds.map((agentId) => resetAndRepopulateAlerts(agentId))
-        );
-        const created = results.reduce(
-          (sum, result) => sum + (result.created_count ?? 0),
-          0
-        );
-        setNote(
-          `Monitoring complete — ${created} alert${
-            created === 1 ? "" : "s"
-          } across all boards.`
-        );
-        setStatus("done");
-        setRunId((value) => value + 1);
+      // Each board's populate is independent: one domain's 409 or failure
+      // must not sink the whole batch or keep the others from completing.
+      const outcomes = await Promise.all(
+        monitoredAgentIds.map(async (agentId) => {
+          try {
+            const result = await populateAlerts(agentId);
+            return { agentId, ok: true, result };
+          } catch (runError) {
+            return {
+              agentId,
+              ok: false,
+              alreadyRunning: runError.status === 409,
+              error: runError.message || "Monitoring agent failed to run."
+            };
+          }
+        })
+      );
 
-        // Surface any newly detected problems as toasts (best-effort).
-        try {
-          await refreshProblems();
-        } catch {
-          // non-fatal: alerts still live in the bell
-        }
-      } catch (runError) {
+      const completed = outcomes.filter((item) => item.ok);
+      const alreadyRunning = outcomes.filter(
+        (item) => !item.ok && item.alreadyRunning
+      );
+      const failed = outcomes.filter(
+        (item) => !item.ok && !item.alreadyRunning
+      );
+
+      if (completed.length > 0) {
+        setRunVersions((current) => {
+          const next = { ...current };
+          for (const item of completed) {
+            next[item.agentId] = (next[item.agentId] || 0) + 1;
+          }
+          return next;
+        });
+      }
+
+      const created = completed.reduce(
+        (sum, item) => sum + (item.result.created_count ?? 0),
+        0
+      );
+
+      if (failed.length > 0) {
         setError(
-          runError.message || "Monitoring agents failed to run."
+          failed
+            .map(
+              (item) =>
+                `${agentMeta[item.agentId] || item.agentId}: ${item.error}`
+            )
+            .join("; ")
         );
         setNote("");
         setStatus("error");
-        if (!force) {
-          pageAutoStartPromise = null;
+      } else {
+        const parts = [
+          `${created} alert${created === 1 ? "" : "s"} across ${
+            completed.length
+          } board${completed.length === 1 ? "" : "s"}`
+        ];
+        if (alreadyRunning.length > 0) {
+          parts.push(
+            `${alreadyRunning.length} board${
+              alreadyRunning.length === 1 ? "" : "s"
+            } already being recalculated elsewhere`
+          );
         }
-      } finally {
-        runningRef.current = false;
+        setNote(`Monitoring complete — ${parts.join("; ")}.`);
+        setStatus("done");
       }
+
+      // Surface any newly detected problems as toasts (best-effort).
+      try {
+        await refreshProblems();
+      } catch {
+        // non-fatal: alerts still live in the bell
+      }
+
+      runningTaskRef.current = null;
     })();
 
-    if (!force) {
-      pageAutoStartPromise = task;
-    }
-
+    runningTaskRef.current = task;
     return task;
-  }, [monitoredAgentIds, refreshProblems]);
-
-  useEffect(() => {
-    runMonitoring({ force: false });
-  }, [runMonitoring]);
-
-  const recalculate = useCallback(() => {
-    pageAutoStartPromise = null;
-    return runMonitoring({ force: true });
-  }, [runMonitoring]);
+  }, [monitoredAgentIds, agentMeta, refreshProblems]);
 
   const value = useMemo(
     () => ({
       status,
       error,
       note,
-      runId,
+      runVersions,
       isRunning: status === "running",
       recalculate,
       problems,
@@ -207,7 +249,7 @@ export function MonitoringProvider({ children }) {
       status,
       error,
       note,
-      runId,
+      runVersions,
       recalculate,
       problems,
       moreProblems,

@@ -1,0 +1,9 @@
+import {{DashboardComponentName}} from "./{{DashboardComponentName}}.jsx";
+
+// Overrides fields the API already serves for "{{folder}}.{{name}}". Dropped
+// entirely if GET /api/html/agents stops returning this id -- this file does not
+// create an agent, it only customizes one that already exists.
+export default {
+  id: "{{folder}}.{{name}}",
+  dashboardComponent: {{DashboardComponentName}},
+};

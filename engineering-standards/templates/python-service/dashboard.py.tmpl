@@ -1,0 +1,25 @@
+"""Dashboard payload for {{folder}}.{{name}}."""
+
+from __future__ import annotations
+
+from typing import Any
+
+# Filters this dashboard's payload can be sliced by -- the backend declares the
+# contract, the frontend applies it client-side to the already-delivered payload.
+# See engineering-standards/languages/javascript-typescript.md for why this stays
+# client-side rather than round-tripping per filter change.
+SUPPORTED_FILTERS: dict[str, Any] = {}
+
+
+def build(*, entity_id: str | None = None, period: str | None = None) -> dict[str, Any]:
+    """Assemble the dashboard payload for GET /api/html/dashboard/{{folder}}.{{name}}.
+
+    Replace the body with real KPI tiles / charts sourced from
+    tools/{{name}}_data.py -- do not hardcode figures here.
+    """
+    return {
+        "agent": "{{folder}}.{{name}}",
+        "kpis": [],
+        "charts": [],
+        "filters": SUPPORTED_FILTERS,
+    }

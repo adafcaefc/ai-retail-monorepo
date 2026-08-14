@@ -1,0 +1,13 @@
+import { useLanguage } from "../../../LanguageProvider";
+
+// {{PageName}} -- a static page (frontend-only, no backend module, no chat).
+// className="static-page" is the shared plain-scroll surface defined in styles.css.
+export default function {{PageName}}() {
+  const { t } = useLanguage();
+
+  return (
+    <div className="static-page" data-testid="{{folder}}-{{name}}" aria-label={t("{{folder}}.{{name}}.title")}>
+      <h1>{t("{{folder}}.{{name}}.title")}</h1>
+    </div>
+  );
+}

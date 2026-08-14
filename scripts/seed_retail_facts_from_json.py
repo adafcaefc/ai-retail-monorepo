@@ -261,6 +261,11 @@ def build_agent_kpi_reference(
             ("skus_to_reorder", "order_units", "order_value", "fill_rate_pct",
              "avg_cover_d"),
         ),
+        "retail.promotion_effectiveness": (
+            "a4_promotion",
+            ("active_promo_skus", "uplift_pct", "incremental_margin", "roi_x",
+             "cannib_pct", "funding_pct"),
+        ),
     }
 
     rows: list[dict[str, Any]] = []
@@ -371,6 +376,68 @@ def build_replenishment(
     ]
 
 
+def build_promotion_detail(
+    tables: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """48 campaign rows from the Promotion & Discount Detail sheet.
+
+    Each row is one planned discount construct with its D365 mapping, the
+    supplier funding offset, the planned uplift and the pre-buy units A3 needs
+    to secure before valid-from. `vertical_label` is kept verbatim — the board
+    resolves it to `vertical_id` via `dim_vertical.dashboard_label`, the same
+    indirection `agent_kpi_reference` uses, because two verticals are labelled
+    differently on the A-sheets than on the Verticals sheet.
+    """
+    return [
+        {
+            "promo_id": row["promo_id"],
+            "promo_name": row["promo_name"],
+            "discount_type": row["discount_type"],
+            "scope": row["scope"],
+            "vertical_label": row["vertical_label"],
+            "target_category": row["target_category"],
+            "season": row["season"],
+            "peak_month": row["peak_month"],
+            "mechanism": row["mechanism"],
+            "discount_pct": row["discount_pct"],
+            "value_rule": row["value_rule"],
+            "min_qty_threshold": row["min_qty_threshold"],
+            "supplier_funding_pct": row["supplier_funding_pct"],
+            "expected_uplift_pct": row["expected_uplift_pct"],
+            "pre_buy_uplift_units": row["pre_buy_uplift_units"],
+            "valid_from": as_date(row["valid_from"]),
+            "valid_to": as_date(row["valid_to"]),
+            "d365_construct": row["d365_construct"],
+            "source_row": row["source_row"],
+        }
+        for row in tables["promotion_discount_detail"]
+    ]
+
+
+def build_promotion_vertical_kpi(
+    tables: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """The A4 Promotion sheet: six promo-effectiveness KPIs per vertical.
+
+    These are the reconciliation anchors every A4 headline ties out against, the
+    same role the A1/A2/A3 sheets play for their boards. Kept as a standalone
+    table so the board can read the wide shape directly; `agent_kpi_reference`
+    carries the same figures long-format for the snapshot's `reference_by_vertical`.
+    """
+    return [
+        {
+            "vertical_label": row["vertical_label"],
+            "active_promo_skus": row["active_promo_skus"],
+            "uplift_pct": row["uplift_pct"],
+            "incremental_margin": row["incremental_margin"],
+            "roi_x": row["roi_x"],
+            "cannib_pct": row["cannib_pct"],
+            "funding_pct": row["funding_pct"],
+        }
+        for row in tables["a4_promotion"]
+    ]
+
+
 # -------------------------------------------------------------------- writing
 
 
@@ -435,6 +502,8 @@ def main() -> int:
         "a1_demand_forecasting",
         "a2_inventory_risk",
         "a3_replenishment",
+        "a4_promotion",
+        "promotion_discount_detail",
     )
     missing = [name for name in required if name not in tables]
     if missing:
@@ -495,6 +564,16 @@ def main() -> int:
             "agent_kpi_reference",
             ("agent_id", "vertical_id", "metric"),
             build_agent_kpi_reference(tables),
+        ),
+        (
+            "promotion_detail",
+            ("promo_id",),
+            build_promotion_detail(tables),
+        ),
+        (
+            "promotion_vertical_kpi",
+            ("vertical_label",),
+            build_promotion_vertical_kpi(tables),
         ),
     )
 

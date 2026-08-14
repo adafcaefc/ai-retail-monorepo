@@ -129,6 +129,18 @@ REPLENISHMENT_ALLOWED_TABLES = (
     "retail.fact_inventory_chain_daily",
 )
 
+# Agent 4 · Promotion Effectiveness. The two promo tables are its own; the
+# chain-net inventory fact is where per-SKU promo margin is rolled up from
+# (margin_rp / funding_rp), joined to dim_item for the promo-eligible flag,
+# cannibalisation and margin_pct behind f13-incremental-promotion-margin.
+PROMOTION_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.promotion_detail",
+    "retail.promotion_vertical_kpi",
+    "retail.fact_inventory_chain_daily",
+    "retail.dim_item",
+)
+
 DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "finance": FINANCE_ALLOWED_TABLES,
     "cashflow": CASHFLOW_ALLOWED_TABLES,
@@ -140,6 +152,7 @@ DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "retail_demand": DEMAND_ALLOWED_TABLES,
     "retail_inventory": INVENTORY_ALLOWED_TABLES,
     "retail_replenishment": REPLENISHMENT_ALLOWED_TABLES,
+    "retail_promotion": PROMOTION_ALLOWED_TABLES,
 }
 
 # Domain whose agent is currently running. Simulation/execution tools read
@@ -1065,9 +1078,54 @@ def describe_retail_replenishment_tables(
     )
 
 
+def query_retail_promotion(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail promotion tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_promotion_effectiveness_snapshot for the standard view; use this for
+    custom filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
+    retail.promotion_detail, retail.promotion_vertical_kpi,
+    retail.fact_inventory_chain_daily, audit.import_batches.
+
+    `promotion_detail` holds the 48 planned campaign constructs (one row per
+    promo id, with supplier_funding_pct, expected_uplift_pct and
+    pre_buy_uplift_units). `promotion_vertical_kpi` holds the six A4 headline
+    KPIs per vertical. `fact_inventory_chain_daily` carries per-SKU margin_rp
+    and funding_rp for the promo-eligible rollups; join dim_item on
+    is_promo_eligible to scope them. `vertical_label` on the promo tables is
+    the sheet's wording and resolves to vertical_id via dim_vertical.dashboard_label.
+    """
+    return _domain_query(queries, allowed_tables=PROMOTION_ALLOWED_TABLES)
+
+
+def describe_retail_promotion_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail promotion allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=PROMOTION_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
 # The shared caveats are appended rather than pasted into each docstring, so
-# the three cannot drift apart on the one thing they must all say.
-for _tool in (query_retail_demand, query_retail_inventory, query_retail_replenishment):
+# the retail query tools cannot drift apart on the one thing they must all say.
+for _tool in (
+    query_retail_demand,
+    query_retail_inventory,
+    query_retail_replenishment,
+    query_retail_promotion,
+):
     _tool.__doc__ = (_tool.__doc__ or "") + _RETAIL_QUERY_NOTES
 del _tool
 
@@ -1080,6 +1138,7 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "query_retail_demand": query_retail_demand,
     "query_retail_inventory": query_retail_inventory,
     "query_retail_replenishment": query_retail_replenishment,
+    "query_retail_promotion": query_retail_promotion,
     "describe_financial_performance_tables": describe_financial_performance_tables,
     "describe_cashflow_tables": describe_cashflow_tables,
     "describe_collections_tables": describe_collections_tables,
@@ -1087,6 +1146,7 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "describe_retail_demand_tables": describe_retail_demand_tables,
     "describe_retail_inventory_tables": describe_retail_inventory_tables,
     "describe_retail_replenishment_tables": describe_retail_replenishment_tables,
+    "describe_retail_promotion_tables": describe_retail_promotion_tables,
 }
 
 
@@ -1099,6 +1159,7 @@ __all__ = [
     "INVENTORY_ALLOWED_TABLES",
     "LEAKAGE_ALLOWED_TABLES",
     "LOCAL_FREEFORM_QUERY_TOOLS",
+    "PROMOTION_ALLOWED_TABLES",
     "REPLENISHMENT_ALLOWED_TABLES",
     "RETAIL_SHARED_TABLES",
     "clear_schema_cache",
@@ -1109,6 +1170,7 @@ __all__ = [
     "describe_retail_demand_tables",
     "describe_retail_inventory_tables",
     "describe_retail_replenishment_tables",
+    "describe_retail_promotion_tables",
     "describe_tables",
     "freeform_query",
     "query_cashflow",
@@ -1118,4 +1180,5 @@ __all__ = [
     "query_retail_demand",
     "query_retail_inventory",
     "query_retail_replenishment",
+    "query_retail_promotion",
 ]

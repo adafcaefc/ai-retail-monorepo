@@ -3860,6 +3860,17 @@ img.ey-logo {
   border-color: var(--primary-deep);
 }
 
+.alerts-btn.danger {
+  border-color: var(--accent-danger-strong);
+  background: var(--accent-danger-strong);
+  color: #fff;
+}
+
+.alerts-btn.danger:hover:not(:disabled) {
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
 .alerts-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -3926,6 +3937,14 @@ img.ey-logo {
 
 .alerts-more-item:hover {
   background: #f4f7fc;
+}
+
+.alerts-more-item.danger {
+  color: var(--accent-danger-strong);
+}
+
+.alerts-more-item.danger:hover {
+  background: var(--accent-danger-soft);
 }
 
 .chat-toggle-btn {
