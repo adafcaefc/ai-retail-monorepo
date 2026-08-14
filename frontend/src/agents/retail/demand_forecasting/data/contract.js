@@ -375,6 +375,9 @@ export function normalizeDemandDashboard(payload, { requirePhase2 = false } = {}
     as_of: String(payload.as_of || ""),
     is_mock: Boolean(payload.is_mock),
     note: String(payload.note || ""),
+    scope_limitations: (Array.isArray(payload.scope_limitations)
+      ? payload.scope_limitations
+      : []).map(String),
     scope,
     filter_options: {
       legal_entities: normalizeOptions(payload.filter_options?.legal_entities),

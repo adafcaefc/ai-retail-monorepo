@@ -253,6 +253,15 @@ export default function DemandForecastingDashboard() {
         </div>
       </div>
 
+      {dashboard.scope_limitations.length ? (
+        <aside className="demand-scope-limitations" role="note" aria-label={t("Store scope limitations")}>
+          <strong>{t("Store scope limitations")}</strong>
+          <ul>
+            {dashboard.scope_limitations.map((limitation) => <li key={limitation}>{t(limitation)}</li>)}
+          </ul>
+        </aside>
+      ) : null}
+
       {appliedScenarioVisible ? (
         <DemandAppliedScenarioBanner
           levers={appliedLevers}

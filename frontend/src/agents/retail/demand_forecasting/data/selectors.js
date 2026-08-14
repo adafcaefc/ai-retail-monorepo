@@ -504,6 +504,9 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     as_of: fixture.generated_at,
     is_mock: fixture.is_mock,
     note: fixture.note,
+    scope_limitations: Array.isArray(fixture.scope_limitations)
+      ? fixture.scope_limitations
+      : [],
     derivation: fixture.derivation,
     scope: merged,
     filter_options: {

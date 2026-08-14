@@ -103,8 +103,19 @@ def _rows(connection: Any, sql: str, params: dict[str, Any] | None = None) -> li
     return [dict(row) for row in connection.execute(text(sql), params or {}).mappings()]
 
 
-def _scope_clause(scope: DashboardScope, entity_col: str, category_col: str | None):
-    """The WHERE fragment and parameters for the two filters SQL can apply."""
+def _scope_clause(
+    scope: DashboardScope,
+    entity_col: str,
+    category_col: str | None,
+    store_col: str | None = None,
+):
+    """The WHERE fragment and parameters for the columns a query really has.
+
+    ``store_id`` is optional because the chain fact tables deliberately do not
+    have a store key.  Callers must pass the real store dimension column when
+    the query is store-grain; omitting it means no pretend predicate is added
+    to a chain-level query.
+    """
     clauses: list[str] = []
     params: dict[str, Any] = {}
     if scope.legal_entity_id:
@@ -113,6 +124,9 @@ def _scope_clause(scope: DashboardScope, entity_col: str, category_col: str | No
     if scope.category_group and category_col:
         clauses.append(f"{category_col} = :category_group")
         params["category_group"] = scope.category_group
+    if scope.store_id and store_col:
+        clauses.append(f"{store_col} = :store_id")
+        params["store_id"] = scope.store_id
     return (" AND " + " AND ".join(clauses) if clauses else ""), params
 
 

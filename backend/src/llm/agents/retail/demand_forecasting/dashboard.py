@@ -35,7 +35,6 @@ from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
     SCHEMA,
     SNAPSHOT_DATE,
-    SUPPORTED_FILTERS,
     _rows,
     _scope_clause,
     agent_reference,
@@ -47,6 +46,14 @@ from src.llm.agents.retail.common.warehouse import (
 )
 
 AGENT_ID = "retail.demand_forecasting"
+
+# This is the one Retail dashboard whose forecast source has both a chain-grain
+# and a store-grain fact.  The chain branch remains the default so the existing
+# All Stores KPI keeps its workbook/chain-net meaning; the store branch below
+# can honour the same canonical `store_id` request against ENGINE_STORE rows.
+SUPPORTED_FILTERS: frozenset[str] = frozenset(
+    {"legal_entity_id", "category_group", "store_id"}
+)
 
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
@@ -91,6 +98,17 @@ DERIVATION = {
     "seasonality_curve": "derived-from-gmv-profile",
     "history": "unavailable",
 }
+
+STORE_SCOPE_LIMITATIONS = (
+    "Historical actual demand is unavailable: the loaded sales-history source "
+    "has no rows, so forecast series actuals remain null.",
+    "Forecast accuracy/MAPE and demand trend remain vertical-level workbook "
+    "constants; no Store-grain backtest source is loaded.",
+    "Seasonality remains vertical-level: fact_gmv_monthly has no store key, "
+    "so the selected Store uses its owning vertical's curve.",
+    "Predicted-to-trend count remains vertical-level reference data; the ranked "
+    "items are Store-scoped, but the requested count is not measured per Store.",
+)
 
 
 def _float(value: Any) -> float:
@@ -149,32 +167,65 @@ def allocate_trending(items: list[dict], counts: dict[str, int]) -> None:
 
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     scope = scope or DashboardScope()
-    where, params = _scope_clause(scope, "i.vertical_id", "i.category_id")
-    params["day"] = SNAPSHOT_DATE
 
     with get_engine().connect() as connection:
-        chain = _rows(
-            connection,
-            f"""
-            SELECT c.item_key, c.ads, c.on_hand_qty, c.open_po_qty,
-                   c.position_qty, c.rop_qty, c.state, c.unit_price,
-                   i.name, i.vertical_id, i.category_id, i.category_name,
-                   i.is_perishable, i.shelf_life_days, i.base_ads,
-                   i.seasonality_index, i.lead_time_days, i.safety_days,
-                   i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
-                   i.is_viral
-            FROM {SCHEMA}.fact_inventory_chain_daily c
-            JOIN {SCHEMA}.dim_item i ON i.item_id = c.item_key
-            JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
-            WHERE c.cal_date = :day{where}
-            -- The workbook's own order: vertical first, SKU within it.
-            -- Alphabetical would open every board on Digital.
-            ORDER BY vt.sort_order, c.item_key
-            """,
-            params,
-        )
+        if scope.store_id:
+            # ENGINE_STORE is the real store x SKU source.  It carries the
+            # workbook's own f08 forecast_7d, inventory position and inbound
+            # quantities at the same grain, so all downstream calculations run
+            # over the selected Store's inputs rather than a filtered response.
+            where, params = _scope_clause(
+                scope, "s.vertical_id", "i.category_id", "s.store_id"
+            )
+            params["day"] = SNAPSHOT_DATE
+            chain = _rows(
+                connection,
+                f"""
+                SELECT f.item_key, f.ads, f.forecast_7d,
+                       f.on_hand_qty, f.open_po_qty, f.position_qty, f.rop_qty,
+                       f.state, i.price AS unit_price,
+                       i.name, i.vertical_id, i.category_id, i.category_name,
+                       i.is_perishable, i.shelf_life_days, i.base_ads,
+                       i.seasonality_index, i.lead_time_days, i.safety_days,
+                       i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
+                       i.is_viral, s.store_id, s.size_index AS store_size
+                FROM {SCHEMA}.fact_inventory_daily f
+                JOIN {SCHEMA}.dim_store s ON s.store_id = f.store_key
+                JOIN {SCHEMA}.dim_item i ON i.item_id = f.item_key
+                JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
+                WHERE f.cal_date = :day{where}
+                -- The workbook's own order: vertical first, SKU within it.
+                ORDER BY vt.sort_order, f.item_key
+                """,
+                params,
+            )
+        else:
+            where, params = _scope_clause(scope, "i.vertical_id", "i.category_id")
+            params["day"] = SNAPSHOT_DATE
+            chain = _rows(
+                connection,
+                f"""
+                SELECT c.item_key, c.ads, c.on_hand_qty, c.open_po_qty,
+                       c.position_qty, c.rop_qty, c.state, c.unit_price,
+                       i.name, i.vertical_id, i.category_id, i.category_name,
+                       i.is_perishable, i.shelf_life_days, i.base_ads,
+                       i.seasonality_index, i.lead_time_days, i.safety_days,
+                       i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
+                       i.is_viral
+                FROM {SCHEMA}.fact_inventory_chain_daily c
+                JOIN {SCHEMA}.dim_item i ON i.item_id = c.item_key
+                JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
+                WHERE c.cal_date = :day{where}
+                -- The workbook's own order: vertical first, SKU within it.
+                -- Alphabetical would open every board on Digital.
+                ORDER BY vt.sort_order, c.item_key
+                """,
+                params,
+            )
 
-        store_where, store_params = _scope_clause(scope, "s.vertical_id", None)
+        store_where, store_params = _scope_clause(
+            scope, "s.vertical_id", None, "s.store_id"
+        )
         store_params["day"] = SNAPSHOT_DATE
         stores = _rows(
             connection,
@@ -219,37 +270,42 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     items = []
     for row in chain:
         ads = _float(row["ads"])
-        items.append(
-            {
-                "sku_id": row["item_key"],
-                "name": row["name"],
-                "vertical_id": row["vertical_id"],
-                "category_id": row["category_id"],
-                "category_label": row["category_name"],
-                "ads": ads,
-                # f08 exactly: a week is 7.45 average days.
-                "forecast_7d": ads * 7.45,
-                "on_hand": _float(row["on_hand_qty"]),
-                "open_po": _float(row["open_po_qty"]),
-                "position": _float(row["position_qty"]),
-                "rop": _float(row["rop_qty"]),
-                "state": row["state"],
-                "price": _float(row["unit_price"]),
-                "growth": _float(row["growth_index"]),
-                "is_stockout_risk": _float(row["position_qty"]) < _float(row["rop_qty"]),
-                "is_trending": False,
-                "signals": build_signals(row),
-                "shelf_life_days": row["shelf_life_days"],
-                "perishable": "Y" if row["is_perishable"] else "N",
-                "base_ads": _float(row["base_ads"]),
-                "seasonality": _float(row["seasonality_index"]),
-                "store_size": store_size[row["vertical_id"]],
-                "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
-                "promo_depth": _float(row["cannibalisation_pct"]),
-                "lead_days": _float(row["lead_time_days"]),
-                "safety_days": _float(row["safety_days"]),
-            }
-        )
+        item = {
+            "sku_id": row["item_key"],
+            "name": row["name"],
+            "vertical_id": row["vertical_id"],
+            "category_id": row["category_id"],
+            "category_label": row["category_name"],
+            "ads": ads,
+            # All Stores uses the chain-net f08 equivalent already used by
+            # the existing board.  Store scope reads ENGINE_STORE's own
+            # f08 value, whose grain is store x SKU.
+            "forecast_7d": _float(row.get("forecast_7d", ads * 7.45)),
+            "on_hand": _float(row["on_hand_qty"]),
+            "open_po": _float(row["open_po_qty"]),
+            "position": _float(row["position_qty"]),
+            "rop": _float(row["rop_qty"]),
+            "state": row["state"],
+            "price": _float(row["unit_price"]),
+            "growth": _float(row["growth_index"]),
+            "is_stockout_risk": _float(row["position_qty"]) < _float(row["rop_qty"]),
+            "is_trending": False,
+            "signals": build_signals(row),
+            "shelf_life_days": row["shelf_life_days"],
+            "perishable": "Y" if row["is_perishable"] else "N",
+            "base_ads": _float(row["base_ads"]),
+            "seasonality": _float(row["seasonality_index"]),
+            "store_size": _float(
+                row.get("store_size", store_size[row["vertical_id"]])
+            ),
+            "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
+            "promo_depth": _float(row["cannibalisation_pct"]),
+            "lead_days": _float(row["lead_time_days"]),
+            "safety_days": _float(row["safety_days"]),
+        }
+        if row.get("store_id"):
+            item["store_id"] = row["store_id"]
+        items.append(item)
     allocate_trending(items, trending_counts)
 
     gmv_by_vertical: dict[str, dict[int, float]] = {}
@@ -264,6 +320,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
 
     return {
         **envelope(AGENT_ID, NOTE),
+        "scope": scope.as_query(),
+        "scope_limitations": list(STORE_SCOPE_LIMITATIONS) if scope.store_id else [],
         "constants": {
             "dow_sum": 7.45,
             "month_index": 6,

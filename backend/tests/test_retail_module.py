@@ -188,7 +188,7 @@ def test_each_retail_module_has_its_own_builder() -> None:
 
 
 def test_retail_dashboards_declare_the_filters_they_apply() -> None:
-    """Two are applied in SQL; the rest are reported back as ignored.
+    """Each dashboard declares only the filters its SQL actually applies.
 
     The board narrows by the others itself, over the rows it is handed — but an
     API caller that is not the board gets told, which is the whole point of
@@ -200,13 +200,16 @@ def test_retail_dashboards_declare_the_filters_they_apply() -> None:
     for agent_id, _, _ in RETAIL_MODULES:
         descriptor = AGENT_REGISTRY[agent_id]
 
-        assert descriptor.supported_filters == frozenset(
-            {"legal_entity_id", "category_group"}
-        )
-        assert scope.ignored_by(descriptor.supported_filters) == (
+        expected = {"legal_entity_id", "category_group"}
+        if agent_id == "retail.demand_forecasting":
+            expected.add("store_id")
+
+        assert descriptor.supported_filters == frozenset(expected)
+        expected_ignored = ("reorder_only",) if agent_id == "retail.demand_forecasting" else (
             "store_id",
             "reorder_only",
         )
+        assert scope.ignored_by(descriptor.supported_filters) == expected_ignored
 
 
 def test_placeholder_modules_are_navigation_only() -> None:
