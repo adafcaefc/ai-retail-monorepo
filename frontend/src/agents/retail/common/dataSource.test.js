@@ -61,15 +61,16 @@ describe("the Retail data source", () => {
     await expect(resolve()).rejects.toThrow(/must be "api" or "fixture"/);
   });
 
-  it("is the single definition the three boards share", async () => {
+  it("is the single definition the retail boards share", async () => {
     vi.stubEnv("MODE", "production");
     vi.stubEnv("VITE_DATA_SOURCE", "fixture");
 
-    const [shared, a1, a2, a3] = await Promise.all([
+    const [shared, a1, a2, a3, a4] = await Promise.all([
       import("./dataSource.js"),
       import("../demand_forecasting/data/dashboardData.js"),
       import("../inventory_risk/data/dashboardData.js"),
       import("../replenishment/data/dashboardData.js"),
+      import("../promotion_effectiveness/data/dashboardData.js"),
     ]);
 
     // Three copies of this expression is what let SCHEMA_VERSION drift and
@@ -77,5 +78,6 @@ describe("the Retail data source", () => {
     expect(a1.DATA_SOURCE).toBe(shared.DATA_SOURCE);
     expect(a2.DATA_SOURCE).toBe(shared.DATA_SOURCE);
     expect(a3.DATA_SOURCE).toBe(shared.DATA_SOURCE);
+    expect(a4.DATA_SOURCE).toBe(shared.DATA_SOURCE);
   });
 });
