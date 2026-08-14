@@ -47,10 +47,28 @@ RUN set -eux; \
     find /opt/microsoft/msodbcsql18 -name 'libmsodbcsql-*.so.*' -type f; \
     rm -rf /var/lib/apt/lists/*
 
-# Dependency layer (cached unless requirements.txt changes)
+# Dependency layer
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
+
+# Verify pyodbc can detect Microsoft ODBC Driver 18
+RUN python - <<'PY'
+import pyodbc
+
+required_driver = "ODBC Driver 18 for SQL Server"
+available_drivers = pyodbc.drivers()
+
+print("Available ODBC drivers:", available_drivers)
+
+if required_driver not in available_drivers:
+    raise RuntimeError(
+        f"{required_driver} is not available. "
+        f"Detected drivers: {available_drivers}"
+    )
+
+print(f"Successfully detected: {required_driver}")
+PY
 
 # The Data Source page parses this workbook at request time (/api/excel/*).
 # Copied before the backend source so the 10 MB layer survives the source
