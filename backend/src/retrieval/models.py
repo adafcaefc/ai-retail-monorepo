@@ -163,14 +163,21 @@ class SemanticResult(StrictModel):
 
 
 class RetrievalTiming(StrictModel):
+    gateway_ms: float = 0.0
     routing_ms: float = 0.0
     entity_resolution_ms: float = 0.0
     sql_ms: float = 0.0
     query_embedding_ms: float = 0.0
+    vector_distance_ms: float = 0.0
     vector_search_ms: float = 0.0
     vector_total_ms: float = 0.0
+    catalog_ms: float = 0.0
     serialization_ms: float = 0.0
     planning_ms: float = 0.0
+    planner_model_ms: float = 0.0
+    planner_validation_ms: float = 0.0
+    fallback_decision_ms: float = 0.0
+    fallback_ms: float = 0.0
     policy_ms: float = 0.0
     compilation_ms: float = 0.0
     evidence_aggregation_ms: float = 0.0

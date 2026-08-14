@@ -370,8 +370,18 @@ class DeterministicRouter:
                 route = SelectedRoute.UNSUPPORTED
                 reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY", "INVALID_ROUTE_OVERRIDE"]
             elif requested == SelectedRoute.VECTOR and auto_route == SelectedRoute.PLANNER_REQUIRED:
-                route = SelectedRoute.UNSUPPORTED
-                reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY"]
+                # Adaptive execution has already policy-validated a bounded
+                # semantic requirement and supplies an explicit domain/type.
+                # Permit that branch to force semantic retrieval even when
+                # the natural-language evidence query contains planner words
+                # such as "forecast" or "compare".  An unfiltered vector
+                # override remains rejected below this condition.
+                if request.retrieval_domain or request.doc_type:
+                    route = requested
+                    reasons = [*reasons, "EXPLICIT_ROUTE_OVERRIDE"]
+                else:
+                    route = SelectedRoute.UNSUPPORTED
+                    reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY"]
             elif requested == SelectedRoute.SQL and auto_route == SelectedRoute.PLANNER_REQUIRED:
                 route = SelectedRoute.UNSUPPORTED
                 reasons = ["UNSUPPORTED_STRUCTURED_CAPABILITY"]

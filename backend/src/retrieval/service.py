@@ -20,7 +20,7 @@ from .authorization import (
     PrincipalContext,
     cli_principal,
 )
-from .capabilities import StructuredSqlExecutor
+from .capabilities import CAPABILITIES, StructuredSqlExecutor
 from .entities import EntityResolver, required_entity_types
 from .models import (
     Diagnostic,
@@ -34,7 +34,7 @@ from .models import (
     SemanticResult,
     SourceReference,
 )
-from .observability import log_retrieval_event, query_fingerprint
+from .observability import TraceSink, emit_trace, log_retrieval_event, query_fingerprint
 from .routing import DeterministicRouter
 
 
@@ -109,6 +109,7 @@ class RetrievalService:
         config_factory: Callable[[], EmbeddingConfig] = EmbeddingConfig.from_env,
         provider_factory: Callable[[EmbeddingConfig], Any] = create_embedding_provider,
         semantic_search_fn: Callable[..., dict[str, Any]] = semantic_search,
+        trace_sink: TraceSink | None = None,
     ):
         self.router = router or DeterministicRouter()
         self.entity_resolver = entity_resolver or EntityResolver()
@@ -118,6 +119,7 @@ class RetrievalService:
         self.config_factory = config_factory
         self.provider_factory = provider_factory
         self.semantic_search_fn = semantic_search_fn
+        self.trace_sink = trace_sink
         self._embedding_config: EmbeddingConfig | None = None
         self._embedding_provider: Any | None = None
         self._provider_lock = threading.Lock()
@@ -129,6 +131,28 @@ class RetrievalService:
                 self._embedding_config = self.config_factory()
                 self._embedding_provider = self.provider_factory(self._embedding_config)
             return self._embedding_config, self._embedding_provider
+
+    def embedding_config(self) -> EmbeddingConfig:
+        """Return the configured profile while preserving the cached provider."""
+        config, _ = self._configured_provider()
+        return config
+
+    def warm_embedding_provider(self) -> EmbeddingConfig:
+        """Warm the already-configured provider used by vector retrieval.
+
+        This deliberately does not run a semantic search or create another
+        provider.  It initializes the exact provider held by this service.
+        """
+        config, provider = self._configured_provider()
+        warm_up = getattr(provider, "warm_up", None)
+        if callable(warm_up):
+            warm_up()
+        return config
+
+    def embedding_provider_is_warm(self) -> bool:
+        with self._provider_lock:
+            provider = self._embedding_provider
+            return bool(provider is not None and getattr(provider, "is_warm", False))
 
     def retrieve(
         self,
@@ -148,6 +172,7 @@ class RetrievalService:
         connection = None
 
         self.authorization_policy.authorize(principal, request)
+        emit_trace(self.trace_sink, "router.analysis_started")
         routing_started = time.perf_counter()
         try:
             decision = self.router.decide(request)
@@ -160,6 +185,19 @@ class RetrievalService:
             )
             errors.append(Diagnostic(code="INVALID_FILTER", message=str(error)))
         timing.routing_ms = _elapsed_ms(routing_started)
+        emit_trace(
+            self.trace_sink,
+            "router.decision",
+            elapsed_ms=timing.routing_ms,
+            route=decision.selected_route.value,
+            confidence=decision.confidence.value,
+            reason_codes=list(decision.reason_codes),
+            recognized_intent=decision.recognized_intent,
+            capabilities=list(decision.selected_sql_capabilities),
+            vector_domain=decision.selected_vector_filters.retrieval_domain,
+            vector_doc_type=decision.selected_vector_filters.doc_type,
+            entity_count=len(decision.recognized_entities),
+        )
 
         if decision.selected_route == SelectedRoute.UNSUPPORTED:
             code = decision.reason_codes[0] if decision.reason_codes else "UNSUPPORTED_INTENT"
@@ -242,6 +280,21 @@ class RetrievalService:
 
             sql_blocked = bool(resolution.ambiguous or resolution.missing)
             if decision.selected_route in {SelectedRoute.SQL, SelectedRoute.HYBRID} and not sql_blocked:
+                capability_metadata = [
+                    {
+                        "capability": capability,
+                        "intent": CAPABILITIES[capability].intent,
+                        "source_tables": [f"retail.{table}" for table in CAPABILITIES[capability].tables],
+                    }
+                    for capability in decision.selected_sql_capabilities
+                    if capability in CAPABILITIES
+                ]
+                emit_trace(
+                    self.trace_sink,
+                    "sql.started",
+                    capabilities=list(decision.selected_sql_capabilities),
+                    sources=capability_metadata,
+                )
                 sql_started = time.perf_counter()
                 try:
                     for capability in decision.selected_sql_capabilities:
@@ -265,6 +318,14 @@ class RetrievalService:
                     code = "SQL_UNAVAILABLE" if decision.selected_route == SelectedRoute.SQL else "HYBRID_SQL_BRANCH_FAILED"
                     errors.append(Diagnostic(code=code, message="Structured retrieval failed.", branch="sql"))
                 timing.sql_ms = _elapsed_ms(sql_started)
+                emit_trace(
+                    self.trace_sink,
+                    "sql.completed",
+                    elapsed_ms=timing.sql_ms,
+                    row_count=len(structured_results),
+                    capabilities=list(decision.selected_sql_capabilities),
+                    error_codes=[item.code for item in errors if item.branch == "sql"],
+                )
             elif sql_blocked and decision.selected_route == SelectedRoute.HYBRID:
                 warnings.append(
                     Diagnostic(
@@ -278,8 +339,19 @@ class RetrievalService:
                 vector_started = time.perf_counter()
                 try:
                     config, shared_provider = self._configured_provider()
+                    provider_was_warm = bool(getattr(shared_provider, "is_warm", False))
                     provider = _TimedQueryProvider(shared_provider)
                     filters = decision.selected_vector_filters
+                    emit_trace(
+                        self.trace_sink,
+                        "vector.started",
+                        provider_key=config.provider_key,
+                        model_name=config.model_name,
+                        cached=provider_was_warm,
+                        retrieval_domain=filters.retrieval_domain,
+                        doc_type=filters.doc_type,
+                        top_k=request.top_k,
+                    )
                     # SentenceTransformer is process-cached and guarded because the
                     # FastAPI sync endpoint may execute concurrently in worker threads.
                     with self._vector_lock:
@@ -294,6 +366,10 @@ class RetrievalService:
                             connection=connection,
                         )
                     timing.query_embedding_ms = provider.query_embedding_ms
+                    search_timing = search.get("timing", {})
+                    timing.vector_distance_ms = round(
+                        float(search_timing.get("vector_distance_ms", 0.0)), 3
+                    )
                     source_sheets = _semantic_source_sheets(
                         connection, search["results"]
                     )
@@ -346,6 +422,16 @@ class RetrievalService:
                     errors.append(Diagnostic(code=code, message="Semantic retrieval failed.", branch="vector"))
                 timing.vector_total_ms = _elapsed_ms(vector_started)
                 timing.vector_search_ms = round(max(0.0, timing.vector_total_ms - timing.query_embedding_ms), 3)
+                emit_trace(
+                    self.trace_sink,
+                    "vector.completed",
+                    elapsed_ms=timing.vector_total_ms,
+                    query_embedding_ms=timing.query_embedding_ms,
+                    vector_distance_ms=timing.vector_distance_ms,
+                    vector_search_ms=timing.vector_search_ms,
+                    result_count=len(semantic_results),
+                    error_codes=[item.code for item in errors if item.branch == "vector"],
+                )
 
             if decision.selected_route in {SelectedRoute.SQL, SelectedRoute.HYBRID} and re.search(
                 r"\b(current|today|now|latest|currently)\b", request.query, re.I
@@ -361,9 +447,19 @@ class RetrievalService:
             connection.close()
 
         timing.total_ms = _elapsed_ms(total_started)
+        aggregation_started = time.perf_counter()
         response = self._response(
             request_id, decision, entities, structured_results, semantic_results,
             citations, warnings, errors, timing,
+        )
+        response.timing.evidence_aggregation_ms = _elapsed_ms(aggregation_started)
+        emit_trace(
+            self.trace_sink,
+            "evidence.aggregated",
+            elapsed_ms=response.timing.evidence_aggregation_ms,
+            structured_count=response.result_counts.structured,
+            semantic_count=response.result_counts.semantic,
+            citation_count=response.result_counts.citations,
         )
         serialization_started = time.perf_counter()
         response.model_dump(mode="json")
@@ -433,7 +529,10 @@ class RetrievalService:
             entity_resolution_ms=response.timing.entity_resolution_ms,
             sql_ms=response.timing.sql_ms,
             query_embedding_ms=response.timing.query_embedding_ms,
+            vector_distance_ms=response.timing.vector_distance_ms,
             vector_search_ms=response.timing.vector_search_ms,
+            vector_total_ms=response.timing.vector_total_ms,
+            evidence_aggregation_ms=response.timing.evidence_aggregation_ms,
             total_ms=response.timing.total_ms,
             fallback_used=False,
             error_category=response.errors[0].code if response.errors else None,

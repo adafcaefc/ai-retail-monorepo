@@ -207,6 +207,20 @@ def test_local_provider_separates_document_and_query_encoding_and_normalizes():
     assert factory_calls[0][1]["local_files_only"] is True
 
 
+def test_local_provider_warm_up_loads_one_resident_model():
+    factory_calls = []
+    provider = LocalBgeEmbeddingProvider(
+        model_factory=lambda *args, **kwargs: factory_calls.append((args, kwargs)) or FakeModel()
+    )
+
+    assert not provider.is_warm
+    provider.warm_up()
+    provider.warm_up()
+
+    assert provider.is_warm
+    assert len(factory_calls) == 1
+
+
 def test_provider_enforces_dimensions_and_never_tokenizes_with_truncation():
     provider = LocalBgeEmbeddingProvider(model_factory=lambda *a, **k: FakeModel(12))
     with pytest.raises(RuntimeError, match="dimension mismatch"):

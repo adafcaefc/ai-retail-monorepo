@@ -36,8 +36,8 @@ from .models import (
     StructuredResult,
     VectorFilters,
 )
-from .planner import AdaptiveQueryPlanner, SemanticRequirement, QueryPlan
-from .observability import log_retrieval_event, query_fingerprint
+from .planner import AdaptiveQueryPlanner, QueryPlan, SemanticRequirement, planner_failure_category
+from .observability import TraceSink, emit_trace, log_retrieval_event, query_fingerprint
 from .policy import QUERY_TIMEOUT_SECONDS, QueryPolicy, QueryPolicyError
 from .service import RetrievalService
 
@@ -78,8 +78,10 @@ class AdaptiveRetrievalOrchestrator:
         semantic_service: RetrievalService | None = None,
         authorization_policy: AuthorizationPolicy | None = None,
         max_workers: int = 4,
+        trace_sink: TraceSink | None = None,
     ) -> None:
-        self.planner = planner or AdaptiveQueryPlanner()
+        self.trace_sink = trace_sink
+        self.planner = planner or AdaptiveQueryPlanner(trace_sink=trace_sink)
         self.policy = policy or QueryPolicy()
         self.compiler = compiler or DeterministicSqlCompiler()
         self.connection_factory = connection_factory
@@ -118,20 +120,60 @@ class AdaptiveRetrievalOrchestrator:
             return response
         planning_started = time.perf_counter()
         try:
+            emit_trace(self.trace_sink, "planner.started")
             plan = self.planner.plan(
                 request.query,
                 conversation_context=conversation_context,
                 entity_context=entity_context,
                 agent_context=agent_context or request.agent_context,
             )
-        except Exception:
+        except Exception as error:
             timing = RetrievalTiming(planning_ms=self._elapsed(planning_started))
+            timing.catalog_ms = float(getattr(self.planner, "last_catalog_ms", 0.0) or 0.0)
+            timing.planner_model_ms = float(getattr(self.planner, "last_model_ms", 0.0) or 0.0)
+            timing.planner_validation_ms = float(getattr(self.planner, "last_validation_ms", 0.0) or 0.0)
+            if not getattr(self.planner, "trace_sink", None):
+                emit_trace(
+                    self.trace_sink,
+                    "planner.failed",
+                    elapsed_ms=timing.planning_ms,
+                    failure_category=getattr(self.planner, "last_failure_category", None)
+                    or planner_failure_category(error),
+                    exception_type=type(error).__name__,
+                )
             response = self._failure(request_id, request, "PLANNER_FAILED", "Adaptive planning failed.", timing)
             self._log(request, response)
             return response
         timing = RetrievalTiming(planning_ms=self._elapsed(planning_started))
+        timing.catalog_ms = float(getattr(self.planner, "last_catalog_ms", 0.0) or 0.0)
+        timing.planner_model_ms = float(getattr(self.planner, "last_model_ms", 0.0) or 0.0)
+        timing.planner_validation_ms = float(getattr(self.planner, "last_validation_ms", 0.0) or 0.0)
+        emit_trace(
+            self.trace_sink,
+            "planner.requirements",
+            structured=[
+                {
+                    "metric_id": item.metric_id,
+                    "availability": item.availability,
+                    "required": item.required,
+                    "aggregation": item.aggregation,
+                    "dimensions": list(item.dimensions),
+                }
+                for item in plan.structured_requirements
+            ],
+            semantic=[
+                {
+                    "retrieval_domain": item.retrieval_domain,
+                    "doc_type": item.doc_type,
+                    "required": item.required,
+                }
+                for item in plan.semantic_requirements
+            ],
+            unavailable=list(plan.unavailable_requirements),
+            catalog_ms=timing.catalog_ms,
+            top_k=request.top_k,
+        )
         response = self.execute_plan(request, plan, principal=principal, request_id=request_id, timing=timing)
-        response.timing.total_ms = round(response.timing.total_ms + response.timing.planning_ms, 3)
         self._log(request, response)
         return response
 
@@ -159,22 +201,74 @@ class AdaptiveRetrievalOrchestrator:
             )
         execute_started = time.perf_counter()
         policy_started = time.perf_counter()
+        emit_trace(
+            self.trace_sink,
+            "policy.started",
+            structured_requirement_count=len(plan.structured_requirements),
+            semantic_requirement_count=len(plan.semantic_requirements),
+        )
         try:
             validated = self.policy.validate(plan, principal=principal, max_rows=request.top_k)
         except (QueryPolicyError, ValueError) as error:
             timing.policy_ms = self._elapsed(policy_started)
-            timing.total_ms = self._elapsed(policy_started)
+            self._set_total(timing, execute_started)
+            emit_trace(
+                self.trace_sink,
+                "policy.rejected",
+                elapsed_ms=timing.policy_ms,
+                reason=str(error),
+            )
             return self._failure(request_id, request, "QUERY_POLICY_REJECTED", str(error), timing)
         timing.policy_ms = self._elapsed(policy_started)
+        emit_trace(
+            self.trace_sink,
+            "policy.approved",
+            elapsed_ms=timing.policy_ms,
+            metric_ids=[item.metric_id for item in validated.queries],
+            sources=[item.table for item in validated.queries],
+            dimensions=[list(item.dimensions) for item in validated.queries],
+            filter_fields=[
+                [filter_item.field for filter_item in item.filters]
+                for item in validated.queries
+            ],
+            semantic_domains=[item.retrieval_domain for item in validated.semantic_requirements],
+        )
 
         compilation_started = time.perf_counter()
+        emit_trace(
+            self.trace_sink,
+            "compiler.started",
+            query_count=len(validated.queries),
+        )
         try:
             compiled = [self.compiler.compile(spec) for spec in validated.queries]
         except (ValueError, KeyError) as error:
             timing.compilation_ms = self._elapsed(compilation_started)
-            timing.total_ms = self._elapsed(compilation_started)
+            self._set_total(timing, execute_started)
+            emit_trace(
+                self.trace_sink,
+                "compiler.rejected",
+                elapsed_ms=timing.compilation_ms,
+                reason=str(error),
+            )
             return self._failure(request_id, request, "SQL_COMPILATION_REJECTED", str(error), timing)
         timing.compilation_ms = self._elapsed(compilation_started)
+        for query in compiled:
+            emit_trace(
+                self.trace_sink,
+                "compiler.query",
+                metric_id=query.metric_id,
+                source=query.source_table,
+                result_fields=list(query.result_fields),
+                parameter_count=len(query.params),
+                sql_shape=query.sql,
+            )
+        emit_trace(
+            self.trace_sink,
+            "compiler.approved",
+            elapsed_ms=timing.compilation_ms,
+            query_count=len(compiled),
+        )
 
         decision = RoutingDecision(
             selected_route=SelectedRoute.PLANNER_REQUIRED,
@@ -195,8 +289,22 @@ class AdaptiveRetrievalOrchestrator:
 
         branches: list[tuple[str, int, Callable[[], Any], bool]] = []
         for spec, query in zip(validated.queries, compiled):
+            emit_trace(
+                self.trace_sink,
+                "adaptive.sql.started",
+                metric_id=query.metric_id,
+                source=query.source_table,
+                dimensions=list(spec.dimensions),
+            )
             branches.append(("sql", spec.requirement_index, lambda query=query: self.structured_executor(query), spec.required))
         for index, requirement in enumerate(validated.semantic_requirements):
+            emit_trace(
+                self.trace_sink,
+                "adaptive.vector.started",
+                retrieval_domain=requirement.retrieval_domain,
+                doc_type=requirement.doc_type,
+                top_k=request.top_k,
+            )
             branches.append(("vector", index, lambda requirement=requirement: self.semantic_executor(requirement, request, principal), requirement.required))
 
         aggregation_started = time.perf_counter()
@@ -214,17 +322,32 @@ class AdaptiveRetrievalOrchestrator:
                         result, branch_ms, _ = future.result()
                         if branch == "sql":
                             timing.sql_ms += branch_ms
-                        else:
-                            timing.vector_total_ms += branch_ms
                         if branch == "sql":
                             branch_results, branch_citations = result
                             structured.extend(branch_results)
                             citations.extend(branch_citations)
+                            emit_trace(
+                                self.trace_sink,
+                                "adaptive.sql.completed",
+                                elapsed_ms=branch_ms,
+                                row_count=len(branch_results),
+                            )
                             if required and not branch_results:
                                 errors.append(Diagnostic(code="ADAPTIVE_SQL_NO_RESULTS", message="No structured evidence matched the approved query.", branch="sql"))
                         else:
                             branch_response = result
+                            branch_total = float(branch_response.timing.vector_total_ms)
+                            timing.vector_total_ms += branch_total or branch_ms
+                            timing.query_embedding_ms += branch_response.timing.query_embedding_ms
+                            timing.vector_distance_ms += branch_response.timing.vector_distance_ms
+                            timing.vector_search_ms += branch_response.timing.vector_search_ms
                             semantic.extend(branch_response.semantic_results)
+                            emit_trace(
+                                self.trace_sink,
+                                "adaptive.vector.completed",
+                                elapsed_ms=branch_total or branch_ms,
+                                result_count=len(branch_response.semantic_results),
+                            )
                             citations.extend(branch_response.citations)
                             if required:
                                 errors.extend(branch_response.errors)
@@ -243,6 +366,14 @@ class AdaptiveRetrievalOrchestrator:
         else:
             errors.append(Diagnostic(code="NO_AVAILABLE_EVIDENCE", message="The plan contains no executable or semantic evidence requirement.", branch="adaptive"))
         timing.evidence_aggregation_ms = self._elapsed(aggregation_started)
+        emit_trace(
+            self.trace_sink,
+            "evidence.aggregated",
+            elapsed_ms=timing.evidence_aggregation_ms,
+            structured_count=len(structured),
+            semantic_count=len(semantic),
+            citation_count=len(citations),
+        )
 
         structured.sort(key=lambda item: (item.capability_key, item.row_index))
         semantic.sort(key=lambda item: (item.rank, item.citation_id))
@@ -259,7 +390,7 @@ class AdaptiveRetrievalOrchestrator:
             )
         # Unavailable required evidence remains an error even if other branches
         # succeed: exact missing facts cannot be silently replaced by context.
-        timing.total_ms = self._elapsed(execute_started)
+        self._set_total(timing, execute_started)
         if errors and (structured or semantic):
             status = RetrievalStatus.PARTIAL
         elif errors:
@@ -334,6 +465,14 @@ class AdaptiveRetrievalOrchestrator:
         return round((time.perf_counter() - started) * 1000.0, 3)
 
     @staticmethod
+    def _set_total(timing: RetrievalTiming, started: float) -> None:
+        """Include planner time whenever execution is called with a plan."""
+        timing.total_ms = round(
+            AdaptiveRetrievalOrchestrator._elapsed(started) + timing.planning_ms,
+            3,
+        )
+
+    @staticmethod
     def _failure(request_id: str, request: RetrievalRequest, code: str, message: str, timing: RetrievalTiming) -> RetrievalResponse:
         decision = RoutingDecision(
             selected_route=SelectedRoute.PLANNER_REQUIRED,
@@ -366,9 +505,16 @@ class AdaptiveRetrievalOrchestrator:
             entity_resolution_ms=response.timing.entity_resolution_ms,
             sql_ms=response.timing.sql_ms,
             query_embedding_ms=response.timing.query_embedding_ms,
+            vector_distance_ms=response.timing.vector_distance_ms,
             vector_search_ms=response.timing.vector_search_ms,
             vector_total_ms=response.timing.vector_total_ms,
+            catalog_ms=response.timing.catalog_ms,
             planning_ms=response.timing.planning_ms,
+            planner_model_ms=response.timing.planner_model_ms,
+            planner_validation_ms=response.timing.planner_validation_ms,
+            gateway_ms=response.timing.gateway_ms,
+            fallback_decision_ms=response.timing.fallback_decision_ms,
+            fallback_ms=response.timing.fallback_ms,
             policy_ms=response.timing.policy_ms,
             compilation_ms=response.timing.compilation_ms,
             evidence_aggregation_ms=response.timing.evidence_aggregation_ms,

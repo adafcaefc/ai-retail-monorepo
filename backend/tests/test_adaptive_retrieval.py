@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -248,6 +249,7 @@ def test_planner_uses_bounded_catalog_and_marks_unknown_requirements_unavailable
     assert len(planner_input.catalog.tables) <= 3
     assert plan.structured_requirements[0].availability == "AVAILABLE"
     assert plan.structured_requirements[0].dimensions == ["sku_id"]
+    assert plan.structured_requirements[0].time_window is None
     assert plan.structured_requirements[1].availability == "UNAVAILABLE"
     assert "not in the approved query catalog" in plan.structured_requirements[1].unavailable_reason
     assert any("forecast.backtested_mape" in item for item in plan.unavailable_requirements)
@@ -258,6 +260,60 @@ def test_planner_runner_validation_failure_is_explicit():
     planner = AdaptiveQueryPlanner(runner=lambda _: {"request": "bad"})
     with pytest.raises(PlannerValidationError):
         planner.plan("Forecast demand")
+
+
+def test_planner_timeout_is_one_bounded_attempt_and_is_categorized():
+    calls = 0
+
+    def timeout_runner(_):
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("bounded planner timeout")
+
+    planner = AdaptiveQueryPlanner(runner=timeout_runner)
+    with pytest.raises(httpx.ReadTimeout):
+        planner.plan("Forecast demand")
+    assert calls == 1
+    assert planner.last_failure_category == "timeout"
+
+
+def test_query_plan_keeps_typed_validation_after_narrow_model_normalization():
+    plan = QueryPlan.model_validate(
+        {
+            "request": "Explain inventory risk",
+            "catalog_version": CATALOG.catalog_version,
+            "structured_requirements": [
+                {
+                    "metric_id": "inventory.days_of_supply",
+                    "dimensions": None,
+                    "filters": None,
+                }
+            ],
+            "semantic_requirements": [
+                {
+                    "query": "inventory risk rule",
+                    "retrieval_domain": "documentation",
+                    "doc_type": "formula",
+                }
+            ],
+            "dependencies": None,
+            "unavailable_requirements": None,
+        }
+    )
+    assert plan.structured_requirements[0].dimensions == []
+    assert plan.structured_requirements[0].filters == []
+    assert plan.semantic_requirements[0].retrieval_domain == "business_rule"
+    assert plan.dependencies == []
+    with pytest.raises(ValidationError):
+        QueryPlan.model_validate(
+            {
+                "request": "bad",
+                "catalog_version": CATALOG.catalog_version,
+                "structured_requirements": [
+                    {"metric_id": "inventory.days_of_supply", "filters": "not-an-array"}
+                ],
+            }
+        )
 
 
 def _plan(*requirements, semantic_requirements=None, dependencies=None):

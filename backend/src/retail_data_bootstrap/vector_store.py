@@ -1246,6 +1246,7 @@ def semantic_search(
         assert_profile_matches(profile, config)
         query_vector = provider.embed_query(query)
         query_json = _vector_json(query_vector, config.dimensions)
+        vector_distance_started = time.perf_counter()
         candidate_limit = min(max(top_k * 10, 50), 1000)
         clauses = [
             "e.embedding_profile_id = ?",
@@ -1307,6 +1308,15 @@ def semantic_search(
             "top_k": top_k,
             "result_count": len(results),
             "results": results,
+            "timing": {
+                # This covers the parameterized Azure SQL VECTOR_DISTANCE
+                # retrieval and deterministic parent-result ranking, after
+                # the local query embedding has completed.
+                "vector_distance_ms": round(
+                    (time.perf_counter() - vector_distance_started) * 1000.0,
+                    3,
+                ),
+            },
         }
     finally:
         if owned:

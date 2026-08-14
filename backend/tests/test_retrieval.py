@@ -90,6 +90,16 @@ def test_route_override_is_safe_and_filters_intersect_strictly():
     )
     assert forced_vector.selected_route == SelectedRoute.VECTOR
     assert "EXPLICIT_ROUTE_OVERRIDE" in forced_vector.reason_codes
+    adaptive_vector = router.decide(
+        RetrievalRequest(
+            query="forecast accuracy methodology and backtested MAPE",
+            route_mode="vector",
+            retrieval_domain="business_rule",
+            doc_type="formula",
+        )
+    )
+    assert adaptive_vector.selected_route == SelectedRoute.VECTOR
+    assert "EXPLICIT_ROUTE_OVERRIDE" in adaptive_vector.reason_codes
     with pytest.raises(ValueError, match="conflicts"):
         router.decide(
             RetrievalRequest(
@@ -332,6 +342,7 @@ def test_embedding_provider_is_reused_and_active_profile_is_not_caller_selectabl
         semantic_search_fn=fake_semantic_search,
     )
     principal = PrincipalContext("test", True)
+    service.warm_embedding_provider()
     for _ in range(2):
         response = service.retrieve(
             RetrievalRequest(query="What does Days of Supply mean?"),

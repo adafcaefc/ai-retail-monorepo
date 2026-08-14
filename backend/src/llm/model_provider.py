@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 
 import httpx
-from openai import AsyncOpenAI
+from openai import AsyncAzureOpenAI
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
@@ -59,11 +59,6 @@ if not deployment_name:
 
 normalized_endpoint = azure_endpoint.rstrip("/")
 
-azure_chat_base_url = (
-    f"{normalized_endpoint}/openai/deployments/{deployment_name}"
-)
-
-
 _http_client = httpx.AsyncClient(
     event_hooks={
         "response": [_on_response],
@@ -71,15 +66,11 @@ _http_client = httpx.AsyncClient(
 )
 
 
-client = AsyncOpenAI(
-    api_key="unused",
-    base_url=azure_chat_base_url,
-    default_headers={
-        "api-key": api_key,
-    },
-    default_query={
-        "api-version": api_version,
-    },
+client = AsyncAzureOpenAI(
+    azure_endpoint=normalized_endpoint,
+    azure_deployment=deployment_name,
+    api_version=api_version,
+    api_key=api_key,
     http_client=_http_client,
 )
 
@@ -99,3 +90,37 @@ model = OpenAIChatModel(
         openai_client=client,
     ),
 )
+
+
+def create_planner_model(*, timeout_seconds: float) -> OpenAIChatModel:
+    """Build the cached Azure model used only by adaptive planning.
+
+    The normal shared model retains its application-wide retry/timeout policy
+    for existing agents.  The planner needs an independently bounded client so
+    a single interactive request cannot inherit long retries from unrelated
+    chatbot workloads.  The returned model is cached by AdaptiveQueryPlanner.
+    """
+    timeout = httpx.Timeout(
+        timeout_seconds,
+        connect=min(5.0, timeout_seconds),
+        read=timeout_seconds,
+        write=timeout_seconds,
+        pool=timeout_seconds,
+    )
+    planner_http_client = httpx.AsyncClient(
+        timeout=timeout,
+        event_hooks={"response": [_on_response]},
+    )
+    planner_client = AsyncAzureOpenAI(
+        azure_endpoint=normalized_endpoint,
+        azure_deployment=deployment_name,
+        api_version=api_version,
+        api_key=api_key,
+        http_client=planner_http_client,
+        timeout=timeout,
+        max_retries=0,
+    )
+    return OpenAIChatModel(
+        model_name=deployment_name,
+        provider=OpenAIProvider(openai_client=planner_client),
+    )
