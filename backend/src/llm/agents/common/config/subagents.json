@@ -23,7 +23,8 @@
             "cashflow",
             "retail_demand",
             "retail_inventory",
-            "retail_replenishment"
+            "retail_replenishment",
+            "retail_promotion"
           ],
           "description": "Parent domain agent for this action."
         },
@@ -189,7 +190,8 @@
             "cashflow",
             "retail_demand",
             "retail_inventory",
-            "retail_replenishment"
+            "retail_replenishment",
+            "retail_promotion"
           ],
           "description": "Parent domain agent."
         },
@@ -276,7 +278,8 @@
             "cashflow",
             "retail_demand",
             "retail_inventory",
-            "retail_replenishment"
+            "retail_replenishment",
+            "retail_promotion"
           ],
           "description": "Parent domain agent."
         },

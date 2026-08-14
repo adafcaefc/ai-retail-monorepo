@@ -47,6 +47,12 @@ AGENTS = [
         "src.llm.agents.retail.replenishment.dashboard",
         [("lines", "sku_id"), ("stores", "store_id"), ("vendors", "vendor")],
     ),
+    (
+        "promotion_effectiveness",
+        "src.llm.agents.retail.promotion_effectiveness.dashboard",
+        [("items", "sku_id"), ("campaigns", "promo_id"),
+         ("reference_by_vertical", "legal_entity_id")],
+    ),
 ]
 
 # Metadata that describes the load rather than the data, and one block the

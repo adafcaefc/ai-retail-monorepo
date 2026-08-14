@@ -15,6 +15,7 @@ RETAIL_MODULES = (
     ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand..."),
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory..."),
     ("retail.replenishment", "Replenishment", "Ask Replenishment..."),
+    ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
 )
 
 # Three specialists per board. Fewer than Finance's four, so the concerns the
@@ -24,7 +25,7 @@ RETAIL_MODULES = (
 PASSES_PER_MODULE = 3
 
 
-def test_retail_folder_contains_three_navigation_modules() -> None:
+def test_retail_folder_contains_navigation_modules() -> None:
     retail = [item for item in ENABLED_MODULES if item.startswith("retail.")]
 
     assert retail == [item[0] for item in RETAIL_MODULES]
@@ -76,7 +77,7 @@ def test_each_retail_module_has_three_monitoring_specialists() -> None:
         for agent_id, _, _ in RETAIL_MODULES
         for monitoring_pass in AGENT_REGISTRY[agent_id].monitoring_passes
     ]
-    assert len(names) == len(set(names)) == 9
+    assert len(names) == len(set(names)) == len(RETAIL_MODULES) * PASSES_PER_MODULE
 
 
 def test_each_retail_module_resolves_its_data_plumbing() -> None:
@@ -181,7 +182,7 @@ def test_retail_dashboards_declare_the_filters_they_apply() -> None:
         )
 
 
-def test_agents_api_exposes_three_retail_destinations() -> None:
+def test_agents_api_exposes_retail_destinations() -> None:
     payload = asyncio.run(list_agents())
     retail = [item for item in payload["items"] if item["folder"] == "retail"]
 
