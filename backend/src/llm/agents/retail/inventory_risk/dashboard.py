@@ -184,15 +184,15 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    -- lets the store filter work off aggregates.
                    s.size_index, s.health_index,
                    count(*)                                        AS sku_count,
-                   count(*) FILTER (WHERE f.state = 'Stockout')    AS stockout_count,
-                   count(*) FILTER (WHERE f.state = 'Low')         AS low_count,
-                   count(*) FILTER (WHERE f.position_qty < f.rop_qty)
+                   sum(CASE WHEN f.state = 'Stockout' THEN 1 ELSE 0 END)    AS stockout_count,
+                   sum(CASE WHEN f.state = 'Low' THEN 1 ELSE 0 END)         AS low_count,
+                   sum(CASE WHEN f.position_qty < f.rop_qty THEN 1 ELSE 0 END)
                                                                    AS stockout_risk_count,
-                   count(*) FILTER (WHERE f.state = 'Healthy')     AS healthy_count,
-                   count(*) FILTER (WHERE f.state <> 'Healthy')    AS at_risk_count,
-                   count(*) FILTER (
-                       WHERE f.state NOT IN ('Healthy', 'Stockout', 'Low')
-                   )                                               AS other_at_risk_count,
+                   sum(CASE WHEN f.state = 'Healthy' THEN 1 ELSE 0 END)     AS healthy_count,
+                   sum(CASE WHEN f.state <> 'Healthy' THEN 1 ELSE 0 END)    AS at_risk_count,
+                   sum(CASE
+                       WHEN f.state NOT IN ('Healthy', 'Stockout', 'Low') THEN 1 ELSE 0
+                   END)                                               AS other_at_risk_count,
                    coalesce(sum(f.position_qty * i.price), 0)      AS inv_value,
                    coalesce(sum(
                        CASE WHEN f.state <> 'Healthy'

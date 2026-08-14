@@ -1,4 +1,10 @@
-"""Create the `chat` schema and `retail.formula`: everything the agents write to.
+"""SUPERSEDED: the backend now runs on Azure SQL exclusively (get_engine() in
+src/db/db.py builds an mssql+pyodbc connection from AZURE_SQL_CONNECTIONSTRING),
+and this script's DDL is Postgres syntax, which will fail against Azure SQL.
+The current schema definition is sql/retail/002_create_orm_schema.sql. Kept
+here only as the historical record of the Postgres-era shape.
+
+Create the `chat` schema and `retail.formula`: everything the agents write to.
 
 Run it yourself:
 

@@ -13,7 +13,10 @@ pydantic-ai-slim[openai,mcp]==1.84.1
 httpx==0.28.1
 
 # --- data ------------------------------------------------------------------
-psycopg[binary]==3.3.4
+# ODBC dialect used by src/db/db.py's SQLAlchemy engine to reach Azure SQL
+# (AZURE_SQL_CONNECTIONSTRING). Requires the "ODBC Driver 18 for SQL Server"
+# to be installed on the host.
+pyodbc==5.2.0
 SQLAlchemy==2.0.51
 # Parses and validates every agent-supplied SELECT before it reaches the
 # database (`common/tools/freeform_query.py`).

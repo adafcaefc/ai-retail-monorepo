@@ -54,13 +54,12 @@ def get_alert_action_plan(
         alerts = _rows(
             connection,
             """
-            SELECT id, name, subagent, agent, issue, date_created
+            SELECT TOP (:limit) id, name, subagent, agent, issue, date_created
             FROM chat.alerts
             WHERE :agent = ''
-               OR lower(agent) LIKE '%' || lower(:agent) || '%'
-               OR lower(subagent) LIKE '%' || lower(:agent) || '%'
+               OR lower(agent) LIKE '%' + lower(:agent) + '%'
+               OR lower(subagent) LIKE '%' + lower(:agent) + '%'
             ORDER BY date_created DESC
-            LIMIT :limit
             """,
             {"agent": agent_filter, "limit": limit},
         )
@@ -69,14 +68,14 @@ def get_alert_action_plan(
             _rows(
                 connection,
                 """
-                SELECT id, alert_id, action, agent, routes, status,
+                SELECT TOP (200) id, alert_id, action, agent, routes, status,
                        spec, impact, reason, simulation_summary, created_at
                 FROM chat.actions
-                WHERE alert_id::text = ANY(:alert_ids)
+                WHERE CAST(alert_id AS NVARCHAR(64)) IN :alert_ids
                 ORDER BY created_at
-                LIMIT 200
                 """,
                 {"alert_ids": alert_ids},
+                expand=("alert_ids",),
             )
             if alert_ids
             else []
@@ -84,12 +83,11 @@ def get_alert_action_plan(
         unlinked_actions = _rows(
             connection,
             """
-            SELECT id, action, agent, routes, status, spec, impact, reason,
+            SELECT TOP (20) id, action, agent, routes, status, spec, impact, reason,
                    simulation_summary, created_at
             FROM chat.actions
             WHERE alert_id IS NULL
             ORDER BY created_at DESC
-            LIMIT 20
             """,
             {},
         )

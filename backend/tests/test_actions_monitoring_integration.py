@@ -1,8 +1,9 @@
-"""populate_alerts against a real Postgres: locking, run tracking, and the
-switch from destroy-and-replace to purely additive.
+"""populate_alerts against a real Azure SQL database: locking, run tracking,
+and the switch from destroy-and-replace to purely additive.
 
-Opt-in: skipped unless DATABASE_URL is set, since this hits a real database
-and requires `scripts/migrate_monitoring_runs.py` to have been applied.
+Opt-in: skipped unless AZURE_SQL_CONNECTIONSTRING is set, since this hits a
+real database and requires `scripts/migrate_monitoring_runs.py` to have been
+applied.
 `chivon.run_async` is stubbed so no real LLM call happens -- these tests are
 about persistence and locking, not model behavior. Cleans up precisely by id
 (repository.delete_alert/delete_action), never via clear_alerts: the shared
@@ -28,8 +29,8 @@ from sqlalchemy import text
 from src.common.env import config  # noqa: E402
 
 pytestmark = pytest.mark.skipif(
-    not config.DATABASE_URL,
-    reason="requires a real DATABASE_URL",
+    not config.AZURE_SQL_CONNECTIONSTRING,
+    reason="requires a real AZURE_SQL_CONNECTIONSTRING",
 )
 
 from src.actions import repository, service  # noqa: E402
@@ -236,11 +237,10 @@ def test_forced_failure_marks_run_failed_and_releases_lock(
             connection.execute(
                 text(
                     """
-                    SELECT run_status, error_message
+                    SELECT TOP (1) run_status, error_message
                     FROM chat.monitoring_runs
                     WHERE agent = :agent
                     ORDER BY id DESC
-                    LIMIT 1
                     """
                 ),
                 {"agent": AGENT},

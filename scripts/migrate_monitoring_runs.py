@@ -1,4 +1,10 @@
-"""Add `chat.monitoring_runs` and a `run_id` column on alerts/actions.
+"""SUPERSEDED: the backend now runs on Azure SQL exclusively (get_engine() in
+src/db/db.py builds an mssql+pyodbc connection from AZURE_SQL_CONNECTIONSTRING),
+and this script's DDL is Postgres syntax, which will fail against Azure SQL.
+`chat.monitoring_runs` and the `run_id` columns are already included in
+sql/retail/002_create_orm_schema.sql. Kept here only as the historical record.
+
+Add `chat.monitoring_runs` and a `run_id` column on alerts/actions.
 
 Run it yourself:
 

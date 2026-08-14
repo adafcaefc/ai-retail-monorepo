@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.orm import Session
 
 ACTION_STATUS_PLANNED = "planned"
@@ -19,6 +19,9 @@ ALLOWED_ACTION_STATUSES = (
 )
 
 
+_UUID_COLUMNS = frozenset({"id", "alert_id"})
+
+
 def _row(row: Any) -> dict[str, Any]:
     data = dict(row)
     for key, value in list(data.items()):
@@ -26,8 +29,21 @@ def _row(row: Any) -> dict[str, Any]:
             data[key] = value.isoformat()
         elif hasattr(value, "hex") and value.__class__.__name__ == "UUID":
             data[key] = str(value)
-    if "routes" in data and data["routes"] is None:
-        data["routes"] = []
+        elif key in _UUID_COLUMNS and isinstance(value, str):
+            # pyodbc returns UNIQUEIDENTIFIER as an uppercase str, not a
+            # uuid.UUID object, unlike psycopg. Lowercase it to match the
+            # ids this module generates with uuid4() so callers can compare
+            # a generated id against a stored one.
+            data[key] = value.lower()
+    if "routes" in data:
+        routes = data["routes"]
+        if routes is None:
+            data["routes"] = []
+        elif isinstance(routes, str):
+            try:
+                data["routes"] = json.loads(routes)
+            except json.JSONDecodeError:
+                data["routes"] = []
     return data
 
 
@@ -69,8 +85,16 @@ def _agent_filter(
         filters.append("agent = :agent")
         params["agent"] = keys[0]
     else:
-        filters.append("agent = ANY(:agents)")
+        filters.append("agent IN :agents")
         params["agents"] = keys
+
+
+def _execute(session: Session, sql: str, params: dict[str, Any]):
+    """Run `sql` against `session`, expanding an `agents` list param into IN (...)."""
+    statement = text(sql)
+    if isinstance(params.get("agents"), list):
+        statement = statement.bindparams(bindparam("agents", expanding=True))
+    return session.execute(statement, params)
 
 
 def get_alerts(
@@ -104,11 +128,11 @@ def get_alerts(
     """
     if filters:
         sql += " WHERE " + " AND ".join(filters)
-    sql += " ORDER BY date_created DESC NULLS LAST, id DESC"
+    sql += " ORDER BY CASE WHEN date_created IS NULL THEN 1 ELSE 0 END, date_created DESC, id DESC"
 
     return [
         _row(row)
-        for row in session.execute(text(sql), params).mappings().all()
+        for row in _execute(session, sql, params).mappings().all()
     ]
 
 
@@ -172,7 +196,7 @@ def save_alert(
                 :subagent,
                 :agent,
                 :issue,
-                NOW(),
+                SYSUTCDATETIME(),
                 :run_id
             )
             """
@@ -236,7 +260,7 @@ def save_alerts(
                 :subagent,
                 :agent,
                 :issue,
-                NOW(),
+                SYSUTCDATETIME(),
                 :run_id
             )
             """
@@ -296,10 +320,10 @@ def get_actions(
     """
     if filters:
         sql += " WHERE " + " AND ".join(filters)
-    sql += " ORDER BY created_at DESC NULLS LAST, id DESC"
+    sql += " ORDER BY CASE WHEN created_at IS NULL THEN 1 ELSE 0 END, created_at DESC, id DESC"
 
     rows = []
-    for row in session.execute(text(sql), params).mappings().all():
+    for row in _execute(session, sql, params).mappings().all():
         item = _row(row)
         summary = item.get("simulation_summary")
         if isinstance(summary, str):
@@ -391,7 +415,7 @@ def save_action(
                 :status,
                 :spec,
                 :impact,
-                NOW(),
+                SYSUTCDATETIME(),
                 :run_id
             )
             """
@@ -400,7 +424,7 @@ def save_action(
             "id": action_id,
             "action": action,
             "agent": agent,
-            "routes": routes,
+            "routes": json.dumps(routes),
             "alert_id": alert_id,
             "status": _normalize_status(status),
             "spec": spec,
@@ -433,7 +457,7 @@ def save_actions(
             "id": str(uuid4()),
             "action": item["action"],
             "agent": item["agent"],
-            "routes": item.get("routes") or [],
+            "routes": json.dumps(item.get("routes") or []),
             "alert_id": item.get("alert_id"),
             "status": _normalize_status(
                 item.get("status", ACTION_STATUS_PLANNED)
@@ -475,7 +499,7 @@ def save_actions(
                 :spec,
                 :impact,
                 :reason,
-                NOW(),
+                SYSUTCDATETIME(),
                 :run_id
             )
             """
@@ -521,7 +545,7 @@ def update_action_simulation_summary(
         text(
             """
             UPDATE chat.actions
-            SET simulation_summary = CAST(:simulation_summary AS jsonb)
+            SET simulation_summary = :simulation_summary
             WHERE id = :action_id
             """
         ),
@@ -570,21 +594,15 @@ def clear_alerts(
     if agent:
         params["agents"] = [agent] if isinstance(agent, str) else list(agent)
         action_sql += """
-            WHERE agent = ANY(:agents)
+            WHERE agent IN :agents
                OR alert_id IN (
-                    SELECT id FROM chat.alerts WHERE agent = ANY(:agents)
+                    SELECT id FROM chat.alerts WHERE agent IN :agents
                )
         """
-        alert_sql += " WHERE agent = ANY(:agents)"
+        alert_sql += " WHERE agent IN :agents"
 
-    actions_deleted = session.execute(
-        text(action_sql),
-        params,
-    ).rowcount
-    alerts_deleted = session.execute(
-        text(alert_sql),
-        params,
-    ).rowcount
+    actions_deleted = _execute(session, action_sql, params).rowcount
+    alerts_deleted = _execute(session, alert_sql, params).rowcount
     session.commit()
     return {
         "alerts_deleted": int(alerts_deleted or 0),
@@ -594,27 +612,38 @@ def clear_alerts(
 
 def try_advisory_lock(connection: Any, key: str) -> bool:
     """
-    Attempt a session-level Postgres advisory lock keyed by `key`, non-blocking.
+    Attempt a session-scoped Azure SQL application lock keyed by `key`, non-blocking.
 
-    Session-level, not `pg_advisory_xact_lock`: it must outlive the several
+    Session-scoped, not transaction-scoped: it must outlive the several
     commits `populate_alerts` makes while it runs, and it is released
     explicitly by `advisory_unlock`, not by a transaction boundary. The lock
-    is tied to the underlying Postgres backend, so `connection` must be the
-    same physical connection for the whole lock/unlock pair — see
-    `service.populate_alerts` for why that rules out an ORM `Session`.
+    is tied to the underlying connection (`sp_getapplock` with
+    `@LockOwner='Session'`), so `connection` must be the same physical
+    connection for the whole lock/unlock pair — see `service.populate_alerts`
+    for why that rules out an ORM `Session`.
     """
-    return bool(
-        connection.execute(
-            text("SELECT pg_try_advisory_lock(hashtext(:key)::bigint)"),
-            {"key": key},
-        ).scalar()
-    )
+    result = connection.execute(
+        text(
+            """
+            DECLARE @result INT;
+            EXEC @result = sp_getapplock
+                @Resource = :key,
+                @LockMode = 'Exclusive',
+                @LockOwner = 'Session',
+                @LockTimeout = 0;
+            SELECT @result;
+            """
+        ),
+        {"key": key},
+    ).scalar()
+    # sp_getapplock returns >= 0 on success, negative on failure/timeout.
+    return result is not None and result >= 0
 
 
 def advisory_unlock(connection: Any, key: str) -> None:
     """Release the lock taken by `try_advisory_lock` on the same connection."""
     connection.execute(
-        text("SELECT pg_advisory_unlock(hashtext(:key)::bigint)"),
+        text("EXEC sp_releaseapplock @Resource = :key, @LockOwner = 'Session';"),
         {"key": key},
     )
 
@@ -630,8 +659,8 @@ def create_monitoring_run(connection: Any, *, agent: str) -> int:
         text(
             """
             INSERT INTO chat.monitoring_runs (agent, run_status, started_at)
-            VALUES (:agent, 'STARTED', NOW())
-            RETURNING id
+            OUTPUT INSERTED.id
+            VALUES (:agent, 'STARTED', SYSUTCDATETIME())
             """
         ),
         {"agent": agent},
@@ -653,7 +682,7 @@ def complete_monitoring_run(
             """
             UPDATE chat.monitoring_runs
             SET run_status = 'COMPLETED',
-                completed_at = NOW(),
+                completed_at = SYSUTCDATETIME(),
                 monitoring_passes = :monitoring_passes,
                 alerts_created = :alerts_created,
                 actions_created = :actions_created
@@ -676,7 +705,7 @@ def fail_monitoring_run(connection: Any, run_id: int, *, error_message: str) -> 
             """
             UPDATE chat.monitoring_runs
             SET run_status = 'FAILED',
-                completed_at = NOW(),
+                completed_at = SYSUTCDATETIME(),
                 error_message = :error_message
             WHERE id = :run_id
             """

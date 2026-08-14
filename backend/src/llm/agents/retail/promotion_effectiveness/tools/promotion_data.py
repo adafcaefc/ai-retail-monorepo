@@ -105,7 +105,7 @@ def get_promotion_effectiveness_snapshot(
                    k.vertical_label,
                    k.active_promo_skus,
                    k.uplift_pct,
-                   round(k.incremental_margin)   AS incremental_margin,
+                   round(k.incremental_margin, 0)   AS incremental_margin,
                    k.roi_x,
                    k.cannib_pct,
                    k.funding_pct
@@ -123,17 +123,17 @@ def get_promotion_effectiveness_snapshot(
         by_category = snapshot._rows(
             connection,
             f"""
-            SELECT i.category_id,
+            SELECT TOP (:top_n)
+                   i.category_id,
                    i.category_name,
                    count(*)                    AS promo_skus,
-                   round(sum(c.margin_rp))     AS incremental_margin,
-                   round(sum(c.funding_rp))    AS supplier_funding
+                   round(sum(c.margin_rp), 0)     AS incremental_margin,
+                   round(sum(c.funding_rp), 0)    AS supplier_funding
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE i.is_promo_eligible{item_clause}
+            WHERE i.is_promo_eligible = 1{item_clause}
             GROUP BY i.category_id, i.category_name
             ORDER BY sum(c.margin_rp) DESC
-            LIMIT :top_n
             """,
             {**item_params, "top_n": snapshot.TOP_N},
         )
@@ -141,20 +141,20 @@ def get_promotion_effectiveness_snapshot(
         largest_margin = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
                    i.brand,
-                   round(c.margin_rp)   AS incremental_margin,
-                   round(c.funding_rp)  AS supplier_funding,
+                   round(c.margin_rp, 0)   AS incremental_margin,
+                   round(c.funding_rp, 0)  AS supplier_funding,
                    i.cannibalisation_pct,
                    i.margin_pct
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE i.is_promo_eligible AND c.margin_rp > 0{item_clause}
+            WHERE i.is_promo_eligible = 1 AND c.margin_rp > 0{item_clause}
             ORDER BY c.margin_rp DESC
-            LIMIT :top_n
             """,
             {**item_params, "top_n": snapshot.TOP_N},
         )
@@ -184,7 +184,8 @@ def get_promotion_effectiveness_snapshot(
             FROM {PROMO_DETAIL} p
             JOIN {VERTICAL} v ON v.dashboard_label = p.vertical_label
             WHERE 1 = 1{camp_clause}
-            ORDER BY p.expected_uplift_pct DESC NULLS LAST, p.pre_buy_uplift_units DESC
+            ORDER BY CASE WHEN p.expected_uplift_pct IS NULL THEN 1 ELSE 0 END,
+                     p.expected_uplift_pct DESC, p.pre_buy_uplift_units DESC
             """,
             camp_params,
         )

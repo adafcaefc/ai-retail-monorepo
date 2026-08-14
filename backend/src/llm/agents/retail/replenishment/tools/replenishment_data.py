@@ -74,14 +74,14 @@ def get_replenishment_snapshot(
             f"""
             SELECT i.vertical_id,
                    v.dashboard_label,
-                   count(*) FILTER (WHERE p.is_reorder)          AS skus_to_reorder,
-                   round(sum(p.order_qty_sales) FILTER (WHERE p.is_reorder))
+                   sum(CASE WHEN p.is_reorder = 1 THEN 1 ELSE 0 END)          AS skus_to_reorder,
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.order_qty_sales ELSE 0 END), 0)
                                                                  AS order_units_sales,
-                   round(sum(p.order_qty_buy) FILTER (WHERE p.is_reorder))
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.order_qty_buy ELSE 0 END), 0)
                                                                  AS order_units_buy,
-                   round(sum(p.amount) FILTER (WHERE p.is_reorder))
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END), 0)
                                                                  AS order_value,
-                   round(sum(p.saving_vs_designated) FILTER (WHERE p.is_reorder))
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.saving_vs_designated ELSE 0 END), 0)
                                                                  AS saving_available
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
@@ -96,27 +96,27 @@ def get_replenishment_snapshot(
         largest = snapshot._rows(
             connection,
             f"""
-            SELECT p.item_key,
+            SELECT TOP (:top_n)
+                   p.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
-                   round(p.qty_on_hand)          AS on_hand,
-                   round(p.open_po_qty)          AS open_po,
-                   round(p.rop_qty)              AS rop,
-                   round(p.max_qty)              AS max_level,
-                   round(p.order_qty_sales)      AS order_qty_sales,
-                   round(p.order_qty_buy)        AS order_qty_buy,
+                   round(p.qty_on_hand, 0)          AS on_hand,
+                   round(p.open_po_qty, 0)          AS open_po,
+                   round(p.rop_qty, 0)              AS rop,
+                   round(p.max_qty, 0)              AS max_level,
+                   round(p.order_qty_sales, 0)      AS order_qty_sales,
+                   round(p.order_qty_buy, 0)        AS order_qty_buy,
                    p.buy_uom,
                    i.pack_factor,
-                   round(p.amount)               AS amount,
+                   round(p.amount, 0)               AS amount,
                    p.designated_vendor,
                    p.best_price_vendor,
-                   round(p.saving_vs_designated) AS saving_vs_designated
+                   round(p.saving_vs_designated, 0) AS saving_vs_designated
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
-            WHERE p.is_reorder{clause}
+            WHERE p.is_reorder = 1{clause}
             ORDER BY p.amount DESC
-            LIMIT :top_n
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
@@ -124,20 +124,20 @@ def get_replenishment_snapshot(
         savings = snapshot._rows(
             connection,
             f"""
-            SELECT p.item_key,
+            SELECT TOP (:top_n)
+                   p.item_key,
                    i.name,
                    i.vertical_id,
                    p.designated_vendor,
                    round(p.unit_price_ta, 2)     AS designated_unit_price,
                    p.best_price_vendor,
                    round(p.best_price, 2)        AS best_unit_price,
-                   round(p.amount)               AS amount,
-                   round(p.saving_vs_designated) AS saving_vs_designated
+                   round(p.amount, 0)               AS amount,
+                   round(p.saving_vs_designated, 0) AS saving_vs_designated
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
-            WHERE p.is_reorder AND p.saving_vs_designated > 0{clause}
+            WHERE p.is_reorder = 1 AND p.saving_vs_designated > 0{clause}
             ORDER BY p.saving_vs_designated DESC
-            LIMIT :top_n
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
@@ -155,15 +155,16 @@ def get_replenishment_snapshot(
                    d.defect_pct,
                    d.lead_adherence_pct,
                    d.lead_time_days,
-                   count(*) FILTER (WHERE p.is_reorder)  AS reorder_lines,
-                   round(sum(p.amount) FILTER (WHERE p.is_reorder)) AS order_value
+                   sum(CASE WHEN p.is_reorder = 1 THEN 1 ELSE 0 END)  AS reorder_lines,
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END), 0) AS order_value
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
             JOIN {VENDOR} d ON d.vendor_account = p.designated_vendor
             WHERE 1 = 1{clause}
             GROUP BY p.designated_vendor, d.vendor_short, d.otif_pct, d.fill_pct,
                      d.defect_pct, d.lead_adherence_pct, d.lead_time_days
-            ORDER BY sum(p.amount) FILTER (WHERE p.is_reorder) DESC NULLS LAST
+            ORDER BY CASE WHEN sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END) IS NULL THEN 1 ELSE 0 END,
+                     sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END) DESC
             """,
             params,
         )
@@ -172,15 +173,16 @@ def get_replenishment_snapshot(
             connection,
             f"""
             SELECT p.buy_uom,
-                   count(*) FILTER (WHERE p.is_reorder) AS lines,
-                   round(sum(p.order_qty_buy) FILTER (WHERE p.is_reorder))
+                   sum(CASE WHEN p.is_reorder = 1 THEN 1 ELSE 0 END) AS lines,
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.order_qty_buy ELSE 0 END), 0)
                                                         AS order_units_buy,
-                   round(sum(p.amount) FILTER (WHERE p.is_reorder)) AS order_value
+                   round(sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END), 0) AS order_value
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
             WHERE 1 = 1{clause}
             GROUP BY p.buy_uom
-            ORDER BY sum(p.amount) FILTER (WHERE p.is_reorder) DESC NULLS LAST
+            ORDER BY CASE WHEN sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END) IS NULL THEN 1 ELSE 0 END,
+                     sum(CASE WHEN p.is_reorder = 1 THEN p.amount ELSE 0 END) DESC
             """,
             params,
         )
@@ -194,11 +196,15 @@ def get_replenishment_snapshot(
                      ELSE 'tier_3'
                    END                    AS tier,
                    count(*)               AS lines,
-                   round(sum(p.amount))   AS order_value
+                   round(sum(p.amount), 0)   AS order_value
             FROM {PROPOSAL} p
             JOIN {ITEM} i ON i.item_id = p.item_key
-            WHERE p.is_reorder{clause}
-            GROUP BY 1
+            WHERE p.is_reorder = 1{clause}
+            GROUP BY CASE
+                     WHEN p.amount <= :tier1 THEN 'tier_1'
+                     WHEN p.amount <= :tier2 THEN 'tier_2'
+                     ELSE 'tier_3'
+                   END
             ORDER BY 1
             """,
             {**params, "tier1": TIER_1_LIMIT, "tier2": TIER_2_LIMIT},

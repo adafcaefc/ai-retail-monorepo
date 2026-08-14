@@ -65,18 +65,18 @@ def get_demand_forecast_snapshot(
             SELECT i.vertical_id,
                    v.dashboard_label,
                    count(*)                                   AS skus,
-                   round(sum(c.ads * :dow_sum)::numeric)      AS forecast_7d,
-                   round(sum(c.ads)::numeric, 1)              AS ads_total,
+                   round(sum(c.ads * :dow_sum), 0)      AS forecast_7d,
+                   round(sum(c.ads), 1)              AS ads_total,
                    round(avg(i.seasonality_index), 3)         AS avg_seasonality,
                    round(avg(i.growth_index), 3)              AS avg_growth,
-                   count(*) FILTER (WHERE c.state IN ('Stockout', 'Low'))
+                   sum(CASE WHEN c.state IN ('Stockout', 'Low') THEN 1 ELSE 0 END)
                                                               AS stockout_risk_skus,
-                   count(*) FILTER (WHERE i.is_viral)         AS viral_skus,
-                   count(*) FILTER (WHERE i.growth_index > 1) AS growing_skus,
+                   sum(CASE WHEN i.is_viral = 1 THEN 1 ELSE 0 END)         AS viral_skus,
+                   sum(CASE WHEN i.growth_index > 1 THEN 1 ELSE 0 END) AS growing_skus,
                    -- Counted here, not from the length of the ranked list
-                   -- below: that one is LIMITed, so deriving a total from it
-                   -- would report the page size as the population.
-                   count(*) FILTER (WHERE c.ads * :dow_sum > c.position_qty)
+                   -- below: that one is TOP-limited, so deriving a total from
+                   -- it would report the page size as the population.
+                   sum(CASE WHEN c.ads * :dow_sum > c.position_qty THEN 1 ELSE 0 END)
                                                               AS forecast_exceeds_position_skus
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
@@ -94,21 +94,21 @@ def get_demand_forecast_snapshot(
         outrunning = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
-                   round((c.ads * :dow_sum)::numeric)      AS forecast_7d,
-                   round(c.position_qty)                   AS position,
-                   round((c.ads * :dow_sum - c.position_qty)::numeric)
+                   round(c.ads * :dow_sum, 0)      AS forecast_7d,
+                   round(c.position_qty, 0)                   AS position,
+                   round(c.ads * :dow_sum - c.position_qty, 0)
                                                            AS shortfall_units,
-                   round(c.days_cover::numeric, 2)         AS days_cover,
+                   round(c.days_cover, 2)         AS days_cover,
                    c.state
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE c.ads * :dow_sum > c.position_qty{clause}
             ORDER BY (c.ads * :dow_sum - c.position_qty) DESC
-            LIMIT :top_n
             """,
             {**params, "dow_sum": DOW_SUM, "top_n": snapshot.TOP_N},
         )
@@ -116,20 +116,20 @@ def get_demand_forecast_snapshot(
         trending = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
                    i.is_viral,
                    round(i.growth_index, 3)                AS growth_index,
                    round(i.seasonality_index, 3)           AS seasonality_index,
-                   round((c.ads * :dow_sum)::numeric)      AS forecast_7d,
-                   round(c.days_cover::numeric, 2)         AS days_cover,
+                   round(c.ads * :dow_sum, 0)      AS forecast_7d,
+                   round(c.days_cover, 2)         AS days_cover,
                    c.state
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE (i.is_viral OR i.growth_index > 1){clause}
+            WHERE (i.is_viral = 1 OR i.growth_index > 1){clause}
             ORDER BY i.is_viral DESC, i.growth_index DESC
-            LIMIT :top_n
             """,
             {**params, "dow_sum": DOW_SUM, "top_n": snapshot.TOP_N},
         )
@@ -137,18 +137,18 @@ def get_demand_forecast_snapshot(
         lowest_cover = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
-                   round(c.days_cover::numeric, 2)    AS days_cover,
-                   round((c.ads * :dow_sum)::numeric) AS forecast_7d,
-                   round(c.position_qty)              AS position,
+                   round(c.days_cover, 2)    AS days_cover,
+                   round(c.ads * :dow_sum, 0) AS forecast_7d,
+                   round(c.position_qty, 0)              AS position,
                    c.state
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE c.ads > 0{clause}
             ORDER BY c.days_cover ASC
-            LIMIT :top_n
             """,
             {**params, "dow_sum": DOW_SUM, "top_n": snapshot.TOP_N},
         )

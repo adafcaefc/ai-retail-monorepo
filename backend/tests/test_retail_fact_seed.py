@@ -292,9 +292,12 @@ class TestReconciliation:
             distinct, total = c.execute(
                 text(
                     """
-                    SELECT count(DISTINCT (item_key, store_key, cal_date)),
-                           count(*)
-                    FROM retail.fact_inventory_daily
+                    SELECT
+                        (SELECT count(*) FROM (
+                            SELECT DISTINCT item_key, store_key, cal_date
+                            FROM retail.fact_inventory_daily
+                        ) AS d),
+                        (SELECT count(*) FROM retail.fact_inventory_daily)
                     """
                 )
             ).one()

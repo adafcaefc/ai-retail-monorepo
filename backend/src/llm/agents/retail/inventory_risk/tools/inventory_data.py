@@ -60,10 +60,10 @@ def get_inventory_risk_snapshot(
             f"""
             SELECT c.state,
                    count(*)                       AS skus,
-                   round(sum(c.at_risk_value))    AS at_risk_value,
-                   round(sum(c.inventory_value))  AS inventory_value,
-                   round(avg(c.days_cover)::numeric, 2) AS avg_days_cover,
-                   round(sum(c.expiry_units)::numeric)  AS expiry_units
+                   round(sum(c.at_risk_value), 0)    AS at_risk_value,
+                   round(sum(c.inventory_value), 0)  AS inventory_value,
+                   round(avg(c.days_cover), 2) AS avg_days_cover,
+                   round(sum(c.expiry_units), 0)  AS expiry_units
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE 1 = 1{clause}
@@ -79,15 +79,15 @@ def get_inventory_risk_snapshot(
             SELECT i.vertical_id,
                    v.dashboard_label,
                    count(*)                      AS skus,
-                   count(*) FILTER (WHERE c.state IN ('Stockout', 'Low'))
+                   sum(CASE WHEN c.state IN ('Stockout', 'Low') THEN 1 ELSE 0 END)
                                                  AS stockout_risk_skus,
-                   count(*) FILTER (WHERE c.state = 'Overstock')
+                   sum(CASE WHEN c.state = 'Overstock' THEN 1 ELSE 0 END)
                                                  AS overstock_skus,
-                   count(*) FILTER (WHERE c.state = 'Slow-mover')
+                   sum(CASE WHEN c.state = 'Slow-mover' THEN 1 ELSE 0 END)
                                                  AS slow_mover_skus,
-                   round(sum(c.inventory_value)) AS inventory_value,
-                   round(sum(c.at_risk_value))   AS at_risk_value,
-                   round(avg(c.days_cover)::numeric, 2) AS avg_days_cover
+                   round(sum(c.inventory_value), 0) AS inventory_value,
+                   round(sum(c.at_risk_value), 0)   AS at_risk_value,
+                   round(avg(c.days_cover), 2) AS avg_days_cover
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             JOIN {warehouse.SCHEMA}.dim_vertical v ON v.vertical_id = i.vertical_id
@@ -101,24 +101,24 @@ def get_inventory_risk_snapshot(
         worst = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
                    i.brand,
                    c.state,
-                   round(c.position_qty)               AS position,
-                   round(c.rop_qty)                    AS rop,
-                   round(c.days_cover::numeric, 2)     AS days_cover,
-                   round(c.at_risk_value)              AS at_risk_value,
-                   round(c.inventory_value)            AS inventory_value,
+                   round(c.position_qty, 0)               AS position,
+                   round(c.rop_qty, 0)                    AS rop,
+                   round(c.days_cover, 2)     AS days_cover,
+                   round(c.at_risk_value, 0)              AS at_risk_value,
+                   round(c.inventory_value, 0)            AS inventory_value,
                    i.is_perishable,
                    i.shelf_life_days
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE c.at_risk_value > 0{clause}
             ORDER BY c.at_risk_value DESC
-            LIMIT :top_n
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
@@ -126,18 +126,18 @@ def get_inventory_risk_snapshot(
         expiring = snapshot._rows(
             connection,
             f"""
-            SELECT c.item_key,
+            SELECT TOP (:top_n)
+                   c.item_key,
                    i.name,
                    i.vertical_id,
                    i.shelf_life_days,
-                   round(c.days_cover::numeric, 2)  AS days_cover,
-                   round(c.expiry_units::numeric)   AS expiry_units,
-                   round(c.at_risk_value)           AS at_risk_value
+                   round(c.days_cover, 2)  AS days_cover,
+                   round(c.expiry_units, 0)   AS expiry_units,
+                   round(c.at_risk_value, 0)           AS at_risk_value
             FROM {CHAIN} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE c.expiry_units > 0{clause}
             ORDER BY c.expiry_units DESC
-            LIMIT :top_n
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
@@ -152,19 +152,19 @@ def get_inventory_risk_snapshot(
         stores = snapshot._rows(
             connection,
             f"""
-            SELECT f.store_key,
+            SELECT TOP (:top_n)
+                   f.store_key,
                    s.name,
                    s.vertical_id,
                    s.cluster,
-                   count(*) FILTER (WHERE f.state <> 'Healthy') AS at_risk_skus,
-                   count(*) FILTER (WHERE f.is_stockout)        AS stockout_skus
+                   sum(CASE WHEN f.state <> 'Healthy' THEN 1 ELSE 0 END) AS at_risk_skus,
+                   sum(CASE WHEN f.is_stockout = 1 THEN 1 ELSE 0 END)        AS stockout_skus
             FROM {PER_STORE} f
             JOIN {ITEM} i ON i.item_id = f.item_key
             JOIN {warehouse.SCHEMA}.dim_store s ON s.store_id = f.store_key
             WHERE 1 = 1{store_clause}
             GROUP BY f.store_key, s.name, s.vertical_id, s.cluster
-            ORDER BY count(*) FILTER (WHERE f.state <> 'Healthy') DESC
-            LIMIT :top_n
+            ORDER BY sum(CASE WHEN f.state <> 'Healthy' THEN 1 ELSE 0 END) DESC
             """,
             {**store_params, "top_n": snapshot.TOP_N},
         )

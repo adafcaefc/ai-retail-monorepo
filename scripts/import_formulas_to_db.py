@@ -66,22 +66,24 @@ EXPECTED_SPLIT: dict[str, int] = {
 }
 
 UPSERT = """
-INSERT INTO retail.formula
+MERGE retail.formula WITH (HOLDLOCK) AS target
+USING (SELECT :id AS id) AS source
+ON target.id = source.id
+WHEN MATCHED THEN UPDATE SET
+    number      = :number,
+    name        = :name,
+    logic       = :logic,
+    grain       = :grain,
+    sheet       = :sheet,
+    result_type = :result_type,
+    expression  = :expression,
+    parameters  = :parameters,
+    updated_at  = SYSUTCDATETIME()
+WHEN NOT MATCHED THEN INSERT
     (id, number, name, logic, grain, sheet, result_type, expression,
      parameters, updated_at)
-VALUES
-    (:id, :number, :name, :logic, :grain, :sheet, :result_type, :expression,
-     CAST(:parameters AS jsonb), now())
-ON CONFLICT (id) DO UPDATE SET
-    number      = EXCLUDED.number,
-    name        = EXCLUDED.name,
-    logic       = EXCLUDED.logic,
-    grain       = EXCLUDED.grain,
-    sheet       = EXCLUDED.sheet,
-    result_type = EXCLUDED.result_type,
-    expression  = EXCLUDED.expression,
-    parameters  = EXCLUDED.parameters,
-    updated_at  = now()
+    VALUES (:id, :number, :name, :logic, :grain, :sheet, :result_type,
+            :expression, :parameters, SYSUTCDATETIME());
 """
 
 

@@ -1,4 +1,13 @@
-"""Create the `retail` schema: dimensions, facts, and forecast tables.
+"""SUPERSEDED: the backend now runs on Azure SQL exclusively (get_engine() in
+src/db/db.py builds an mssql+pyodbc connection from AZURE_SQL_CONNECTIONSTRING),
+and this script's DDL is Postgres syntax (`CREATE TABLE IF NOT EXISTS`, TEXT,
+BOOLEAN, PARTITION BY RANGE, ...), which will fail against Azure SQL. The
+current schema definition is sql/retail/002_create_orm_schema.sql — apply it
+the same way sql/ai/001_create_ai_vector_schema.sql is applied (see
+src/retail_data_bootstrap/database.py:apply_migration). Kept here only as the
+historical record of the Postgres-era shape this schema was translated from.
+
+Create the `retail` schema: dimensions, facts, and forecast tables.
 
 Run it yourself:
 

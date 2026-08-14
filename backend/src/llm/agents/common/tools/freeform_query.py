@@ -26,7 +26,9 @@ SqlType = Literal[
     "WITH",
 ]
 
-_SQL_DIALECT = "postgres"
+# Kept in sync with src/db/db.py's engine: agent-supplied SQL is parsed and
+# executed against Azure SQL, so it must be validated as T-SQL, not Postgres.
+_SQL_DIALECT = "tsql"
 
 # Finance reads the `newdata` star schema. The allow-list has to move with it:
 # a chat agent free-querying `financial_performance.*` while the board is built
@@ -577,17 +579,17 @@ def query_payment_leakage(
 def _short_type(row: dict[str, Any]) -> str:
     """Collapse information_schema type columns into one short token."""
     data_type = str(row["data_type"])
-    if data_type == "character varying":
+    if data_type in ("character varying", "varchar", "nvarchar"):
         length = row["character_maximum_length"]
-        return f"varchar({length})" if length else "varchar"
+        if length and int(length) > 0:
+            return f"{data_type}({length})"
+        return data_type
     if data_type == "timestamp with time zone":
         return "timestamptz"
     if data_type == "timestamp without time zone":
         return "timestamp"
     if data_type == "double precision":
         return "float8"
-    if data_type == "USER-DEFINED":
-        return str(row["udt_name"])
     return data_type
 
 
@@ -598,7 +600,7 @@ def describe_tables(
     engine: Engine | None = None,
 ) -> dict[str, Any]:
     """
-    Return live PostgreSQL column metadata and CHECK constraints.
+    Return live Azure SQL column metadata and CHECK constraints.
 
     Results are cached per (allow-list, requested tables): every monitoring
     pass asks for the same schema, and each miss costs several remote round
@@ -641,7 +643,7 @@ def _describe_tables_uncached(
     engine: Engine | None = None,
 ) -> dict[str, Any]:
     """
-    Return live PostgreSQL column metadata and CHECK constraints.
+    Return live Azure SQL column metadata and CHECK constraints.
 
     Use this before writing SQL so column names match the real database.
     Unknown requested tables are ignored with a warning; only allow-listed
@@ -703,7 +705,6 @@ def _describe_tables_uncached(
                     table_name,
                     column_name,
                     data_type,
-                    udt_name,
                     is_nullable,
                     character_maximum_length
                 FROM information_schema.columns
@@ -723,7 +724,7 @@ def _describe_tables_uncached(
         for index, table in enumerate(target_tables):
             schema, name = table.split(".", 1)
             check_where.append(
-                f"(n.nspname = :cs_{index} AND c.relname = :ct_{index})"
+                f"(s.name = :cs_{index} AND t.name = :ct_{index})"
             )
             check_params[f"cs_{index}"] = schema
             check_params[f"ct_{index}"] = name
@@ -731,18 +732,17 @@ def _describe_tables_uncached(
             text(
                 f"""
                 SELECT
-                    n.nspname AS table_schema,
-                    c.relname AS table_name,
-                    con.conname AS constraint_name,
-                    pg_get_constraintdef(con.oid) AS definition
-                FROM pg_constraint con
-                JOIN pg_class c
-                  ON c.oid = con.conrelid
-                JOIN pg_namespace n
-                  ON n.oid = c.relnamespace
-                WHERE con.contype = 'c'
-                  AND ({" OR ".join(check_where)})
-                ORDER BY n.nspname, c.relname, con.conname
+                    s.name AS table_schema,
+                    t.name AS table_name,
+                    cc.name AS constraint_name,
+                    cc.definition AS definition
+                FROM sys.check_constraints cc
+                JOIN sys.tables t
+                  ON t.object_id = cc.parent_object_id
+                JOIN sys.schemas s
+                  ON s.schema_id = t.schema_id
+                WHERE {" OR ".join(check_where)}
+                ORDER BY s.name, t.name, cc.name
                 """
             ),
             check_params,

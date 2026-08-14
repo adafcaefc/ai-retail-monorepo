@@ -15,7 +15,7 @@ class AppConfig:
     AZURE_OPENAI_API_VERSION: str = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
     AZURE_OPENAI_API_KEY: str = os.getenv("AZURE_OPENAI_API_KEY", "")
     AZURE_OPENAI_DEPLOYMENT: str = os.getenv("AZURE_OPENAI_DEPLOYMENT", "")
-    DATABASE_URL: str = os.getenv("DATABASE_URL","")
+    AZURE_SQL_CONNECTIONSTRING: str = os.getenv("AZURE_SQL_CONNECTIONSTRING", "")
     # Workbook behind the Data Source page. Empty means the checked-in
     # resources/ copy; set it to point at a mounted volume instead, or at a
     # path that does not exist to switch the page off (it then returns 503).

@@ -222,7 +222,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                 SELECT vertical_id, sum(size_index) AS total
                 FROM {SCHEMA}.dim_store GROUP BY vertical_id
             ) sz ON sz.vertical_id = i.vertical_id
-            WHERE c.cal_date = :day AND i.is_promo_eligible{where}
+            WHERE c.cal_date = :day AND i.is_promo_eligible = 1{where}
             ORDER BY vt.sort_order, c.margin_rp DESC
             """,
             params,
@@ -241,7 +241,9 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             JOIN {VERTICAL} v ON v.dashboard_label = p.vertical_label
             JOIN {VERTICAL} vt ON vt.vertical_id = v.vertical_id
             WHERE 1 = 1{camp_where}
-            ORDER BY vt.sort_order, p.expected_uplift_pct DESC NULLS LAST,
+            ORDER BY vt.sort_order,
+                     CASE WHEN p.expected_uplift_pct IS NULL THEN 1 ELSE 0 END,
+                     p.expected_uplift_pct DESC,
                      p.pre_buy_uplift_units DESC
             """,
             camp_params,

@@ -210,7 +210,7 @@ npm test                                            # vitest + jsdom, API mocked
 ```
 
 Both suites run against fixtures. To check the findings that can only be settled against
-real data, run the QC verifier, which needs a live `DATABASE_URL`:
+real data, run the QC verifier, which needs a live `AZURE_SQL_CONNECTIONSTRING`:
 
 ```bash
 cd backend

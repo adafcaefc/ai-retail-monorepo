@@ -212,7 +212,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             f"""
             SELECT s.store_id, s.name, s.vertical_id, s.cluster, s.channel,
                    count(*)                                     AS sku_count,
-                   count(*) FILTER (WHERE f.position_qty < f.rop_qty)
+                   sum(CASE WHEN f.position_qty < f.rop_qty THEN 1 ELSE 0 END)
                                                                 AS reorder_count,
                    -- Read, never recomputed. ENGINE_STORE priced each line
                    -- after rounding it, so re-deriving from the rounded
@@ -248,7 +248,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             FROM {SCHEMA}.trade_agreement t
             JOIN {SCHEMA}.dim_item i ON i.item_id = t.item_key
             JOIN {SCHEMA}.dim_vendor v ON v.vendor_account = t.vendor_account
-            WHERE TRUE{where}
+            WHERE 1 = 1{where}
             ORDER BY t.item_key, t.unit_price, t.vendor_account
             """,
             {key: value for key, value in params.items() if key != "day"},

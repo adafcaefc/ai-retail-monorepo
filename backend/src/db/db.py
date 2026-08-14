@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Generator, Iterator
 from contextlib import contextmanager
 from functools import lru_cache
+from urllib.parse import quote_plus
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
@@ -10,42 +11,29 @@ from sqlalchemy.orm import Session, sessionmaker
 from src.common.env import config
 
 def _database_url() -> str:
-    url = config.DATABASE_URL
+    connection_string = config.AZURE_SQL_CONNECTIONSTRING
 
-    if not url:
-        raise RuntimeError("DATABASE_URL is not configured")
+    if not connection_string:
+        raise RuntimeError("AZURE_SQL_CONNECTIONSTRING is not configured")
 
-    if url.startswith("postgres://"):
-        return url.replace(
-            "postgres://",
-            "postgresql+psycopg://",
-            1,
-        )
+    # AZURE_SQL_CONNECTIONSTRING is written in the ADO.NET/mssql_python shape
+    # (Server=...;Database=...;UID=...;PWD=...), which has no Driver= key.
+    # pyodbc requires one to pick an installed ODBC driver.
+    if "driver=" not in connection_string.lower():
+        connection_string = connection_string.rstrip("; ") + ";Driver={ODBC Driver 18 for SQL Server}"
 
-    if url.startswith("postgresql://"):
-        return url.replace(
-            "postgresql://",
-            "postgresql+psycopg://",
-            1,
-        )
-
-    return url
+    return "mssql+pyodbc:///?odbc_connect=" + quote_plus(connection_string)
 
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
-    # pool_pre_ping costs an extra round trip on every checkout, which is
-    # expensive against a remote Postgres. pool_recycle drops connections that
-    # are old enough for the server to have closed them, without the per-use
-    # probe.
+    # pool_recycle drops connections that are old enough for the server to
+    # have closed them, without a per-checkout probe round trip.
     return create_engine(
         _database_url(),
         pool_recycle=900,
         pool_size=10,
         max_overflow=10,
-        connect_args={
-            "connect_timeout": 15,
-        },
         pool_timeout=15,
     )
 

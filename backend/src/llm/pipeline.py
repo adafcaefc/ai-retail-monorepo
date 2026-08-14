@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
 # The retrieval service caches the local embedding provider.  Keep the normal
 # gateway alive across chat turns so a new BGE model is not loaded for every
 # Retail message.  Tests and callers can still inject a gateway explicitly.
-_DEFAULT_RETAIL_GATEWAY = ChatRetrievalGateway()
+#
+# Auto-invocation in render_agent_response() below is currently disabled (no
+# embedding provider configured yet), so this default instance is unused —
+# left uninstantiated to avoid any eager provider loading at import time.
+_DEFAULT_RETAIL_GATEWAY: ChatRetrievalGateway | None = None
 
 
 @dataclass
@@ -105,30 +109,35 @@ async def render_agent_response(
     )
 
     input_payload = dict(_build_messages_input(messages_input))
-    if retrieval_response is None and agent_name.startswith("retail."):
-        query = _latest_user_query(input_payload)
-        if query:
-            try:
-                conversation_context = [
-                    str(line.get("text", ""))
-                    for line in input_payload.get("lines", [])[-6:]
-                    if isinstance(line, dict)
-                ]
-                gateway = retrieval_gateway or _DEFAULT_RETAIL_GATEWAY
-                retrieval_response = await asyncio.to_thread(
-                    gateway.retrieve,
-                    query,
-                    conversation_context=conversation_context,
-                    agent_context=agent_name,
-                )
-            except Exception as exc:
-                logger.warning("chat retrieval gateway failed for %s: %s", agent_name, exc)
-                return StructuredResult(
-                    blocks=[],
-                    source_agent=agent_name,
-                    success=False,
-                    error="Retail retrieval is temporarily unavailable.",
-                )
+    # Adaptive retrieval gateway auto-invocation is disabled for now: no
+    # embedding provider is configured yet, so every call would fail (or
+    # return no evidence) and hard-abort the retail agent response below.
+    # Retail agents fall back to their query_retail_* tools in the meantime.
+    # Re-enable once RETAIL_EMBEDDING_PROVIDER is actually populated.
+    # if retrieval_response is None and agent_name.startswith("retail."):
+    #     query = _latest_user_query(input_payload)
+    #     if query:
+    #         try:
+    #             conversation_context = [
+    #                 str(line.get("text", ""))
+    #                 for line in input_payload.get("lines", [])[-6:]
+    #                 if isinstance(line, dict)
+    #             ]
+    #             gateway = retrieval_gateway or _DEFAULT_RETAIL_GATEWAY
+    #             retrieval_response = await asyncio.to_thread(
+    #                 gateway.retrieve,
+    #                 query,
+    #                 conversation_context=conversation_context,
+    #                 agent_context=agent_name,
+    #             )
+    #         except Exception as exc:
+    #             logger.warning("chat retrieval gateway failed for %s: %s", agent_name, exc)
+    #             return StructuredResult(
+    #                 blocks=[],
+    #                 source_agent=agent_name,
+    #                 success=False,
+    #                 error="Retail retrieval is temporarily unavailable.",
+    #             )
 
     grounding = None
     if retrieval_response is not None:

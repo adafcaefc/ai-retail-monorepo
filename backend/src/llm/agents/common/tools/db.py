@@ -9,7 +9,7 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import text
+from sqlalchemy import bindparam, text
 from sqlalchemy.engine import Connection
 
 from src.db.db import get_engine
@@ -38,9 +38,17 @@ def _rows(
     connection: Connection,
     statement: str,
     parameters: dict[str, Any],
+    *,
+    expand: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
+    """Run `statement`. Pass `expand` to bind list-valued params as `IN (...)`."""
+    compiled = text(statement)
+    if expand:
+        compiled = compiled.bindparams(
+            *(bindparam(name, expanding=True) for name in expand)
+        )
     result = connection.execute(
-        text(statement),
+        compiled,
         parameters,
     ).mappings()
     return [_row(row) for row in result]
@@ -111,12 +119,11 @@ def _latest_batch_id(
     import_batch_id = connection.execute(
         text(
             """
-            SELECT id
+            SELECT TOP (1) id
             FROM audit.import_batches
             WHERE agent_name = :agent_name
               AND import_status = 'COMPLETED'
             ORDER BY imported_at DESC
-            LIMIT 1
             """
         ),
         {"agent_name": agent_name},
@@ -137,8 +144,11 @@ def latest_import_batch_id(agent_name: str) -> int:
 
 @contextmanager
 def _read_connection() -> Iterator[Connection]:
+    # No T-SQL equivalent of Postgres's "SET TRANSACTION READ ONLY" exists
+    # for an ad hoc session against Azure SQL, so this is enforced by
+    # convention (only SELECTs are issued through this helper) rather than
+    # by the database.
     with get_engine().connect() as connection:
-        connection.execute(text("SET TRANSACTION READ ONLY"))
         yield connection
 
 

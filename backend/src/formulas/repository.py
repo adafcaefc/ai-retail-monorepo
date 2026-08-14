@@ -1,4 +1,4 @@
-"""Postgres persistence for formulas, in `retail.formula`.
+"""Azure SQL persistence for formulas, in `retail.formula`.
 
 This used to be a JSON file (`resources/dbtemp/formula.json`) on the reasoning
 that formulas are a small hand-curated reference set, easy to read and diff.
@@ -59,16 +59,15 @@ INSERT INTO {TABLE}
      parameters, updated_at)
 VALUES
     (:id, :number, :name, :logic, :grain, :sheet, :result_type, :expression,
-     CAST(:parameters AS jsonb), now())
+     :parameters, SYSUTCDATETIME())
 """
 
 
 def _row_to_formula(row: Any) -> dict[str, Any]:
     """One DB row as the dict shape `service.py` and the API already expect.
 
-    `parameters` comes back as parsed JSON from psycopg, but a text column
-    written by another client could arrive as a string; both are accepted so a
-    hand-inserted row does not break the whole listing.
+    `parameters` is stored as an NVARCHAR(MAX) JSON string and always arrives
+    as a string from the driver; a hand-inserted row still parses correctly.
     """
     formula = dict(row)
     parameters = formula.get("parameters")
