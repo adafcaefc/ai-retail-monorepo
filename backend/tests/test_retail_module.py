@@ -16,8 +16,7 @@ RETAIL_MODULES = (
     ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand..."),
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory..."),
     ("retail.replenishment", "Replenishment", "Ask Replenishment..."),
-    # Hidden -- see docs/DISABLED_FEATURES.md to re-enable.
-    # ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
+    ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
 )
 
 # Agents 5-9 of the mockup: sidebar destinations with nothing behind them yet
