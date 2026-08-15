@@ -82,13 +82,16 @@ def test_store_id_reaches_the_executed_store_grain_sql() -> None:
     finally:
         event.remove(engine, "before_cursor_execute", capture)
 
+    # Match on the predicate in the SQL and the value in the parameters, not on
+    # the parameter's name: pyodbc binds positionally, so `parameters` arrives
+    # as a tuple like ('2026-07-01', 'S001') and never carries "store_id" the
+    # way psycopg's named-parameter dict used to.
     matching = [
         (statement, parameters)
         for statement, parameters in statements
-        if "s.store_id" in statement and "store_id" in str(parameters)
+        if "s.store_id" in statement and "S001" in str(parameters)
     ]
     assert matching, "the Store-grain query did not bind store_id=S001"
-    assert any("S001" in str(parameters) for _, parameters in matching)
 
 
 @pytest.fixture(scope="module")

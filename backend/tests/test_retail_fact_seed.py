@@ -211,7 +211,10 @@ class TestReconciliation:
             row = c.execute(
                 text(
                     """
-                    SELECT count(*) FILTER (WHERE is_reorder) AS reorder,
+                    -- `count(*) FILTER (WHERE ...)` is Postgres-only and this
+                    -- runs against Azure SQL; is_reorder is a bit there, so it
+                    -- also needs an explicit = 1 rather than a bare predicate.
+                    SELECT sum(CASE WHEN is_reorder = 1 THEN 1 ELSE 0 END) AS reorder,
                            coalesce(sum(order_qty_sales), 0)  AS units,
                            coalesce(sum(amount), 0)           AS cost,
                            coalesce(sum(saving_vs_designated), 0) AS saving
