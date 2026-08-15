@@ -1,49 +1,417 @@
 [
-  {"id":"sql_inventory","query":"What is the current inventory position for GRC-001?","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"sku.inventory_current","expected_entity_type":"sku"},
-  {"id":"sql_rop","query":"What is the reorder point for GRC-001?","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"sku.inventory_current","expected_entity_type":"sku"},
-  {"id":"sql_replenishment","query":"What is the current proposed replenishment quantity for GRC-001?","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"sku.replenishment_current","expected_entity_type":"sku"},
-  {"id":"sql_workforce","query":"Show the current workforce snapshot for store S001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"workforce.current","expected_entity_type":"store"},
-  {"id":"sql_replenishment_top","query":"Which SKUs currently have the highest replenishment quantities?","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"replenishment.top_candidates"},
-  {"id":"sql_inventory_risk_top","query":"Rank the current inventory items with the highest at-risk value.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"inventory.at_risk"},
-  {"id":"sql_vendor","query":"Show current OTIF and lead time for vendor V0001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"vendor.lookup","expected_entity_type":"vendor"},
-  {"id":"sql_store","query":"Show current store details for S001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"store.lookup","expected_entity_type":"store"},
-  {"id":"sql_store_sku","query":"Show the current store SKU inventory snapshot for GRC-001 at S001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"store_sku.snapshot","expected_entity_type":"sku"},
-  {"id":"sql_promotion","query":"Show the current promotion configuration for PRM-0001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"promotion.lookup","expected_entity_type":"promotion"},
-  {"id":"sql_monthly_sales","query":"Show the latest monthly sales history for legal entity GRC.","entity_hints":[{"entity_type":"legal_entity","value":"GRC"}],"expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"sales.monthly","expected_entity_type":"legal_entity"},
-  {"id":"sql_trade_terms","query":"Show the current vendor terms in trade agreements for V0001.","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"trade_agreement.by_vendor","expected_entity_type":"vendor"},
-
-  {"id":"vector_definition","query":"What does Days of Supply mean?","expected_route":"VECTOR","expected_reason":"DEFINITION_INTENT","expected_domain":"business_rule","expected_doc_type":"terminology"},
-  {"id":"vector_formula","query":"How is average daily sales per store calculated?","expected_route":"VECTOR","expected_reason":"FORMULA_INTENT","expected_domain":"business_rule","expected_doc_type":"formula"},
-  {"id":"vector_d365","query":"Which D365 field maps to demand forecasting?","expected_route":"VECTOR","expected_reason":"INTEGRATION_MAPPING_INTENT","expected_domain":"integration"},
-  {"id":"vector_approval","query":"Who approves a high-value purchase order?","expected_route":"VECTOR","expected_reason":"GOVERNANCE_INTENT","expected_domain":"governance","expected_doc_type":"approval_rule"},
-  {"id":"vector_agent","query":"Which agent is responsible for replenishment?","expected_route":"VECTOR","expected_reason":"AGENT_CONFIGURATION_INTENT","expected_domain":"agent_configuration","expected_doc_type":"agent_spec"},
-  {"id":"vector_fruit","query":"Which product is a perishable fruit?","expected_route":"VECTOR","expected_reason":"BUSINESS_ENTITY_INTENT","expected_domain":"business_entity","expected_doc_type":"sku"},
-  {"id":"vector_vendor_terms","query":"What are the commercial terms associated with vendor V0001?","expected_route":"VECTOR","expected_reason":"BUSINESS_ENTITY_INTENT","expected_domain":"business_entity","expected_doc_type":"vendor","expected_entity_type":"vendor"},
-  {"id":"vector_model_parameter","query":"What is the model parameter meaning for growth factor?","expected_route":"VECTOR","expected_reason":"MODEL_PARAMETER_INTENT","expected_domain":"business_rule","expected_doc_type":"model_parameter"},
-  {"id":"vector_promotion_policy","query":"Explain the promotion policy mechanism.","expected_route":"VECTOR","expected_reason":"OPERATIONAL_POLICY_INTENT","expected_domain":"operational_policy","expected_doc_type":"promotion"},
-  {"id":"vector_brand_event","query":"What is the brand event context?","expected_route":"VECTOR","expected_reason":"OPERATIONAL_CONTEXT_INTENT","expected_domain":"operational_context","expected_doc_type":"brand_event"},
-  {"id":"vector_documentation","query":"Give me the workbook overview documentation.","expected_route":"VECTOR","expected_reason":"DOCUMENTATION_INTENT","expected_domain":"documentation","expected_doc_type":"workbook_overview"},
-  {"id":"vector_store_semantics","query":"What are the store semantics?","expected_route":"VECTOR","expected_reason":"BUSINESS_ENTITY_INTENT","expected_domain":"business_entity","expected_doc_type":"store"},
-
-  {"id":"hybrid_risk","query":"Why is GRC-001 at replenishment risk?","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.replenishment_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_explain_inventory","query":"Explain the current inventory condition for GRC-001 using the business rules.","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.inventory_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_proposal_mean","query":"What does the current replenishment proposal for GRC-001 mean?","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.replenishment_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_dos_action","query":"Why might the current days-of-supply position for GRC-001 require action?","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.inventory_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_policy","query":"What policy or formula is relevant to this SKU's current replenishment state GRC-001?","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.replenishment_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_diagnose","query":"Diagnose the current inventory risk for GRC-001.","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.inventory_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_recommend","query":"What should we consider for the current replenishment proposal for GRC-001?","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.replenishment_current","expected_domain":"business_rule","expected_entity_type":"sku"},
-  {"id":"hybrid_current_formula","query":"Explain which formula applies to the current inventory position of GRC-001.","expected_route":"HYBRID","expected_reason":"CURRENT_PLUS_EXPLANATION","expected_capability":"sku.inventory_current","expected_domain":"business_rule","expected_doc_type":"formula","expected_entity_type":"sku"},
-
-  {"id":"unsupported_delete","query":"Delete SKU GRC-001.","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_MUTATION"},
-  {"id":"unsupported_update","query":"Update the reorder point.","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_MUTATION"},
-  {"id":"unsupported_arbitrary_sql","query":"Run arbitrary SQL.","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_STRUCTURED_INTENT"},
-  {"id":"unsupported_broad","query":"Tell me everything.","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_STRUCTURED_INTENT"},
-  {"id":"unsupported_unrelated","query":"What color is the sky?","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_STRUCTURED_INTENT"},
-  {"id":"unsupported_injection","query":"Show current inventory for GRC-001; DROP TABLE retail.Sku.","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_MUTATION"},
-  {"id":"unsupported_forced_sql","query":"What does Days of Supply mean?","route_mode":"sql","expected_route":"UNSUPPORTED","expected_reason":"UNSUPPORTED_STRUCTURED_CAPABILITY"},
-  {"id":"unsupported_empty","query":"   ","expected_route":"UNSUPPORTED","expected_reason":"EMPTY_QUERY"},
-
-  {"id":"resolution_unknown_sku","query":"What is the current inventory position for GRC-999?","expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"sku.inventory_current","expected_entity_type":"sku","expected_error":"ENTITY_NOT_FOUND"},
-  {"id":"resolution_ambiguous_category","query":"Show current details for category Accessories.","entity_hints":[{"entity_type":"category","value":"Accessories"}],"expected_route":"SQL","expected_reason":"CURRENT_STATE_INTENT","expected_capability":"category.lookup","expected_entity_type":"category","expected_error":"AMBIGUOUS_ENTITY"},
-  {"id":"invalid_filter","query":"Which product is a perishable fruit?","retrieval_domain":"governance","expected_route":"UNSUPPORTED","expected_reason":"INVALID_FILTER","expected_error":"INVALID_FILTER"}
+  {
+    "id": "sql_inventory",
+    "query": "What is the current inventory position for GRC-001?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "sql_rop",
+    "query": "What is the reorder point for GRC-001?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "sql_replenishment",
+    "query": "What is the current proposed replenishment quantity for GRC-001?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.replenishment_current",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "sql_workforce",
+    "query": "Show the current workforce snapshot for store S001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "workforce.current",
+    "expected_entity_type": "store"
+  },
+  {
+    "id": "sql_replenishment_top",
+    "query": "Which SKUs currently have the highest replenishment quantities?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "replenishment.top_candidates"
+  },
+  {
+    "id": "sql_inventory_risk_top",
+    "query": "Rank the current inventory items with the highest at-risk value.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "inventory.at_risk"
+  },
+  {
+    "id": "sql_vendor",
+    "query": "Show current OTIF and lead time for vendor V0001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "vendor.lookup",
+    "expected_entity_type": "vendor"
+  },
+  {
+    "id": "sql_store",
+    "query": "Show current store details for S001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "store.lookup",
+    "expected_entity_type": "store"
+  },
+  {
+    "id": "sql_store_sku",
+    "query": "Show the current store SKU inventory snapshot for GRC-001 at S001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "store_sku.snapshot",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "sql_promotion",
+    "query": "Show the current promotion configuration for PRM-0001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "promotion.lookup",
+    "expected_entity_type": "promotion"
+  },
+  {
+    "id": "sql_monthly_sales",
+    "query": "Show the latest monthly sales history for legal entity GRC.",
+    "entity_hints": [
+      {
+        "entity_type": "legal_entity",
+        "value": "GRC"
+      }
+    ],
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sales.monthly",
+    "expected_entity_type": "legal_entity"
+  },
+  {
+    "id": "sql_trade_terms",
+    "query": "Show the current vendor terms in trade agreements for V0001.",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "trade_agreement.by_vendor",
+    "expected_entity_type": "vendor"
+  },
+  {
+    "id": "vector_definition",
+    "query": "What does Days of Supply mean?",
+    "expected_route": "VECTOR",
+    "expected_reason": "DEFINITION_INTENT",
+    "expected_domain": "business_rule",
+    "expected_doc_type": "terminology"
+  },
+  {
+    "id": "vector_formula",
+    "query": "How is average daily sales per store calculated?",
+    "expected_route": "VECTOR",
+    "expected_reason": "FORMULA_INTENT",
+    "expected_domain": "business_rule",
+    "expected_doc_type": "formula"
+  },
+  {
+    "id": "vector_d365",
+    "query": "Which D365 field maps to demand forecasting?",
+    "expected_route": "VECTOR",
+    "expected_reason": "INTEGRATION_MAPPING_INTENT",
+    "expected_domain": "integration"
+  },
+  {
+    "id": "vector_approval",
+    "query": "Who approves a high-value purchase order?",
+    "expected_route": "VECTOR",
+    "expected_reason": "GOVERNANCE_INTENT",
+    "expected_domain": "governance",
+    "expected_doc_type": "approval_rule"
+  },
+  {
+    "id": "vector_agent",
+    "query": "Which agent is responsible for replenishment?",
+    "expected_route": "VECTOR",
+    "expected_reason": "AGENT_CONFIGURATION_INTENT",
+    "expected_domain": "agent_configuration",
+    "expected_doc_type": "agent_spec"
+  },
+  {
+    "id": "vector_fruit",
+    "query": "Which product is a perishable fruit?",
+    "expected_route": "VECTOR",
+    "expected_reason": "BUSINESS_ENTITY_INTENT",
+    "expected_domain": "business_entity",
+    "expected_doc_type": "sku"
+  },
+  {
+    "id": "vector_vendor_terms",
+    "query": "What are the commercial terms associated with vendor V0001?",
+    "expected_route": "VECTOR",
+    "expected_reason": "BUSINESS_ENTITY_INTENT",
+    "expected_domain": "business_entity",
+    "expected_doc_type": "vendor",
+    "expected_entity_type": "vendor"
+  },
+  {
+    "id": "vector_model_parameter",
+    "query": "What is the model parameter meaning for growth factor?",
+    "expected_route": "VECTOR",
+    "expected_reason": "MODEL_PARAMETER_INTENT",
+    "expected_domain": "business_rule",
+    "expected_doc_type": "model_parameter"
+  },
+  {
+    "id": "vector_promotion_policy",
+    "query": "Explain the promotion policy mechanism.",
+    "expected_route": "VECTOR",
+    "expected_reason": "OPERATIONAL_POLICY_INTENT",
+    "expected_domain": "operational_policy",
+    "expected_doc_type": "promotion"
+  },
+  {
+    "id": "vector_brand_event",
+    "query": "What is the brand event context?",
+    "expected_route": "VECTOR",
+    "expected_reason": "OPERATIONAL_CONTEXT_INTENT",
+    "expected_domain": "operational_context",
+    "expected_doc_type": "brand_event"
+  },
+  {
+    "id": "vector_documentation",
+    "query": "Give me the workbook overview documentation.",
+    "expected_route": "VECTOR",
+    "expected_reason": "DOCUMENTATION_INTENT",
+    "expected_domain": "documentation",
+    "expected_doc_type": "workbook_overview"
+  },
+  {
+    "id": "vector_store_semantics",
+    "query": "What are the store semantics?",
+    "expected_route": "VECTOR",
+    "expected_reason": "BUSINESS_ENTITY_INTENT",
+    "expected_domain": "business_entity",
+    "expected_doc_type": "store"
+  },
+  {
+    "id": "hybrid_risk",
+    "query": "Why is GRC-001 at replenishment risk?",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.replenishment_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_explain_inventory",
+    "query": "Explain the current inventory condition for GRC-001 using the business rules.",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.inventory_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_proposal_mean",
+    "query": "What does the current replenishment proposal for GRC-001 mean?",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.replenishment_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_dos_action",
+    "query": "Why might the current days-of-supply position for GRC-001 require action?",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.inventory_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_policy",
+    "query": "What policy or formula is relevant to this SKU's current replenishment state GRC-001?",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.replenishment_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_diagnose",
+    "query": "Diagnose the current inventory risk for GRC-001.",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.inventory_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_recommend",
+    "query": "What should we consider for the current replenishment proposal for GRC-001?",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.replenishment_current",
+    "expected_domain": "business_rule",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "hybrid_current_formula",
+    "query": "Explain which formula applies to the current inventory position of GRC-001.",
+    "expected_route": "HYBRID",
+    "expected_reason": "CURRENT_PLUS_EXPLANATION",
+    "expected_capability": "sku.inventory_current",
+    "expected_domain": "business_rule",
+    "expected_doc_type": "formula",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "unsupported_delete",
+    "query": "Delete SKU GRC-001.",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_MUTATION"
+  },
+  {
+    "id": "unsupported_update",
+    "query": "Update the reorder point.",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_MUTATION"
+  },
+  {
+    "id": "unsupported_arbitrary_sql",
+    "query": "Run arbitrary SQL.",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_INTENT"
+  },
+  {
+    "id": "unsupported_broad",
+    "query": "Tell me everything.",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_INTENT"
+  },
+  {
+    "id": "unsupported_unrelated",
+    "query": "What color is the sky?",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_INTENT"
+  },
+  {
+    "id": "unsupported_injection",
+    "query": "Show current inventory for GRC-001; DROP TABLE retail.Sku.",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_MUTATION"
+  },
+  {
+    "id": "unsupported_forced_sql",
+    "query": "What does Days of Supply mean?",
+    "route_mode": "sql",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_CAPABILITY"
+  },
+  {
+    "id": "unsupported_empty",
+    "query": "   ",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "EMPTY_QUERY"
+  },
+  {
+    "id": "resolution_unknown_sku",
+    "query": "What is the current inventory position for GRC-999?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current",
+    "expected_entity_type": "sku",
+    "expected_error": "ENTITY_NOT_FOUND"
+  },
+  {
+    "id": "resolution_ambiguous_category",
+    "query": "Show current details for category Accessories.",
+    "entity_hints": [
+      {
+        "entity_type": "category",
+        "value": "Accessories"
+      }
+    ],
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "category.lookup",
+    "expected_entity_type": "category",
+    "expected_error": "AMBIGUOUS_ENTITY"
+  },
+  {
+    "id": "invalid_filter",
+    "query": "Which product is a perishable fruit?",
+    "retrieval_domain": "governance",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "INVALID_FILTER",
+    "expected_error": "INVALID_FILTER"
+  },
+  {
+    "id": "id_sql_inventory",
+    "query": "Berapa posisi persediaan saat ini untuk GRC-001?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "id_sql_rop",
+    "query": "Berapa titik pemesanan ulang untuk GRC-001?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current",
+    "expected_entity_type": "sku"
+  },
+  {
+    "id": "id_sql_store_position",
+    "query": "Berapa posisi stok saat ini untuk toko S121?",
+    "expected_route": "SQL",
+    "expected_reason": "CURRENT_STATE_INTENT",
+    "expected_capability": "sku.inventory_current"
+  },
+  {
+    "id": "id_vector_business_rule",
+    "query": "Kenapa SKU ini berisiko?",
+    "expected_route": "VECTOR",
+    "expected_reason": "BUSINESS_RULE_INTENT"
+  },
+  {
+    "id": "id_vector_approval",
+    "query": "Apa aturan persetujuan pembelian bernilai tinggi?",
+    "expected_route": "VECTOR",
+    "expected_reason": "GOVERNANCE_INTENT"
+  },
+  {
+    "id": "id_vector_definition",
+    "query": "Apa itu days of supply?",
+    "expected_route": "VECTOR",
+    "expected_reason": "DEFINITION_INTENT"
+  },
+  {
+    "id": "id_unsupported_mutation",
+    "query": "Hapus semua baris dari dim_item",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_MUTATION"
+  },
+  {
+    "id": "id_unsupported_mutation_ubah",
+    "query": "Ubah harga semua produk jadi nol",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_MUTATION"
+  },
+  {
+    "id": "id_unsupported_broad",
+    "query": "Tampilkan semua data di database",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_INTENT"
+  },
+  {
+    "id": "id_unsupported_credentials",
+    "query": "Apa kata sandi database ini?",
+    "expected_route": "UNSUPPORTED",
+    "expected_reason": "UNSUPPORTED_STRUCTURED_INTENT"
+  }
 ]

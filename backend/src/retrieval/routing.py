@@ -22,24 +22,49 @@ class IntentMatch:
     filters: VectorFilters = field(default_factory=VectorFilters)
 
 
+# Every pattern below carries Indonesian alternatives alongside the English.
+# The product ships an EN/ID toggle, and this router is lexical: an Indonesian
+# question that matched nothing used to fall through `decide()` all the way to
+# the final `else` and come back UNSUPPORTED -- i.e. "kenapa SKU ini berisiko?"
+# was refused with the same reason code as `DROP TABLE`. Refusing a user's own
+# language is worse than routing it imperfectly, so the vocabulary is bilingual
+# rather than English-first with a translation step in front.
+#
+# The safety patterns matter most here: without Indonesian write verbs, the
+# mutation guard only watched one of the two languages the UI invites.
 MUTATION_RE = re.compile(
-    r"\b(delete|remove|update|change|set|insert|create|drop|alter|truncate|execute|exec)\b",
+    r"\b(delete|remove|update|change|set|insert|create|drop|alter|truncate|execute|exec|"
+    r"hapus|menghapus|dihapus|ubah|mengubah|diubah|ganti|mengganti|diganti|"
+    r"perbarui|memperbarui|diperbarui|sisipkan|menyisipkan|tambahkan|menambahkan|"
+    r"ditambahkan|kosongkan|mengosongkan|jalankan|menjalankan|eksekusi)\b",
     re.IGNORECASE,
 )
 UNSAFE_RE = re.compile(
     r"\b(arbitrary\s+sql|run\s+sql|select\s+\*|union\s+select|drop\s+table|"
     r"tell\s+me\s+everything|(?:all|every|entire|full)(?:\s+\w+){0,3}\s+"
     r"(?:data|inventory|sales|records?|rows?|database|tables?|skus?|products?|stores?|vendors?)|"
-    r"passwords?|credentials?|secrets?|api\s+keys?)\b",
+    r"passwords?|credentials?|secrets?|api\s+keys?|"
+    r"jalankan\s+sql|sql\s+bebas|tampilkan\s+semua|"
+    r"(?:semua|seluruh|segala)(?:\s+\w+){0,3}\s+"
+    r"(?:data|isi|persediaan|stok|penjualan|catatan|baris|basis\s+data|tabel|"
+    r"produk|barang|toko|pemasok|vendor)|"
+    r"kata\s+sandi|kredensial|kunci\s+api)\b",
     re.IGNORECASE,
 )
 EXPLANATION_RE = re.compile(
-    r"\b(why|diagnos(?:e|is)|recommend|what\s+should|explain|relevant\s+(?:policy|formula|rule))\b",
+    r"\b(why|diagnos(?:e|is)|recommend|what\s+should|explain|relevant\s+(?:policy|formula|rule))\b|"
+    r"\b(kenapa|mengapa|jelaskan|menjelaskan|penjelasan|terangkan|jelasin|"
+    r"diagnosa|diagnosis|rekomendasi|rekomendasikan|sarankan|"
+    r"sebaiknya|seharusnya|apa\s+yang\s+harus)\b",
     re.IGNORECASE,
 )
 CURRENT_RE = re.compile(
     r"\b(current|today|now|latest|currently|position|on[ -]?hand|reorder\s+point|\brop\b|"
-    r"workforce|forecast|proposed|highest|ranking|count|total|sum)\b",
+    r"workforce|forecast|proposed|highest|ranking|count|total|sum)\b|"
+    r"\b(saat\s+ini|sekarang|kini|terkini|terbaru|hari\s+ini|posisi|"
+    r"stok|persediaan|jumlah|berapa|banyaknya|tertinggi|terendah|peringkat|"
+    r"proyeksi|usulan|diusulkan|tenaga\s+kerja|ramalan|prakiraan|"
+    r"titik\s+pemesanan(?:\s+ulang)?)\b",
     re.IGNORECASE,
 )
 
@@ -55,7 +80,12 @@ ADAPTIVE_RETAIL_RE = re.compile(
     r"revenue\w*|purchase\w*|order\w*|assortment\w*|pricing\w*|markdown\w*|"
     r"gmroi|sell[- ]through\w*|service\s+level\w*|fill\s+rate\w*|otif|"
     r"lead\s+time\w*|days\s+(?:of\s+)?cover\w*|working\s+capital\w*|"
-    r"staffing\w*|workforce\w*|labor\w*|labour\w*)\b",
+    r"staffing\w*|workforce\w*|labor\w*|labour\w*)\b|"
+    r"\b(barang|produk|toko|gerai|pemasok|kategori|merek|promosi|diskon|"
+    r"persediaan|stok|penjualan|permintaan|ramalan|prakiraan|akurasi|"
+    r"margin|pendapatan|omzet|pembelian|pesanan|assortment|harga|"
+    r"penurunan\s+harga|tingkat\s+layanan|waktu\s+tunggu|hari\s+cakupan|"
+    r"modal\s+kerja|tenaga\s+kerja|karyawan|staf)\b",
     re.IGNORECASE,
 )
 ADAPTIVE_COMPLEXITY_RE = re.compile(
@@ -64,7 +94,12 @@ ADAPTIVE_COMPLEXITY_RE = re.compile(
     r"by\s+(?:sku|product|store|category|vendor|brand)|across|"
     r"by|per|between|versus|vs|combine|including|using|calculate|"
     r"calculate\s+the|analy[sz]e|history|historical|average|total|sum|"
-    r"highest|lowest|best|top|rank(?:ed|ing)?)\b",
+    r"highest|lowest|best|top|rank(?:ed|ing)?)\b|"
+    r"\b(bandingkan|perbandingan|tren|proyeksi|ramalan|prakiraan|akurasi|"
+    r"riwayat|historis|rata-rata|jumlah|gabungkan|hitung|hitungkan|"
+    r"analisa|analisis|tertinggi|terendah|terbaik|teratas|peringkat|"
+    r"per|setiap|antara|selama|sepanjang|"
+    r"\d+\s+(?:hari|minggu|bulan|kuartal|tahun)\s+(?:ke\s+depan|terakhir))\b",
     re.IGNORECASE,
 )
 FAST_PATH_INSUFFICIENT_RE = re.compile(
@@ -142,11 +177,20 @@ def _semantic_intent(text: str) -> IntentMatch | None:
             IntentMatch("sku_semantics", "BUSINESS_ENTITY_INTENT", VectorFilters(retrieval_domain="business_entity", doc_type="sku")),
         ),
         (
-            re.compile(r"\b(d365|dynamics\s*365|field\s+map|data\s+source\s+map|maps?\s+to|comes?\s+from)\b", re.I),
+            re.compile(
+                r"\b(d365|dynamics\s*365|field\s+map|data\s+source\s+map|maps?\s+to|comes?\s+from)\b|"
+                r"\b(pemetaan\s+(?:field|kolom|data)|berasal\s+dari|asalnya\s+dari|sumber\s+datanya)\b",
+                re.I,
+            ),
             IntentMatch("integration_mapping", "INTEGRATION_MAPPING_INTENT", VectorFilters(retrieval_domain="integration")),
         ),
         (
-            re.compile(r"\b(approv(?:e|es|al|er)|high[- ]value\s+(?:purchase|purchasing|order))\b", re.I),
+            re.compile(
+                r"\b(approv(?:e|es|al|er)|high[- ]value\s+(?:purchase|purchasing|order))\b|"
+                r"\b(persetujuan|menyetujui|disetujui|otorisasi|"
+                r"pembelian\s+(?:besar|bernilai\s+tinggi))\b",
+                re.I,
+            ),
             IntentMatch("approval_rule", "GOVERNANCE_INTENT", VectorFilters(retrieval_domain="governance", doc_type="approval_rule")),
         ),
         (
@@ -154,11 +198,19 @@ def _semantic_intent(text: str) -> IntentMatch | None:
             IntentMatch("agent_responsibility", "AGENT_CONFIGURATION_INTENT", VectorFilters(retrieval_domain="agent_configuration", doc_type="agent_spec")),
         ),
         (
-            re.compile(r"\b(formula|calculated|calculation|how\s+is\b|derive[ds]?)\b", re.I),
+            re.compile(
+                r"\b(formula|calculated|calculation|how\s+is\b|derive[ds]?)\b|"
+                r"\b(rumus|perhitungan|dihitung|menghitungnya|diturunkan)\b",
+                re.I,
+            ),
             IntentMatch("formula", "FORMULA_INTENT", VectorFilters(retrieval_domain="business_rule", doc_type="formula")),
         ),
         (
-            re.compile(r"\b(what\s+does|what\s+is\s+the\s+meaning|definition|define|terminology|mean\??$)\b", re.I),
+            re.compile(
+                r"\b(what\s+does|what\s+is\s+the\s+meaning|definition|define|terminology|mean\??$)\b|"
+                r"\b(apa\s+(?:itu|arti|maksud)|artinya|maksudnya|definisi|istilah|pengertian)\b",
+                re.I,
+            ),
             IntentMatch("definition", "DEFINITION_INTENT", VectorFilters(retrieval_domain="business_rule", doc_type="terminology")),
         ),
         (
@@ -190,7 +242,11 @@ def _semantic_intent(text: str) -> IntentMatch | None:
             IntentMatch("documentation", "DOCUMENTATION_INTENT", VectorFilters(retrieval_domain="documentation", doc_type="workbook_overview")),
         ),
         (
-            re.compile(r"\b(business\s+rule|policy|risk|days[ -]of[ -]supply)\b", re.I),
+            re.compile(
+                r"\b(business\s+rule|policy|risk|days[ -]of[ -]supply)\b|"
+                r"\b(aturan\s+bisnis|kebijakan|risiko|berisiko|hari\s+cakupan)\b",
+                re.I,
+            ),
             IntentMatch("business_rule", "BUSINESS_RULE_INTENT", VectorFilters(retrieval_domain="business_rule")),
         ),
     )
@@ -200,8 +256,60 @@ def _semantic_intent(text: str) -> IntentMatch | None:
     return None
 
 
+# Indonesian retail vocabulary folded onto the English keys `_sql_capabilities`
+# already matches on, so one lookup table serves both languages instead of a
+# second parallel chain of `if` branches that would drift out of sync.
+_ID_SQL_SYNONYMS = (
+    ("persediaan", "inventory"),
+    ("stok", "inventory"),
+    ("posisi stok", "stock position"),
+    ("sisa stok", "on hand"),
+    ("di tangan", "on hand"),
+    ("titik pemesanan ulang", "reorder point"),
+    ("titik pemesanan", "reorder point"),
+    ("hari cakupan", "days of supply"),
+    ("pengisian ulang", "replenish"),
+    ("pengisian", "replenish"),
+    ("diusulkan", "proposed"),
+    ("usulan", "proposed"),
+    ("jumlah pesanan", "order quantity"),
+    ("tenaga kerja", "workforce"),
+    ("karyawan", "staff"),
+    ("penjualan bulanan", "monthly sales"),
+    ("riwayat penjualan", "sales history"),
+    ("perjanjian dagang", "trade agreement"),
+    ("pemasok", "vendor"),
+    ("waktu tunggu", "lead time"),
+    ("kategori", "category"),
+    ("merek", "brand"),
+    ("entitas hukum", "legal entity"),
+    ("toko", "store"),
+    ("gerai", "store"),
+    ("barang", "sku"),
+    ("produk", "product"),
+    ("promosi", "promotion"),
+    ("diskon", "discount"),
+    ("harga", "price"),
+    ("biaya", "cost"),
+    ("berisiko", "at-risk"),
+    ("tertinggi", "highest"),
+    ("teratas", "top"),
+    ("peringkat", "ranking"),
+    ("saat ini", "current"),
+    ("sekarang", "current"),
+    ("terkini", "current"),
+    ("terbaru", "latest"),
+    ("rincian", "details"),
+    ("detail", "details"),
+)
+
+
 def _sql_capabilities(text: str) -> tuple[str, list[str]]:
     lowered = text.lower()
+    # Longest first, so "posisi stok" is not consumed by "stok".
+    for indonesian, english in sorted(_ID_SQL_SYNONYMS, key=lambda pair: -len(pair[0])):
+        if indonesian in lowered:
+            lowered += " " + english
     if re.search(r"highest|top|ranking|ranked", lowered) and "replenish" in lowered:
         return "replenishment_ranking", ["replenishment.top_candidates"]
     if re.search(r"highest|top|ranking|ranked|at[- ]risk", lowered) and "inventory" in lowered:

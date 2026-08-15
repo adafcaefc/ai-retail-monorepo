@@ -2,7 +2,15 @@
 
 This directory is the house style for this repo: **Ledgerline Finance Forum / AI 360
 Retail Suite** — a FastAPI + pydantic-ai backend and a React + Vite frontend that serve
-config-driven LLM agents over PostgreSQL financial and retail data.
+config-driven LLM agents over Azure SQL financial and retail data.
+
+The backend talks to Azure SQL only — `src/db/db.py` reads
+`AZURE_SQL_CONNECTIONSTRING` and has no Postgres fallback, and `docker-compose.yml`
+retired the local Postgres service. One database holds both halves the agents
+read: the `retail`/`chat`/`audit` schemas carry the business rows, and the `ai`
+schema carries the retrieval corpus (`RetailDocument` → `RetailChunk` →
+`RetailEmbedding`, a native SQL Server `vector` column). Older documents that
+say PostgreSQL predate that move.
 
 It documents conventions this codebase already follows (so they survive contributor
 turnover) and flags the few places we've deliberately left a gap rather than invent

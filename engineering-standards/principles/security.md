@@ -22,8 +22,11 @@ through an allow-list lookup (below), not string substitution.
 Chat agents can run free-form SQL through `common/tools/freeform_query.py`, but the
 tool never hands raw text to the database:
 
-1. The statement is parsed with `sqlglot` (dialect `postgres`) into an AST — not
-   validated with a regex, which is trivially bypassed.
+1. The statement is parsed with `sqlglot` (dialect `tsql`) into an AST — not
+   validated with a regex, which is trivially bypassed. The dialect has to track
+   `src/db/db.py`'s engine: agent SQL runs against Azure SQL, so parsing it as
+   Postgres would accept syntax the database then rejects, and reject syntax it
+   accepts.
 2. Statement type is restricted (`SELECT`/`INSERT`/`UPDATE`/`DELETE`/`WITH` — a fixed
    `Literal`).
 3. Every table referenced must appear in that **domain's** allow-list
