@@ -32,6 +32,14 @@
 --
 -- Re-runnable: every step is guarded, so applying this twice is a no-op.
 --
+-- APPLIED to free-sql-db-0067773 on 2026-08-15. All five tables came back with
+-- 73 partitions, row counts unchanged (fact_inventory_daily 16,000,
+-- fact_inventory_chain_daily 800), and the five excluded tables still on 1.
+-- Every existing row is dated 2026-07-01 and landed in partition 32, whose
+-- lower boundary is 2026-07-01 -- and a query filtered to that month reads 1
+-- partition of the 73, which is the elimination this migration exists for.
+-- Backend suite after the change: 661 passed, 7 skipped.
+--
 -- Verify afterwards with:
 --     SELECT t.name, COUNT(p.partition_number)
 --     FROM sys.tables t
