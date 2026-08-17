@@ -46,9 +46,16 @@ AGENT_ID = "retail.promotion_effectiveness"
 
 # The incremental promotion margin is computed from f13 (not read from the
 # chain margin_rp column, which is a different measure — the chain's total
-# weekly margin). Parsed once at import; the catalogue is small and stable.
-_catalogue = {entry["id"]: entry["expression"] for entry in repository.load()}
-_F13_AST = parse(_catalogue["f13-incremental-promotion-margin"])
+# weekly margin). Parsed lazily on first access so module import is offline-safe.
+_F13_AST = None
+
+
+def _get_f13_ast():
+    global _F13_AST
+    if _F13_AST is None:
+        catalogue = {entry["id"]: entry["expression"] for entry in repository.load()}
+        _F13_AST = parse(catalogue["f13-incremental-promotion-margin"])
+    return _F13_AST
 
 
 def _f13_margin(row: dict) -> float:
@@ -61,7 +68,7 @@ def _f13_margin(row: dict) -> float:
     and are NOT used for the incremental margin.
     """
     return evaluate(
-        _F13_AST,
+        _get_f13_ast(),
         {
             "ads": _float(row["ads"]),
             "price": _float(row["unit_price"]),
