@@ -410,13 +410,14 @@ def freeform_query(
         raise ValueError("allowed_tables must not be empty.")
 
     sql_engine = engine or get_engine()
+    # No T-SQL equivalent of Postgres's "SET TRANSACTION READ ONLY" exists for
+    # an ad hoc session against Azure SQL, so read-only is enforced by
+    # convention (the type/table allow-list above) rather than by the
+    # database. See src/llm/agents/common/tools/db.py's _read_connection.
     read_only = type_allow <= {"SELECT", "WITH"}
     results: list[dict[str, Any]] = []
 
     with sql_engine.connect() as connection:
-        if read_only:
-            connection.execute(text("SET TRANSACTION READ ONLY"))
-
         for index, raw_query in enumerate(queries):
             validated = _validate_query(
                 raw_query,
