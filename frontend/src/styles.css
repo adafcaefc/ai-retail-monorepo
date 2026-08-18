@@ -606,6 +606,7 @@ img.ey-logo {
   gap: 14px;
   min-height: 0;
   overflow-y: auto;
+  padding-right: 10px;
   scrollbar-width: thin;
   scrollbar-color: rgba(98, 112, 138, 0.35) transparent;
 }
@@ -771,7 +772,8 @@ img.ey-logo {
 
 .sidebar-footer {
   margin-top: auto;
-  padding: 18px 8px 2px;
+  padding: 16px 8px 18px;
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.72rem;
 }
@@ -3344,7 +3346,10 @@ img.ey-logo {
 /*
  * Suggestions are the variable-height part above the input. Left unbounded a
  * long list pushed the composer up the panel; capped, the list scrolls and the
- * input stays where the hand expects it.
+ * input stays where the hand expects it. 140px is sized for the real ceiling:
+ * every agent ships exactly 3 starter prompts and follow-ups cap at 2
+ * (suggested_response.py), so 3 single-line chips is the tallest case that
+ * should ever need to render — 116px clipped the 3rd chip mid-line.
  */
 .prompt-suggestions {
   display: grid;
@@ -3353,7 +3358,7 @@ img.ey-logo {
   min-width: 0;
   min-height: 0;
   max-width: 1120px;
-  max-height: 116px;
+  max-height: 140px;
   gap: 7px;
   margin: 0 auto 8px;
 }
