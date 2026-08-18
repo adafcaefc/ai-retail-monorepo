@@ -69,7 +69,12 @@ def get_demand_forecast_snapshot(
                    round(sum(c.ads), 1)              AS ads_total,
                    round(avg(i.seasonality_index), 3)         AS avg_seasonality,
                    round(avg(i.growth_index), 3)              AS avg_growth,
-                   sum(CASE WHEN c.state IN ('Stockout', 'Low') THEN 1 ELSE 0 END)
+                   -- Measured, not labelled: `state` no longer implies this.
+                   -- Expiry outranks Stockout/Low in `f07`, so a perishable SKU
+                   -- that is both below ROP and past shelf life reads "Expiry"
+                   -- while still being below the reorder point. The chat config
+                   -- already describes this card as "position below ROP".
+                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)
                                                               AS stockout_risk_skus,
                    sum(CASE WHEN i.is_viral = 1 THEN 1 ELSE 0 END)         AS viral_skus,
                    sum(CASE WHEN i.growth_index > 1 THEN 1 ELSE 0 END) AS growing_skus,

@@ -60,6 +60,10 @@ def get_inventory_risk_snapshot(
             f"""
             SELECT c.state,
                    count(*)                       AS skus,
+                   -- Carried per state so the total below can count below-ROP
+                   -- rows without caring which state they were labelled with.
+                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)
+                                                  AS below_rop_skus,
                    round(sum(c.at_risk_value), 0)    AS at_risk_value,
                    round(sum(c.inventory_value), 0)  AS inventory_value,
                    round(avg(c.days_cover), 2) AS avg_days_cover,
@@ -79,7 +83,8 @@ def get_inventory_risk_snapshot(
             SELECT i.vertical_id,
                    v.dashboard_label,
                    count(*)                      AS skus,
-                   sum(CASE WHEN c.state IN ('Stockout', 'Low') THEN 1 ELSE 0 END)
+                   -- Measured, not labelled -- see the note on REPLENISH_STATES.
+                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)
                                                  AS stockout_risk_skus,
                    sum(CASE WHEN c.state = 'Overstock' THEN 1 ELSE 0 END)
                                                  AS overstock_skus,
@@ -176,9 +181,9 @@ def get_inventory_risk_snapshot(
         "inventory_value": sum(row["inventory_value"] or 0 for row in by_state),
         "at_risk_value": sum(row["at_risk_value"] or 0 for row in by_state),
         "expiry_units": sum(row["expiry_units"] or 0 for row in by_state),
-        "stockout_risk_skus": sum(
-            row["skus"] for row in by_state if row["state"] in ("Stockout", "Low")
-        ),
+        # Summed across every state, not filtered to Stockout/Low: an Expiry row
+        # can be below ROP too, now that Expiry is tested first.
+        "stockout_risk_skus": sum(row["below_rop_skus"] or 0 for row in by_state),
         "overstock_skus": sum(
             row["skus"] for row in by_state if row["state"] == "Overstock"
         ),

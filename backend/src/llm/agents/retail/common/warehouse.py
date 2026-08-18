@@ -47,7 +47,17 @@ STATE_ORDER: tuple[str, ...] = (
     "Healthy",
 )
 
-# The two states that sit below the reorder point, by construction of `f07`.
+# Which agent owns a row, by state. NOT a stand-in for "below the reorder
+# point" -- it used to be, because `f07` tested Stockout and Low before Expiry,
+# so every below-ROP row landed in one of them. Expiry is now tested first, so
+# 199 of the 16,000 store rows are perishable stock that is both below ROP and
+# past its shelf life, and they read "Expiry". Routing them to markdown instead
+# of replenishment is the point: reordering stock that is already spoiling is
+# the behaviour the priority change set out to stop.
+#
+# Anything that needs "below the reorder point" must compare position to ROP
+# directly (`position_qty < rop_qty`), which is measured rather than labelled
+# and survives a future reordering of the state chain.
 REPLENISH_STATES = frozenset({"Stockout", "Low"})
 
 # What the route can actually narrow in SQL. The remaining scope fields are
