@@ -611,12 +611,17 @@ img.ey-logo {
 }
 
 .agent-groups::-webkit-scrollbar {
-  width: 6px;
+  width: 9px;
 }
 
 .agent-groups::-webkit-scrollbar-thumb {
+  /* Transparent border + content-box clip insets the thumb inside the
+     track, same trick as .transcript, so it reads as a slim floating bar
+     instead of a flush-against-the-content stripe. */
+  border: 3px solid transparent;
   border-radius: 999px;
   background-color: rgba(98, 112, 138, 0.35);
+  background-clip: content-box;
 }
 
 .agent-groups::-webkit-scrollbar-track {
@@ -3374,25 +3379,18 @@ img.ey-logo {
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
-  /* Scrolls inside its capped row rather than pushing the input up. */
+  /* Scrolls inside its capped row rather than pushing the input up, but the
+     row is short enough that a visible track/thumb reads as clutter rather
+     than a useful affordance — scroll still works via wheel/touch/keyboard,
+     it's just not drawn. */
   min-height: 0;
   overflow-y: auto;
   gap: 7px;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(98, 112, 138, 0.35) transparent;
+  scrollbar-width: none;
 }
 
 .prompt-suggestions-list::-webkit-scrollbar {
-  width: 6px;
-}
-
-.prompt-suggestions-list::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background-color: rgba(98, 112, 138, 0.35);
-}
-
-.prompt-suggestions-list::-webkit-scrollbar-track {
-  background: transparent;
+  display: none;
 }
 
 /* Copilot-style suggestion chips: compact, pill-shaped, wrapping. */
