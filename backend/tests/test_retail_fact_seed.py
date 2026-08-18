@@ -129,8 +129,12 @@ class TestMapping:
     def test_reorder_count_survives_the_yes_no_coercion(self, tables) -> None:
         rows = seeder.build_replenishment(tables)
 
-        # The same 302 the boards agree on, and not all 800.
-        assert sum(1 for r in rows if r["is_reorder"]) == 302
+        # The same count the boards agree on, and not all 800. Was 302 until
+        # `ROP` began taking its lead time from the designated Trade Agreement
+        # row rather than the static `SKU_Master.Lead (d)` -- the two disagreed
+        # (GRC-005: 2 days vs 6), ROP rose, and 136 more SKUs fell below it.
+        # This reads the workbook, so it moved as soon as the workbook did.
+        assert sum(1 for r in rows if r["is_reorder"]) == 438
 
     def test_assortment_is_the_item_store_pairs_that_exist(self, tables) -> None:
         rows = seeder.build_assortment(tables)
@@ -240,8 +244,14 @@ class TestReconciliation:
         """The cross-agent invariant, now through the database.
 
         A2 calls them stockout-risk, A3 calls them lines to reorder, and both
-        mean `Position < ROP` summed across every store. 302 either way, or the
-        two boards will disagree the moment they read from here.
+        mean `Position < ROP` summed across every store. The same number either
+        way, or the two boards will disagree the moment they read from here.
+
+        Still 302 rather than the workbook's 438 on purpose: this one reads the
+        database, which has not been re-seeded from the revised workbook yet.
+        Both numbers are correct for what they read. Change this to 438 in the
+        same commit that re-seeds the facts, not before -- moving it early makes
+        a passing test fail and hides whether the re-seed actually worked.
         """
         with engine.connect() as c:
             at_risk = c.execute(
