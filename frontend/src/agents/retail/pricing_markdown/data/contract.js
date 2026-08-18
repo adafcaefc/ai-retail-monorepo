@@ -49,10 +49,12 @@ export const CANDIDATE_STATES = Object.freeze(["Expiry", "Overstock", "Slow-move
  * What-If levers, A5 spec section 9a -> `Constants` B16-B21.
  *
  * `demand`, `promo`, `inbound`, `lead`, `safety` flow through to `state` via
- * the same cascade `inventory_risk` runs, and state feeds both f12 (at-risk)
- * and f14 (recoverable) in the browser engine. `markdown` has no term
- * anywhere in that formula set -- inert, matching inventory_risk's
- * identical conclusion for the same lever.
+ * the same cascade `inventory_risk` runs, and state feeds f12 (at-risk) and
+ * f23 (gross markdown exposure) in the browser engine. `markdown` is
+ * different from the other five: it does not move `state`, it moves how much
+ * of the gross exposure f14-recoverable-at-risk-value converts to
+ * `recoverable_value` -- the one lever this formula set actually models a
+ * depth-to-recovery term for.
  */
 export const LEVER_DEFINITIONS = Object.freeze([
   {
@@ -83,8 +85,8 @@ export const LEVER_DEFINITIONS = Object.freeze([
     max: 60,
     step: 1,
     cell: "B18",
-    effect: "No modelled effect -- the workbook's formula set has no depth-to-recovery term",
-    modelled: false,
+    effect: "Widens the recovery depth f14 applies to gross exposure -- deeper markdown, more of the gross recovered, up to a 65% cap",
+    modelled: true,
   },
   {
     id: "inbound",
@@ -181,7 +183,9 @@ export const KPI_FORMULAS = Object.freeze({
   markdown_candidates: "count(SKUs with >=1 store in {Expiry, Overstock, Slow-mover})",
   avg_depth_pct: "weighted avg markdown depth by candidate value (vertical-level, workbook reference)",
   at_risk_value: "SUM(ENGINE_STORE.at_risk) across a SKU's stores",
-  recoverable_value: "SUM(ENGINE_STORE.markdown_recoverable) across a SKU's candidate-state stores",
+  recoverable_value:
+    "SUM(ENGINE_STORE.markdown_recoverable) across a SKU's candidate-state stores; " +
+    "re-simulated as f14(f23(state, position, ads, shelf_life_days, max, price), state, elasticity, markdown_lever) when a lever moves",
   write_off_value: "at-risk value - recoverable value",
   comp_idx: "mean(SKU_Master.comp_idx) over candidates",
 });

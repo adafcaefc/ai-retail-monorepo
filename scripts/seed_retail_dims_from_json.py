@@ -257,6 +257,9 @@ def main() -> int:
                 # an approximation of it.
                 "onhand_days": row["onhand_days"],
                 "stock_factor": row["stockf"],
+                # SKU_Master col R. Agent 5's Competitive index KPI -- needs
+                # sql/retail/005_add_dim_item_competitor_index.sql applied first.
+                "competitor_index": row["comp_idx"],
             }
         )
 

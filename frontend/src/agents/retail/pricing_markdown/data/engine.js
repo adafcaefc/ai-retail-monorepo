@@ -3,17 +3,23 @@
  * moves, then re-derives at-risk and recoverable value from the new state.
  *
  * This is the same cascade `inventory_risk/data/engine.js` runs (f01 through
- * f07, plus f12/f20/f21/f22), because a lever that changes a SKU's state for
- * Agent 2 changes it identically here. f14 is the one addition, run on top
- * of the re-derived state/position/ads/max to get `recoverable_value` — a
- * lever position the workbook never calculated, so unlike the shipped
- * baseline (summed from ENGINE_STORE's own resolved columns), this one
- * genuinely has to be computed.
+ * f07, plus f12/f20/f21/f22). f23 and f14 are the additions, run on top of
+ * the re-derived state/position/ads/max to get `recoverable_value` — a lever
+ * position the workbook never calculated, so unlike the shipped baseline
+ * (summed from ENGINE_STORE's own resolved columns), this one genuinely has
+ * to be computed.
+ *
+ * f14-recoverable-at-risk-value takes {gross, state, elasticity,
+ * markdown_lever} — it is NOT a function of position/ads/shelf_life/price
+ * directly, those feed f23-markdown-at-risk-gross, whose `gross` output is
+ * f14's own first input. f14 is also the one formula in this cascade that
+ * reads the `markdown` lever (Constants B18) — see contract.js's
+ * LEVER_DEFINITIONS, where it is the only lever marked `modelled: true`.
  *
  * Zero levers must return the fixture's state/candidacy unchanged (its
  * money figures may drift by the same floating-point noise
- * inventory_risk's own engine tolerates, since f12 here re-derives from
- * re-derived inputs rather than reading the shipped SUMIFS total).
+ * inventory_risk's own engine tolerates, since f12/f23/f14 here re-derive
+ * from re-derived inputs rather than reading the shipped SUMIFS total).
  */
 
 import { evaluate, parse } from "../../../../formulas/expression.js";
@@ -101,13 +107,19 @@ export function createEngine(formulas) {
     });
 
     const atRiskValue = run("f12-at-risk-value", { state, position, price: item.price });
-    const recoverableValue = run("f14-recoverable-at-risk-value", {
+    const gross = run("f23-markdown-at-risk-gross", {
       state,
       position,
       ads,
       shelf_life_days: item.shelf_life_days,
       max_inventory: max,
       price: item.price,
+    });
+    const recoverableValue = run("f14-recoverable-at-risk-value", {
+      gross,
+      state,
+      elasticity: item.elasticity,
+      markdown_lever: lever.markdown,
     });
     const isCandidate = CANDIDATE_STATES.includes(state);
 
@@ -148,4 +160,5 @@ const REQUIRED_FORMULAS = [
   "f20-days-of-supply",
   "f21-inventory-value",
   "f22-expiry-units",
+  "f23-markdown-at-risk-gross",
 ];

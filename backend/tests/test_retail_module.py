@@ -17,14 +17,15 @@ RETAIL_MODULES = (
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory..."),
     ("retail.replenishment", "Replenishment", "Ask Replenishment..."),
     ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
+    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing..."),
 )
 
-# Agents 5-9 of the mockup: sidebar destinations with nothing behind them yet
+# Agents 6-9 of the mockup: sidebar destinations with nothing behind them yet
 # (`retail/common/placeholder.py`). Order is the mockup's, which is also the
 # order they have to be built in — each reads what the one before it produces.
-# Agent 4 (promotion_effectiveness) has moved to RETAIL_MODULES above.
+# Agents 4 (promotion_effectiveness) and 5 (pricing_markdown) have moved to
+# RETAIL_MODULES above.
 PLACEHOLDER_MODULES = (
-    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing..."),
     ("retail.assortment_optimization", "Assortment Optimization", "Ask Assortment..."),
     ("retail.workforce_optimizer", "Workforce Optimizer", "Ask Workforce..."),
     (
@@ -43,7 +44,7 @@ PASSES_PER_MODULE = 3
 
 
 def test_retail_folder_carries_the_mockups_nine_agents_in_order() -> None:
-    """Four built, five navigation-only, in the mockup's sidebar order.
+    """Five built, four navigation-only, in the mockup's sidebar order.
 
     This asserted exactly three modules while Agents 4-9 did not exist. They
     are now reachable, which is the point of the change rather than a

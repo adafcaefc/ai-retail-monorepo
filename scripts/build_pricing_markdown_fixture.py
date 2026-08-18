@@ -63,6 +63,15 @@ DATA HONESTY
 Internally consistent demonstration data, not a live ERP position. The
 payload carries `is_mock: true` and a note; the UI labels it rather than
 presenting it as measured.
+
+f14/f23, TWO FORMULAS THAT TRAVEL TOGETHER
+f14-recoverable-at-risk-value takes {gross, state, elasticity,
+markdown_lever}, not the position/ads/shelf_life/price inputs its name might
+suggest -- those belong to f23-markdown-at-risk-gross, whose `gross` output is
+f14's own first input. Both are shipped in `formulas` so the browser's
+What-If engine can chain them; shipping only f14 (or shipping a substitute
+expression under its id) breaks the markdown lever, which f14 is the one
+formula in this catalogue to model.
 """
 
 from __future__ import annotations
@@ -96,8 +105,11 @@ CANDIDATE_STATES = ("Expiry", "Overstock", "Slow-mover")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
 CANDIDATE_PRIORITY = {"Expiry": 0, "Overstock": 1, "Slow-mover": 2}
 
-# Formulas the browser What-If engine re-evaluates (f12/f14 included for that
-# purpose only -- see the module docstring). Not evaluated in this script.
+# Formulas the browser What-If engine re-evaluates (f12/f23/f14 included for
+# that purpose only -- see the module docstring). Not evaluated in this
+# script. f14 takes {gross, state, elasticity, markdown_lever}; `gross` is
+# f23's own output, so both travel together or the browser engine cannot
+# chain them.
 CATALOGUE_FORMULAS = (
     "f01-ads-per-store",
     "f03-open-po-per-store",
@@ -110,6 +122,7 @@ CATALOGUE_FORMULAS = (
     "f20-days-of-supply",
     "f21-inventory-value",
     "f22-expiry-units",
+    "f23-markdown-at-risk-gross",
 )
 
 # The audit's own verified "live formula" total for ENGINE_STORE!markdown
@@ -350,6 +363,9 @@ def build_items(
                 "perishable": master.get("perishable", "N"),
                 "growth": _num(master.get("growth")),
                 "comp_idx": _num(master.get("comp_idx")),
+                # f14-recoverable-at-risk-value's own input, for the browser
+                # engine's What-If re-simulation (see engine.js).
+                "elasticity": _num(master.get("elasticity")),
                 "open_po": _num(row.get("open_po")),
                 "on_hand": position - _num(row.get("open_po")),
                 # What-If cascade inputs for the browser engine (Task 4).
