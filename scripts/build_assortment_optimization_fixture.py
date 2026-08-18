@@ -150,32 +150,29 @@ def contribution_by_sku(engine_store: list[dict[str, Any]]) -> dict[str, float]:
     return totals
 
 
-def designated_lead_times(trade_agreements: list[dict[str, Any]]) -> dict[str, float]:
-    """Vendor lead time per item, from the DESIGNATED trade agreement.
+def designated_lead_times(sku_master: list[dict[str, Any]]) -> dict[str, float]:
+    """Lead time per item, from `sku_master.lead_d`.
 
-    NOT `sku_master.lead_d`. The workbook's own ROP formula (ENGINE!G, read
-    directly from the file) is:
+    The name is historical and the source is not. This read the DESIGNATED
+    trade agreement row while the revised workbook was in the tree, because
+    that workbook's ROP did:
 
         ROUND(ADS * (MAX(1, SUMIFS('Trade Agreement'!H, item, designated="Y")
                             + Constants!B20)
                      + MAX(0, SKU_Master.safety_d + Constants!B21)))
 
-    -- the lead term is the trade agreement's, which is audit fix T-05/T-06
-    ("ROP pakai lead statis di SKU master, bukan lead vendor") already ported
-    into this workbook. Feeding f05 `sku_master.lead_d` instead reproduces
-    neither ROP nor Max, which shifts the inventory state and therefore the
-    delist verdict. Verified: this source reproduces all 800 stored ROP and
-    Max values exactly.
+    That revision was withdrawn. The workbook now in `resources/` computes ROP
+    from `SKU_Master.Lead (d)`, and the two columns disagree on all 800 items
+    -- GRC-001 is 2 days in the master and 6 in the agreement. Feeding f05 the
+    agreement's term against this workbook reproduces neither ROP nor Max:
+    3,478 against the stored 1,491 for GRC-001, which is a different inventory
+    state and therefore a different delist verdict.
 
-    SUMIFS, not a lookup, because that is what the workbook does -- an item
-    with two designated rows would sum them there, so it sums them here.
+    `verify_engine_chain` asserts the reproduction over all 800 rows, so a
+    future workbook that moves the lead term back will fail the build here
+    rather than ship a fixture that disagrees with its own source.
     """
-    totals: dict[str, float] = {}
-    for row in trade_agreements:
-        if str(row.get("designated", "")).strip().upper() != "Y":
-            continue
-        totals[row["item"]] = totals.get(row["item"], 0.0) + _num(row.get("lead_time_d"))
-    return totals
+    return {row["sku_id"]: _num(row.get("lead_d")) for row in sku_master}
 
 
 def verify_reorder_inputs(
@@ -329,8 +326,11 @@ def build_items(
                 "store_size": _num(master.get("sum_vert_size")),
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
-                # The designated trade agreement's lead time -- see
-                # designated_lead_times() for why this is not sku_master.lead_d.
+                # `SKU_Master.Lead (d)`, which is what this workbook's ROP
+                # is computed from -- see designated_lead_times(). The browser
+                # engine recomputes ROP from this field on every lever move,
+                # so a different column here means the board jumps the moment
+                # a slider is touched.
                 "lead_days": lead_times.get(row["sku_id"], 0.0),
                 "safety_days": _num(master.get("safety_d")),
                 "margin_pct": _num(master.get("margin_pct")),
@@ -549,7 +549,7 @@ def main() -> int:
     stores_by_id = {row["store_id"]: row for row in tables["stores"]}
 
     contribution = contribution_by_sku(tables["engine_store"])
-    lead_times = designated_lead_times(tables["trade_agreements"])
+    lead_times = designated_lead_times(tables["sku_master"])
 
     reorder_failures = verify_reorder_inputs(
         tables["engine"], {r["sku_id"]: r for r in tables["sku_master"]}, lead_times, asts
