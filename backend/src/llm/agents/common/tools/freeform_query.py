@@ -14,7 +14,8 @@ import sqlglot
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlglot import exp
-from sqlglot.errors import ParseError
+from sqlglot.errors import OptimizeError, ParseError
+from sqlglot.optimizer.qualify import qualify
 
 from src.db.db import get_engine
 
@@ -331,11 +332,34 @@ def _resolve_tables_against_allowlist(
     return unresolved
 
 
+def _schema_for_tables(
+    allowed_tables: Iterable[str],
+    *,
+    engine: Engine | None = None,
+) -> dict[str, dict[str, dict[str, str]]]:
+    """
+    Build a sqlglot column schema ({schema: {table: {column: type}}}) from
+    live Azure SQL metadata, for _validate_query's column-existence check.
+
+    Reuses describe_tables (already reading information_schema for the table
+    allow-list) rather than hand-maintaining a second, driftable column list.
+    """
+    described = describe_tables(allowed_tables=allowed_tables, engine=engine)
+    schema: dict[str, dict[str, dict[str, str]]] = {}
+    for qualified, columns in (described.get("tables") or {}).items():
+        db_schema, table = qualified.split(".", 1)
+        schema.setdefault(db_schema, {})[table] = dict(
+            _split_column_entry(column) for column in columns
+        )
+    return schema
+
+
 def _validate_query(
     query: str,
     *,
     allowed_types: set[str],
     allowed_tables: set[str],
+    schema: dict[str, dict[str, dict[str, str]]] | None = None,
 ) -> str:
     cleaned = query.strip()
     if not cleaned:
@@ -369,6 +393,25 @@ def _validate_query(
             + ", ".join(unresolved)
             + f". Allowed tables: {sorted(allowed_tables)}."
         )
+
+    # Column existence is only meaningfully checked by sqlglot's qualifier for
+    # read (SELECT/WITH) scopes -- it silently lets an UPDATE SET target or a
+    # write-side column through unqualified, so it is only worth running here.
+    if schema is not None and statement_type in ("SELECT", "WITH"):
+        try:
+            qualify(
+                expression.copy(),
+                schema=schema,
+                dialect=_SQL_DIALECT,
+                validate_qualify_columns=True,
+            )
+        except OptimizeError as exc:
+            raise ValueError(
+                "Query references a column that does not exist on these "
+                f"tables: {exc}. Call the matching describe_*_tables() tool "
+                "for the real column names before retrying -- do not guess "
+                "them."
+            ) from exc
 
     # Regenerate from the parsed tree rather than executing the model's raw
     # text: sqlglot's tsql *reader* is permissive enough to accept
@@ -416,6 +459,10 @@ def freeform_query(
         raise ValueError("allowed_tables must not be empty.")
 
     sql_engine = engine or get_engine()
+    # Built once per call (not per query) from live information_schema data,
+    # same as the table allow-list -- so a model-invented column name fails
+    # validation here instead of surfacing as an opaque ODBC error.
+    schema = _schema_for_tables(table_allow, engine=engine)
     # No T-SQL equivalent of Postgres's "SET TRANSACTION READ ONLY" exists for
     # an ad hoc session against Azure SQL, so read-only is enforced by
     # convention (the type/table allow-list above) rather than by the
@@ -429,6 +476,7 @@ def freeform_query(
                 raw_query,
                 allowed_types=type_allow,
                 allowed_tables=table_allow,
+                schema=schema,
             )
             result = connection.execute(text(validated))
 
