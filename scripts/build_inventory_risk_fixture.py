@@ -105,6 +105,22 @@ CATALOGUE_FORMULAS = (
 )
 
 
+def _designated_lead_times(tables: dict) -> dict:
+    """Lead time per item, from the DESIGNATED trade agreement row.
+
+    NOT `sku_master.lead_d`. The workbook's ROP reads
+    `SUMIFS('Trade Agreement'!H, item, designated="Y")`, and the two disagree --
+    GRC-005 is 2 days in the master and 6 in the agreement. Feeding f05 the
+    master column reproduces neither ROP nor Max. Exactly one row per item
+    carries `designated = "Y"`.
+    """
+    return {
+        row["item"]: row["lead_time_d"]
+        for row in tables["trade_agreements"]
+        if str(row["designated"]).strip().upper() == "Y"
+    }
+
+
 def read_source() -> dict[str, list[dict[str, Any]]]:
     payload = json.loads(SOURCE.read_text(encoding="utf-8"))
     tables: dict[str, list[dict[str, Any]]] = {}
@@ -185,6 +201,7 @@ def verify_engine_chain(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
+    lead_times: dict[str, float],
 ) -> dict[str, str]:
     """Rebuild every chain-net row from `formula.json` and insist it matches.
 
@@ -264,7 +281,7 @@ def verify_engine_chain(
 
         reorder = {
             "ads": row["ads"],
-            "lead_time_days": sku["lead_d"],
+            "lead_time_days": lead_times.get(row["sku_id"], sku["lead_d"]),
             "lead_time_adjust": 0,
             "safety_days": sku["safety_d"],
             "safety_adjust": 0,
@@ -750,7 +767,12 @@ def main() -> int:
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
 
-    expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
+    expressions = verify_engine_chain(
+        tables["engine"],
+        sku_master,
+        store_size,
+        _designated_lead_times(tables),
+    )
     verify_store_derivation(
         tables["engine_store"], tables["engine"], sku_master, stores, store_size
     )
