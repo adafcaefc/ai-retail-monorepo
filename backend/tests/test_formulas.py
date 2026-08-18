@@ -508,5 +508,4 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
         assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
         split[grain] = split.get(grain, 0) + 1
 
-    # 17, not 16: f23-markdown-at-risk-gross is a store-grain formula.
-    assert split == {"store_sku": 17, "chain_sku": 3, "store_roster": 3}
+    assert split == {"store_sku": 16, "chain_sku": 3, "store_roster": 3}

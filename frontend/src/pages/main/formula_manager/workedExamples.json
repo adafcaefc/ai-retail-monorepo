@@ -737,28 +737,13 @@
   ],
   "f09-order-quantity-sales-units": [
     {
-      "label": "SKU GRC-002, Store S005",
-      "address": "ENGINE_STORE!V28",
-      "expected": 148,
-      "values": {
-        "position": 110,
-        "rop": 164,
-        "max_inventory": 258
-      },
-      "sources": {
-        "position": "ENGINE_STORE!M28",
-        "rop": "ENGINE_STORE!N28",
-        "max_inventory": "ENGINE_STORE!O28"
-      }
-    },
-    {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!V4",
-      "expected": 253,
+      "expected": 136,
       "values": {
         "position": 68,
-        "rop": 204,
-        "max_inventory": 321
+        "rop": 88,
+        "max_inventory": 204
       },
       "sources": {
         "position": "ENGINE_STORE!M4",
@@ -767,71 +752,73 @@
       }
     },
     {
-      "label": "SKU GRC-010, Store S005",
-      "address": "ENGINE_STORE!V188",
-      "expected": 236,
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!V5",
+      "expected": 168,
       "values": {
-        "position": 164,
-        "rop": 255,
-        "max_inventory": 400
+        "position": 74,
+        "rop": 104,
+        "max_inventory": 242
       },
       "sources": {
-        "position": "ENGINE_STORE!M188",
-        "rop": "ENGINE_STORE!N188",
-        "max_inventory": "ENGINE_STORE!O188"
+        "position": "ENGINE_STORE!M5",
+        "rop": "ENGINE_STORE!N5",
+        "max_inventory": "ENGINE_STORE!O5"
       }
     },
     {
-      "label": "SKU GRC-043, Store S005",
-      "address": "ENGINE_STORE!V848",
-      "expected": 0,
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!V6",
+      "expected": 91,
       "values": {
-        "position": 908,
-        "rop": 531,
-        "max_inventory": 766
+        "position": 46,
+        "rop": 59,
+        "max_inventory": 137
       },
       "sources": {
-        "position": "ENGINE_STORE!M848",
-        "rop": "ENGINE_STORE!N848",
-        "max_inventory": "ENGINE_STORE!O848"
+        "position": "ENGINE_STORE!M6",
+        "rop": "ENGINE_STORE!N6",
+        "max_inventory": "ENGINE_STORE!O6"
       }
     },
     {
-      "label": "SKU GRC-037, Store S001",
-      "address": "ENGINE_STORE!V724",
-      "expected": 0,
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!V7",
+      "expected": 126,
       "values": {
-        "position": 194,
-        "rop": 175,
-        "max_inventory": 253
+        "position": 53,
+        "rop": 77,
+        "max_inventory": 179
       },
       "sources": {
-        "position": "ENGINE_STORE!M724",
-        "rop": "ENGINE_STORE!N724",
-        "max_inventory": "ENGINE_STORE!O724"
+        "position": "ENGINE_STORE!M7",
+        "rop": "ENGINE_STORE!N7",
+        "max_inventory": "ENGINE_STORE!O7"
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!V8",
+      "expected": 142,
+      "values": {
+        "position": 102,
+        "rop": 105,
+        "max_inventory": 244
+      },
+      "sources": {
+        "position": "ENGINE_STORE!M8",
+        "rop": "ENGINE_STORE!N8",
+        "max_inventory": "ENGINE_STORE!O8"
       }
     }
   ],
   "f10-order-quantity-purchase-units": [
     {
-      "label": "SKU GRC-002, Store S005",
-      "address": "ENGINE_STORE!X28",
-      "expected": 7,
-      "values": {
-        "order_sales_units": 148,
-        "pack_factor": 24
-      },
-      "sources": {
-        "order_sales_units": "ENGINE_STORE!V28",
-        "pack_factor": "ENGINE_STORE!W28"
-      }
-    },
-    {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!X4",
-      "expected": 22,
+      "expected": 12,
       "values": {
-        "order_sales_units": 253,
+        "order_sales_units": 136,
         "pack_factor": 12
       },
       "sources": {
@@ -840,42 +827,55 @@
       }
     },
     {
-      "label": "SKU GRC-010, Store S005",
-      "address": "ENGINE_STORE!X188",
-      "expected": 24,
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!X5",
+      "expected": 14,
       "values": {
-        "order_sales_units": 236,
-        "pack_factor": 10
+        "order_sales_units": 168,
+        "pack_factor": 12
       },
       "sources": {
-        "order_sales_units": "ENGINE_STORE!V188",
-        "pack_factor": "ENGINE_STORE!W188"
+        "order_sales_units": "ENGINE_STORE!V5",
+        "pack_factor": "ENGINE_STORE!W5"
       }
     },
     {
-      "label": "SKU GRC-043, Store S005",
-      "address": "ENGINE_STORE!X848",
-      "expected": 0,
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!X6",
+      "expected": 8,
       "values": {
-        "order_sales_units": 0,
-        "pack_factor": 10
+        "order_sales_units": 91,
+        "pack_factor": 12
       },
       "sources": {
-        "order_sales_units": "ENGINE_STORE!V848",
-        "pack_factor": "ENGINE_STORE!W848"
+        "order_sales_units": "ENGINE_STORE!V6",
+        "pack_factor": "ENGINE_STORE!W6"
       }
     },
     {
-      "label": "SKU GRC-037, Store S001",
-      "address": "ENGINE_STORE!X724",
-      "expected": 0,
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!X7",
+      "expected": 11,
       "values": {
-        "order_sales_units": 0,
-        "pack_factor": 6
+        "order_sales_units": 126,
+        "pack_factor": 12
       },
       "sources": {
-        "order_sales_units": "ENGINE_STORE!V724",
-        "pack_factor": "ENGINE_STORE!W724"
+        "order_sales_units": "ENGINE_STORE!V7",
+        "pack_factor": "ENGINE_STORE!W7"
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!X8",
+      "expected": 12,
+      "values": {
+        "order_sales_units": 142,
+        "pack_factor": 12
+      },
+      "sources": {
+        "order_sales_units": "ENGINE_STORE!V8",
+        "pack_factor": "ENGINE_STORE!W8"
       }
     }
   ],
@@ -883,101 +883,86 @@
     {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!Y4",
-      "expected": 3775200,
+      "expected": 2721600,
       "values": {
-        "order_buy_units": 22,
+        "order_buy_units": 12,
         "pack_factor": 12,
-        "vendor_price": 14300
+        "price": 18900
       },
       "sources": {
         "order_buy_units": "ENGINE_STORE!X4",
         "pack_factor": "ENGINE_STORE!W4",
-        "vendor_price": "Trade Agreement!E6"
+        "price": "ENGINE_STORE!R4"
       }
     },
     {
-      "label": "SKU GMR-001, Store S021",
-      "address": "ENGINE_STORE!Y2004",
-      "expected": 6523200,
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!Y5",
+      "expected": 3175200,
+      "values": {
+        "order_buy_units": 14,
+        "pack_factor": 12,
+        "price": 18900
+      },
+      "sources": {
+        "order_buy_units": "ENGINE_STORE!X5",
+        "pack_factor": "ENGINE_STORE!W5",
+        "price": "ENGINE_STORE!R5"
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!Y6",
+      "expected": 1814400,
       "values": {
         "order_buy_units": 8,
-        "pack_factor": 4,
-        "vendor_price": 203850
+        "pack_factor": 12,
+        "price": 18900
       },
       "sources": {
-        "order_buy_units": "ENGINE_STORE!X2004",
-        "pack_factor": "ENGINE_STORE!W2004",
-        "vendor_price": "Trade Agreement!E306"
+        "order_buy_units": "ENGINE_STORE!X6",
+        "pack_factor": "ENGINE_STORE!W6",
+        "price": "ENGINE_STORE!R6"
       }
     },
     {
-      "label": "SKU FSH-001, Store S041",
-      "address": "ENGINE_STORE!Y4004",
-      "expected": 51532800,
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!Y7",
+      "expected": 2494800,
       "values": {
-        "order_buy_units": 16,
-        "pack_factor": 6,
-        "vendor_price": 536800
+        "order_buy_units": 11,
+        "pack_factor": 12,
+        "price": 18900
       },
       "sources": {
-        "order_buy_units": "ENGINE_STORE!X4004",
-        "pack_factor": "ENGINE_STORE!W4004",
-        "vendor_price": "Trade Agreement!E606"
+        "order_buy_units": "ENGINE_STORE!X7",
+        "pack_factor": "ENGINE_STORE!W7",
+        "price": "ENGINE_STORE!R7"
       }
     },
     {
-      "label": "SKU HNB-001, Store S061",
-      "address": "ENGINE_STORE!Y6004",
-      "expected": 9910000,
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!Y8",
+      "expected": 2721600,
       "values": {
-        "order_buy_units": 10,
-        "pack_factor": 20,
-        "vendor_price": 49550
+        "order_buy_units": 12,
+        "pack_factor": 12,
+        "price": 18900
       },
       "sources": {
-        "order_buy_units": "ENGINE_STORE!X6004",
-        "pack_factor": "ENGINE_STORE!W6004",
-        "vendor_price": "Trade Agreement!E906"
-      }
-    },
-    {
-      "label": "SKU ELC-001, Store S081",
-      "address": "ENGINE_STORE!Y8004",
-      "expected": 180430800,
-      "values": {
-        "order_buy_units": 8,
-        "pack_factor": 3,
-        "vendor_price": 7517950
-      },
-      "sources": {
-        "order_buy_units": "ENGINE_STORE!X8004",
-        "pack_factor": "ENGINE_STORE!W8004",
-        "vendor_price": "Trade Agreement!E1206"
+        "order_buy_units": "ENGINE_STORE!X8",
+        "pack_factor": "ENGINE_STORE!W8",
+        "price": "ENGINE_STORE!R8"
       }
     }
   ],
   "f12-at-risk-value": [
     {
-      "label": "SKU GRC-002, Store S005",
-      "address": "ENGINE_STORE!T28",
-      "expected": 2101000,
-      "values": {
-        "state": "Expiry",
-        "position": 110,
-        "price": 19100
-      },
-      "sources": {
-        "state": "ENGINE_STORE!Q28",
-        "position": "ENGINE_STORE!M28",
-        "price": "ENGINE_STORE!R28"
-      }
-    },
-    {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!T4",
       "expected": 1285200,
       "values": {
-        "state": "Stockout",
+        "state": "Low",
         "position": 68,
         "price": 18900
       },
@@ -988,48 +973,63 @@
       }
     },
     {
-      "label": "SKU GRC-010, Store S005",
-      "address": "ENGINE_STORE!T188",
-      "expected": 3362000,
+      "label": "SKU GRC-001, Store S002",
+      "address": "ENGINE_STORE!T5",
+      "expected": 1398600,
       "values": {
         "state": "Low",
-        "position": 164,
-        "price": 20500
+        "position": 74,
+        "price": 18900
       },
       "sources": {
-        "state": "ENGINE_STORE!Q188",
-        "position": "ENGINE_STORE!M188",
-        "price": "ENGINE_STORE!R188"
+        "state": "ENGINE_STORE!Q5",
+        "position": "ENGINE_STORE!M5",
+        "price": "ENGINE_STORE!R5"
       }
     },
     {
-      "label": "SKU GRC-043, Store S005",
-      "address": "ENGINE_STORE!T848",
-      "expected": 23517200,
+      "label": "SKU GRC-001, Store S003",
+      "address": "ENGINE_STORE!T6",
+      "expected": 869400,
       "values": {
-        "state": "Overstock",
-        "position": 908,
-        "price": 25900
+        "state": "Low",
+        "position": 46,
+        "price": 18900
       },
       "sources": {
-        "state": "ENGINE_STORE!Q848",
-        "position": "ENGINE_STORE!M848",
-        "price": "ENGINE_STORE!R848"
+        "state": "ENGINE_STORE!Q6",
+        "position": "ENGINE_STORE!M6",
+        "price": "ENGINE_STORE!R6"
       }
     },
     {
-      "label": "SKU GRC-037, Store S001",
-      "address": "ENGINE_STORE!T724",
-      "expected": 0,
+      "label": "SKU GRC-001, Store S004",
+      "address": "ENGINE_STORE!T7",
+      "expected": 1001700,
       "values": {
-        "state": "Healthy",
-        "position": 194,
-        "price": 24900
+        "state": "Low",
+        "position": 53,
+        "price": 18900
       },
       "sources": {
-        "state": "ENGINE_STORE!Q724",
-        "position": "ENGINE_STORE!M724",
-        "price": "ENGINE_STORE!R724"
+        "state": "ENGINE_STORE!Q7",
+        "position": "ENGINE_STORE!M7",
+        "price": "ENGINE_STORE!R7"
+      }
+    },
+    {
+      "label": "SKU GRC-001, Store S005",
+      "address": "ENGINE_STORE!T8",
+      "expected": 1927800,
+      "values": {
+        "state": "Low",
+        "position": 102,
+        "price": 18900
+      },
+      "sources": {
+        "state": "ENGINE_STORE!Q8",
+        "position": "ENGINE_STORE!M8",
+        "price": "ENGINE_STORE!R8"
       }
     }
   ],
