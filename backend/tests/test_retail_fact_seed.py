@@ -129,12 +129,13 @@ class TestMapping:
     def test_reorder_count_survives_the_yes_no_coercion(self, tables) -> None:
         rows = seeder.build_replenishment(tables)
 
-        # The same count the boards agree on, and not all 800. Was 302 until
-        # `ROP` began taking its lead time from the designated Trade Agreement
-        # row rather than the static `SKU_Master.Lead (d)` -- the two disagreed
-        # (GRC-005: 2 days vs 6), ROP rose, and 136 more SKUs fell below it.
-        # This reads the workbook, so it moved as soon as the workbook did.
-        assert sum(1 for r in rows if r["is_reorder"]) == 438
+        # The same count the boards agree on, and not all 800. It read 438 for
+        # a while, when `ROP` was taking its lead time from the designated
+        # Trade Agreement row rather than the static `SKU_Master.Lead (d)`.
+        # That revision was withdrawn -- the workbook is not being changed --
+        # so the lead term is the master column again and the count is back to
+        # what the database has held all along.
+        assert sum(1 for r in rows if r["is_reorder"]) == 302
 
     def test_assortment_is_the_item_store_pairs_that_exist(self, tables) -> None:
         rows = seeder.build_assortment(tables)
@@ -247,11 +248,10 @@ class TestReconciliation:
         mean `Position < ROP` summed across every store. The same number either
         way, or the two boards will disagree the moment they read from here.
 
-        Still 302 rather than the workbook's 438 on purpose: this one reads the
-        database, which has not been re-seeded from the revised workbook yet.
-        Both numbers are correct for what they read. Change this to 438 in the
-        same commit that re-seeds the facts, not before -- moving it early makes
-        a passing test fail and hides whether the re-seed actually worked.
+        302 on both sides now. The note that used to sit here explained why
+        the database lagged the workbook at 302 against 438; the workbook
+        revision was withdrawn, so the two agree again and there is nothing
+        left to reconcile across.
         """
         with engine.connect() as c:
             at_risk = c.execute(
