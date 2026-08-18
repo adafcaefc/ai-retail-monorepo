@@ -322,7 +322,7 @@ def normalize_workbook(path: Path) -> NormalizedDataset:
             "inventory_state": _text(row["state"]),
             "price": row["price"],
             "inventory_value": row["inv_value"],
-            "at_risk_value": row["at_risk_value"],
+            "at_risk_value": row.get("markdown_recoverable", row.get("at_risk_value", 0.0)),
             "forecast_7d": row["forecast_7d"],
             "order_sales_units": row["order_sales"],
             "pack_factor": row["pack"],

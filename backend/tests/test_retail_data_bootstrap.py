@@ -46,7 +46,7 @@ EXPECTED_DOCUMENT_COUNTS = {
     "d365_table": 33,
     "d365_worked_example": 1,
     "data_source": 10,
-    "formula": 19,
+    "formula": 28,
     "model_parameter": 12,
     "promotion": 48,
     "sku": 800,
@@ -242,9 +242,9 @@ def test_representative_sample_has_ten_documents_and_five_verticals():
 def test_full_corpus_count_and_validation_reconcile():
     result = validate_documents(_documents())
     assert result["valid"] is True
-    assert result["document_count"] == 1350
+    assert result["document_count"] == 1359
     assert result["counts_by_type"] == EXPECTED_DOCUMENT_COUNTS
-    assert sum(result["counts_by_retrieval_domain"].values()) == 1350
+    assert sum(result["counts_by_retrieval_domain"].values()) == 1359
 
 
 def test_duplicate_documents_are_rejected():
@@ -274,7 +274,7 @@ def test_jsonl_contract_has_no_embedding_or_vector_fields(tmp_path):
     write_jsonl(_documents(), output)
     result = validate_jsonl(output)
     assert result["valid"] is True
-    assert result["line_count"] == 1350
+    assert result["line_count"] == 1359
     for line in output.read_text(encoding="utf-8").splitlines():
         value = json.loads(line)
         assert "retrieval_domain" in value
