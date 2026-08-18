@@ -446,8 +446,13 @@ def reconcile(
     items: list[dict[str, Any]],
     reference: dict[str, dict[str, Any]],
     label_of: dict[str, str],
+    a2_reference: dict[str, dict[str, Any]],
 ) -> list[str]:
-    """Diff the computable KPIs against the A1 sheet, per vertical.
+    """Diff the computable KPIs against the workbook, per vertical.
+
+    Forecast 7d comes from A1, whose own column is a live SUMIFS. The
+    stockout-risk count comes from A2, because A1 holds that one as a pasted
+    value and froze at the pre-fix number.
 
     Only two of the six can be checked, because only two are calculated
     anywhere: Forecast 7d (the sheet's own SUMIFS) and Stockout-risk SKUs
@@ -468,11 +473,17 @@ def reconcile(
                 f" {book['forecast_7d']}"
             )
 
+        # Checked against `A2 Inventory Risk`, not this board's own `A1`.
+        # A1 carries this metric as a pasted value -- only its `Forecast 7d`
+        # column is a formula -- so it still reads the pre-fix 302 across its
+        # verticals. A2 computes the same metric and recomputed to 438, which
+        # is `position < rop` over ENGINE row for row.
         at_risk = sum(1 for row in scoped if row["is_stockout_risk"])
-        if at_risk != book["stockout_risk_skus"]:
+        expected_at_risk = a2_reference[label]["stockout_risk_skus"]
+        if at_risk != expected_at_risk:
             failures.append(
-                f"{label} / stockout_risk_skus: computed {at_risk}, workbook"
-                f" {book['stockout_risk_skus']}"
+                f"{label} / stockout_risk_skus: computed {at_risk},"
+                f" A2 {expected_at_risk}"
             )
 
         trending = sum(1 for row in scoped if row["is_trending"])
@@ -541,7 +552,12 @@ def main() -> int:
         tables["engine_store"], stores, constants["dow_sum"]
     )
 
-    failures = reconcile(items, reference, label_of)
+    # A2 supplies the stockout-risk count: A1 carries it as a pasted value
+    # and still reads the pre-ROP-fix number.
+    a2_reference = {
+        row["vertical_label"]: row for row in tables["a2_inventory_risk"]
+    }
+    failures = reconcile(items, reference, label_of, a2_reference)
     if failures:
         print(f"FAIL  {len(failures)} figure(s) disagree with the A1 sheet:")
         for line in failures:

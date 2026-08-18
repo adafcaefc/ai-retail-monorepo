@@ -643,9 +643,10 @@ def build_store_rows(
         else:
             bucket["other_at_risk_count"] += 1
 
-        # Verified across all 16,000 rows: `position < rop` holds for exactly
-        # the Stockout and Low rows, so the reorder-zone count is the sum of
-        # those two segments rather than an independent measure.
+        # Measured, not inferred from state. `position < rop` used to hold for
+        # exactly the Stockout and Low rows, which is why this once read as
+        # their sum -- Expiry now outranks both, so 199 store rows are below
+        # ROP while carrying a third label.
         if row["position"] < row["rop"]:
             bucket["stockout_risk_count"] += 1
         if state != "Healthy":
@@ -665,10 +666,20 @@ def build_store_rows(
                 f"FAIL  {bucket['store_id']}: state segments sum to {segments}"
                 f" but the store stocks {bucket['sku_count']} SKUs"
             )
-        if bucket["stockout_count"] + bucket["low_count"] != bucket["stockout_risk_count"]:
+        # `stockout_risk_count` counts `position < rop` directly, which is no
+        # longer the same set as Stockout + Low: Expiry outranks both in f07
+        # now, so a perishable row can be below ROP and read "Expiry". Those
+        # rows must still be counted, so the assertion is that the state
+        # buckets never exceed it -- Expiry makes up the difference.
+        below_rop_states = (
+            bucket["stockout_count"] + bucket["low_count"]
+            + bucket["other_at_risk_count"]
+        )
+        if bucket["stockout_risk_count"] > below_rop_states:
             raise SystemExit(
-                f"FAIL  {bucket['store_id']}: Stockout+Low disagrees with the"
-                " position-below-ROP count"
+                f"FAIL  {bucket['store_id']}: {bucket['stockout_risk_count']} rows"
+                f" sit below ROP but only {below_rop_states} carry a state that"
+                " can explain it (Stockout, Low or Expiry)"
             )
 
     return sorted(grouped.values(), key=lambda row: row["store_id"])
