@@ -44,6 +44,9 @@
   --red-200: #f1b8b1;
   --red-500: #d92d20;
   --red-600: #b42318;
+  /* Expiry on the Pricing and Assortment boards, which needs to read as worse
+     than plain stockout red sitting next to it. */
+  --red-700: #912018;
 
   /* Amber — caution */
   --amber-50: #fff7ed;
@@ -10103,4 +10106,2035 @@ button.po-kpi {
 .po-quote-flag--best {
   background: color-mix(in srgb, var(--green-600) 14%, transparent);
   color: var(--green-600);
+}
+
+/* ==========================================================================
+   Promotion Effectiveness (Agent 4)
+
+   Same layout vocabulary as Inventory Risk and Replenishment. A merchandiser
+   moves between all three in one sitting, and a filter bar or a lever that
+   looks different is one they have to learn twice.
+   ========================================================================== */
+
+.promotion-effectiveness-dashboard {
+  /* One accent per KPI tile. The pairing is deliberate: the two green tiles
+     are the upside, cannibalisation is the cost of buying it, and funding is
+     whose money paid for it. */
+  --promo-kpi-active-promo-skus: var(--blue-500);
+  --promo-kpi-uplift-pct: var(--green-500);
+  --promo-kpi-incremental-margin: var(--green-600);
+  --promo-kpi-roi-x: #5c2d91;
+  --promo-kpi-cannib-pct: var(--red-500);
+  --promo-kpi-funding-pct: var(--amber-600);
+
+  /* What-If. Baseline is the quieter of the pair — the scenario is what the
+     reader is being asked to look at. Same palette as A2 and A3. */
+  --promo-baseline: var(--gray-400);
+  --promo-scenario: var(--blue-500);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Inside the workboard's bounded height every flex child would otherwise
+   shrink to its own header. */
+.promotion-effectiveness-dashboard > * {
+  flex-shrink: 0;
+}
+
+.promotion-effectiveness-dashboard.is-refreshing {
+  opacity: 0.62;
+}
+
+/* --- filter bar ---------------------------------------------------------- */
+
+.promo-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.promo-select,
+.promo-search {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.62rem;
+}
+
+.promo-select-label,
+.promo-search-label {
+  color: var(--muted);
+}
+
+.promo-select select,
+.promo-search input[type="search"] {
+  min-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.promo-button {
+  align-self: flex-end;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.promo-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- scope and data notes ------------------------------------------------ */
+
+.promo-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.62rem;
+}
+
+.promo-data-note {
+  flex: 1 1 320px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.promo-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.promo-scope-summary b {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.promo-scope-summary button,
+.promo-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.promo-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--red-500);
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+}
+
+/* --- KPI grid ------------------------------------------------------------ */
+
+.promo-kpi-grid {
+  display: grid;
+  /* Three across, two rows. Six columns leave each tile too narrow to carry a
+     figure and its sparkline, same finding as A1 and A2. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.promo-kpi {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  /* The accent names the metric, the tone says whether it is a problem. One
+     colour cannot carry both. */
+  border-left: 3px solid var(--promo-kpi-accent, var(--gray-300));
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+button.promo-kpi {
+  cursor: pointer;
+}
+
+button.promo-kpi:hover {
+  border-color: var(--gray-300);
+  box-shadow: var(--shadow-md);
+}
+
+/* Tone rides on top of the accent instead of replacing it. The left border
+   keeps naming the metric; the tint says whether this reading is a problem.
+   Neutral is the default and deliberately carries no extra treatment. */
+.promo-kpi--neutral {
+  background: var(--surface-strong);
+}
+
+.promo-kpi--good {
+  background: color-mix(in srgb, var(--accent-success) 7%, var(--surface-strong));
+}
+
+.promo-kpi--warn {
+  background: color-mix(in srgb, var(--accent-warning) 8%, var(--surface-strong));
+}
+
+.promo-kpi--bad {
+  background: color-mix(in srgb, var(--accent-danger) 8%, var(--surface-strong));
+}
+
+.promo-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.promo-kpi-value {
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.promo-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+/* --- panels and charts --------------------------------------------------- */
+
+.promo-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.promo-chart-block,
+.promo-calendar,
+.promo-leaders,
+.promo-best-action,
+.promo-simulator,
+.promo-scenario-comparison {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.promo-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.promo-section-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.promo-section-note {
+  flex: 1 1 260px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.promo-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+.promo-table-scroll {
+  overflow-x: auto;
+}
+
+.promo-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.promo-table th,
+.promo-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.promo-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.promo-table td.num,
+.promo-table th.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.promo-calendar-row {
+  cursor: pointer;
+}
+
+.promo-calendar-row:hover,
+.promo-table tbody tr:hover {
+  background: var(--surface);
+}
+
+/* The two widest columns. Left free to wrap so a long campaign name does not
+   push ROI and margin off the visible width. */
+.promo-cell-name {
+  min-width: 180px;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: normal;
+}
+
+.promo-cell-construct {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.promo-cell-recommendation {
+  min-width: 200px;
+  color: var(--ink);
+  white-space: normal;
+}
+
+.promo-table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.promo-table-pager button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.promo-table-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- suggested best action ----------------------------------------------- */
+
+.promo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.promo-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.promo-tab.is-active {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.promo-tab-count {
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- What-If ------------------------------------------------------------- */
+
+.promo-drive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.promo-levers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.promo-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+
+.promo-lever-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* The workbook cell the lever writes to. Named on the board because a reader
+   who wants to check the number needs to know where it lands. */
+.promo-lever-cell {
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.promo-lever-effect {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.promo-lever-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.promo-lever-control input[type="range"] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.promo-lever-control output {
+  min-width: 40px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* A lever that reaches no formula. Dimmed rather than removed: a reader who
+   counts one fewer slider than the spec would assume a bug. */
+.promo-lever.is-inert {
+  opacity: 0.55;
+}
+
+.promo-lever.is-inert input[type="range"] {
+  cursor: not-allowed;
+}
+
+.promo-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.promo-simulator-chart {
+  width: 100%;
+}
+
+/* --- applied-scenario banner and saved scenarios ------------------------- */
+
+.promo-scenario-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+
+.promo-scenario-banner-label {
+  flex: 1 1 260px;
+  color: var(--ink);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.promo-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.promo-scenario-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.66rem;
+}
+
+.promo-scenario-list li button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.6rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- KPI drill-down ------------------------------------------------------ */
+
+.promo-drill-skus {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.promo-drill-skus button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.66rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.promo-drill-skus button:hover {
+  background: var(--surface);
+}
+
+.promo-drill-sku-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.promo-drill-sku-value {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- skeleton ------------------------------------------------------------ */
+
+.promo-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+}
+
+.promo-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.promo-skeleton-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- narrow viewports ---------------------------------------------------- */
+
+@media (width <= 1100px) {
+  .promo-levers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .promo-chart-grid,
+  .promo-skeleton-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width <= 720px) {
+  .promo-kpi-grid,
+  .promo-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .promo-levers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .promo-section-note {
+    text-align: left;
+  }
+}
+
+/* ==========================================================================
+   Pricing & Markdown (Agent 5)
+
+   Same vocabulary again. The one thing this board must not borrow is the
+   inventory-state palette's treatment of Expiry: on Inventory Risk expiry is
+   amber, but here it is the most expensive of the three candidate states and
+   has to outrank Overstock and Slow-mover at a glance.
+   ========================================================================== */
+
+.pricing-markdown-dashboard {
+  /* Candidate states, in cost order: expiry is unrecoverable, overstock is
+     capital, slow-mover is time. */
+  --pricing-expiry: var(--red-700);
+  --pricing-overstock: var(--blue-500);
+  --pricing-slow-mover: var(--amber-600);
+
+  /* One accent per KPI tile. At-risk and write-off are the two reds because
+     they are the same money at two stages of loss. */
+  --pricing-kpi-markdown-candidates: var(--blue-500);
+  --pricing-kpi-avg-depth-pct: var(--amber-500);
+  --pricing-kpi-at-risk-value: var(--red-500);
+  --pricing-kpi-recoverable-value: var(--green-500);
+  --pricing-kpi-write-off-value: var(--red-700);
+  --pricing-kpi-comp-idx: #5c2d91;
+
+  --pricing-baseline: var(--gray-400);
+  --pricing-scenario: var(--blue-500);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.pricing-markdown-dashboard > * {
+  flex-shrink: 0;
+}
+
+.pricing-markdown-dashboard.is-refreshing {
+  opacity: 0.62;
+}
+
+/* --- filter bar ---------------------------------------------------------- */
+
+.pricing-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.pricing-select,
+.pricing-search {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.62rem;
+}
+
+.pricing-select-label,
+.pricing-search-label {
+  color: var(--muted);
+}
+
+.pricing-select select,
+.pricing-search input[type="search"] {
+  min-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.pricing-button {
+  align-self: flex-end;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pricing-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- scope and data notes ------------------------------------------------ */
+
+.pricing-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.62rem;
+}
+
+.pricing-data-note {
+  flex: 1 1 320px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.pricing-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.pricing-scope-summary b {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.pricing-scope-summary button,
+.pricing-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.pricing-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--red-500);
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+}
+
+/* --- KPI grid ------------------------------------------------------------ */
+
+.pricing-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.pricing-kpi {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--pricing-kpi-accent, var(--gray-300));
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+button.pricing-kpi {
+  cursor: pointer;
+}
+
+button.pricing-kpi:hover {
+  border-color: var(--gray-300);
+  box-shadow: var(--shadow-md);
+}
+
+/* Same split as A4: the border names the metric, the tint judges the reading.
+   At-risk and write-off are the two tiles that ever come back warn. */
+.pricing-kpi--neutral {
+  background: var(--surface-strong);
+}
+
+.pricing-kpi--good {
+  background: color-mix(in srgb, var(--accent-success) 7%, var(--surface-strong));
+}
+
+.pricing-kpi--warn {
+  background: color-mix(in srgb, var(--accent-warning) 8%, var(--surface-strong));
+}
+
+.pricing-kpi--bad {
+  background: color-mix(in srgb, var(--accent-danger) 8%, var(--surface-strong));
+}
+
+.pricing-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.pricing-kpi-value {
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+/* --- panels and charts --------------------------------------------------- */
+
+.pricing-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* Five panels, so two columns: a 3-across grid strands the last two. */
+.pricing-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.pricing-panel,
+.pricing-chart-block,
+.pricing-candidates,
+.pricing-best-action,
+.pricing-simulator,
+.pricing-scenario-comparison {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.pricing-panel-head,
+.pricing-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pricing-panel-head h3,
+.pricing-section-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pricing-panel-note {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.pricing-section-note {
+  flex: 1 1 260px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.pricing-chart {
+  width: 100%;
+  height: 230px;
+}
+
+.pricing-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.pricing-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.pricing-tooltip-total {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The stacked at-risk bars carry no Recharts legend, so the states are named
+   here instead — a stack whose colours are unlabelled is a stack nobody can
+   read. */
+.pricing-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+  padding: 0;
+  color: var(--muted);
+  font-size: 0.58rem;
+  list-style: none;
+}
+
+.pricing-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pricing-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+/* --- candidate state badges ---------------------------------------------- */
+
+.pricing-state-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pricing-state-expiry {
+  background: var(--accent-danger-soft);
+  color: var(--red-700);
+}
+
+.pricing-state-stockout {
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+}
+
+.pricing-state-overstock {
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+}
+
+.pricing-state-slow-mover,
+.pricing-state-low {
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+}
+
+.pricing-state-healthy {
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+.pricing-table-scroll {
+  overflow-x: auto;
+}
+
+.pricing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.pricing-table th,
+.pricing-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pricing-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.pricing-table td.num,
+.pricing-table th.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.pricing-candidate-row {
+  cursor: pointer;
+}
+
+.pricing-candidate-row:hover,
+.pricing-table tbody tr:hover {
+  background: var(--surface);
+}
+
+.pricing-cell-recommendation {
+  min-width: 200px;
+  color: var(--ink);
+  white-space: normal;
+}
+
+.pricing-table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.pricing-table-pager button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.pricing-table-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- suggested best action ----------------------------------------------- */
+
+.pricing-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.pricing-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pricing-tab.is-active {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.pricing-tab-count {
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- What-If ------------------------------------------------------------- */
+
+.pricing-drive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.pricing-levers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.pricing-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+
+.pricing-lever-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.pricing-lever-cell {
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.pricing-lever-effect {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.pricing-lever-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pricing-lever-control input[type="range"] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.pricing-lever-control output {
+  min-width: 40px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+/* Markdown depth has no term in the workbook's formula set. Shown but dimmed:
+   removing it would make the board disagree with the spec's six levers. */
+.pricing-lever.is-inert {
+  opacity: 0.55;
+}
+
+.pricing-lever.is-inert input[type="range"] {
+  cursor: not-allowed;
+}
+
+.pricing-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pricing-simulator-chart {
+  width: 100%;
+}
+
+/* --- applied-scenario banner and saved scenarios ------------------------- */
+
+.pricing-scenario-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+
+.pricing-scenario-banner-label {
+  flex: 1 1 260px;
+  color: var(--ink);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.pricing-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pricing-scenario-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.66rem;
+}
+
+.pricing-scenario-list li button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.6rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- KPI drill-down ------------------------------------------------------ */
+
+.pricing-drill-skus {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pricing-drill-skus button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.66rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pricing-drill-skus button:hover {
+  background: var(--surface);
+}
+
+.pricing-drill-sku-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricing-drill-sku-value {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- skeleton ------------------------------------------------------------ */
+
+.pricing-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+}
+
+.pricing-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.pricing-skeleton-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- narrow viewports ---------------------------------------------------- */
+
+@media (width <= 1100px) {
+  .pricing-levers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pricing-chart-grid,
+  .pricing-dimension-grid,
+  .pricing-skeleton-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width <= 720px) {
+  .pricing-kpi-grid,
+  .pricing-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pricing-levers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pricing-section-note {
+    text-align: left;
+  }
+}
+
+/* ==========================================================================
+   Assortment Optimization (Agent 6)
+
+   Closes the set. One rule is this board's own: delist red, grow green and
+   hold grey are fixed across the quadrant, the verdict badges and the KPI
+   accents. A SKU that is red in the scatter and amber in the table is a SKU
+   the reader has to re-identify on every panel.
+   ========================================================================== */
+
+.assortment-optimization-dashboard {
+  --assortment-delist: var(--red-500);
+  --assortment-grow: var(--green-500);
+  --assortment-hold: var(--gray-400);
+
+  /* One accent per KPI tile. Delist and tail share are the warning pair; grow,
+     capital and contribution are the upside. GMROI is a ratio, so it gets the
+     one hue that reads as neither. */
+  --assortment-kpi-delist-candidates: var(--red-500);
+  --assortment-kpi-grow-candidates: var(--green-500);
+  --assortment-kpi-avg-gmroi: #5c2d91;
+  --assortment-kpi-tail-share-pct: var(--amber-600);
+  --assortment-kpi-capital-freed: var(--blue-500);
+  --assortment-kpi-contribution-per-day: var(--green-600);
+
+  --assortment-baseline: var(--gray-400);
+  --assortment-scenario: var(--blue-500);
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.assortment-optimization-dashboard > * {
+  flex-shrink: 0;
+}
+
+.assortment-optimization-dashboard.is-refreshing {
+  opacity: 0.62;
+}
+
+/* --- filter bar ---------------------------------------------------------- */
+
+.assortment-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.assortment-select,
+.assortment-search {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.62rem;
+}
+
+.assortment-select-label,
+.assortment-search-label {
+  color: var(--muted);
+}
+
+.assortment-select select,
+.assortment-search input[type="search"] {
+  min-width: 150px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.assortment-button {
+  align-self: flex-end;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ink);
+  color: var(--surface);
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assortment-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- scope and data notes ------------------------------------------------ */
+
+.assortment-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.62rem;
+}
+
+.assortment-data-note {
+  flex: 1 1 320px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.assortment-scope-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+}
+
+.assortment-scope-summary b {
+  padding: 2px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.assortment-scope-summary button,
+.assortment-inline-error button {
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.62rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.assortment-inline-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 6px var(--space-3);
+  border: 1px solid var(--red-500);
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+}
+
+/* --- KPI grid ------------------------------------------------------------ */
+
+.assortment-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.assortment-kpi {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--assortment-kpi-accent, var(--gray-300));
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  text-align: left;
+}
+
+button.assortment-kpi {
+  cursor: pointer;
+}
+
+button.assortment-kpi:hover {
+  border-color: var(--gray-300);
+  box-shadow: var(--shadow-md);
+}
+
+/* Same split as A4 and A5. Here the border is doing real work — delist red
+   and grow green must survive the tint, or the two headline tiles stop
+   matching the quadrant they summarise. */
+.assortment-kpi--neutral {
+  background: var(--surface-strong);
+}
+
+.assortment-kpi--good {
+  background: color-mix(in srgb, var(--accent-success) 7%, var(--surface-strong));
+}
+
+.assortment-kpi--warn {
+  background: color-mix(in srgb, var(--accent-warning) 8%, var(--surface-strong));
+}
+
+.assortment-kpi--bad {
+  background: color-mix(in srgb, var(--accent-danger) 8%, var(--surface-strong));
+}
+
+.assortment-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+}
+
+.assortment-kpi-value {
+  color: var(--ink);
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.assortment-footnote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.45;
+}
+
+/* --- panels and charts --------------------------------------------------- */
+
+.assortment-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* Five panels, so two columns: a 3-across grid strands the last two. */
+.assortment-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.assortment-panel,
+.assortment-chart-block,
+.assortment-action-preview,
+.assortment-best-action,
+.assortment-simulator,
+.assortment-scenario-comparison {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.assortment-panel-head,
+.assortment-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.assortment-panel-head h3,
+.assortment-section-head h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assortment-panel-note {
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.assortment-section-note {
+  flex: 1 1 260px;
+  color: var(--muted);
+  font-size: 0.62rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.assortment-chart {
+  width: 100%;
+  height: 230px;
+}
+
+.assortment-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+.assortment-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.assortment-tooltip-total {
+  margin-top: 2px;
+  padding-top: 3px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- verdict badges ------------------------------------------------------ */
+
+.assortment-verdict-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: var(--gray-100);
+  color: var(--gray-700);
+  font-size: 0.6rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.assortment-verdict-delist {
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+}
+
+.assortment-verdict-grow {
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+}
+
+.assortment-verdict-hold {
+  background: var(--gray-100);
+  color: var(--gray-700);
+}
+
+/* --- tables -------------------------------------------------------------- */
+
+.assortment-table-scroll {
+  overflow-x: auto;
+}
+
+.assortment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.assortment-table th,
+.assortment-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.assortment-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.assortment-table td.num,
+.assortment-table th.num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.assortment-action-row {
+  cursor: pointer;
+}
+
+.assortment-action-row:hover,
+.assortment-table tbody tr:hover {
+  background: var(--surface);
+}
+
+.assortment-cell-recommendation {
+  min-width: 200px;
+  color: var(--ink);
+  white-space: normal;
+}
+
+.assortment-table-pager {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+.assortment-table-pager button {
+  padding: 3px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+
+.assortment-table-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* --- suggested best action ----------------------------------------------- */
+
+.assortment-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.assortment-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.assortment-tab.is-active {
+  border-color: var(--ink);
+  background: var(--surface-strong);
+  color: var(--ink);
+}
+
+.assortment-tab-count {
+  padding: 1px 5px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-size: 0.58rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- What-If ------------------------------------------------------------- */
+
+.assortment-drive-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+}
+
+.assortment-levers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+
+.assortment-lever {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.66rem;
+}
+
+.assortment-lever-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.assortment-lever-cell {
+  color: var(--muted);
+  font-size: 0.56rem;
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+}
+
+.assortment-lever-effect {
+  color: var(--muted);
+  font-size: 0.58rem;
+  line-height: 1.35;
+}
+
+.assortment-lever-control {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.assortment-lever-control input[type="range"] {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.assortment-lever-control output {
+  min-width: 40px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.assortment-lever.is-inert {
+  opacity: 0.55;
+}
+
+.assortment-lever.is-inert input[type="range"] {
+  cursor: not-allowed;
+}
+
+.assortment-simulator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assortment-simulator-chart {
+  width: 100%;
+}
+
+/* --- applied-scenario banner and saved scenarios ------------------------- */
+
+/* Louder than its siblings on purpose: on this board a lever can flip a SKU's
+   verdict, not just move its value, so the counts underneath are
+   recommendations under an assumption. */
+.assortment-scenario-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 14%, var(--surface-strong));
+}
+
+.assortment-scenario-banner-label {
+  flex: 1 1 260px;
+  color: var(--ink);
+  font-size: 0.66rem;
+  line-height: 1.45;
+}
+
+.assortment-scenario-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assortment-scenario-list li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-size: 0.66rem;
+}
+
+.assortment-scenario-list li button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--blue-500);
+  font-size: 0.6rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* --- KPI drill-down ------------------------------------------------------ */
+
+.assortment-drill-skus {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assortment-drill-skus button {
+  display: flex;
+  width: 100%;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: 0.66rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assortment-drill-skus button:hover {
+  background: var(--surface);
+}
+
+.assortment-drill-sku-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assortment-drill-sku-value {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- skeleton ------------------------------------------------------------ */
+
+.assortment-dashboard-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-5);
+}
+
+.assortment-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.assortment-skeleton-panels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+/* --- narrow viewports ---------------------------------------------------- */
+
+@media (width <= 1100px) {
+  .assortment-levers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assortment-chart-grid,
+  .assortment-dimension-grid,
+  .assortment-skeleton-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (width <= 720px) {
+  .assortment-kpi-grid,
+  .assortment-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .assortment-levers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assortment-section-note {
+    text-align: left;
+  }
 }
