@@ -771,7 +771,11 @@ img.ey-logo {
 }
 
 .sidebar-footer {
-  margin-top: auto;
+  /* No margin-top: auto here — .agent-groups already pins this to the
+     bottom during a long list via flex-shrink (its min-height: 0 is what
+     lets it shrink below content and scroll). An auto margin additionally
+     force-pushed the footer to the sidebar's bottom edge even when the
+     list is short, leaving a large dead gap above the divider. */
   padding: 16px 8px 18px;
   border-top: 1px solid var(--line);
   color: var(--muted);
