@@ -441,33 +441,35 @@ def build_promotion_vertical_kpi(
 # -------------------------------------------------------------------- writing
 
 
-def upsert(
+def replace_all(
     connection: Any,
     table: str,
-    keys: tuple[str, ...],
     rows: list[dict[str, Any]],
     chunk: int = 2000,
 ) -> int:
-    """Insert or update by composite key.
+    """Delete every row, then bulk-insert the fresh set.
 
-    Chunked because psycopg builds one parameter set per row: 16,000 rows in a
-    single `executemany` is a large allocation for no gain, and a failure in it
-    reports nothing about which row was at fault.
+    This is a full re-import from the workbook, not an incremental sync, so a
+    per-row `MERGE` (Azure SQL's `ON CONFLICT` equivalent) buys nothing but a
+    lookup+branch per row and a round trip per chunk -- both are pure waste
+    against a table that is about to be entirely replaced anyway. Delete-then-
+    insert inside the caller's transaction gives the same guarantee
+    `formulas/repository.py` relies on: a reader never observes a partially
+    rewritten table, and a failed write leaves the previous one intact.
+
+    Chunked on the insert because pyodbc builds one parameter set per row:
+    16,000 rows in a single `executemany` is a large allocation for no gain,
+    and a failure in it reports nothing about which row was at fault.
     """
+    connection.execute(text(f"DELETE FROM {SCHEMA}.{table}"))
     if not rows:
         return 0
 
     columns = list(rows[0].keys())
     quoted = ", ".join(f'"{name}"' for name in columns)
     placeholders = ", ".join(f":{name}" for name in columns)
-    conflict = ", ".join(f'"{name}"' for name in keys)
-    updates = ", ".join(
-        f'"{name}" = EXCLUDED."{name}"' for name in columns if name not in keys
-    )
-
     statement = text(
         f"INSERT INTO {SCHEMA}.{table} ({quoted}) VALUES ({placeholders})"
-        f" ON CONFLICT ({conflict}) DO UPDATE SET {updates}"
     )
 
     for start in range(0, len(rows), chunk):
@@ -534,52 +536,20 @@ def main() -> int:
         return 1
 
     loads = (
-        ("assortment", ("item_key", "store_key", "valid_from"), build_assortment(tables)),
-        (
-            "fact_inventory_daily",
-            ("item_key", "store_key", "cal_date"),
-            build_inventory(tables),
-        ),
-        (
-            "fact_inventory_chain_daily",
-            ("item_key", "cal_date"),
-            build_inventory_chain(tables),
-        ),
-        (
-            "trade_agreement",
-            ("item_key", "vendor_account", "valid_from"),
-            build_trade_agreements(tables),
-        ),
-        (
-            "replenishment_proposal",
-            ("item_key", "as_of_date"),
-            build_replenishment(tables),
-        ),
-        (
-            "fact_gmv_monthly",
-            ("vertical_id", "year_index", "month_index"),
-            build_gmv_monthly(tables),
-        ),
-        (
-            "agent_kpi_reference",
-            ("agent_id", "vertical_id", "metric"),
-            build_agent_kpi_reference(tables),
-        ),
-        (
-            "promotion_detail",
-            ("promo_id",),
-            build_promotion_detail(tables),
-        ),
-        (
-            "promotion_vertical_kpi",
-            ("vertical_label",),
-            build_promotion_vertical_kpi(tables),
-        ),
+        ("assortment", build_assortment(tables)),
+        ("fact_inventory_daily", build_inventory(tables)),
+        ("fact_inventory_chain_daily", build_inventory_chain(tables)),
+        ("trade_agreement", build_trade_agreements(tables)),
+        ("replenishment_proposal", build_replenishment(tables)),
+        ("fact_gmv_monthly", build_gmv_monthly(tables)),
+        ("agent_kpi_reference", build_agent_kpi_reference(tables)),
+        ("promotion_detail", build_promotion_detail(tables)),
+        ("promotion_vertical_kpi", build_promotion_vertical_kpi(tables)),
     )
 
     with engine.begin() as connection:
-        for table, keys, rows in loads:
-            written = upsert(connection, table, keys, rows)
+        for table, rows in loads:
+            written = replace_all(connection, table, rows)
             print(f"  ok  {table:24} {written:>6} rows")
 
     print(f"\nSnapshot date: {SNAPSHOT_DATE}")

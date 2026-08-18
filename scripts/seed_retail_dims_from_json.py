@@ -75,20 +75,30 @@ def load_tables() -> dict[str, dict[str, Any]]:
 
 
 def upsert(connection: Any, table: str, key: str, rows: list[dict[str, Any]]) -> int:
+    """Insert-or-update by a single key column, via T-SQL `MERGE`.
+
+    Azure SQL has no `ON CONFLICT`; `MERGE` is the equivalent. The row values
+    are bound through a one-row `SELECT ... AS source` rather than a literal
+    VALUES list so the same statement can be replayed with `executemany`.
+    """
     if not rows:
         return 0
 
     columns = list(rows[0].keys())
-    quoted = ", ".join(f'"{name}"' for name in columns)
-    placeholders = ", ".join(f":{name}" for name in columns)
+    source = ", ".join(f':{name} AS "{name}"' for name in columns)
+    insert_cols = ", ".join(f'"{name}"' for name in columns)
+    insert_vals = ", ".join(f'source."{name}"' for name in columns)
     updates = ", ".join(
-        f'"{name}" = EXCLUDED."{name}"' for name in columns if name != key
+        f'target."{name}" = source."{name}"' for name in columns if name != key
     )
 
     connection.execute(
         text(
-            f"INSERT INTO {SCHEMA}.{table} ({quoted}) VALUES ({placeholders})"
-            f" ON CONFLICT ({key}) DO UPDATE SET {updates}"
+            f'MERGE INTO {SCHEMA}.{table} AS target'
+            f' USING (SELECT {source}) AS source'
+            f' ON target."{key}" = source."{key}"'
+            f' WHEN MATCHED THEN UPDATE SET {updates}'
+            f' WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals});'
         ),
         rows,
     )
@@ -280,12 +290,13 @@ def main() -> int:
                     agent_name, workbook_name, workbook_version, workbook_path,
                     import_status, imported_by, completed_at,
                     total_sheets, total_rows
-                ) VALUES (
+                )
+                OUTPUT INSERTED.id
+                VALUES (
                     'retail_dims_seed', :workbook_name, 'v8.2', :workbook_path,
                     'COMPLETED', 'seed_retail_dims_from_json.py',
                     CURRENT_TIMESTAMP, :total_sheets, :total_rows
                 )
-                RETURNING id
                 """
             ),
             {
