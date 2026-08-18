@@ -25,18 +25,50 @@ WORKDIR /app/backend
 # stripping recommends (or a later autoremove) leaves the driver .so present
 # on disk but unloadable -- unixODBC then misleadingly reports it as "file
 # not found" rather than naming the real missing dependency.
-RUN apt-get update && \
-    apt-get install -y curl gnupg2 unixodbc-dev && \
-    curl -sSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > /usr/share/keyrings/microsoft.gpg && \
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && \
-    ACCEPT_EULA=Y apt-get install -y msodbcsql18 && \
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y \
+        ca-certificates \
+        curl \
+        gnupg \
+        unixodbc \
+        unixodbc-dev \
+        libgssapi-krb5-2; \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
+        | gpg --dearmor \
+        > /usr/share/keyrings/microsoft-prod.gpg; \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" \
+        > /etc/apt/sources.list.d/mssql-release.list; \
+    apt-get update; \
+    ACCEPT_EULA=Y apt-get install -y msodbcsql18; \
+    echo "Installed ODBC drivers:"; \
+    odbcinst -q -d; \
+    odbcinst -q -d -n "ODBC Driver 18 for SQL Server"; \
+    find /opt/microsoft/msodbcsql18 -name 'libmsodbcsql-*.so.*' -type f; \
     rm -rf /var/lib/apt/lists/*
 
-# Dependency layer (cached unless requirements.txt changes)
+# Dependency layer
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
+
+# Verify pyodbc can detect Microsoft ODBC Driver 18
+RUN python - <<'PY'
+import pyodbc
+
+required_driver = "ODBC Driver 18 for SQL Server"
+available_drivers = pyodbc.drivers()
+
+print("Available ODBC drivers:", available_drivers)
+
+if required_driver not in available_drivers:
+    raise RuntimeError(
+        f"{required_driver} is not available. "
+        f"Detected drivers: {available_drivers}"
+    )
+
+print(f"Successfully detected: {required_driver}")
+PY
 
 # The Data Source page parses this workbook at request time (/api/excel/*).
 # Copied before the backend source so the 10 MB layer survives the source

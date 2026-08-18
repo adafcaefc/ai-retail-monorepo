@@ -606,6 +606,27 @@ img.ey-logo {
   gap: 14px;
   min-height: 0;
   overflow-y: auto;
+  padding-right: 10px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(98, 112, 138, 0.35) transparent;
+}
+
+.agent-groups::-webkit-scrollbar {
+  width: 9px;
+}
+
+.agent-groups::-webkit-scrollbar-thumb {
+  /* Transparent border + content-box clip insets the thumb inside the
+     track, same trick as .transcript, so it reads as a slim floating bar
+     instead of a flush-against-the-content stripe. */
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-color: rgba(98, 112, 138, 0.35);
+  background-clip: content-box;
+}
+
+.agent-groups::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .agent-group {
@@ -720,10 +741,16 @@ img.ey-logo {
 /* Nav labels wrap instead of clipping. The rail was sized for one-word agent
    names; page names like "What If Simulator" are longer, and an ellipsis in
    the only place the screen is named is worse than a second line. Two lines
-   still sit inside the button's 56px floor. */
+   still sit inside the button's 56px floor. `overflow`/`text-overflow` must
+   be reset here too — inherited `hidden`/`ellipsis` from the shared rule
+   above otherwise clips any wrapped line that's still too long for the rail
+   (e.g. "Forecasting", "Management"), garbling the label mid-word. */
 .agent-copy strong {
   font-size: 0.88rem;
   white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
 }
 
 .agent-copy small {
@@ -744,8 +771,13 @@ img.ey-logo {
 }
 
 .sidebar-footer {
-  margin-top: auto;
-  padding: 18px 8px 2px;
+  /* No margin-top: auto here — .agent-groups already pins this to the
+     bottom during a long list via flex-shrink (its min-height: 0 is what
+     lets it shrink below content and scroll). An auto margin additionally
+     force-pushed the footer to the sidebar's bottom edge even when the
+     list is short, leaving a large dead gap above the divider. */
+  padding: 16px 8px 18px;
+  border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 0.72rem;
 }
@@ -3318,7 +3350,10 @@ img.ey-logo {
 /*
  * Suggestions are the variable-height part above the input. Left unbounded a
  * long list pushed the composer up the panel; capped, the list scrolls and the
- * input stays where the hand expects it.
+ * input stays where the hand expects it. 140px is sized for the real ceiling:
+ * every agent ships exactly 3 starter prompts and follow-ups cap at 2
+ * (suggested_response.py), so 3 single-line chips is the tallest case that
+ * should ever need to render — 116px clipped the 3rd chip mid-line.
  */
 .prompt-suggestions {
   display: grid;
@@ -3327,7 +3362,7 @@ img.ey-logo {
   min-width: 0;
   min-height: 0;
   max-width: 1120px;
-  max-height: 116px;
+  max-height: 140px;
   gap: 7px;
   margin: 0 auto 8px;
 }
@@ -3353,10 +3388,18 @@ img.ey-logo {
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
-  /* Scrolls inside its capped row rather than pushing the input up. */
+  /* Scrolls inside its capped row rather than pushing the input up, but the
+     row is short enough that a visible track/thumb reads as clutter rather
+     than a useful affordance — scroll still works via wheel/touch/keyboard,
+     it's just not drawn. */
   min-height: 0;
   overflow-y: auto;
   gap: 7px;
+  scrollbar-width: none;
+}
+
+.prompt-suggestions-list::-webkit-scrollbar {
+  display: none;
 }
 
 /* Copilot-style suggestion chips: compact, pill-shaped, wrapping. */
