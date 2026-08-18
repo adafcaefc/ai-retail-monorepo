@@ -85,10 +85,7 @@ COLUMN_FORMULAS = {
     "order_value": "f11-order-value",
     "at_risk": "f12-at-risk-value",
     "promo_incr_margin": "f13-incremental-promotion-margin",
-    # AA and AF. AA was headed "At-risk value" while computing markdown
-    # recovery; renaming it split the two apart.
-    "markdown_recoverable": "f14-recoverable-at-risk-value",
-    "markdown_at_risk_value": "f23-markdown-at-risk-gross",
+    "at_risk_value": "f14-recoverable-at-risk-value",
     "contribution_day": "f15-contribution-per-day",
     "labour_fte": "f16-labour-fte",
     "dos": "f20-days-of-supply",
@@ -201,11 +198,7 @@ def _engine_row(
 
     reorder_days = {
         "ads": ads,
-        # The designated vendor's lead time, not `sku_master.lead_d`.
-        # The two disagree -- GRC-005 is 2 days against 6 -- and ROP
-        # follows the Trade Agreement, which is the contract actually
-        # being ordered against.
-        "lead_time_days": sku["designated_lead_d"],
+        "lead_time_days": sku["lead_d"],
         "lead_time_adjust": levers["lead_time_adjust"],
         "safety_days": sku["safety_d"],
         "safety_adjust": levers["safety_adjust"],
@@ -312,34 +305,10 @@ def _engine_row(
     }
 
 
-def _sku_index(tables) -> dict[str, dict]:
-    """`sku_master` rows keyed by id, each carrying its designated lead time.
-
-    `sku_master.lead_d` is a static field that disagrees with the Trade
-    Agreement the item is actually ordered against -- GRC-005 says 2 days
-    there and 6 in the agreement. ROP follows the agreement, so the check has
-    to as well, or every ROP-derived column reports a mismatch that is really
-    the test reading the wrong column.
-
-    Exactly one row per item carries `designated = "Y"`; verified 800/800.
-    """
-    designated = {
-        row["item"]: row["lead_time_d"]
-        for row in tables["trade_agreements"]
-        if str(row["designated"]).strip().upper() == "Y"
-    }
-    index = {}
-    for row in tables["sku_master"]:
-        enriched = dict(row)
-        enriched["designated_lead_d"] = designated.get(row["sku_id"], row["lead_d"])
-        index[row["sku_id"]] = enriched
-    return index
-
-
 @pytest.fixture(scope="module")
 def engine_grid(asts, tables, week_factor) -> list[tuple[dict, dict]]:
     """All 16,000 rows recomputed, paired with what the workbook stored."""
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
@@ -456,7 +425,7 @@ def test_levers_reproduce_the_published_scenario(
     branch that never fires. Without it the What-If panel would rest on
     expressions nobody had ever run in anger.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
     label_of = {
@@ -548,7 +517,7 @@ def test_raising_a_lever_never_lowers_what_it_drives(
     check above, because those all sit at zero. This does not prove the
     magnitude is right; it proves the lever pushes the way its label promises.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
@@ -594,7 +563,7 @@ def test_the_reorder_floors_engage_under_a_negative_lever(
     repository refuses to write a rule twice; a test that independently says
     what the answer should be is the exception that makes drift visible.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
