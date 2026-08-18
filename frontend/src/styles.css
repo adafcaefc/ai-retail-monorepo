@@ -606,6 +606,21 @@ img.ey-logo {
   gap: 14px;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(98, 112, 138, 0.35) transparent;
+}
+
+.agent-groups::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agent-groups::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: rgba(98, 112, 138, 0.35);
+}
+
+.agent-groups::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .agent-group {
@@ -720,10 +735,16 @@ img.ey-logo {
 /* Nav labels wrap instead of clipping. The rail was sized for one-word agent
    names; page names like "What If Simulator" are longer, and an ellipsis in
    the only place the screen is named is worse than a second line. Two lines
-   still sit inside the button's 56px floor. */
+   still sit inside the button's 56px floor. `overflow`/`text-overflow` must
+   be reset here too — inherited `hidden`/`ellipsis` from the shared rule
+   above otherwise clips any wrapped line that's still too long for the rail
+   (e.g. "Forecasting", "Management"), garbling the label mid-word. */
 .agent-copy strong {
   font-size: 0.88rem;
   white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: break-word;
 }
 
 .agent-copy small {
@@ -3357,6 +3378,21 @@ img.ey-logo {
   min-height: 0;
   overflow-y: auto;
   gap: 7px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(98, 112, 138, 0.35) transparent;
+}
+
+.prompt-suggestions-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.prompt-suggestions-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background-color: rgba(98, 112, 138, 0.35);
+}
+
+.prompt-suggestions-list::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* Copilot-style suggestion chips: compact, pill-shaped, wrapping. */
