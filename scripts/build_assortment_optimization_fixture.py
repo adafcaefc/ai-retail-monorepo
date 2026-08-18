@@ -143,6 +143,34 @@ def percentile(sorted_values: list[float], pct: float) -> float:
     return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * frac
 
 
+def chain_store_size(stores: list[dict[str, Any]]) -> dict[str, float]:
+    """Total store-size index per vertical.
+
+    `f01-ads-per-store` reads a single store's size index. A chain-net row is
+    that same formula summed over every store in the vertical, and because
+    `base_ads` and `seasonality` are SKU attributes rather than store ones,
+    the sum factorises: pass the vertical's total size index as `store_size`
+    and f01 returns the chain-net ADS unchanged.
+
+    Do not substitute `sku_master.sum_vert_size` here -- this file used to,
+    and it is the one thing that stopped the backend module from reproducing
+    this fixture. That column carries the same quantity rounded to four
+    decimals (Grocery: 20.8447 against a true 20.8445), which moves ADS by
+    about 1e-5 relative: invisible in a displayed figure, decisive for the SKU
+    sitting on the P75 cutoff. It is also not a column the warehouse carries,
+    so a backend serving this board could never have matched it.
+
+    Same rule, same wording, as `build_inventory_risk_fixture.chain_store_size`
+    and `retail/common/warehouse.chain_store_size`.
+    """
+    totals: dict[str, float] = {}
+    for store in stores:
+        totals[store["vertical_id"]] = totals.get(store["vertical_id"], 0.0) + _num(
+            store.get("size")
+        )
+    return totals
+
+
 def contribution_by_sku(engine_store: list[dict[str, Any]]) -> dict[str, float]:
     totals: dict[str, float] = {}
     for row in engine_store:
@@ -220,6 +248,7 @@ def build_items(
     verticals: list[dict[str, Any]],
     contribution: dict[str, float],
     lead_times: dict[str, float],
+    store_size: dict[str, float],
     asts: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """One row per SKU, with the whole productivity chain DERIVED here.
@@ -268,7 +297,7 @@ def build_items(
             {
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
-                "store_size": _num(master.get("sum_vert_size")),
+                "store_size": store_size[row["vertical_id"]],
                 "demand_lever": 0,
                 "promo_eligible": master.get("promo", "N"),
                 "promo_lever": 0,
@@ -323,7 +352,7 @@ def build_items(
                 # What-If cascade inputs for the browser engine.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
-                "store_size": _num(master.get("sum_vert_size")),
+                "store_size": store_size[row["vertical_id"]],
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
                 # `SKU_Master.Lead (d)`, which is what this workbook's ROP
@@ -560,8 +589,10 @@ def main() -> int:
             print(f"      {line}")
         return 1
 
+    store_size = chain_store_size(tables["stores"])
     items = build_items(
-        tables["engine"], tables["sku_master"], tables["verticals"], contribution, lead_times, asts
+        tables["engine"], tables["sku_master"], tables["verticals"],
+        contribution, lead_times, store_size, asts
     )
     thresholds = classify(items)
     assign_best_action_tabs(items)
