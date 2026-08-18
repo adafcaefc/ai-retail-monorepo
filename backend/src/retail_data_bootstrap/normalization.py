@@ -322,7 +322,11 @@ def normalize_workbook(path: Path) -> NormalizedDataset:
             "inventory_state": _text(row["state"]),
             "price": row["price"],
             "inventory_value": row["inv_value"],
-            "at_risk_value": row.get("markdown_recoverable", row.get("at_risk_value", 0.0)),
+            # Column T ("At-risk"), the same source the chain block above
+            # uses. Was column AA, which the workbook labelled "At-risk
+            # value" while computing markdown recovery -- the rename to
+            # "Markdown recoverable" is what surfaced the mismatch here.
+            "at_risk_value": row["at_risk"],
             "forecast_7d": row["forecast_7d"],
             "order_sales_units": row["order_sales"],
             "pack_factor": row["pack"],
