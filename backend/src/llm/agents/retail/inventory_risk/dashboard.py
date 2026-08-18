@@ -190,8 +190,15 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                                                                    AS stockout_risk_count,
                    sum(CASE WHEN f.state = 'Healthy' THEN 1 ELSE 0 END)     AS healthy_count,
                    sum(CASE WHEN f.state <> 'Healthy' THEN 1 ELSE 0 END)    AS at_risk_count,
+                   -- At risk for a reason OTHER than sitting below the reorder
+                   -- point, so this and stockout_risk_count above partition
+                   -- at_risk_count exactly. Excluding the three states by name
+                   -- stopped doing that once Expiry began outranking
+                   -- Stockout/Low: a perishable row can be below ROP and read
+                   -- "Expiry", which counted it on both sides.
                    sum(CASE
-                       WHEN f.state NOT IN ('Healthy', 'Stockout', 'Low') THEN 1 ELSE 0
+                       WHEN f.state <> 'Healthy' AND f.position_qty >= f.rop_qty
+                       THEN 1 ELSE 0
                    END)                                               AS other_at_risk_count,
                    coalesce(sum(f.position_qty * i.price), 0)      AS inv_value,
                    coalesce(sum(
