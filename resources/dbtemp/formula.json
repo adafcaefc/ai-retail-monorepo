@@ -361,10 +361,10 @@
       "id": "f11-order-value",
       "number": 11,
       "name": "Order value",
-      "logic": "Order-buy × pack factor × price",
+      "logic": "Order value at the designated vendor's contract price, not the retail price a customer pays",
       "sheet": "ENGINE_STORE",
       "result_type": "number",
-      "expression": "ROUND(order_buy_units * pack_factor * price)",
+      "expression": "ROUND(order_buy_units * pack_factor * vendor_price)",
       "parameters": [
         {
           "key": "order_buy_units",
@@ -379,8 +379,8 @@
           "default": 12
         },
         {
-          "key": "price",
-          "label": "Unit price",
+          "key": "vendor_price",
+          "label": "Trade Agreement unit price",
           "type": "number",
           "default": 18900
         }
