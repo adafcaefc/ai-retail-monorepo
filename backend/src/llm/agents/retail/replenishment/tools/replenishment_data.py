@@ -58,7 +58,8 @@ def get_replenishment_snapshot(
     Args:
         legal_entity_id: Vertical to narrow to (GRC, GMR, FSH, HNB, ELC, HNL,
             DGT, OMN). Omit for the whole chain.
-        category_group: Category id to narrow to. Omit for all categories.
+        category_group: Category id (e.g. "GRC-C02") or category name (e.g.
+            "Vegetable") to narrow to. Omit for all categories.
     """
     entity, category = snapshot.scope_filters(legal_entity_id, category_group)
     clause, params = snapshot.where(
@@ -66,6 +67,7 @@ def get_replenishment_snapshot(
         category,
         entity_column="i.vertical_id",
         category_column="i.category_id",
+        category_name_column="i.category_name",
     )
 
     with snapshot._read_connection() as connection:

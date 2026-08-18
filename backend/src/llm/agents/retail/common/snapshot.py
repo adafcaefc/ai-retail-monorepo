@@ -81,12 +81,19 @@ def where(
     *,
     entity_column: str,
     category_column: str | None = None,
+    category_name_column: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
     """A WHERE fragment for the two filters, plus its bound parameters.
 
     Returns a fragment starting with ' AND ' or an empty string, matching
     `warehouse._scope_clause`, so it can be appended to a query that already
     has a WHERE.
+
+    `category_group` matches `category_column` (the dashboard filter dropdown
+    passes the real id, e.g. "GRC-C02") OR `category_name_column` when given
+    (a chat turn has no way to know that id, so the model passes the label it
+    was asked about, e.g. "Vegetable" -- matching only the id silently
+    returns zero rows for every category a person would actually type).
     """
     clauses: list[str] = []
     params: dict[str, Any] = {}
@@ -94,7 +101,13 @@ def where(
         clauses.append(f"{entity_column} = :legal_entity_id")
         params["legal_entity_id"] = legal_entity_id
     if category_group and category_column:
-        clauses.append(f"{category_column} = :category_group")
+        if category_name_column:
+            clauses.append(
+                f"({category_column} = :category_group "
+                f"OR {category_name_column} = :category_group)"
+            )
+        else:
+            clauses.append(f"{category_column} = :category_group")
         params["category_group"] = category_group
     return (" AND " + " AND ".join(clauses) if clauses else "", params)
 
