@@ -1,7 +1,9 @@
 # Agent 5 · Pricing & Markdown — frontend design
 
 **Date:** 2026-08-15
-**Status:** Approved for planning
+**Status:** Implemented, with two decisions revised during the build — see
+"Revisions during implementation" at the end. Read that section before
+trusting the data-source and wiring sections below.
 **Scope:** First of five sequential builds (A5 → A6 → A7 → A8 → A9) that bring the
 Retail suite's remaining placeholder agents up to the standard already set by
 A1–A4. This document covers **only A5, Pricing & Markdown**. A6–A9 each get
@@ -159,3 +161,68 @@ reconciliation check (step 6 above) is what guards correctness.
 - Whether `PricingCharts.jsx` is one file (as sketched, matching
   `PromoCharts.jsx`) or split further — an implementation-plan-level call, not
   a design one.
+
+## Revisions during implementation (2026-08-16)
+
+Three things in the sections above turned out to be wrong once the code met
+the data. They are corrected here rather than edited in place, so the
+reasoning stays visible.
+
+### 1. The A5 sheet's own KPI cells are stale — do not reconcile against them
+
+The design said the fixture builder would reconcile its output against the
+spec's documented baseline (99 candidates, Rp 52.02B at-risk, Rp 31.19B
+recoverable). That check failed by 4–8× per vertical, non-uniformly.
+
+The cause is documented in `Dataset_AI_Retail.xlsx` (untracked, repo root),
+which carries a full audit of this workbook in its `AUDIT Root Cause`,
+`AUDIT Fix Register` and `AUDIT Before-After` sheets. Root cause **RC-2**
+names `A5!C6:G13` — the exact cells the spec's baseline figures came from —
+as values pasted from an old snapshot rather than live formulas. The same
+root cause is flagged for **A6, A8 and A9**.
+
+The audit's own recommended fix (**F-05 / T-12**) is to source at-risk and
+recoverable value from `ENGINE_STORE` (store grain) via SUMIFS. The fixture
+builder now does that, and validates against four structural trials from the
+audit (T-01 Position = OnHand + OpenPO, T-02 Max > ROP, T-03 AtRisk ≤
+InventoryValue, T-04 Healthy carries no AtRisk) plus the audit's own
+independently-verified live total for `ENGINE_STORE!AA`
+(Rp 58,301,830,268) — rather than against the stale sheet.
+
+Consequence: the board ships **234 markdown candidates**, not the spec's 99.
+That is a grain change, not a discrepancy — a SKU counts if *any* of its
+stores is in a markdown state, which is the store-grain reading the audit
+recommends.
+
+### 2. ROP's lead time comes from the Trade Agreement, not `sku_master`
+
+Found while building Agent 6, and it affected this board too. Reading
+`ENGINE!G` straight out of the workbook gives:
+
+```
+ROP = ROUND(ADS × (MAX(1, SUMIFS('Trade Agreement'!H, item, designated="Y") + B20)
+                 + MAX(0, SKU_Master.safety_d + B21)))
+```
+
+The lead term is the **designated trade agreement's** lead time, not
+`sku_master.lead_d` — audit fix T-05/T-06, already ported into this
+workbook. The fixture was feeding f05 the wrong column, so the browser
+engine re-derived a different ROP, a different inventory state, and
+therefore a different verdict the moment a lever moved. Verified: the
+corrected source reproduces all 800 stored ROP and Max values exactly.
+
+Both fixture builders now carry `verify_reorder_inputs()`, which re-derives
+every ROP and Max through f05/f06 and aborts the build on any mismatch —
+the guard whose absence let this through.
+
+### 3. The fixture-only gate was removed
+
+The design gated the real board behind `IS_STANDALONE`, keeping the
+placeholder in default `api` mode. That was reversed on request: the board
+now renders in every mode. Because the backend module is still a
+`dashboard_only` stub returning an empty payload, `dashboardData.js`'s API
+branch detects an unusable response (no `items`, no `formulas`, or a
+network/404 failure) and falls back to the bundled workbook fixture. The
+board's own data note already labels those figures as demonstration data, so
+nothing is presented as live that is not. When a backend module lands,
+`isUnusable` stops matching and the API rows flow through unchanged.
