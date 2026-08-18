@@ -370,7 +370,13 @@ def _validate_query(
             + f". Allowed tables: {sorted(allowed_tables)}."
         )
 
-    return cleaned.rstrip().rstrip(";")
+    # Regenerate from the parsed tree rather than executing the model's raw
+    # text: sqlglot's tsql *reader* is permissive enough to accept
+    # Postgres/MySQL-isms like `LIMIT n` that Azure SQL's ODBC driver rejects
+    # outright. Round-tripping through the tsql *writer* normalizes those to
+    # real T-SQL (e.g. `LIMIT n` -> `TOP n`) so validation and execution agree
+    # on the same dialect.
+    return expression.sql(dialect=_SQL_DIALECT)
 
 
 def freeform_query(
