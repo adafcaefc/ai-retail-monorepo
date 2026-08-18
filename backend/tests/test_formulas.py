@@ -70,18 +70,25 @@ CORPUS = corpus()
 
 
 def test_corpus_covers_every_documented_example() -> None:
-    """22 formulas x 5 examples, per formula.md's coverage summary.
+    """23 formulas x 5 examples, per formula.md's coverage summary.
 
     Nineteen of these transcribe the workbook's `Formulas` sheet. Twenty to
     twenty-two are ENGINE columns I, L and N -- real workbook formulas the
     sheet simply does not list, added when the Inventory Risk What-If panel
     needed to recompute them and found no catalogue entry to run.
+
+    Twenty-three is `f23-markdown-at-risk-gross`. It is not new arithmetic:
+    f14 used to hold that expression under the name "Recoverable at-risk
+    value" while the workbook's AA column had already moved on to the net
+    figure. Splitting them gave the gross one a home and let f14 hold what
+    its name claims -- which is also what gave the markdown lever a term to
+    move.
     """
     formulas = load_formulas()
     examples = load_examples()
 
-    assert len(formulas) == 22
-    assert len(CORPUS) == 110
+    assert len(formulas) == 23
+    assert len(CORPUS) == 115
     assert all(len(examples[formula["id"]]) == 5 for formula in formulas)
 
 
