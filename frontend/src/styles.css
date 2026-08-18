@@ -10109,28 +10109,24 @@ button.po-kpi {
 }
 
 /* ==========================================================================
-   Promotion Effectiveness (Agent 4)
-
-   Same layout vocabulary as Inventory Risk and Replenishment. A merchandiser
-   moves between all three in one sitting, and a filter bar or a lever that
-   looks different is one they have to learn twice.
+   Promotion Effectiveness (Agent 4) dashboard
+   --------------------------------------------------------------------------
+   Namespaced under .promotion-effectiveness-dashboard and the .promo-* prefix,
+   same shape as .inventory-risk-dashboard / .risk-* and .demand-forecasting-
+   dashboard / .demand-*. Reuses the same design tokens (no new palette) so the
+   four retail boards read as one system read one after another.
    ========================================================================== */
 
 .promotion-effectiveness-dashboard {
-  /* One accent per KPI tile. The pairing is deliberate: the two green tiles
-     are the upside, cannibalisation is the cost of buying it, and funding is
-     whose money paid for it. */
+  /* One accent per KPI tile. Tone (warn/neutral) is a separate signal, set via
+     .promo-kpi--warn below — the accent names the metric, the tone says
+     whether the value is a problem. */
   --promo-kpi-active-promo-skus: var(--blue-500);
-  --promo-kpi-uplift-pct: var(--green-500);
-  --promo-kpi-incremental-margin: var(--green-600);
-  --promo-kpi-roi-x: #5c2d91;
-  --promo-kpi-cannib-pct: var(--red-500);
-  --promo-kpi-funding-pct: var(--amber-600);
-
-  /* What-If. Baseline is the quieter of the pair — the scenario is what the
-     reader is being asked to look at. Same palette as A2 and A3. */
-  --promo-baseline: var(--gray-400);
-  --promo-scenario: var(--blue-500);
+  --promo-kpi-uplift-pct: var(--green-600);
+  --promo-kpi-incremental-margin: var(--green-500);
+  --promo-kpi-roi-x: var(--blue-700);
+  --promo-kpi-cannib-pct: var(--amber-600);
+  --promo-kpi-funding-pct: var(--amber-500);
 
   display: flex;
   flex-direction: column;
@@ -10140,67 +10136,95 @@ button.po-kpi {
   overflow-y: auto;
 }
 
-/* Inside the workboard's bounded height every flex child would otherwise
-   shrink to its own header. */
+/* As on the other retail boards: without this, a flex child inside the bounded
+   .workboard can compress to its header's height under load, losing all its
+   drawn content. */
 .promotion-effectiveness-dashboard > * {
   flex-shrink: 0;
 }
 
 .promotion-effectiveness-dashboard.is-refreshing {
   opacity: 0.62;
+  transition: opacity 120ms ease-out;
 }
 
-/* --- filter bar ---------------------------------------------------------- */
+/* --- filter bar --------------------------------------------------------- */
 
 .promo-filters {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-end;
-  gap: var(--space-2) var(--space-3);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-3);
+  padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .promo-select,
 .promo-search {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  font-size: 0.62rem;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--muted);
 }
 
 .promo-select-label,
 .promo-search-label {
   color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
 .promo-select select,
-.promo-search input[type="search"] {
-  min-width: 150px;
-  padding: 5px 8px;
+.promo-search input {
+  min-width: 160px;
+  max-width: 230px;
+  height: 34px;
+  padding: 0 var(--space-2);
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--ink);
-  font-size: 0.72rem;
+  font-size: var(--text-sm);
+}
+
+.promo-select select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.promo-select select:focus-visible,
+.promo-search input:focus-visible,
+.promo-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 .promo-button {
-  align-self: flex-end;
-  padding: 6px 12px;
-  border: 1px solid var(--line);
+  min-height: 34px;
+  padding: 6px var(--space-3);
+  border: 1px solid var(--primary);
   border-radius: var(--radius-sm);
-  background: var(--ink);
-  color: var(--surface);
-  font-size: 0.68rem;
-  font-weight: 600;
+  background: var(--primary);
+  color: var(--gray-0);
+  font-size: var(--text-xs);
+  font-weight: 750;
   cursor: pointer;
 }
 
+.promo-button--quiet {
+  border-color: var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
 .promo-button:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
@@ -10211,36 +10235,39 @@ button.po-kpi {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-2);
-  font-size: 0.62rem;
+  gap: 10px;
+  font-size: var(--text-xs);
+  color: var(--muted);
 }
 
 .promo-data-note {
-  flex: 1 1 320px;
-  color: var(--muted);
-  line-height: 1.45;
+  padding: 3px 9px;
+  border: 1px solid var(--accent-warning-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
 }
 
 .promo-scope-summary {
   display: flex;
   align-items: center;
   gap: 6px;
-  color: var(--muted);
 }
 
 .promo-scope-summary b {
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: var(--radius-pill);
-  background: var(--surface-strong);
+  background: var(--gray-100);
   color: var(--ink);
+  font-weight: 600;
 }
 
 .promo-scope-summary button,
 .promo-inline-error button {
   border: 0;
   background: none;
-  color: var(--blue-500);
-  font-size: 0.62rem;
+  color: var(--accent-info-strong);
+  font-size: var(--text-xs);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -10248,22 +10275,49 @@ button.po-kpi {
 .promo-inline-error {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: 6px var(--space-3);
-  border: 1px solid var(--red-500);
-  border-radius: var(--radius-sm);
-  font-size: 0.66rem;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent-danger-border);
+  border-radius: 10px;
+  background: var(--accent-danger-soft);
+  color: var(--accent-danger-strong);
+  font-size: var(--text-sm);
 }
 
-/* --- KPI grid ------------------------------------------------------------ */
+.promo-footnote {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* --- applied-scenario banner ---------------------------------------------
+   Loud on purpose — every figure below it is a projection while a scenario is
+   active, and a reader must not screenshot one as the workbook position. */
+
+.promo-scenario-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--amber-500);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
+}
+
+.promo-scenario-banner-label {
+  flex: 1 1 260px;
+  color: var(--ink);
+  font-size: 0.68rem;
+}
+
+/* --- KPI grid ------------------------------------------------------------- */
 
 .promo-kpi-grid {
   display: grid;
-  /* Three across, two rows. Six columns leave each tile too narrow to carry a
-     figure and its sparkline, same finding as A1 and A2. */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .promo-kpi {
@@ -10274,62 +10328,41 @@ button.po-kpi {
   overflow: hidden;
   padding: var(--space-3);
   border: 1px solid var(--line);
-  /* The accent names the metric, the tone says whether it is a problem. One
-     colour cannot carry both. */
   border-left: 3px solid var(--promo-kpi-accent, var(--gray-300));
   border-radius: var(--radius-md);
   background: var(--surface-strong);
   box-shadow: var(--shadow-sm);
   text-align: left;
-}
-
-button.promo-kpi {
   cursor: pointer;
+  font: inherit;
 }
 
-button.promo-kpi:hover {
-  border-color: var(--gray-300);
-  box-shadow: var(--shadow-md);
+.promo-kpi:hover {
+  background: var(--surface);
 }
 
-/* Tone rides on top of the accent instead of replacing it. The left border
-   keeps naming the metric; the tint says whether this reading is a problem.
-   Neutral is the default and deliberately carries no extra treatment. */
-.promo-kpi--neutral {
-  background: var(--surface-strong);
+.promo-kpi:focus-visible {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
 }
 
-.promo-kpi--good {
-  background: color-mix(in srgb, var(--accent-success) 7%, var(--surface-strong));
-}
-
-.promo-kpi--warn {
-  background: color-mix(in srgb, var(--accent-warning) 8%, var(--surface-strong));
-}
-
-.promo-kpi--bad {
-  background: color-mix(in srgb, var(--accent-danger) 8%, var(--surface-strong));
+.promo-kpi--warn .promo-kpi-value {
+  color: var(--accent-warning-strong);
 }
 
 .promo-kpi-label {
+  font-size: var(--text-xs);
   color: var(--muted);
-  font-size: 0.6rem;
 }
 
 .promo-kpi-value {
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.15;
   color: var(--ink);
-  font-size: 1.02rem;
-  font-variant-numeric: tabular-nums;
 }
 
-.promo-footnote {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.62rem;
-  line-height: 1.45;
-}
-
-/* --- panels and charts --------------------------------------------------- */
+/* --- charts and panels ----------------------------------------------------- */
 
 .promo-chart-grid {
   display: grid;
@@ -10337,16 +10370,54 @@ button.promo-kpi:hover {
   gap: var(--space-3);
 }
 
-.promo-chart-block,
-.promo-calendar,
-.promo-leaders,
-.promo-best-action,
-.promo-simulator,
-.promo-scenario-comparison {
+.promo-dimension-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.promo-chart-block {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: var(--space-2);
+  overflow: hidden;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.promo-chart-block h4 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.promo-empty {
+  margin: 0;
+  padding: 26px 0;
+  color: var(--muted);
+  font-size: var(--text-sm);
+  text-align: center;
+}
+
+/* --- calendar / campaign / margin-leaders tables --------------------------- */
+
+.promo-calendar,
+.promo-best-action,
+.promo-leaders {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow: hidden;
   padding: var(--space-3);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
@@ -10364,118 +10435,108 @@ button.promo-kpi:hover {
 
 .promo-section-head h3 {
   margin: 0;
-  color: var(--ink);
   font-size: 13px;
   font-weight: 600;
+  color: var(--ink);
 }
 
 .promo-section-note {
-  flex: 1 1 260px;
-  color: var(--muted);
   font-size: 0.62rem;
-  line-height: 1.4;
-  text-align: right;
-}
-
-.promo-empty {
-  margin: 0;
-  padding: 26px 0;
   color: var(--muted);
-  font-size: var(--text-sm);
-  text-align: center;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
 }
-
-/* --- tables -------------------------------------------------------------- */
 
 .promo-table-scroll {
-  overflow-x: auto;
+  max-height: 420px;
+  overflow: auto;
 }
 
 .promo-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.66rem;
+  font-size: var(--text-xs);
 }
 
-.promo-table th,
-.promo-table td {
-  padding: 5px 8px;
+.promo-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 7px 8px;
   border-bottom: 1px solid var(--line);
+  background: var(--surface-strong);
+  color: var(--muted);
+  font-weight: 600;
   text-align: left;
   white-space: nowrap;
 }
 
-.promo-table th {
-  color: var(--muted);
-  font-size: 0.58rem;
-  font-weight: 600;
-  text-transform: uppercase;
+.promo-table tbody td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gray-100);
+  color: var(--ink);
+  vertical-align: middle;
 }
 
-.promo-table td.num,
-.promo-table th.num {
-  font-variant-numeric: tabular-nums;
-  text-align: right;
-}
-
-.promo-calendar-row {
+.promo-calendar-row,
+.promo-table tbody tr[onclick],
+.promo-best-action tbody tr,
+.promo-leaders tbody tr {
   cursor: pointer;
 }
 
-.promo-calendar-row:hover,
-.promo-table tbody tr:hover {
-  background: var(--surface);
+.promo-calendar-row:hover td,
+.promo-best-action tbody tr:hover td,
+.promo-leaders tbody tr:hover td {
+  background: var(--gray-50);
 }
 
-/* The two widest columns. Left free to wrap so a long campaign name does not
-   push ROI and margin off the visible width. */
 .promo-cell-name {
-  min-width: 180px;
   color: var(--ink);
   font-weight: 600;
-  white-space: normal;
 }
 
 .promo-cell-construct {
   color: var(--muted);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
+  white-space: nowrap;
 }
 
 .promo-cell-recommendation {
-  min-width: 200px;
-  color: var(--ink);
-  white-space: normal;
+  color: var(--accent-info-strong);
+  white-space: nowrap;
 }
 
 .promo-table-pager {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 10px;
+  font-size: var(--text-xs);
   color: var(--muted);
-  font-size: 0.64rem;
 }
 
 .promo-table-pager button {
-  padding: 3px 10px;
+  padding: 4px 10px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--ink);
-  font-size: 0.62rem;
+  border-radius: 7px;
+  background: var(--surface-strong);
+  font-size: var(--text-xs);
   cursor: pointer;
 }
 
 .promo-table-pager button:disabled {
   opacity: 0.45;
-  cursor: not-allowed;
+  cursor: default;
 }
 
-/* --- suggested best action ----------------------------------------------- */
+/* --- suggested best action tabs -------------------------------------------- */
 
 .promo-tabs {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--line);
@@ -10503,20 +10564,39 @@ button.promo-kpi:hover {
 
 .promo-tab-count {
   padding: 1px 5px;
-  border-radius: var(--radius-pill);
+  border-radius: 999px;
   background: color-mix(in srgb, var(--ink) 8%, transparent);
   font-size: 0.58rem;
   font-variant-numeric: tabular-nums;
 }
 
-/* --- What-If ------------------------------------------------------------- */
+/* Pushed to the far end so the exports never read as a fourth tab. */
+.promo-tabbar-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* --- What-If simulator ------------------------------------------------------ */
+
+.promo-simulator {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+}
 
 .promo-drive-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--muted);
-  font-size: 0.66rem;
+  font-size: 0.68rem;
 }
 
 .promo-levers {
@@ -10536,52 +10616,48 @@ button.promo-kpi:hover {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-2);
+  gap: 6px;
   color: var(--ink);
   font-weight: 600;
 }
 
-/* The workbook cell the lever writes to. Named on the board because a reader
-   who wants to check the number needs to know where it lands. */
 .promo-lever-cell {
   color: var(--muted);
-  font-size: 0.56rem;
   font-style: normal;
-  font-variant-numeric: tabular-nums;
   font-weight: 400;
 }
 
 .promo-lever-effect {
   color: var(--muted);
   font-size: 0.58rem;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .promo-lever-control {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 8px;
 }
 
 .promo-lever-control input[type="range"] {
-  min-width: 0;
-  flex: 1 1 auto;
+  flex: 1;
 }
 
 .promo-lever-control output {
-  min-width: 40px;
+  min-width: 42px;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
-/* A lever that reaches no formula. Dimmed rather than removed: a reader who
-   counts one fewer slider than the spec would assume a bug. */
+/* The markdown lever: declared by the spec, absent from the workbook's
+   formulas. Dimmed rather than removed, so the question "where is it?" is
+   answered where it is asked. */
 .promo-lever.is-inert {
-  opacity: 0.55;
+  opacity: 0.5;
 }
 
-.promo-lever.is-inert input[type="range"] {
+.promo-lever.is-inert input {
   cursor: not-allowed;
 }
 
@@ -10593,34 +10669,28 @@ button.promo-kpi:hover {
 
 .promo-simulator-chart {
   width: 100%;
+  height: 240px;
 }
 
-/* --- applied-scenario banner and saved scenarios ------------------------- */
+/* --- compare scenarios ------------------------------------------------------ */
 
-.promo-scenario-banner {
+.promo-scenario-comparison {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
+  min-width: 0;
+  flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--amber-500);
+  padding: var(--space-3);
+  border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--amber-500) 10%, var(--surface-strong));
-}
-
-.promo-scenario-banner-label {
-  flex: 1 1 260px;
-  color: var(--ink);
-  font-size: 0.66rem;
-  line-height: 1.45;
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
 }
 
 .promo-scenario-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
   margin: 0;
+  gap: 4px;
   padding: 0;
   list-style: none;
 }
@@ -10628,81 +10698,33 @@ button.promo-kpi:hover {
 .promo-scenario-list li {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 4px var(--space-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  gap: 8px;
   font-size: 0.66rem;
+  color: var(--ink);
 }
 
 .promo-scenario-list li button {
   margin-left: auto;
   border: 0;
   background: none;
-  color: var(--blue-500);
-  font-size: 0.6rem;
+  color: var(--accent-info-strong);
+  font-size: 0.62rem;
   text-decoration: underline;
   cursor: pointer;
 }
 
-/* --- KPI drill-down ------------------------------------------------------ */
-
-.promo-drill-skus {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.promo-drill-skus button {
-  display: flex;
-  width: 100%;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  padding: 4px 6px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  font-size: 0.66rem;
-  text-align: left;
-  cursor: pointer;
-}
-
-.promo-drill-skus button:hover {
-  background: var(--surface);
-}
-
-.promo-drill-sku-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.promo-drill-sku-value {
-  flex: 0 0 auto;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-
-/* --- skeleton ------------------------------------------------------------ */
+/* --- loading skeleton -------------------------------------------------------- */
 
 .promo-dashboard-skeleton {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-4) var(--space-5);
+  gap: 14px;
 }
 
 .promo-skeleton-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-2);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
 }
 
 .promo-skeleton-panels {
@@ -10711,16 +10733,25 @@ button.promo-kpi:hover {
   gap: var(--space-3);
 }
 
-/* --- narrow viewports ---------------------------------------------------- */
+/* --- responsive --------------------------------------------------------- */
 
-@media (width <= 1100px) {
-  .promo-levers {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (width <= 1180px) {
+  .promo-kpi-grid,
+  .promo-skeleton-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
   .promo-chart-grid,
   .promo-skeleton-panels {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .promo-dimension-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .promo-levers {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -10730,12 +10761,13 @@ button.promo-kpi:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .promo-dimension-grid,
   .promo-levers {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .promo-section-note {
-    text-align: left;
+  .promo-simulator-actions {
+    flex-wrap: wrap;
   }
 }
 

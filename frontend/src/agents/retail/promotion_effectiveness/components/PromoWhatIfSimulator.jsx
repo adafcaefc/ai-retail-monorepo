@@ -60,6 +60,7 @@ export default function PromoWhatIfSimulator({
             <span className="promo-lever-control">
               <input
                 type="range"
+                aria-label={t(lever.label)}
                 min={lever.min}
                 max={lever.max}
                 step={lever.step}

@@ -50,7 +50,7 @@ AGENTS = [
     (
         "promotion_effectiveness",
         "src.llm.agents.retail.promotion_effectiveness.dashboard",
-        [("items", "sku_id"), ("campaigns", "promo_id"),
+        [("items", "sku_id"), ("campaigns", "promo_id"), ("stores", "store_id"),
          ("reference_by_vertical", "legal_entity_id")],
     ),
 ]

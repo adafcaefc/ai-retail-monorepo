@@ -35,14 +35,17 @@ export default function PromoKpiDrilldown({ drilldown, onClose, onSelectSku }) {
       </DrillSection>
       <DrillSection icon="📦" title={t("Top contributing SKUs")}>
         {drilldown.top_skus.length === 0 ? (
-          <p className="promo-empty">{t("Nothing in scope.")}</p>
+          <p className="drill-empty">{t("Nothing in scope.")}</p>
         ) : (
-          <ul className="promo-drill-skus">
+          // Shared with the other retail boards' drilldowns (RiskKpiDrilldown,
+          // etc.) — .drill-skus / .drill-sku-name / .drill-sku-right already
+          // have global CSS, so this list needs none of its own.
+          <ul className="drill-skus">
             {drilldown.top_skus.map((sku) => (
               <li key={sku.sku_id}>
                 <button type="button" onClick={() => onSelectSku(sku.sku_id)}>
-                  <span className="promo-drill-sku-name">{sku.name}</span>
-                  <span className="promo-drill-sku-value">{format(sku.value)}</span>
+                  <span className="drill-sku-name">{sku.name}</span>
+                  <span className="drill-sku-right">{format(sku.value)}</span>
                 </button>
               </li>
             ))}
@@ -50,7 +53,7 @@ export default function PromoKpiDrilldown({ drilldown, onClose, onSelectSku }) {
         )}
       </DrillSection>
       <DrillSection icon="📈" title={t("History")}>
-        <p className="promo-empty">
+        <p className="drill-empty">
           {drilldown.history
             ? null
             : t("No history recorded — the workbook carries one snapshot day.")}

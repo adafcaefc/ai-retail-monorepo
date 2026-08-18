@@ -134,6 +134,7 @@ export const SIMULATION_METRICS = Object.freeze([
 export const DEFAULT_SCOPE = Object.freeze({
   legal_entity_id: ALL,
   category_group: ALL,
+  store_id: ALL,
   sku: "",
 });
 
@@ -142,6 +143,22 @@ export const GRAIN_NOTE =
   "Incremental margin is chain-net gross (one row per item, surplus in one " +
   "store already netted against shortage in another). ROI is a stored KPI; " +
   "no separate promo-investment column is exposed.";
+
+/**
+ * The store/cluster/channel caveat — deliberately NOT the same wording as
+ * GRAIN_NOTE above. Unlike a physical inventory position, incremental margin
+ * has no netting operation between stores: f01 is purely multiplicative in
+ * store_size and f13 is linear in ads, so a store's share of an item's
+ * incremental_margin is `item.incremental_margin * (store.size_index /
+ * item.store_size)` exactly, and summing it back up reproduces the chain-net
+ * headline to the cent. See `selectors.js`'s `computeByStore` for the proof.
+ */
+export const STORE_GRAIN_NOTE =
+  "Incremental margin by store, cluster and channel reconciles exactly to " +
+  "the chain-net headline above — margin has no netting operation the way " +
+  "physical inventory position does. Selecting a store replaces every KPI " +
+  "and chart with that store's own position; campaigns and the season mix " +
+  "stay chain-wide because the workbook carries no store dimension for them.";
 
 /** The two-uplifts caveat, printed wherever both numbers appear near each other. */
 export const UPLIFT_NOTE =
@@ -224,6 +241,10 @@ export function normalizePromotionDashboard(payload) {
     by_vertical: payload.by_vertical ?? [],
     by_category: payload.by_category ?? [],
     by_season: payload.by_season ?? [],
+    by_store: payload.by_store ?? [],
+    by_cluster: payload.by_cluster ?? [],
+    by_channel: payload.by_channel ?? [],
+    by_state: payload.by_state ?? [],
     largest_margin_skus: payload.largest_margin_skus ?? [],
     campaigns: payload.campaigns ?? [],
     best_actions: payload.best_actions ?? { high_roi: [], funding_gap: [], pre_buy_required: [] },
@@ -249,7 +270,7 @@ export function serializeScope(scope) {
   const merged = { ...DEFAULT_SCOPE, ...(scope ?? {}) };
   const query = {};
 
-  for (const key of ["legal_entity_id", "category_group"]) {
+  for (const key of ["legal_entity_id", "category_group", "store_id"]) {
     if (merged[key] && merged[key] !== ALL) {
       query[key] = merged[key];
     }

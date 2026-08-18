@@ -99,3 +99,23 @@ const REQUIRED_FORMULAS = [
   "f01-ads-per-store",
   "f13-incremental-promotion-margin",
 ];
+
+/**
+ * Reconstruct one item at one store, for the Store filter's full item swap.
+ *
+ * `f01-ads-per-store` is purely multiplicative in `store_size`, and `f13` is
+ * linear in `ads` with every other input constant per item regardless of
+ * store. So overriding `store_size` with one store's `size_index` — instead
+ * of the vertical-wide sum every item already carries — reproduces that
+ * store's own `ads` / `incremental_margin` once run back through
+ * `createEngine`'s `applyLevers`. Verified against every real ENGINE_STORE
+ * row for a promo SKU by the fixture builder's `verify_store_split`, to
+ * floating-point precision.
+ *
+ * This is only needed for the Store filter's item-population swap. The
+ * by-store/cluster/channel dimension charts don't call this — they use the
+ * cheaper proportional split in `selectors.js`'s `computeByStore` directly.
+ */
+export function atStore(item, store) {
+  return { ...item, store_size: Number(store?.size_index) || 0 };
+}

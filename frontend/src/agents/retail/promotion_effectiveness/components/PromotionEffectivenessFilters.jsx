@@ -1,9 +1,11 @@
 import { ALL } from "../data/contract.js";
+import { SUPPORTS_STORE_SCOPE } from "../data/selectors.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
 /**
- * The top filter row: vertical, category, and a free-text search across SKU,
- * promo name and category. Mirrors the sibling boards' filter contract.
+ * The top filter row: vertical, category, store, and a free-text search
+ * across SKU, promo name and category. Mirrors the sibling boards' filter
+ * contract.
  */
 export default function PromotionEffectivenessFilters({
   scope,
@@ -18,6 +20,7 @@ export default function PromotionEffectivenessFilters({
   const hasFilter =
     scope.legal_entity_id !== ALL ||
     scope.category_group !== ALL ||
+    scope.store_id !== ALL ||
     (scope.sku && scope.sku.trim());
 
   return (
@@ -27,7 +30,11 @@ export default function PromotionEffectivenessFilters({
         value={scope.legal_entity_id}
         options={options.legal_entities}
         disabled={busy}
-        onChange={(value) => onPatch({ legal_entity_id: value, category_group: ALL })}
+        onChange={(value) =>
+          // A category or store from the previous vertical cannot exist under
+          // the new one, so reset both rather than load a stale scope.
+          onPatch({ legal_entity_id: value, category_group: ALL, store_id: ALL })
+        }
       />
       <SelectField
         label={t("Category")}
@@ -35,6 +42,18 @@ export default function PromotionEffectivenessFilters({
         options={categoriesInScope(options.categories, scope.legal_entity_id)}
         disabled={busy}
         onChange={(value) => onPatch({ category_group: value })}
+      />
+      <SelectField
+        label={t("Store")}
+        value={scope.store_id}
+        options={storesInScope(options.stores, scope.legal_entity_id)}
+        disabled={busy || !SUPPORTS_STORE_SCOPE}
+        title={
+          SUPPORTS_STORE_SCOPE
+            ? t("Shows this store's own position, not the chain's share of it.")
+            : t("Store scope needs the per-store dataset, not yet available.")
+        }
+        onChange={(value) => onPatch({ store_id: value })}
       />
       <label className="promo-search">
         <span className="promo-search-label">{t("Search")}</span>
@@ -54,8 +73,8 @@ export default function PromotionEffectivenessFilters({
         {t("Refresh")}
       </button>
       {hasFilter ? (
-        <button type="button" className="promo-button" onClick={onClear}>
-          {t("Clear all")}
+        <button type="button" className="promo-button promo-button--quiet" onClick={onClear}>
+          {t("Clear")}
         </button>
       ) : null}
     </div>
@@ -67,10 +86,15 @@ function categoriesInScope(categories, vertical) {
   return categories.filter((c) => c.legal_entity_id === vertical);
 }
 
-function SelectField({ label, value, options, disabled, onChange }) {
+function storesInScope(stores, vertical) {
+  if (!vertical || vertical === ALL) return stores;
+  return stores.filter((s) => s.legal_entity_id === vertical);
+}
+
+function SelectField({ label, value, options, disabled, title, onChange }) {
   const { t } = useLanguage();
   return (
-    <label className="promo-select">
+    <label className="promo-select" title={title}>
       <span className="promo-select-label">{label}</span>
       <select
         value={value}

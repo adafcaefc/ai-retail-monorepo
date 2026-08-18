@@ -14,16 +14,29 @@ import {
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { categoryColor, formatIdr, formatPercent } from "../presentation.js";
 
+/** Active bar stays at full opacity; the rest dim, so a selection reads at a glance. */
+function cellOpacity(key, activeKey) {
+  return !activeKey || key === activeKey ? 1 : 0.35;
+}
+
 /**
  * Incremental margin by vertical (vertical bars) — the by-vertical chart from
- * the A4 spec section 5a. Sorted desc by margin, value labels on.
+ * the A4 spec section 5a. Sorted desc by margin, value labels on. Click a bar
+ * to scope the board to that vertical, matching inventory_risk's dimension
+ * charts — the only two clicked-to-filter charts on this board are this one
+ * and the by-category chart below, both of which already have a dropdown
+ * filter for the same field.
  */
-export function MarginByVerticalChart({ rows }) {
+export function MarginByVerticalChart({ rows, onSelect, activeKey }) {
   const { t, language } = useLanguage();
   const data = [...rows]
     .filter((r) => r.incremental_margin > 0)
     .sort((a, b) => b.incremental_margin - a.incremental_margin)
-    .map((r) => ({ label: r.label ?? r.vertical_id, value: r.incremental_margin }));
+    .map((r) => ({
+      label: r.label ?? r.vertical_id,
+      value: r.incremental_margin,
+      selection_key: r.vertical_id,
+    }));
 
   if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
 
@@ -36,9 +49,18 @@ export function MarginByVerticalChart({ rows }) {
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v) => formatIdr(v, language)} />
-          <Bar dataKey="value" name={t("Incremental margin")}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={categoryColor(i)} />
+          <Bar
+            dataKey="value"
+            name={t("Incremental margin")}
+            onClick={onSelect ? (point) => onSelect(point.selection_key) : undefined}
+            cursor={onSelect ? "pointer" : undefined}
+          >
+            {data.map((row, i) => (
+              <Cell
+                key={row.selection_key}
+                fill={categoryColor(i)}
+                fillOpacity={cellOpacity(row.selection_key, activeKey)}
+              />
             ))}
           </Bar>
         </BarChart>
@@ -49,11 +71,15 @@ export function MarginByVerticalChart({ rows }) {
 
 /**
  * Incremental margin by category (horizontal bars) — the by-category dimension
- * chart from the A4 spec section 6.
+ * chart from the A4 spec section 6. Click a bar to scope the board to that
+ * category.
  */
-export function MarginByCategoryChart({ rows }) {
+export function MarginByCategoryChart({ rows, onSelect, activeKey }) {
   const { t, language } = useLanguage();
-  const data = [...rows].sort((a, b) => b.value - a.value).slice(0, 8);
+  const data = [...rows]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8)
+    .map((row) => ({ ...row, selection_key: row.category_id }));
 
   if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
 
@@ -66,9 +92,152 @@ export function MarginByCategoryChart({ rows }) {
           <XAxis type="number" tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
           <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v) => formatIdr(v, language)} />
-          <Bar dataKey="value" name={t("Incremental margin")}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={categoryColor(i)} />
+          <Bar
+            dataKey="value"
+            name={t("Incremental margin")}
+            onClick={onSelect ? (point) => onSelect(point.selection_key) : undefined}
+            cursor={onSelect ? "pointer" : undefined}
+          >
+            {data.map((row, i) => (
+              <Cell
+                key={row.selection_key}
+                fill={categoryColor(i)}
+                fillOpacity={cellOpacity(row.selection_key, activeKey)}
+              />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+/**
+ * Incremental margin by channel (horizontal bars, sorted desc) — A4 spec
+ * section 5b. Reconciles exactly to the chain-net headline (see
+ * `selectors.js`'s `computeByChannel`), unlike a physical inventory position.
+ */
+export function MarginByChannelChart({ rows }) {
+  const { t, language } = useLanguage();
+  const data = [...rows].filter((r) => r.incremental_margin > 0);
+
+  if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
+
+  return (
+    <section className="promo-chart-block" data-testid="promo-chart-channel">
+      <h4>{t("Incremental margin by channel")}</h4>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart layout="vertical" data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
+          <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(v) => formatIdr(v, language)} />
+          <Bar dataKey="incremental_margin" name={t("Incremental margin")}>
+            {data.map((row, i) => (
+              <Cell key={row.label} fill={categoryColor(i)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+/**
+ * Incremental margin by store (horizontal bars, top 12) — A4 spec section 6.
+ * A proportional split of each item's own margin by store size (see
+ * `computeByStore`), not a re-measurement, so it reconciles exactly to the
+ * chain-net headline.
+ */
+const TOP_STORES = 12;
+
+export function MarginByStoreChart({ rows }) {
+  const { t, language } = useLanguage();
+  const data = [...rows].slice(0, TOP_STORES);
+
+  if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
+
+  return (
+    <section className="promo-chart-block" data-testid="promo-chart-store">
+      <h4>
+        {t("Incremental margin by store")}
+        <span className="promo-section-note">{t("Top 12")}</span>
+      </h4>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart layout="vertical" data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+          <XAxis type="number" tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
+          <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(v) => formatIdr(v, language)} />
+          <Bar dataKey="incremental_margin" name={t("Incremental margin")}>
+            {data.map((row, i) => (
+              <Cell key={row.store_id} fill={categoryColor(i)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+/**
+ * Incremental margin by store cluster (vertical bars with value labels) — A4
+ * spec section 6.
+ */
+export function MarginByClusterChart({ rows }) {
+  const { t, language } = useLanguage();
+  const data = [...rows];
+
+  if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
+
+  return (
+    <section className="promo-chart-block" data-testid="promo-chart-cluster">
+      <h4>{t("Incremental margin by cluster")}</h4>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={data} margin={{ top: 20, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+          <YAxis tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(v) => formatIdr(v, language)} />
+          <Bar dataKey="incremental_margin" name={t("Incremental margin")} label={{ position: "top", fontSize: 10, formatter: (v) => formatIdr(v, language) }}>
+            {data.map((row, i) => (
+              <Cell key={row.label} fill={categoryColor(i)} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+/**
+ * Inventory value by state — A4 spec section 6's inventory-state-exposure
+ * chart. Deliberately titled and measured differently from every other chart
+ * here: this is inventory value, NOT incremental margin, and the spec's own
+ * section 11 warns it should not be reconciled against the margin headline —
+ * state is unrelated to the store-size proportionality every margin chart
+ * on this board relies on.
+ */
+export function InventoryStateChart({ rows }) {
+  const { t, language } = useLanguage();
+  const data = [...rows];
+
+  if (!data.length) return <p className="promo-empty">{t("No promo-eligible inventory in scope.")}</p>;
+
+  return (
+    <section className="promo-chart-block" data-testid="promo-chart-state">
+      <h4 title={t("Inventory value by state — not incremental margin, and not reconciled to it.")}>
+        {t("Inventory value by state")}
+      </h4>
+      <ResponsiveContainer width="100%" height={260}>
+        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="state" tick={{ fontSize: 11 }} tickFormatter={(v) => t(v)} />
+          <YAxis tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(v) => formatIdr(v, language)} labelFormatter={(v) => t(v)} />
+          <Bar dataKey="value" name={t("Inventory value")}>
+            {data.map((row, i) => (
+              <Cell key={row.state} fill={categoryColor(i)} />
             ))}
           </Bar>
         </BarChart>

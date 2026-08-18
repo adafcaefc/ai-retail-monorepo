@@ -1,7 +1,27 @@
 import { useState } from "react";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { BEST_ACTION_TABS } from "../data/contract.js";
+import { buildCampaignsCsv, campaignsFilename } from "../data/csv.js";
 import { formatPercent, formatUnits } from "../presentation.js";
+
+/**
+ * Hand a CSV to the browser. Guarded rather than assumed: `createObjectURL`
+ * is absent under jsdom, and a test that clicks Export should exercise the
+ * CSV, not die on a missing DOM API.
+ */
+function download(filename, text) {
+  if (typeof URL?.createObjectURL !== "function") return false;
+
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
 
 /**
  * The tabbed promo plan approval panel — A4 spec section 7. Three tabs:
@@ -11,8 +31,12 @@ import { formatPercent, formatUnits } from "../presentation.js";
  *
  * This panel is a proposal: it does not submit a D365 discount or raise a
  * pre-buy. It surfaces the decision the reader faces, grouped for approval.
+ *
+ * `exportPromoPlan(k)` / `exportPromoAll()` (spec section 7): "Export this
+ * tab" downloads the active tab's rows, "Export all campaigns" downloads
+ * every campaign regardless of tab.
  */
-export default function SuggestedBestAction({ groups, onSelect }) {
+export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSelect }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState(BEST_ACTION_TABS[0].id);
   const active = BEST_ACTION_TABS.find((x) => x.id === tab) ?? BEST_ACTION_TABS[0];
@@ -40,6 +64,24 @@ export default function SuggestedBestAction({ groups, onSelect }) {
             <span className="promo-tab-count">{groups?.[x.id]?.length ?? 0}</span>
           </button>
         ))}
+        <div className="promo-tabbar-actions">
+          <button
+            type="button"
+            className="promo-button promo-button--quiet"
+            onClick={() => download(campaignsFilename(tab, asOf), buildCampaignsCsv(rows))}
+            disabled={rows.length === 0}
+          >
+            {t("Export this tab")}
+          </button>
+          <button
+            type="button"
+            className="promo-button promo-button--quiet"
+            onClick={() => download(campaignsFilename("all", asOf), buildCampaignsCsv(allCampaigns ?? []))}
+            disabled={!allCampaigns?.length}
+          >
+            {t("Export all campaigns")}
+          </button>
+        </div>
       </div>
       {rows.length === 0 ? (
         <p className="promo-empty">{t("No campaigns in this group.")}</p>

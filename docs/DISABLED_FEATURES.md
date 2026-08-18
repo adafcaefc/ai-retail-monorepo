@@ -47,3 +47,15 @@ file.
 Note: `frontend/src/pages/main/formula_manager/FormulaManager.test.jsx`
 already asserts `href="#main.data_source?cell=..."` on citation links; that
 test needed no change and does not need reverting.
+
+## Promotion Effectiveness — brought up to spec parity (2026-08-18)
+
+Re-enabling (see the note at the top of this doc) shipped the module as it
+stood on disk. It has since been brought up to parity with
+`resources/A4_Promotion_Effectiveness_Dashboard_Spec.md`: a Store filter,
+by-store/cluster/channel and inventory-state dimension charts, a by-channel
+mainHTML chart, and CSV export on the Suggested Best Action panel, all
+following the exact patterns `inventory_risk` and `replenishment` already
+established for the same kind of gap. See
+`backend/src/llm/agents/retail/promotion_effectiveness/dashboard.py` and
+`frontend/src/agents/retail/promotion_effectiveness/` for the current shape.

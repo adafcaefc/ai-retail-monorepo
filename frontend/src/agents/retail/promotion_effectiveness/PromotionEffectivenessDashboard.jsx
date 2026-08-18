@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useLanguage } from "../../../LanguageProvider.jsx";
 import {
+  InventoryStateChart,
   MarginByCategoryChart,
+  MarginByChannelChart,
+  MarginByClusterChart,
+  MarginByStoreChart,
   MarginByVerticalChart,
   SeasonMixChart,
   UpliftVsMarginChart,
@@ -17,7 +21,14 @@ import PromoKpiGrid from "./components/PromoKpiGrid.jsx";
 import PromoScenarioComparison from "./components/PromoScenarioComparison.jsx";
 import PromoWhatIfSimulator from "./components/PromoWhatIfSimulator.jsx";
 import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
-import { ALL, BASELINE_LEVERS, DEFAULT_SCOPE, GRAIN_NOTE, UPLIFT_NOTE } from "./data/contract.js";
+import {
+  ALL,
+  BASELINE_LEVERS,
+  DEFAULT_SCOPE,
+  GRAIN_NOTE,
+  STORE_GRAIN_NOTE,
+  UPLIFT_NOTE,
+} from "./data/contract.js";
 import { loadPromotionDashboard, loadPromotionDrilldown } from "./data/dashboardData.js";
 
 const MAX_SAVED_SCENARIOS = 4;
@@ -35,10 +46,12 @@ function optionLabel(options, value) {
 /**
  * Agent 4 · Promotion Effectiveness board.
  *
- * Renders the six promo KPIs, the uplift-vs-margin combo chart, the by-vertical
- * and by-category margin charts, the campaign calendar preview, the suggested
- * best action tabs, the margin leaders list, and the What-If simulator with
- * compare-scenarios. Mirrors the Inventory Risk board's data-load contract.
+ * Renders the six promo KPIs, the uplift-vs-margin combo chart, the mainHTML
+ * pair (by-vertical, by-channel) and campaign calendar, the full dimension
+ * row (by-category, by-store, by-cluster, season mix, inventory state), the
+ * suggested best action tabs with CSV export, the margin leaders list, and
+ * the What-If simulator with compare-scenarios. Mirrors the Inventory Risk
+ * board's data-load contract, including its client-side Store filter.
  */
 export default function PromotionEffectivenessDashboard() {
   const { t } = useLanguage();
@@ -137,6 +150,9 @@ export default function PromotionEffectivenessDashboard() {
     if (scope.category_group !== ALL) {
       labels.push(optionLabel(options.categories, scope.category_group));
     }
+    if (scope.store_id !== ALL) {
+      labels.push(optionLabel(options.stores, scope.store_id));
+    }
     if (scope.sku) labels.push(scope.sku);
     return labels;
   }, [options, scope]);
@@ -233,24 +249,55 @@ export default function PromotionEffectivenessDashboard() {
 
       <UpliftVsMarginChart rows={dashboard.by_vertical} />
 
-      <div className="promo-chart-grid">
-        <MarginByVerticalChart rows={dashboard.by_vertical} />
-        <MarginByCategoryChart rows={dashboard.by_category} />
-      </div>
-
       <p className="promo-footnote">{t(UPLIFT_NOTE)}</p>
+
+      {/* mainHTML block — A4 spec section 5: by-vertical + by-channel, then
+          the campaign calendar directly beneath. */}
+      <div className="promo-chart-grid">
+        <MarginByVerticalChart
+          rows={dashboard.by_vertical}
+          activeKey={scope.legal_entity_id !== ALL ? scope.legal_entity_id : null}
+          onSelect={(verticalId) =>
+            patchScope({
+              legal_entity_id: scope.legal_entity_id === verticalId ? ALL : verticalId,
+              category_group: ALL,
+              store_id: ALL,
+            })
+          }
+        />
+        <MarginByChannelChart rows={dashboard.by_channel} />
+      </div>
 
       <PromoCalendarTable
         campaigns={dashboard.campaigns}
         onSelect={(promoId) => patchScope({ sku: promoId })}
       />
 
+      {/* Dimension row — A4 spec section 6. */}
+      <div className="promo-dimension-grid">
+        <MarginByCategoryChart
+          rows={dashboard.by_category}
+          activeKey={scope.category_group !== ALL ? scope.category_group : null}
+          onSelect={(categoryId) =>
+            patchScope({
+              category_group: scope.category_group === categoryId ? ALL : categoryId,
+            })
+          }
+        />
+        <MarginByStoreChart rows={dashboard.by_store} />
+        <MarginByClusterChart rows={dashboard.by_cluster} />
+        <SeasonMixChart rows={dashboard.by_season} />
+        <InventoryStateChart rows={dashboard.by_state} />
+      </div>
+
+      <p className="promo-footnote">{t(STORE_GRAIN_NOTE)}</p>
+
       <SuggestedBestAction
         groups={dashboard.best_actions}
+        allCampaigns={dashboard.campaigns}
+        asOf={dashboard.as_of}
         onSelect={(promoId) => patchScope({ sku: promoId })}
       />
-
-      <SeasonMixChart rows={dashboard.by_season} />
 
       <MarginLeadersTable
         rows={dashboard.largest_margin_skus}

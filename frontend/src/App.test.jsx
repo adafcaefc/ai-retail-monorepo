@@ -137,6 +137,15 @@ const AGENTS = [
     starter_prompts: [],
     dashboard_only: true,
   },
+  {
+    id: "retail.promotion_effectiveness",
+    folder: "retail",
+    display: "Promotion Effectiveness",
+    description: "Review retail promotion effectiveness.",
+    prompt: "Ask Promotion...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
 ];
 
 function emptyDashboard(agent) {
@@ -421,10 +430,10 @@ describe("Retail dashboard and frontend-only chat", () => {
    * Both sides of the merge renamed this test, and both names had gone stale.
    * "scaffolds" stopped being true once Replenishment started rendering a real
    * purchase order, and naming only the controls drops what the loop below
-   * spends most of its length on: that the three boards are independently
+   * spends most of its length on: that the four boards are independently
    * selectable and each renders its own.
    */
-  it("switches between three Retail boards, every write control disabled", async () => {
+  it("switches between four Retail boards, every write control disabled", async () => {
     renderApp();
 
     await waitForSidebar();
@@ -433,7 +442,7 @@ describe("Retail dashboard and frontend-only chat", () => {
       (group) => group.querySelector(".folder-name")?.textContent === "Retail",
     );
     expect(retailGroup).toBeDefined();
-    expect(retailGroup.querySelector(".folder-count")).toHaveTextContent("3");
+    expect(retailGroup.querySelector(".folder-count")).toHaveTextContent("4");
     expect(buttonNamed("Retail")).toBeUndefined();
 
     const retailModules = [
@@ -454,6 +463,12 @@ describe("Retail dashboard and frontend-only chat", () => {
         name: "Replenishment",
         chatLabel: "Replenishment",
         prompt: "Ask Replenishment...",
+      },
+      {
+        id: "retail.promotion_effectiveness",
+        name: "Promotion Effectiveness",
+        chatLabel: "Promotion",
+        prompt: "Ask Promotion...",
       },
     ];
 
@@ -532,13 +547,19 @@ describe("Retail dashboard and frontend-only chat", () => {
         await screen.findByTestId("inventory-risk-dashboard");
         expect(await screen.findByText("Inventory risk register")).toBeInTheDocument();
         expect(document.querySelectorAll(".risk-kpi")).toHaveLength(6);
-      } else {
-        // All three now read the same workbook. Replenishment was the last
+      } else if (module.id === "retail.replenishment") {
+        // All four now read the same workbook. Replenishment was the last
         // blank scaffold; it renders a purchase order rather than an empty
         // section.
         await screen.findByTestId("replenishment-dashboard");
         expect(await screen.findByText("Purchase order preview")).toBeInTheDocument();
         expect(document.querySelectorAll(".po-kpi")).toHaveLength(6);
+      } else {
+        // Promotion Effectiveness — re-enabled and brought up to spec parity
+        // alongside the other three.
+        await screen.findByTestId("promotion-effectiveness-dashboard");
+        expect(await screen.findByText("Promotion calendar preview")).toBeInTheDocument();
+        expect(document.querySelectorAll(".promo-kpi")).toHaveLength(6);
       }
 
       const input = screen.getByRole("textbox", {
@@ -567,13 +588,13 @@ describe("Retail dashboard and frontend-only chat", () => {
 
     fireEvent.click(document.querySelector(".chat-close-button"));
     expect(document.querySelector("main")).toHaveClass("chat-closed");
-    expect(buttonNamed("Replenishment")).toHaveClass("active");
-    expect(screen.getByTestId("replenishment-dashboard")).toBeInTheDocument();
-    // All three Retail modules now render a full board off the same workbook,
-    // so this walk costs roughly 12s in jsdom. It relies on the raised
+    expect(buttonNamed("Promotion Effectiveness")).toHaveClass("active");
+    expect(screen.getByTestId("promotion-effectiveness-dashboard")).toBeInTheDocument();
+    // All four Retail modules now render a full board off the same workbook,
+    // so this walk costs roughly 16s in jsdom. It relies on the raised
     // `testTimeout` in vitest.config.js rather than being trimmed: the point
-    // of the test is that selecting any module leaves the other two alone,
-    // which needs all three.
+    // of the test is that selecting any module leaves the other three alone,
+    // which needs all four.
   });
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {

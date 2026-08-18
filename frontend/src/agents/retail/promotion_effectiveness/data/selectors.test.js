@@ -8,13 +8,19 @@
 import { describe, expect, it } from "vitest";
 
 import { AGENT_ID, ALL, DEFAULT_SCOPE } from "./contract.js";
-import { loadPromotionDashboard } from "./dashboardData.js";
+import { loadPromotionDashboard, loadPromotionDrilldown } from "./dashboardData.js";
 import fixture from "./fixture.json";
 import {
   buildDashboardFromFixture,
+  computeByChannel,
+  computeByCluster,
+  computeByState,
+  computeByStore,
   computeKpis,
+  computeLargestMarginSkus,
   scopeCampaigns,
   scopeItems,
+  scopeStores,
 } from "./selectors.js";
 
 const scopeOf = (overrides) => ({ ...DEFAULT_SCOPE, ...overrides });
@@ -67,6 +73,23 @@ describe("KPIs reconcile with the workbook", () => {
     expect(dashboard.kpis.uplift_pct).toBeCloseTo(expectedUplift, 1);
     expect(dashboard.kpis.roi_x).toBeCloseTo(expectedRoi, 1);
   });
+
+  it("narrows uplift and ROI to the selected vertical, not the chain average", () => {
+    // Regression test: uplift_pct/roi_x used to always average across every
+    // vertical in reference_by_vertical regardless of scope, so the Vertical
+    // filter silently left these two tiles unchanged while the other four
+    // (active_promo_skus, incremental_margin, cannib_pct, funding_pct) did
+    // narrow correctly.
+    const dashboard = buildDashboardFromFixture(fixture, scopeOf({ legal_entity_id: "GRC" }));
+    const groceryReference = fixture.reference_by_vertical.find(
+      (r) => r.legal_entity_id === "GRC",
+    );
+    expect(dashboard.kpis.uplift_pct).toBeCloseTo(groceryReference.uplift_pct, 6);
+    expect(dashboard.kpis.roi_x).toBeCloseTo(groceryReference.roi_x, 6);
+
+    const chainDashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    expect(dashboard.kpis.uplift_pct).not.toBeCloseTo(chainDashboard.kpis.uplift_pct, 3);
+  });
 });
 
 describe("scoping", () => {
@@ -110,11 +133,108 @@ describe("the simulation block", () => {
   });
 });
 
+describe("store, cluster and channel decomposition", () => {
+  it("reconciles exactly to the chain-net incremental margin (no netting, unlike inventory position)", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const byStoreTotal = dashboard.by_store.reduce((t, r) => t + r.incremental_margin, 0);
+    const byClusterTotal = dashboard.by_cluster.reduce((t, r) => t + r.incremental_margin, 0);
+    const byChannelTotal = dashboard.by_channel.reduce((t, r) => t + r.incremental_margin, 0);
+    const headline = dashboard.kpis.incremental_margin;
+
+    // Rounding happens per-row (round to whole Rupiah) before summing, so the
+    // reconstructed totals agree with the headline to a handful of rupiah on
+    // a value in the tens of billions, not to the last digit.
+    expect(byStoreTotal).toBeCloseTo(headline, -2);
+    expect(byClusterTotal).toBeCloseTo(headline, -2);
+    expect(byChannelTotal).toBeCloseTo(headline, -2);
+  });
+
+  it("narrows the store dimension list the way scopeItems narrows items", () => {
+    const oneStore = scopeStores(fixture.stores, { store_id: fixture.stores[0].store_id });
+    expect(oneStore).toEqual([fixture.stores[0]]);
+
+    const vertical = fixture.stores[0].vertical_id;
+    const byVertical = scopeStores(fixture.stores, { legal_entity_id: vertical });
+    expect(byVertical.every((s) => s.vertical_id === vertical)).toBe(true);
+    expect(byVertical.length).toBeGreaterThan(0);
+
+    expect(scopeStores(fixture.stores, {})).toHaveLength(fixture.stores.length);
+  });
+
+  it("computeByCluster and computeByChannel group computeByStore's own rows", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const byCluster = computeByCluster(dashboard.by_store);
+    const byChannel = computeByChannel(dashboard.by_store);
+    expect(byCluster).toEqual(dashboard.by_cluster);
+    expect(byChannel).toEqual(dashboard.by_channel);
+  });
+
+  it("computeByState sums inventory value, not incremental margin", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const expectedTotal = fixture.items.reduce(
+      (t, i) => t + (Number(i.inventory_value) || 0),
+      0,
+    );
+    const byStateTotal = dashboard.by_state.reduce((t, r) => t + r.value, 0);
+    expect(byStateTotal).toBeCloseTo(expectedTotal, -2);
+    // Intentionally does not reconcile against incremental_margin — a
+    // different measure, per spec section 11.
+    expect(byStateTotal).not.toBeCloseTo(dashboard.kpis.incremental_margin, -2);
+  });
+
+  it("computeByStore is directly callable, not only through the dashboard builder", () => {
+    const store = fixture.stores.find((s) => s.vertical_id === fixture.items[0].vertical_id);
+    const rows = computeByStore(fixture.items, [store]);
+    expect(rows.every((r) => r.store_id === store.store_id)).toBe(true);
+  });
+});
+
+describe("the Store filter", () => {
+  it("replaces the item population with that store's own reconstructed position", () => {
+    const store = fixture.stores[0];
+    const chainDashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const storeDashboard = buildDashboardFromFixture(fixture, scopeOf({ store_id: store.store_id }));
+
+    expect(storeDashboard.scope.store_id).toBe(store.store_id);
+    expect(storeDashboard.kpis.active_promo_skus).toBeGreaterThan(0);
+    expect(storeDashboard.kpis.incremental_margin).toBeLessThan(
+      chainDashboard.kpis.incremental_margin,
+    );
+  });
+
+  it("does not change campaigns or the season mix — promotion_detail carries no store dimension", () => {
+    const store = fixture.stores[0];
+    const chainDashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const storeDashboard = buildDashboardFromFixture(fixture, scopeOf({ store_id: store.store_id }));
+
+    expect(storeDashboard.campaigns).toEqual(chainDashboard.campaigns);
+    expect(storeDashboard.by_season).toEqual(chainDashboard.by_season);
+  });
+});
+
 describe("the data gateway", () => {
   it("loads and normalizes for one vertical", async () => {
     const dashboard = await loadPromotionDashboard({ legal_entity_id: "GRC" });
     expect(dashboard.agent).toBe(AGENT_ID);
     expect(dashboard.is_mock).toBe(true);
     expect(dashboard.kpis.active_promo_skus).toBeGreaterThan(0);
+  });
+
+  it("carries category_id on the margin-leaders population the drilldown draws from", () => {
+    // Regression test: computeLargestMarginSkus used to omit category_id
+    // (only category_label survived), so loadPromotionDrilldown's "by
+    // category" section silently showed "Nothing in scope" for every metric,
+    // while "by vertical" worked fine because vertical_id was carried.
+    const rows = computeLargestMarginSkus(fixture.items);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.category_id).toBeTruthy();
+    }
+  });
+
+  it("decomposes a drilldown by category, not just by vertical", async () => {
+    const drilldown = await loadPromotionDrilldown(DEFAULT_SCOPE, "incremental_margin");
+    expect(drilldown.by_category.length).toBeGreaterThan(0);
+    expect(drilldown.by_vertical.length).toBeGreaterThan(0);
   });
 });

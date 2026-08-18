@@ -140,7 +140,7 @@ function topGroups(rows, key, reduce, limit = 12) {
     groups.get(k).push(row);
   }
   return [...groups.entries()]
-    .map(([k, rs]) => ({ key, value: reduce(rs) }))
+    .map(([k, rs]) => ({ key: k, value: reduce(rs) }))
     .sort((a, b) => b.value - a.value)
     .slice(0, limit);
 }

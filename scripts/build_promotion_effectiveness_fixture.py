@@ -12,8 +12,11 @@ The promo-eligible SKUs (chain-net, one row per item, the ~quarter of the 800
 that carry SKU_Master.promo = "Y"), each with its workbook margin_rp and
 funding_rp plus the cannibalisation, margin and price inputs behind
 f13-incremental-promotion-margin. Plus the 48 campaign rows from Promotion &
-Discount Detail, and the six headline KPIs per vertical from the A4 Promotion
-sheet as `reference_by_vertical`.
+Discount Detail, the six headline KPIs per vertical from the A4 Promotion
+sheet as `reference_by_vertical`, and a plain `stores` dimension list
+(store_id, cluster, channel, size_index) the frontend selectors use to split
+each item's incremental_margin proportionally by store size — see
+`verify_store_split` for the proof that this reconstruction is exact.
 
 The browser What-If engine re-evaluates f01-ads-per-store and
 f13-incremental-promotion-margin over these items; this script ships the two
@@ -161,6 +164,8 @@ def build_items(
                 "supplier_funding": _num(row.get("funding_rp")),
                 "supplier_funding_pct": fund * 100.0,
                 "cannibalisation_pct": cannib * 100.0,
+                "state": row.get("state"),
+                "inventory_value": _num(row.get("inv_value")),
                 # What-If inputs the browser re-evaluates f01 / f13 against.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
@@ -171,6 +176,100 @@ def build_items(
             }
         )
     return items
+
+
+def build_store_rows(stores: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per store — the by-store/cluster/channel dimension source.
+
+    A plain passthrough of the `stores` table, no per-row formula evaluation.
+    `size_index` is what the frontend selectors multiply against each item's
+    own `incremental_margin` to reconstruct that store's share of it (see
+    `verify_store_split` for why that reconstruction is exact, not
+    approximate).
+    """
+    return sorted(
+        (
+            {
+                "store_id": row["store_id"],
+                "name": row["store_name"],
+                "vertical_id": row["vertical_id"],
+                "cluster": row["cluster"],
+                "channel": row["channel"],
+                "size_index": _num(row["size"]),
+            }
+            for row in stores
+        ),
+        key=lambda row: row["store_id"],
+    )
+
+
+def verify_store_split(
+    engine_store: list[dict[str, Any]],
+    sku_master: list[dict[str, Any]],
+    stores: list[dict[str, Any]],
+    items: list[dict[str, Any]],
+    f13_ast: Any,
+) -> None:
+    """Prove the proportional store split before shipping it, not just assert it.
+
+    `f01-ads-per-store` is purely multiplicative in `store_size`, and `f13` is
+    linear in `ads` with every other input (price, margin, cannib, funding)
+    constant per item regardless of store. So a store's incremental margin
+    should equal `item.incremental_margin * (store.size_index /
+    item.store_size)` exactly. Checked here against every real `ENGINE_STORE`
+    row for a promo SKU: `f13` evaluated on that row's *real* `ads` must match
+    the proportional split to floating-point precision. `engine_store` is only
+    a build-time oracle for this proof — it is not shipped in the fixture.
+
+    If this ever fails, the store/cluster/channel charts are lying and must go
+    back to a real per-store computation. Do not widen the tolerance to make
+    it pass.
+    """
+    items_by_sku = {row["sku_id"]: row for row in items}
+    stores_by_id = {row["store_id"]: row for row in stores}
+    failures: list[str] = []
+    checked = 0
+
+    for row in engine_store:
+        item = items_by_sku.get(row["sku_id"])
+        if item is None:
+            continue  # not a promo SKU; the split only applies to those
+        store = stores_by_id[row["store_id"]]
+        real_margin = evaluate(
+            f13_ast,
+            {
+                "ads": _num(row.get("ads")),
+                "price": item["price"],
+                "margin_pct": item["margin_pct"],
+                "cannibalization": item["cannibalisation_pct"] / 100.0,
+                "promo_eligible": "Y",
+                "promo_funding": item["supplier_funding_pct"] / 100.0,
+            },
+        )
+        expected_split = item["incremental_margin"] * (
+            _num(store["size"]) / item["store_size"] if item["store_size"] else 0.0
+        )
+        tolerance = max(1e-6, abs(expected_split) * 1e-6)
+        if abs(real_margin - expected_split) > tolerance:
+            failures.append(
+                f"{row['sku_id']}@{row['store_id']}: proportional split"
+                f" {expected_split!r}, f13(real store ads) {real_margin!r}"
+            )
+        checked += 1
+
+    if failures:
+        print(
+            f"FAIL  the proportional store split disagrees with ENGINE_STORE on"
+            f" {len(failures)} value(s) across {checked} promo rows:"
+        )
+        for line in failures[:5]:
+            print(f"      {line}")
+        raise SystemExit(1)
+
+    print(
+        f"  ok  proportional store split reproduces {checked} ENGINE_STORE"
+        " promo rows from item incremental_margin x store size_index"
+    )
 
 
 def build_campaigns(
@@ -354,7 +453,10 @@ def main() -> int:
         return 1
 
     tables = load_tables()
-    for required in ("engine", "sku_master", "promotion_discount_detail", "a4_promotion", "verticals", "stores"):
+    for required in (
+        "engine", "sku_master", "promotion_discount_detail", "a4_promotion",
+        "verticals", "stores", "engine_store",
+    ):
         if required not in tables:
             print(f"FAIL  source is missing table: {required}")
             return 1
@@ -365,6 +467,8 @@ def main() -> int:
     campaigns = build_campaigns(tables["promotion_discount_detail"], tables["verticals"])
     reference = build_reference(tables["a4_promotion"], tables["verticals"])
     filter_options = build_filter_options(tables["verticals"], tables["sku_master"], tables["stores"])
+    store_rows = build_store_rows(tables["stores"])
+    verify_store_split(tables["engine_store"], tables["sku_master"], tables["stores"], items, f13_ast)
     formulas = expressions
 
     if not items:
@@ -392,13 +496,15 @@ def main() -> int:
         "is_mock": True,
         "note": (
             "Workbook demonstration data, not a live ERP or D365 Commerce "
-            "position. Incremental margin is chain-net gross; ROI is a stored KPI."
+            "position. ROI is a stored KPI; no separate promo-investment "
+            "column is exposed."
         ),
         "thresholds": THRESHOLDS,
         "formulas": formulas,
         "filter_options": filter_options,
         "items": items,
         "campaigns": campaigns,
+        "stores": store_rows,
         "reference_by_vertical": reference,
     }
 
@@ -409,7 +515,7 @@ def main() -> int:
 
     print(f"ok  {TARGET.relative_to(REPO)}")
     print(f"    {len(items)} promo SKUs, {len(campaigns)} campaigns, "
-          f"{len(reference)} vertical references")
+          f"{len(store_rows)} stores, {len(reference)} vertical references")
     return 0
 
 

@@ -6,7 +6,7 @@ stays in the browser: a second implementation of the same arithmetic is a thing
 this project has spent a phase removing, and the promo KPI rollups are no
 exception.
 
-THREE SOURCES, ONE GRAIN EACH
+FOUR SOURCES, ONE GRAIN EACH
 -----------------------------
 `items` are the promo-eligible SKUs, chain-net (one row per item, 800 of which
 roughly a quarter carry the promo flag). Each carries the chain-net margin_rp
@@ -17,6 +17,13 @@ margin and price inputs behind f13-incremental-promotion-margin.
 vertical resolved to vertical_id through dim_vertical.dashboard_label. Their
 `expected_uplift_pct` is a campaign-planned figure distinct from the modeled
 net uplift on the KPI cards, and the board says so.
+
+`stores` is a plain dim_store dimension read (no fact join): store_id, name,
+vertical_id, cluster, channel, size_index. The frontend selectors turn this
+into by-store/cluster/channel incremental margin by scaling each item's own
+incremental_margin by `store.size_index / item.store_size` — exact, not an
+approximation, because f01 is multiplicative in store_size and f13 is linear
+in ads (see selectors.js for the proof). No formula is re-evaluated here.
 
 `reference_by_vertical` is the A4 Promotion sheet pivoted wide — the six
 headline KPIs per vertical every computed figure reconciles against.
@@ -46,16 +53,20 @@ AGENT_ID = "retail.promotion_effectiveness"
 
 # The incremental promotion margin is computed from f13 (not read from the
 # chain margin_rp column, which is a different measure — the chain's total
-# weekly margin). Parsed lazily on first access so module import is offline-safe.
-_F13_AST = None
+# weekly margin). Parsed once, lazily, on first use — NOT at import time.
+# Every other retail board only touches the DB inside build(); importing this
+# module (e.g. via the agent registry at process start) must not require a
+# live connection either. _f13_margin runs once per chain row rather than
+# once per request, so the AST is cached across calls instead of re-parsed.
+_f13_ast_cache: Any | None = None
 
 
-def _get_f13_ast():
-    global _F13_AST
-    if _F13_AST is None:
+def _f13_ast() -> Any:
+    global _f13_ast_cache
+    if _f13_ast_cache is None:
         catalogue = {entry["id"]: entry["expression"] for entry in repository.load()}
-        _F13_AST = parse(catalogue["f13-incremental-promotion-margin"])
-    return _F13_AST
+        _f13_ast_cache = parse(catalogue["f13-incremental-promotion-margin"])
+    return _f13_ast_cache
 
 
 def _f13_margin(row: dict) -> float:
@@ -68,7 +79,7 @@ def _f13_margin(row: dict) -> float:
     and are NOT used for the incremental margin.
     """
     return evaluate(
-        _get_f13_ast(),
+        _f13_ast(),
         {
             "ads": _float(row["ads"]),
             "price": _float(row["unit_price"]),
@@ -96,9 +107,7 @@ VERTICAL = f"{SCHEMA}.dim_vertical"
 
 NOTE = (
     "Workbook demonstration data, not a live ERP or D365 Commerce position. "
-    "Incremental margin is chain-net gross (one row per item, surplus in one "
-    "store already netted against shortage in another). ROI is a stored KPI; "
-    "no separate promo-investment column is exposed."
+    "ROI is a stored KPI; no separate promo-investment column is exposed."
 )
 
 # The promoClassify thresholds (A4 spec section 7). Mirrored in the fixture
@@ -121,6 +130,11 @@ def build_items(rows: list[dict]) -> list[dict]:
     what the fixture builder ships, so the API and the fixture agree.
     `cannibalisation_pct` / `promo_funding` are carried as display percentages
     (26 meaning 26%); the frontend What-If engine divides by 100 when feeding f13.
+
+    `state` / `inventory_value` ride along from `fact_inventory_chain_daily`
+    for the inventory-state-exposure chart (spec section 6): that measure is
+    inventory value, not incremental margin, and intentionally does not
+    reconcile to the headline (spec section 11).
     """
     items = []
     for row in rows:
@@ -141,6 +155,8 @@ def build_items(rows: list[dict]) -> list[dict]:
                 "supplier_funding": _float(row["funding_rp"]),
                 "supplier_funding_pct": funding * 100.0,
                 "cannibalisation_pct": cannib * 100.0,
+                "state": row.get("state"),
+                "inventory_value": _float(row.get("inventory_value")),
                 # What-If inputs the browser re-evaluates f01 / f13 against.
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
@@ -151,6 +167,28 @@ def build_items(rows: list[dict]) -> list[dict]:
             }
         )
     return items
+
+
+def build_stores(rows: list[dict]) -> list[dict]:
+    """One row per store, for the by-store/cluster/channel dimension charts.
+
+    A plain `dim_store` dimension read — no fact-table join. `f01` is purely
+    multiplicative in `store_size` and `f13` is linear in `ads`, so a store's
+    incremental margin is exactly `item.incremental_margin * (store.size_index
+    / item.store_size)`; the frontend selectors do that multiplication over
+    this dimension list rather than this backend re-evaluating f13 per store.
+    """
+    return [
+        {
+            "store_id": row["store_id"],
+            "name": row["name"],
+            "vertical_id": row["vertical_id"],
+            "cluster": row["cluster"],
+            "channel": row["channel"],
+            "size_index": _float(row["size_index"]),
+        }
+        for row in rows
+    ]
 
 
 def classify_campaign(row: dict) -> str:
@@ -218,6 +256,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             connection,
             f"""
             SELECT c.item_key, c.ads, c.unit_price, c.margin_rp, c.funding_rp,
+                   c.state, c.inventory_value,
                    i.name, i.vertical_id, i.category_id, i.category_name, i.brand,
                    i.margin_pct, i.base_ads, i.seasonality_index,
                    i.is_promo_eligible, i.cannibalisation_pct, i.funding_pct,
@@ -256,6 +295,20 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             camp_params,
         )
 
+        # A plain dimension read for the by-store/cluster/channel charts.
+        # Vertical-only scope, matching filter_options.stores.
+        store_where, store_params = _scope_clause(scope, "vertical_id", None)
+        store_rows = _rows(
+            connection,
+            f"""
+            SELECT store_id, name, vertical_id, cluster, channel, size_index
+            FROM {SCHEMA}.dim_store
+            WHERE 1 = 1{store_where}
+            ORDER BY store_id
+            """,
+            store_params,
+        )
+
         options = filter_options(connection)
         reference = agent_reference(connection, AGENT_ID)
 
@@ -268,6 +321,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         },
         "items": build_items(items_rows),
         "campaigns": build_campaigns(campaign_rows),
+        "stores": build_stores(store_rows),
         "reference_by_vertical": reference,
     }
 
