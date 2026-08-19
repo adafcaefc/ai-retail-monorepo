@@ -134,6 +134,13 @@ export default function App() {
     setServerFilters((current) => ({ ...current, [id]: value }));
   }
 
+  // A "dashboard_action" chat block waiting to be applied to its own
+  // dashboard component, keyed by agentId like `chats` below -- so a block
+  // that arrives for a chat running in the background never gets applied to
+  // whatever dashboard happens to be active when it lands. Cleared by the
+  // dashboard itself via `onDashboardActionApplied` once it has read it.
+  const [pendingDashboardActions, setPendingDashboardActions] = useState({});
+
   const [chats, setChats] = useState({});
 
   const [collapsedFolders, setCollapsedFolders] = useState(() => new Set());
@@ -550,6 +557,23 @@ export default function App() {
             },
           ],
         }));
+
+        // A "dashboard_action" block is the chat AI's way of patching its
+        // own agent's live dashboard (filters, What-if levers, "Run
+        // scenario") rather than just describing the change in words. Stash
+        // it keyed by agentId; the dashboard component reads and clears it.
+        {
+          const actionBlock = Array.isArray(data.blocks)
+            ? data.blocks.find((block) => block?.type === "dashboard_action")
+            : null;
+
+          if (actionBlock) {
+            setPendingDashboardActions((current) => ({
+              ...current,
+              [agentId]: { ...actionBlock.data, id: makeId() },
+            }));
+          }
+        }
 
         break;
 
@@ -994,6 +1018,15 @@ export default function App() {
           onServerFilterChange={setServerFilter}
           pageTarget={
             pageTarget && pageTarget.pageId === activeAgent ? pageTarget : null
+          }
+          pendingDashboardAction={pendingDashboardActions[activeAgent] || null}
+          onDashboardActionApplied={() =>
+            setPendingDashboardActions((current) => {
+              if (!current[activeAgent]) return current;
+              const next = { ...current };
+              delete next[activeAgent];
+              return next;
+            })
           }
         />
 

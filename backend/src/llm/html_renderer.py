@@ -13,6 +13,7 @@ class UiBlock(BaseModel):
         "chart",
         "simulation",
         "next_route",
+        "dashboard_action",
     ]
 
     data: dict[str, Any]
@@ -111,6 +112,14 @@ def render_ui_blocks(
                 blocks.append(
                     UiBlock(
                         type="next_route",
+                        data=content,
+                    )
+                )
+
+            case "dashboard_action":
+                blocks.append(
+                    UiBlock(
+                        type="dashboard_action",
                         data=content,
                     )
                 )

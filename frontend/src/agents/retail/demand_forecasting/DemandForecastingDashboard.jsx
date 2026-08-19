@@ -30,7 +30,7 @@ function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
 }
 
-export default function DemandForecastingDashboard() {
+export default function DemandForecastingDashboard({ pendingDashboardAction, onDashboardActionApplied } = {}) {
   const { t } = useLanguage();
   const [query, setQuery] = useState({ ...DEFAULT_DEMAND_QUERY });
   const [dashboard, setDashboard] = useState(null);
@@ -49,6 +49,14 @@ export default function DemandForecastingDashboard() {
   // The KPI tile currently broken down, or null. Built on demand — see
   // `loadDemandForecastingDrilldown`.
   const [drilldown, setDrilldown] = useState(null);
+
+  // Mirror `query`/`draftLevers` into refs so the "apply a chat dashboard
+  // action" effect further down can read their current value without
+  // listing them as its own dependencies — see that effect for why.
+  const queryRef = useRef(query);
+  useEffect(() => { queryRef.current = query; }, [query]);
+  const draftLeversRef = useRef(draftLevers);
+  useEffect(() => { draftLeversRef.current = draftLevers; }, [draftLevers]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,6 +143,41 @@ export default function DemandForecastingDashboard() {
       setScenarioBusy(false);
     }
   }, [draftLevers, driveWholePage, query, t]);
+
+  // Applies a "dashboard_action" chat block (App.jsx) through the exact same
+  // handlers the board's own controls already call -- patchQuery for a
+  // filter change, the same setDraftLevers/setScenarioDirty pair
+  // onLeverChange uses for a lever change, runScenario for "Run scenario".
+  // So normalizeDemandQuery/normalizeDemandLevers sanitize/clamp
+  // chat-authored values exactly as they would a manual edit, and
+  // DemandAppliedScenarioBanner picks up an applied scenario automatically.
+  // Reads `query`/`draftLevers` via the refs above (not as effect deps) on
+  // purpose: this must run once per distinct action (keyed by its own `id`
+  // from App.jsx), not again every time the state changes it itself causes.
+  useEffect(() => {
+    if (!pendingDashboardAction) return;
+
+    const { query: queryPatch, levers: leversPatch, run_scenario: shouldRun } = pendingDashboardAction;
+    const hasQueryPatch = queryPatch && Object.keys(queryPatch).length > 0;
+    const hasLeversPatch = leversPatch && Object.keys(leversPatch).length > 0;
+
+    const mergedQuery = hasQueryPatch
+      ? { ...queryRef.current, ...queryPatch, detail_offset: 0 }
+      : queryRef.current;
+    const mergedLevers = hasLeversPatch
+      ? { ...draftLeversRef.current, ...leversPatch }
+      : draftLeversRef.current;
+
+    if (hasQueryPatch) patchQuery(queryPatch);
+    if (hasLeversPatch) {
+      setDraftLevers(mergedLevers);
+      setScenarioDirty(true);
+    }
+    if (shouldRun) runScenario(mergedLevers, mergedQuery);
+
+    onDashboardActionApplied?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingDashboardAction]);
 
   const saveScenario = useCallback(() => {
     if (!scenarioResult || scenarioDirty) return;
