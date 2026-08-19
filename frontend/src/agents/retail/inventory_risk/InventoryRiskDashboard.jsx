@@ -4,7 +4,6 @@ import { useLanguage } from "../../../LanguageProvider.jsx";
 import AtRiskByStatePanel from "./components/AtRiskByStatePanel.jsx";
 import CategoryValueDonut from "./components/CategoryValueDonut.jsx";
 import DimensionCharts from "./components/DimensionCharts.jsx";
-import ExpiryTimelinePanel from "./components/ExpiryTimelinePanel.jsx";
 import InventoryRiskFilters from "./components/InventoryRiskFilters.jsx";
 import InventoryRiskSkeleton from "./components/InventoryRiskSkeleton.jsx";
 import ProjectedOnHandPanel from "./components/ProjectedOnHandPanel.jsx";
@@ -290,11 +289,6 @@ export default function InventoryRiskDashboard() {
 
       <ProjectedOnHandPanel projection={dashboard.projection} />
 
-      <SuggestedBestAction
-        routes={dashboard.best_actions}
-        onSelect={(sku) => patchScope({ sku })}
-      />
-
       <div className="risk-chart-grid">
         <AtRiskByStatePanel rows={dashboard.at_risk_by_state} />
         <CategoryValueDonut
@@ -303,11 +297,17 @@ export default function InventoryRiskDashboard() {
         />
       </div>
 
+      <RiskRegisterTable
+        rows={dashboard.risk_register}
+        onSelect={(sku) => patchScope({ sku })}
+      />
+
       <DimensionCharts
         byCategory={dashboard.at_risk_by_category}
         byStore={dashboard.stockout_by_store}
         byCluster={dashboard.at_risk_by_cluster}
         byLegalEntity={dashboard.at_risk_by_legal_entity}
+        expiryTimeline={dashboard.expiry_timeline}
         scope={scope}
         onSelectCategory={(categoryId) =>
           patchScope({
@@ -323,19 +323,10 @@ export default function InventoryRiskDashboard() {
             store_id: ALL,
           })
         }
+        onSelectExpirySku={(sku) => patchScope({ sku })}
       />
 
       <p className="risk-footnote">{t(GROSS_VS_NET_NOTE)}</p>
-
-      <ExpiryTimelinePanel
-        timeline={dashboard.expiry_timeline}
-        onSelect={(sku) => patchScope({ sku })}
-      />
-
-      <RiskRegisterTable
-        rows={dashboard.risk_register}
-        onSelect={(sku) => patchScope({ sku })}
-      />
 
       <RiskWhatIfSimulator
         simulation={dashboard.simulation}
@@ -360,6 +351,16 @@ export default function InventoryRiskDashboard() {
         onRemove={(id) =>
           setScenarios((current) => current.filter((entry) => entry.id !== id))
         }
+      />
+
+      {/*
+        Last on the page, as in the mockup. The board diagnoses first and hands
+        off second: a reader should arrive at the routing panel having already
+        seen what it is routing.
+      */}
+      <SuggestedBestAction
+        routes={dashboard.best_actions}
+        onSelect={(sku) => patchScope({ sku })}
       />
     </section>
   );

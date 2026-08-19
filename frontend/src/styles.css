@@ -7639,10 +7639,23 @@ img.ey-logo {
   gap: var(--space-3);
 }
 
+/*
+ * The mockup's `dimRowHTML('a2')` shape: two paired rows and then a full-width
+ * one — category|store, cluster|expiry, then legal entity spanning both
+ * columns. A flex column of rows rather than one grid, so the last card gets
+ * the full width by simply not being inside a row.
+ */
 .risk-dimension-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.risk-dimension-row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-3);
+  align-items: start;
 }
 
 .risk-panel {
@@ -8275,7 +8288,7 @@ img.ey-logo {
 
   .risk-chart-grid,
   .risk-skeleton-panels,
-  .risk-dimension-grid,
+  .risk-dimension-row,
   .risk-skeleton-dims,
   .risk-simulator-results {
     grid-template-columns: minmax(0, 1fr);

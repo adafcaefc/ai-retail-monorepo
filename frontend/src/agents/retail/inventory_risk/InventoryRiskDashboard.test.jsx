@@ -82,6 +82,61 @@ describe("InventoryRiskDashboard", () => {
     expect(screen.getByText("Inventory risk register")).toBeInTheDocument();
   });
 
+  /*
+   * Panel order is the deliverable here, not an incidental of how the JSX was
+   * typed: the board is meant to read 1:1 against the A2 mockup (`pgA2()` in
+   * the suite HTML). Asserting on document position is what stops a later edit
+   * from quietly reshuffling the page back.
+   */
+  it("stacks its panels in the mockup's order", async () => {
+    await renderSettled();
+
+    const board = screen.getByTestId("inventory-risk-dashboard");
+    const headings = [...board.querySelectorAll(".risk-panel-head h3")].map(
+      (heading) => heading.textContent,
+    );
+
+    const at = (title) => headings.indexOf(title);
+
+    // Diagnose first: the projection and the two value panels.
+    expect(at("Projected on-hand vs demand")).toBeLessThan(
+      at("At-risk value by state"),
+    );
+    // Then the register, before the dimension breakdowns rather than after.
+    expect(at("At-risk value by state")).toBeLessThan(
+      at("Inventory risk register"),
+    );
+    expect(at("Inventory risk register")).toBeLessThan(
+      at("At-risk value by category"),
+    );
+    // Hand off last, once the reader has seen what is being routed.
+    expect(at("Suggested best action")).toBe(headings.length - 1);
+  });
+
+  /*
+   * The mockup's `dimRowHTML('a2')` shape: category|store, cluster|expiry,
+   * then legal entity spanning the full width on a row of its own.
+   */
+  it("lays the dimension charts out two-two-one, with expiry beside cluster", async () => {
+    await renderSettled();
+
+    const grid = document.querySelector(".risk-dimension-grid");
+    const rows = grid.querySelectorAll(".risk-dimension-row");
+
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText("At-risk value by category")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Stockout-risk by store")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("At-risk value by cluster")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Expiry timeline")).toBeInTheDocument();
+
+    // Legal entity is a direct child of the flex column, so it spans both
+    // columns instead of being stranded in a half-width cell.
+    const entity = within(grid)
+      .getByText("At-risk value by legal entity")
+      .closest(".risk-panel");
+    expect(entity.parentElement).toBe(grid);
+  });
+
   it("shows the whole chain's stockout count, matching the workbook total", async () => {
     renderDashboard();
 
