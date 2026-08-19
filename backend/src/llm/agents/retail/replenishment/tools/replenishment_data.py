@@ -192,22 +192,23 @@ def get_replenishment_snapshot(
         approval = snapshot._rows(
             connection,
             f"""
-            SELECT CASE
-                     WHEN p.amount <= :tier1 THEN 'tier_1'
-                     WHEN p.amount <= :tier2 THEN 'tier_2'
-                     ELSE 'tier_3'
-                   END                    AS tier,
-                   count(*)               AS lines,
-                   round(sum(p.amount), 0)   AS order_value
-            FROM {PROPOSAL} p
-            JOIN {ITEM} i ON i.item_id = p.item_key
-            WHERE p.is_reorder = 1{clause}
-            GROUP BY CASE
-                     WHEN p.amount <= :tier1 THEN 'tier_1'
-                     WHEN p.amount <= :tier2 THEN 'tier_2'
-                     ELSE 'tier_3'
-                   END
-            ORDER BY 1
+            WITH classified AS (
+                SELECT CASE
+                         WHEN p.amount <= :tier1 THEN 'tier_1'
+                         WHEN p.amount <= :tier2 THEN 'tier_2'
+                         ELSE 'tier_3'
+                       END AS tier,
+                       p.amount
+                FROM {PROPOSAL} p
+                JOIN {ITEM} i ON i.item_id = p.item_key
+                WHERE p.is_reorder = 1{clause}
+            )
+            SELECT tier,
+                   count(*) AS lines,
+                   round(sum(amount), 0) AS order_value
+            FROM classified
+            GROUP BY tier
+            ORDER BY tier
             """,
             {**params, "tier1": TIER_1_LIMIT, "tier2": TIER_2_LIMIT},
         )

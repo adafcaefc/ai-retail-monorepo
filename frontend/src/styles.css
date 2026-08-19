@@ -11709,6 +11709,19 @@ button.assortment-kpi:hover {
 
 /* --- panels and charts --------------------------------------------------- */
 
+/* The donut's centre label. SVG text, so it takes presentation attributes
+   rather than the font shorthand. */
+.assortment-donut-centre {
+  fill: var(--ink);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.assortment-donut-centre-sub {
+  fill: var(--muted);
+  font-size: 11px;
+}
+
 .assortment-chart-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

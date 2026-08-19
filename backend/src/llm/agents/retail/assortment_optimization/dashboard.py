@@ -82,12 +82,9 @@ ENGINE_FORMULAS = (
 # A6 spec section 2: these states are delist candidates on state alone.
 DELIST_STATES = frozenset({"Slow-mover", "Overstock", "Expiry"})
 
-# A vendor with this many delist candidates stops being a per-SKU decision.
-VENDOR_REVIEW_THRESHOLD = 8
-
-# A category losing this share of its range is a space decision, not a
-# line-by-line one.
-REBALANCE_CATEGORY_SHARE = 0.5
+# Vendor and category concentration have no constant: `assign_best_action_tabs`
+# compares each group's delist rate with the chain's own, so the cutoff is a
+# fact about the population in scope rather than a number to keep in step.
 
 NOTE = (
     "Workbook demonstration data, not a live ERP position. Delist/grow "
@@ -273,39 +270,54 @@ def classify(items: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
+def delist_share(items: list[dict[str, Any]], key: str) -> dict[str, float]:
+    """Each group's delist rate: delist SKUs over that group's whole range."""
+    totals: dict[str, int] = {}
+    delisted: dict[str, int] = {}
+    for item in items:
+        group = item[key]
+        totals[group] = totals.get(group, 0) + 1
+        if item["classification"] == "delist":
+            delisted[group] = delisted.get(group, 0) + 1
+    return {g: delisted.get(g, 0) / n for g, n in totals.items() if n}
+
+
 def assign_best_action_tabs(items: list[dict[str, Any]]) -> None:
     """Add `best_action_tab` and `recommendation`, in place.
 
     Grow Winners is the grow population. The delist population splits by what
-    the decision actually is: a vendor carrying enough delist candidates is a
-    vendor conversation, a category losing half its range is a space
-    conversation, and the rest are line-by-line.
+    the decision actually IS: a vendor over-represented in the delist list is a
+    supplier conversation, a category over-represented is a planogram one, and
+    what is left is line-by-line.
+
+    OVER-REPRESENTED AGAINST THE CHAIN, NOT AGAINST A STORED NUMBER. The
+    comparison is each group's delist rate against the chain's own delist rate,
+    so the split re-derives itself for every scope and every lever position and
+    there is no constant to keep in step across the four places this rule
+    lives.
+
+    This replaced a fixed count ("a vendor with >= 8 delist SKUs"), which does
+    not survive contact with this range: eight vendors carry 33 to 75 delist
+    SKUs each, so every vendor cleared it and all 404 delist rows landed in
+    Vendor Review, leaving Delist Tail and Rebalance Space empty on screen. An
+    absolute count cannot express concentration -- only a share can.
     """
-    delist_items = [i for i in items if i["classification"] == "delist"]
+    if not items:
+        return
 
-    vendor_delist: dict[str, int] = {}
-    for item in delist_items:
-        vendor_delist[item["vendor"]] = vendor_delist.get(item["vendor"], 0) + 1
-
-    category_totals: dict[str, int] = {}
-    category_delist: dict[str, int] = {}
-    for item in items:
-        category_totals[item["category_id"]] = category_totals.get(item["category_id"], 0) + 1
-    for item in delist_items:
-        category_delist[item["category_id"]] = category_delist.get(item["category_id"], 0) + 1
+    chain_rate = sum(1 for i in items if i["classification"] == "delist") / len(items)
+    vendor_rate = delist_share(items, "vendor")
+    category_rate = delist_share(items, "category_id")
 
     for item in items:
         if item["classification"] == "grow":
             item["best_action_tab"] = "grow_winners"
             item["recommendation"] = "Grow range / add space / expand stores"
         elif item["classification"] == "delist":
-            share = category_delist.get(item["category_id"], 0) / max(
-                1, category_totals.get(item["category_id"], 1)
-            )
-            if vendor_delist.get(item["vendor"], 0) >= VENDOR_REVIEW_THRESHOLD:
+            if vendor_rate.get(item["vendor"], 0.0) > chain_rate:
                 item["best_action_tab"] = "vendor_brand_review"
                 item["recommendation"] = "Vendor or brand review"
-            elif share >= REBALANCE_CATEGORY_SHARE:
+            elif category_rate.get(item["category_id"], 0.0) > chain_rate:
                 item["best_action_tab"] = "rebalance_space"
                 item["recommendation"] = "Rationalize tail and rebalance category"
             else:
@@ -402,6 +414,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     items = build_items(chain, contribution, store_size, asts)
     thresholds = classify(items)
     assign_best_action_tabs(items)
+    state_map = {row["state"]: _float(row["inv_value"]) for row in state_value}
 
     return {
         **envelope(AGENT_ID, NOTE),
@@ -423,8 +436,9 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             for row in stores
         ],
         "by_state_value": [
-            {"state": row["state"], "value": _float(row["inv_value"])}
-            for row in state_value
+            {"state": state, "value": state_map[state]}
+            for state in STATE_ORDER
+            if state in state_map
         ],
         "reference_by_vertical": reference,
     }

@@ -182,10 +182,21 @@ export const CAPITAL_FREED_NOTE =
   "decision value, not a cash receipt. Real release depends on sell-down, " +
   "markdown execution, returns, transfers and delist timing.";
 
-/** A6 spec section 11: GMROI here is a workbook proxy, not an accounting figure. */
+/**
+ * A6 spec section 11: GMROI here is a workbook proxy, not an accounting figure.
+ *
+ * Spelled out because the number looks broken otherwise. This ratio divides
+ * ONE WEEK of margin by inventory valued at RETAIL, so it sits below 1. The
+ * trading ratio the term usually means annualises the margin and divides by
+ * average inventory at COST, which lands an order of magnitude higher — which
+ * is the scale a reader arrives with, and the scale the mockup's own card
+ * labels ("`>3` strong, `<2` weak") was written for.
+ */
 export const GMROI_NOTE =
-  "GMROI is a proxy: weekly margin over inventory value at one snapshot. A " +
-  "true GMROI needs a time period, average inventory and cost accounting rules.";
+  "GMROI here is a proxy: one week of margin over inventory value at retail, " +
+  "on a single snapshot day, so it reads below 1. It is not the annualised " +
+  "margin-over-average-inventory-at-cost ratio the term usually means. " +
+  "Compare these figures with each other, not against an industry benchmark.";
 
 export const KPI_FORMULAS = Object.freeze({
   delist_candidates: "count(state in {Slow-mover, Overstock, Expiry} OR low GMROI OR tail contribution)",
@@ -254,6 +265,13 @@ export function normalizeAssortmentDashboard(payload) {
     by_channel: payload.by_channel ?? [],
     by_state: payload.by_state ?? [],
     by_legal_entity: payload.by_legal_entity ?? [],
+    pareto: payload.pareto ?? {
+      bars: [],
+      sku_count: 0,
+      total_contribution: 0,
+      pareto_rank: 0,
+      pareto_share_pct: 0,
+    },
     quadrant: payload.quadrant ?? [],
     action_preview: payload.action_preview ?? [],
     best_actions: payload.best_actions ?? {

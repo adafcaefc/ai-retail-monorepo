@@ -12,28 +12,50 @@ from src.llm.agents.common.tools.freeform_query import DOMAIN_ALLOWED_TABLES
 from src.llm.agents.modules import ENABLED_MODULES
 
 
-RETAIL_MODULES = (
-    ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand..."),
-    ("retail.inventory_risk", "Inventory Risk", "Ask Inventory..."),
-    ("retail.replenishment", "Replenishment", "Ask Replenishment..."),
-    ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
-)
-
-# Agents 5-9 of the mockup: sidebar destinations with nothing behind them yet
-# (`retail/common/placeholder.py`). Order is the mockup's, which is also the
-# order they have to be built in — each reads what the one before it produces.
-# Agent 4 (promotion_effectiveness) has moved to RETAIL_MODULES above.
-PLACEHOLDER_MODULES = (
-    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing..."),
-    ("retail.assortment_optimization", "Assortment Optimization", "Ask Assortment..."),
-    ("retail.workforce_optimizer", "Workforce Optimizer", "Ask Workforce..."),
+# The mockup's nine retail destinations, in sidebar order, each flagged with
+# whether anything is wired behind it. Built and navigation-only used to be two
+# contiguous blocks, so the built ones could be taken as a prefix. They are not
+# any more: A6 is built while A5 above it is still a placeholder. Order stays
+# the agent's own number, because that is what the sidebar shows and what every
+# spec refers to, so the split has to be per entry rather than per slice.
+# `modules.py` carries the same note beside the same list.
+RETAIL_DESTINATIONS = (
+    ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand...", True),
+    ("retail.inventory_risk", "Inventory Risk", "Ask Inventory...", True),
+    ("retail.replenishment", "Replenishment", "Ask Replenishment...", True),
+    (
+        "retail.promotion_effectiveness",
+        "Promotion Effectiveness",
+        "Ask Promotion...",
+        True,
+    ),
+    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing...", False),
+    (
+        "retail.assortment_optimization",
+        "Assortment Optimization",
+        "Ask Assortment...",
+        True,
+    ),
+    ("retail.workforce_optimizer", "Workforce Optimizer", "Ask Workforce...", False),
     (
         "retail.vendor_brand_performance",
         "Vendor & Brand Performance",
         "Ask Vendor...",
+        False,
     ),
-    ("retail.ai_explanation_summary", "AI Explanation & Summary", "Ask Summary..."),
+    (
+        "retail.ai_explanation_summary",
+        "AI Explanation & Summary",
+        "Ask Summary...",
+        False,
+    ),
 )
+
+# Both keep the sidebar's order; only the filter differs. Derived rather than
+# retyped, so a module cannot read as built in one list and a placeholder in
+# the other.
+RETAIL_MODULES = tuple(d[:3] for d in RETAIL_DESTINATIONS if d[3])
+PLACEHOLDER_MODULES = tuple(d[:3] for d in RETAIL_DESTINATIONS if not d[3])
 
 # Three specialists per board. Fewer than Finance's four, so the concerns the
 # fourth would have carried are folded into a sibling and named in its
@@ -52,9 +74,7 @@ def test_retail_folder_carries_the_mockups_nine_agents_in_order() -> None:
     """
     retail = [item for item in ENABLED_MODULES if item.startswith("retail.")]
 
-    assert retail == [
-        item[0] for item in (*RETAIL_MODULES, *PLACEHOLDER_MODULES)
-    ]
+    assert retail == [item[0] for item in RETAIL_DESTINATIONS]
     assert "retail.retail" not in ENABLED_MODULES
 
 
@@ -276,15 +296,21 @@ def test_placeholder_modules_declare_no_chivon_agents() -> None:
 def test_agents_api_exposes_all_nine_retail_destinations() -> None:
     payload = asyncio.run(list_agents())
     retail = [item for item in payload["items"] if item["folder"] == "retail"]
-    expected = (*RETAIL_MODULES, *PLACEHOLDER_MODULES)
 
-    assert [item["id"] for item in retail] == [item[0] for item in expected]
-    assert [item["display"] for item in retail] == [item[1] for item in expected]
+    assert [item["id"] for item in retail] == [
+        item[0] for item in RETAIL_DESTINATIONS
+    ]
+    assert [item["display"] for item in retail] == [
+        item[1] for item in RETAIL_DESTINATIONS
+    ]
     # This flag is what the frontend reads to show chat, the Alerts panel and
-    # the Subagents control — on for the three built boards, off for the six
-    # that have nothing to answer with.
-    built = retail[: len(RETAIL_MODULES)]
-    placeholders = retail[len(RETAIL_MODULES) :]
-    assert all(item["dashboard_only"] is False for item in built)
-    assert all(item["dashboard_only"] is True for item in placeholders)
+    # the Subagents control: on for the built boards, off for the ones with
+    # nothing to answer with. Zipped rather than sliced, because the built
+    # modules are no longer a prefix of the sidebar -- a slice would still pass
+    # while pairing the wrong module with the wrong flag.
+    for item, (agent_id, _, _, is_built) in zip(retail, RETAIL_DESTINATIONS):
+        assert item["dashboard_only"] is not is_built, (
+            f"{agent_id}: dashboard_only={item['dashboard_only']} "
+            f"but built={is_built}"
+        )
     assert all(item["id"] != "retail.retail" for item in payload["items"])

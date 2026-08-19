@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.assortment_optimization",
-  "generated_at": "2026-08-18T16:03:49+00:00",
+  "generated_at": "2026-08-19T00:28:21+00:00",
   "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP position. Delist/grow classification, GMROI, tail share and capital freed are computed live from ENGINE/ENGINE_STORE/SKU_Master (chain-wide quartiles), not read from the A6 sheet's own B:F cells, which a prior audit found to hold stale hardcoded values. Contribution/day is the one column that audit did not flag, and reconciles exactly.",
@@ -1828,6 +1828,14 @@
         "legal_entity_id": "OMN",
         "cluster": "Community"
       }
+    ],
+    "states": [
+      "Stockout",
+      "Low",
+      "Expiry",
+      "Overstock",
+      "Slow-mover",
+      "Healthy"
     ]
   },
   "items": [
@@ -1868,8 +1876,8 @@
       "margin_pct": 0.2607,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-095",
@@ -1948,8 +1956,8 @@
       "margin_pct": 0.2615,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-065",
@@ -1988,8 +1996,8 @@
       "margin_pct": 0.2624,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-086",
@@ -2028,8 +2036,8 @@
       "margin_pct": 0.1926,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-096",
@@ -2068,8 +2076,8 @@
       "margin_pct": 0.2395,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-025",
@@ -2148,8 +2156,8 @@
       "margin_pct": 0.1934,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-092",
@@ -2228,8 +2236,8 @@
       "margin_pct": 0.2317,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-078",
@@ -2268,8 +2276,8 @@
       "margin_pct": 0.1942,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-066",
@@ -2348,8 +2356,8 @@
       "margin_pct": 0.2326,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-088",
@@ -2388,8 +2396,8 @@
       "margin_pct": 0.2412,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-074",
@@ -2508,8 +2516,8 @@
       "margin_pct": 0.2334,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-016",
@@ -2668,8 +2676,8 @@
       "margin_pct": 0.242,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-038",
@@ -2748,8 +2756,8 @@
       "margin_pct": 0.1958,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-012",
@@ -2828,8 +2836,8 @@
       "margin_pct": 0.2342,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-034",
@@ -2908,8 +2916,8 @@
       "margin_pct": 0.1489,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-022",
@@ -2988,8 +2996,8 @@
       "margin_pct": 0.2428,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-008",
@@ -3108,8 +3116,8 @@
       "margin_pct": 0.235,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-018",
@@ -3428,8 +3436,8 @@
       "margin_pct": 0.2122,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-057",
@@ -3468,8 +3476,8 @@
       "margin_pct": 0.166,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-051",
@@ -3828,8 +3836,8 @@
       "margin_pct": 0.213,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-079",
@@ -3868,8 +3876,8 @@
       "margin_pct": 0.1285,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-017",
@@ -4108,8 +4116,8 @@
       "margin_pct": 0.1293,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-041",
@@ -4148,8 +4156,8 @@
       "margin_pct": 0.2513,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-063",
@@ -4188,8 +4196,8 @@
       "margin_pct": 0.2138,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-013",
@@ -4268,8 +4276,8 @@
       "margin_pct": 0.1207,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-023",
@@ -4628,8 +4636,8 @@
       "margin_pct": 0.2521,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-019",
@@ -4828,8 +4836,8 @@
       "margin_pct": 0.2224,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-077",
@@ -4868,8 +4876,8 @@
       "margin_pct": 0.2599,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-055",
@@ -4908,8 +4916,8 @@
       "margin_pct": 0.2154,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-033",
@@ -5028,8 +5036,8 @@
       "margin_pct": 0.1378,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-032",
@@ -5108,8 +5116,8 @@
       "margin_pct": 0.1464,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-098",
@@ -5148,8 +5156,8 @@
       "margin_pct": 0.1081,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-058",
@@ -5188,8 +5196,8 @@
       "margin_pct": 0.1003,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-029",
@@ -5308,8 +5316,8 @@
       "margin_pct": 0.1848,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-028",
@@ -5388,8 +5396,8 @@
       "margin_pct": 0.1011,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-094",
@@ -5548,8 +5556,8 @@
       "margin_pct": 0.1019,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-024",
@@ -5628,8 +5636,8 @@
       "margin_pct": 0.1097,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-042",
@@ -5668,8 +5676,8 @@
       "margin_pct": 0.1856,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "GRC-064",
@@ -6188,8 +6196,8 @@
       "margin_pct": 0.4852,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-020",
@@ -6308,8 +6316,8 @@
       "margin_pct": 0.4036,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-041",
@@ -6788,8 +6796,8 @@
       "margin_pct": 0.4662,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-055",
@@ -7388,8 +7396,8 @@
       "margin_pct": 0.3149,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-083",
@@ -8228,8 +8236,8 @@
       "margin_pct": 0.4705,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-008",
@@ -8548,8 +8556,8 @@
       "margin_pct": 0.3193,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-005",
@@ -8868,8 +8876,8 @@
       "margin_pct": 0.4308,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-084",
@@ -9268,8 +9276,8 @@
       "margin_pct": 0.3317,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-049",
@@ -9388,8 +9396,8 @@
       "margin_pct": 0.433,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-032",
@@ -9588,8 +9596,8 @@
       "margin_pct": 0.2828,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-067",
@@ -9668,8 +9676,8 @@
       "margin_pct": 0.2921,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-050",
@@ -9788,8 +9796,8 @@
       "margin_pct": 0.2931,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "GMR-015",
@@ -9828,8 +9836,8 @@
       "margin_pct": 0.335,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-027",
@@ -9868,8 +9876,8 @@
       "margin_pct": 0.5786,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-049",
@@ -10148,8 +10156,8 @@
       "margin_pct": 0.4788,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-006",
@@ -10348,8 +10356,8 @@
       "margin_pct": 0.5375,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-010",
@@ -10468,8 +10476,8 @@
       "margin_pct": 0.4812,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-042",
@@ -10988,8 +10996,8 @@
       "margin_pct": 0.4482,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-008",
@@ -11028,8 +11036,8 @@
       "margin_pct": 0.6092,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-030",
@@ -11108,8 +11116,8 @@
       "margin_pct": 0.3814,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-052",
@@ -11348,8 +11356,8 @@
       "margin_pct": 0.5069,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-043",
@@ -11508,8 +11516,8 @@
       "margin_pct": 0.5094,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-035",
@@ -11668,8 +11676,8 @@
       "margin_pct": 0.3509,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-053",
@@ -11828,8 +11836,8 @@
       "margin_pct": 0.5315,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-022",
@@ -11988,8 +11996,8 @@
       "margin_pct": 0.534,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-018",
@@ -12108,8 +12116,8 @@
       "margin_pct": 0.3533,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-071",
@@ -12308,8 +12316,8 @@
       "margin_pct": 0.5903,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-094",
@@ -12508,8 +12516,8 @@
       "margin_pct": 0.365,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-090",
@@ -12588,8 +12596,8 @@
       "margin_pct": 0.5597,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-072",
@@ -12668,8 +12676,8 @@
       "margin_pct": 0.5927,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-062",
@@ -12708,8 +12716,8 @@
       "margin_pct": 0.4201,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-100",
@@ -13068,8 +13076,8 @@
       "margin_pct": 0.5621,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-077",
@@ -13108,8 +13116,8 @@
       "margin_pct": 0.3907,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-091",
@@ -13148,8 +13156,8 @@
       "margin_pct": 0.4599,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-060",
@@ -13188,8 +13196,8 @@
       "margin_pct": 0.4941,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-073",
@@ -13268,8 +13276,8 @@
       "margin_pct": 0.5633,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-087",
@@ -13308,8 +13316,8 @@
       "margin_pct": 0.4611,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-056",
@@ -13428,8 +13436,8 @@
       "margin_pct": 0.5646,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-083",
@@ -13468,8 +13476,8 @@
       "margin_pct": 0.4623,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "FSH-065",
@@ -13508,8 +13516,8 @@
       "margin_pct": 0.3944,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-096",
@@ -13628,8 +13636,8 @@
       "margin_pct": 0.5186,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-092",
@@ -13748,8 +13756,8 @@
       "margin_pct": 0.5199,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "FSH-088",
@@ -14428,8 +14436,8 @@
       "margin_pct": 0.444,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-054",
@@ -14708,8 +14716,8 @@
       "margin_pct": 0.265,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-071",
@@ -15108,8 +15116,8 @@
       "margin_pct": 0.2675,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-053",
@@ -15268,8 +15276,8 @@
       "margin_pct": 0.3138,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-079",
@@ -15828,8 +15836,8 @@
       "margin_pct": 0.3881,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-055",
@@ -16068,8 +16076,8 @@
       "margin_pct": 0.1836,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-095",
@@ -16108,8 +16116,8 @@
       "margin_pct": 0.3418,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-015",
@@ -16228,8 +16236,8 @@
       "margin_pct": 0.2211,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-029",
@@ -16268,8 +16276,8 @@
       "margin_pct": 0.3893,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-007",
@@ -16348,8 +16356,8 @@
       "margin_pct": 0.4014,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-047",
@@ -16508,8 +16516,8 @@
       "margin_pct": 0.2821,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-025",
@@ -16548,8 +16556,8 @@
       "margin_pct": 0.3906,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-086",
@@ -16588,8 +16596,8 @@
       "margin_pct": 0.2942,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-032",
@@ -16788,8 +16796,8 @@
       "margin_pct": 0.4027,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-042",
@@ -16828,8 +16836,8 @@
       "margin_pct": 0.2833,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-028",
@@ -16948,8 +16956,8 @@
       "margin_pct": 0.2954,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-064",
@@ -17108,8 +17116,8 @@
       "margin_pct": 0.2846,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-060",
@@ -17148,8 +17156,8 @@
       "margin_pct": 0.2262,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-020",
@@ -17228,8 +17236,8 @@
       "margin_pct": 0.3551,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNB-078",
@@ -17468,8 +17476,8 @@
       "margin_pct": 0.3563,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-074",
@@ -17588,8 +17596,8 @@
       "margin_pct": 0.1907,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNB-004",
@@ -17828,8 +17836,8 @@
       "margin_pct": 0.1824,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-100",
@@ -17908,8 +17916,8 @@
       "margin_pct": 0.2272,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "ELC-021",
@@ -18188,8 +18196,8 @@
       "margin_pct": 0.2197,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-083",
@@ -18228,8 +18236,8 @@
       "margin_pct": 0.2292,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-097",
@@ -18308,8 +18316,8 @@
       "margin_pct": 0.2676,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-039",
@@ -18588,8 +18596,8 @@
       "margin_pct": 0.2217,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-093",
@@ -18668,8 +18676,8 @@
       "margin_pct": 0.2312,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-049",
@@ -18748,8 +18756,8 @@
       "margin_pct": 0.2696,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-045",
@@ -18788,8 +18796,8 @@
       "margin_pct": 0.2791,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-089",
@@ -18828,8 +18836,8 @@
       "margin_pct": 0.2876,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-026",
@@ -18868,8 +18876,8 @@
       "margin_pct": 0.1843,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-066",
@@ -18948,8 +18956,8 @@
       "margin_pct": 0.1459,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-056",
@@ -18988,8 +18996,8 @@
       "margin_pct": 0.1364,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-085",
@@ -19188,8 +19196,8 @@
       "margin_pct": 0.1948,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-036",
@@ -19308,8 +19316,8 @@
       "margin_pct": 0.1863,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "ELC-048",
@@ -19388,8 +19396,8 @@
       "margin_pct": 0.1479,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-008",
@@ -19428,8 +19436,8 @@
       "margin_pct": 0.1289,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-058",
@@ -19468,8 +19476,8 @@
       "margin_pct": 0.1958,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-086",
@@ -19548,8 +19556,8 @@
       "margin_pct": 0.2426,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-044",
@@ -19948,8 +19956,8 @@
       "margin_pct": 0.1968,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-098",
@@ -20228,8 +20236,8 @@
       "margin_pct": 0.0925,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-034",
@@ -20268,8 +20276,8 @@
       "margin_pct": 0.082,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-050",
@@ -20308,8 +20316,8 @@
       "margin_pct": 0.1978,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "ELC-002",
@@ -20388,8 +20396,8 @@
       "margin_pct": 0.2063,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "ELC-030",
@@ -20428,8 +20436,8 @@
       "margin_pct": 0.083,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-024",
@@ -20468,8 +20476,8 @@
       "margin_pct": 0.2446,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-046",
@@ -20588,8 +20596,8 @@
       "margin_pct": 0.1508,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-031",
@@ -20628,8 +20636,8 @@
       "margin_pct": 0.103,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-071",
@@ -20868,8 +20876,8 @@
       "margin_pct": 0.1135,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-023",
@@ -20948,8 +20956,8 @@
       "margin_pct": 0.2542,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-037",
@@ -20988,8 +20996,8 @@
       "margin_pct": 0.1613,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-063",
@@ -21148,8 +21156,8 @@
       "margin_pct": 0.1699,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-015",
@@ -21188,8 +21196,8 @@
       "margin_pct": 0.1069,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-059",
@@ -21348,8 +21356,8 @@
       "margin_pct": 0.2092,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-077",
@@ -21388,8 +21396,8 @@
       "margin_pct": 0.1709,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-055",
@@ -21468,8 +21476,8 @@
       "margin_pct": 0.1633,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-099",
@@ -21548,8 +21556,8 @@
       "margin_pct": 0.2177,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "ELC-003",
@@ -21788,8 +21796,8 @@
       "margin_pct": 0.1269,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "ELC-038",
@@ -22188,8 +22196,8 @@
       "margin_pct": 0.4592,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-025",
@@ -22428,8 +22436,8 @@
       "margin_pct": 0.4633,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-027",
@@ -22468,8 +22476,8 @@
       "margin_pct": 0.5202,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNL-022",
@@ -23228,8 +23236,8 @@
       "margin_pct": 0.3591,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-078",
@@ -24188,8 +24196,8 @@
       "margin_pct": 0.4091,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-061",
@@ -24308,8 +24316,8 @@
       "margin_pct": 0.5682,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-075",
@@ -24588,8 +24596,8 @@
       "margin_pct": 0.4822,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-071",
@@ -25228,8 +25236,8 @@
       "margin_pct": 0.4983,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNL-058",
@@ -25268,8 +25276,8 @@
       "margin_pct": 0.3862,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-035",
@@ -25428,8 +25436,8 @@
       "margin_pct": 0.5312,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-076",
@@ -25468,8 +25476,8 @@
       "margin_pct": 0.4441,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-054",
@@ -25628,8 +25636,8 @@
       "margin_pct": 0.4342,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-050",
@@ -25708,8 +25716,8 @@
       "margin_pct": 0.5322,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "HNL-041",
@@ -25788,8 +25796,8 @@
       "margin_pct": 0.4352,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "HNL-028",
@@ -25828,8 +25836,8 @@
       "margin_pct": 0.4362,
       "is_tail": true,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-098",
@@ -25948,8 +25956,8 @@
       "margin_pct": 0.2273,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-058",
@@ -26028,8 +26036,8 @@
       "margin_pct": 0.2186,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-090",
@@ -26108,8 +26116,8 @@
       "margin_pct": 0.176,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-050",
@@ -26348,8 +26356,8 @@
       "margin_pct": 0.1429,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-051",
@@ -26388,8 +26396,8 @@
       "margin_pct": 0.2377,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-091",
@@ -26468,8 +26476,8 @@
       "margin_pct": 0.1864,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-073",
@@ -26548,8 +26556,8 @@
       "margin_pct": 0.1438,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-099",
@@ -26588,8 +26596,8 @@
       "margin_pct": 0.1533,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-011",
@@ -26828,8 +26836,8 @@
       "margin_pct": 0.1003,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-087",
@@ -26908,8 +26916,8 @@
       "margin_pct": 0.1969,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-095",
@@ -27108,8 +27116,8 @@
       "margin_pct": 0.1882,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-055",
@@ -27148,8 +27156,8 @@
       "margin_pct": 0.1456,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-043",
@@ -27588,8 +27596,8 @@
       "margin_pct": 0.1202,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-035",
@@ -27628,8 +27636,8 @@
       "margin_pct": 0.2413,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-056",
@@ -27668,8 +27676,8 @@
       "margin_pct": 0.1637,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-046",
@@ -27748,8 +27756,8 @@
       "margin_pct": 0.1211,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-016",
@@ -27788,8 +27796,8 @@
       "margin_pct": 0.1551,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-096",
@@ -27828,8 +27836,8 @@
       "margin_pct": 0.1724,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-042",
@@ -27868,8 +27876,8 @@
       "margin_pct": 0.1125,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-052",
@@ -27948,8 +27956,8 @@
       "margin_pct": 0.2499,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-078",
@@ -27988,8 +27996,8 @@
       "margin_pct": 0.122,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-012",
@@ -28028,8 +28036,8 @@
       "margin_pct": 0.156,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-006",
@@ -28068,8 +28076,8 @@
       "margin_pct": 0.1029,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-076",
@@ -28228,8 +28236,8 @@
       "margin_pct": 0.069,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-002",
@@ -28388,8 +28396,8 @@
       "margin_pct": 0.1569,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-048",
@@ -28428,8 +28436,8 @@
       "margin_pct": 0.1655,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-034",
@@ -28468,8 +28476,8 @@
       "margin_pct": 0.1143,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-068",
@@ -28668,8 +28676,8 @@
       "margin_pct": 0.1578,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-066",
@@ -28748,8 +28756,8 @@
       "margin_pct": 0.1238,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-100",
@@ -28908,8 +28916,8 @@
       "margin_pct": 0.1742,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-060",
@@ -29028,8 +29036,8 @@
       "margin_pct": 0.0621,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-018",
@@ -29068,8 +29076,8 @@
       "margin_pct": 0.2091,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-020",
@@ -29108,8 +29116,8 @@
       "margin_pct": 0.063,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-040",
@@ -29148,8 +29156,8 @@
       "margin_pct": 0.1673,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "DGT-062",
@@ -29268,8 +29276,8 @@
       "margin_pct": 0.0898,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-021",
@@ -29468,8 +29476,8 @@
       "margin_pct": 0.1333,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-013",
@@ -29508,8 +29516,8 @@
       "margin_pct": 0.083,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-053",
@@ -29588,8 +29596,8 @@
       "margin_pct": 0.2109,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-009",
@@ -29708,8 +29716,8 @@
       "margin_pct": 0.1342,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "rebalance_space",
+      "recommendation": "Rationalize tail and rebalance category"
     },
     {
       "sku_id": "DGT-049",
@@ -30188,8 +30196,8 @@
       "margin_pct": 0.3184,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-089",
@@ -30268,8 +30276,8 @@
       "margin_pct": 0.3815,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-005",
@@ -30508,8 +30516,8 @@
       "margin_pct": 0.2704,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-022",
@@ -31028,8 +31036,8 @@
       "margin_pct": 0.273,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-002",
@@ -31308,8 +31316,8 @@
       "margin_pct": 0.3361,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-050",
@@ -31948,8 +31956,8 @@
       "margin_pct": 0.2375,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-011",
@@ -32028,8 +32036,8 @@
       "margin_pct": 0.2263,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-067",
@@ -32788,8 +32796,8 @@
       "margin_pct": 0.1546,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-055",
@@ -32948,8 +32956,8 @@
       "margin_pct": 0.3132,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-069",
@@ -33108,8 +33116,8 @@
       "margin_pct": 0.3032,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-065",
@@ -33388,8 +33396,8 @@
       "margin_pct": 0.1822,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-056",
@@ -33428,8 +33436,8 @@
       "margin_pct": 0.1934,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-061",
@@ -33628,8 +33636,8 @@
       "margin_pct": 0.3059,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-052",
@@ -33788,8 +33796,8 @@
       "margin_pct": 0.206,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     },
     {
       "sku_id": "OMN-048",
@@ -33828,8 +33836,8 @@
       "margin_pct": 0.1961,
       "is_tail": false,
       "classification": "delist",
-      "best_action_tab": "vendor_brand_review",
-      "recommendation": "Vendor or brand review"
+      "best_action_tab": "delist_tail",
+      "recommendation": "Delist / reduce facing / stop reorder"
     }
   ],
   "stores": [
@@ -35436,28 +35444,28 @@
   ],
   "by_state_value": [
     {
-      "state": "Low",
-      "value": 355851783900.0
-    },
-    {
       "state": "Stockout",
       "value": 111508957000.0
     },
     {
-      "state": "Healthy",
-      "value": 1309542447000.0
+      "state": "Low",
+      "value": 355851783900.0
     },
     {
       "state": "Expiry",
       "value": 619080100.0
     },
     {
+      "state": "Overstock",
+      "value": 267583423700.0
+    },
+    {
       "state": "Slow-mover",
       "value": 178743472100.0
     },
     {
-      "state": "Overstock",
-      "value": 267583423700.0
+      "state": "Healthy",
+      "value": 1309542447000.0
     }
   ],
   "reference_by_vertical": [

@@ -36,8 +36,6 @@ from src.llm.agents.retail.common import snapshot, warehouse
 from src.llm.agents.retail.assortment_optimization.dashboard import (
     AGENT_ID,
     ENGINE_FORMULAS,
-    REBALANCE_CATEGORY_SHARE,
-    VENDOR_REVIEW_THRESHOLD,
 )
 
 CHAIN = f"{warehouse.SCHEMA}.fact_inventory_chain_daily"
@@ -89,14 +87,48 @@ cuts AS (
            percentile_cont(0.25) WITHIN GROUP (ORDER BY contribution_per_day) OVER () AS p25_contribution
     FROM chain
 ),
-verdict AS (
+-- Grow compares against the HEALTHY subset, not the chain. In this dataset high
+-- GMROI concentrates in Stockout/Low SKUs -- fast movers running short -- so a
+-- chain-wide P75 intersected with `state = 'Healthy'` comes back empty. Same
+-- reasoning, and the same two cutoffs, as `dashboard.classify`.
+healthy_cuts AS (
+    SELECT DISTINCT
+           percentile_cont(0.75) WITHIN GROUP (ORDER BY gmroi)                OVER () AS p75_gmroi_healthy,
+           percentile_cont(0.75) WITHIN GROUP (ORDER BY contribution_per_day) OVER () AS p75_contribution_healthy
+    FROM chain
+    WHERE state = 'Healthy'
+),
+scored AS (
     SELECT c.*, k.p25_gmroi, k.p25_contribution,
+           h.p75_gmroi_healthy, h.p75_contribution_healthy,
            CASE WHEN c.contribution_per_day <= k.p25_contribution THEN 1 ELSE 0 END AS is_tail,
            CASE WHEN c.state IN {DELIST_STATES_SQL}
                      OR c.gmroi <= k.p25_gmroi
                      OR c.contribution_per_day <= k.p25_contribution
-                THEN 1 ELSE 0 END AS is_delist
-    FROM chain c CROSS JOIN cuts k
+                THEN 1 ELSE 0 END AS is_delist,
+           CASE WHEN c.state = 'Healthy'
+                     AND c.contribution_per_day >= h.p75_contribution_healthy
+                     AND c.gmroi >= h.p75_gmroi_healthy
+                     AND c.growth_index >= 1.0
+                THEN 1 ELSE 0 END AS is_grow_candidate
+    FROM chain c
+    CROSS JOIN cuts k
+    -- LEFT, not CROSS: a scope with no Healthy SKU leaves `healthy_cuts` empty,
+    -- and a CROSS JOIN would then return no rows at all rather than no grow
+    -- candidates. NULL cutoffs make every comparison NULL, so is_grow lands on
+    -- 0 -- which is what `percentile([], 0.75) == 0.0` does on the Python side.
+    LEFT JOIN healthy_cuts h ON 1 = 1
+),
+verdict AS (
+    -- Delist wins over grow, so the three classes stay mutually exclusive and
+    -- sum to the SKU count. `dashboard.classify` resolves the same tie the same
+    -- way: "grow if (is_grow and not is_delist)".
+    SELECT s.*,
+           CASE WHEN s.is_grow_candidate = 1 AND s.is_delist = 0
+                THEN 1 ELSE 0 END AS is_grow,
+           CASE WHEN s.is_delist = 0 AND s.is_grow_candidate = 0
+                THEN 1 ELSE 0 END AS is_hold
+    FROM scored s
 )
 """
 
@@ -151,6 +183,8 @@ def get_assortment_performance_snapshot(
             + """
             SELECT count(*)                                            AS sku_count,
                    sum(is_delist)                                      AS delist_candidates,
+                   sum(is_grow)                                        AS grow_candidates,
+                   sum(is_hold)                                        AS hold_skus,
                    sum(is_tail)                                        AS tail_skus,
                    round(avg(gmroi), 4)                                AS avg_gmroi,
                    round(sum(contribution_per_day), 0)                 AS contribution_per_day,
@@ -160,7 +194,9 @@ def get_assortment_performance_snapshot(
                    round(sum(CASE WHEN is_tail = 1 THEN contribution_per_day ELSE 0 END), 0)
                                                                        AS tail_contribution,
                    round(min(p25_gmroi), 6)                            AS cutoff_gmroi_p25,
-                   round(min(p25_contribution), 2)                     AS cutoff_contribution_p25
+                   round(min(p25_contribution), 2)                     AS cutoff_contribution_p25,
+                   round(min(p75_gmroi_healthy), 6)                    AS cutoff_gmroi_p75_healthy,
+                   round(min(p75_contribution_healthy), 2)             AS cutoff_contribution_p75_healthy
             FROM verdict
             """,
             params,
@@ -275,38 +311,47 @@ def get_delist_recommendations(
             """,
             params,
         )
-        # Where the decision stops being per-SKU. A vendor carrying enough
-        # candidates is a vendor conversation; a category losing half its range
-        # is a space conversation. Same thresholds the board's action tabs use.
+        # Where the decision stops being per-SKU. A group earns its place by
+        # being OVER-REPRESENTED in the delist list -- its own delist rate above
+        # the chain's -- which is the same rule, and the same cutoff, the
+        # board's action tabs use. There is no stored threshold on either side:
+        # `chain` below is computed from the rows in scope, so the tool and the
+        # board move together when a filter changes.
         by_vendor = snapshot._rows(
             connection,
             cte
             + """
-            SELECT vendor_account, count(*) AS delist_candidates,
-                   round(sum(inventory_value), 0) AS capital_freed
-            FROM verdict
-            WHERE is_delist = 1
-            GROUP BY vendor_account
-            HAVING count(*) >= :vendor_threshold
+            , chain_rate AS (SELECT avg(CAST(is_delist AS float)) AS rate FROM verdict)
+            SELECT v.vendor_account,
+                   count(*)                                  AS sku_count,
+                   sum(v.is_delist)                          AS delist_candidates,
+                   round(avg(CAST(v.is_delist AS float)), 4) AS delist_rate,
+                   round(sum(CASE WHEN v.is_delist = 1 THEN v.inventory_value ELSE 0 END), 0)
+                                                             AS capital_freed
+            FROM verdict v CROSS JOIN chain_rate c
+            GROUP BY v.vendor_account, c.rate
+            HAVING avg(CAST(v.is_delist AS float)) > min(c.rate)
             ORDER BY capital_freed DESC
             """,
-            {**params, "vendor_threshold": VENDOR_REVIEW_THRESHOLD},
+            params,
         )
         by_category = snapshot._rows(
             connection,
             cte
             + """
-            SELECT category_id, category_name,
-                   count(*)                                AS sku_count,
-                   sum(is_delist)                          AS delist_candidates,
-                   round(sum(CASE WHEN is_delist = 1 THEN inventory_value ELSE 0 END), 0)
-                                                           AS capital_freed
-            FROM verdict
-            GROUP BY category_id, category_name
-            HAVING sum(is_delist) * 1.0 / count(*) >= :share
+            , chain_rate AS (SELECT avg(CAST(is_delist AS float)) AS rate FROM verdict)
+            SELECT v.category_id, v.category_name,
+                   count(*)                                  AS sku_count,
+                   sum(v.is_delist)                          AS delist_candidates,
+                   round(avg(CAST(v.is_delist AS float)), 4) AS delist_rate,
+                   round(sum(CASE WHEN v.is_delist = 1 THEN v.inventory_value ELSE 0 END), 0)
+                                                             AS capital_freed
+            FROM verdict v CROSS JOIN chain_rate c
+            GROUP BY v.category_id, v.category_name, c.rate
+            HAVING avg(CAST(v.is_delist AS float)) > min(c.rate)
             ORDER BY capital_freed DESC
             """,
-            {**params, "share": REBALANCE_CATEGORY_SHARE},
+            params,
         )
 
     return {
@@ -320,10 +365,12 @@ def get_delist_recommendations(
         "vendor_review": by_vendor,
         "rebalance_categories": by_category,
         "thresholds_note": (
-            f"A vendor with {VENDOR_REVIEW_THRESHOLD} or more candidates is "
-            f"listed for review; a category losing "
-            f"{int(REBALANCE_CATEGORY_SHARE * 100)}% or more of its range is "
-            "listed for rebalancing rather than line-by-line delisting."
+            "A vendor or category is listed when its own delist rate is above "
+            "the chain's delist rate for the same scope -- it carries more than "
+            "its share of the delist list. Nothing here is a fixed count: the "
+            "cutoff is recomputed from the rows in scope, so it moves with the "
+            "filters, and it is the same rule behind the board's Vendor Review "
+            "and Rebalance Space tabs."
         ),
     }
 
@@ -354,13 +401,21 @@ def simulate_assortment_rationalization(
         # `ranked` is a second CTE on top of `verdict` rather than a subquery,
         # for the same reason the chain is a CTE: the window function is named
         # once and the filter reads against the name.
+        #
+        # `cume_dist`, not `percent_rank`, and `<=`, not `<`. percent_rank puts
+        # the first row at 0 and the LAST row at 1.0, so `worst_rank < 1.0`
+        # silently dropped one SKU from a 100% rationalization -- the whole
+        # candidate list came back one short of `delist_candidates`, and the
+        # capital freed disagreed with the snapshot's own headline. cume_dist
+        # puts row k of n at k/n, so `<= share` is exactly "the worst share of
+        # the population" at every value including 1.0.
         rows = snapshot._rows(
             connection,
             cte
             + """
             , ranked AS (
                 SELECT v.*,
-                       percent_rank() OVER (ORDER BY v.inventory_value DESC) AS worst_rank
+                       cume_dist() OVER (ORDER BY v.inventory_value DESC) AS worst_rank
                 FROM verdict v
                 WHERE v.is_delist = 1
             )
@@ -370,7 +425,7 @@ def simulate_assortment_rationalization(
                    round(sum(margin_rp), 0)                  AS weekly_margin_given_up,
                    round(sum(contribution_per_day), 0)       AS contribution_given_up
             FROM ranked
-            WHERE worst_rank < :share
+            WHERE worst_rank <= :share
             """,
             {**params, "share": share / 100.0},
         )
