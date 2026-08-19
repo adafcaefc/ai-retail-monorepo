@@ -23,10 +23,29 @@ import {
 } from "./contract.js";
 import { createEngine, isBaseline } from "./engine.js";
 
-/** A vendor with this many delist SKUs chain-wide is a vendor-level problem. */
-export const VENDOR_REVIEW_THRESHOLD = 5;
-/** A category this far into delist is a range-shape problem, not a SKU problem. */
-export const REBALANCE_CATEGORY_SHARE = 0.5;
+/*
+ * Vendor and category concentration carry no constant. `assignBestActionTabs`
+ * compares each group's delist rate with the chain's own, so the cutoff is a
+ * fact about the population on screen and re-derives itself under every scope
+ * and every lever. The rule it replaced ("a vendor with >= 5 delist SKUs")
+ * could not express concentration here: all eight vendors carry 33 to 75, so
+ * every one cleared it and all 404 delist rows collapsed into Vendor Review,
+ * leaving two of the four tabs empty.
+ */
+
+/**
+ * The share that makes the contribution chart a Pareto rather than a sorted
+ * bar chart. Not a workbook figure and not tunable policy — it is the name of
+ * the principle, the way a median is 50%.
+ */
+export const PARETO_SHARE_PCT = 80;
+
+/**
+ * How many bars the Pareto card draws. A rendering limit only: the cumulative
+ * curve and the Pareto rank below are computed over every SKU in scope, so
+ * changing this moves no number. Matches the mockup's own `rows.slice(0,24)`.
+ */
+export const PARETO_BARS = 24;
 
 /** Case-insensitive search across the identifiers a reader might type. */
 export function matchesSearch(item, term) {
@@ -74,22 +93,29 @@ export const growOf = (items) => items.filter((i) => i.classification === "grow"
  * is a population-level step rather than a per-row one. Returns a NEW array;
  * the inputs are not mutated.
  */
-export function assignBestActionTabs(items) {
-  const delist = delistOf(items);
-
-  const vendorDelistCounts = new Map();
-  for (const item of delist) {
-    vendorDelistCounts.set(item.vendor, (vendorDelistCounts.get(item.vendor) ?? 0) + 1);
-  }
-
-  const categoryTotals = new Map();
-  const categoryDelist = new Map();
+export function delistShare(items, key) {
+  const totals = new Map();
+  const delisted = new Map();
   for (const item of items) {
-    categoryTotals.set(item.category_id, (categoryTotals.get(item.category_id) ?? 0) + 1);
+    const group = item[key];
+    totals.set(group, (totals.get(group) ?? 0) + 1);
+    if (item.classification === "delist") {
+      delisted.set(group, (delisted.get(group) ?? 0) + 1);
+    }
   }
-  for (const item of delist) {
-    categoryDelist.set(item.category_id, (categoryDelist.get(item.category_id) ?? 0) + 1);
+  const rates = new Map();
+  for (const [group, n] of totals) {
+    if (n) rates.set(group, (delisted.get(group) ?? 0) / n);
   }
+  return rates;
+}
+
+export function assignBestActionTabs(items) {
+  if (!items.length) return [];
+
+  const chainRate = delistOf(items).length / items.length;
+  const vendorRate = delistShare(items, "vendor");
+  const categoryRate = delistShare(items, "category_id");
 
   return items.map((item) => {
     if (item.classification === "grow") {
@@ -98,12 +124,10 @@ export function assignBestActionTabs(items) {
     if (item.classification !== "delist") {
       return { ...item, best_action_tab: null, recommendation: "Hold assortment" };
     }
-    const share =
-      (categoryDelist.get(item.category_id) ?? 0) / Math.max(1, categoryTotals.get(item.category_id) ?? 1);
     const tab =
-      (vendorDelistCounts.get(item.vendor) ?? 0) >= VENDOR_REVIEW_THRESHOLD
+      (vendorRate.get(item.vendor) ?? 0) > chainRate
         ? "vendor_brand_review"
-        : share >= REBALANCE_CATEGORY_SHARE
+        : (categoryRate.get(item.category_id) ?? 0) > chainRate
           ? "rebalance_space"
           : "delist_tail";
     return { ...item, best_action_tab: tab, recommendation: recommendationFor(tab) };
@@ -130,6 +154,57 @@ export function computeKpis(items) {
     contribution_per_day: round(sum(items, "contribution_per_day")),
     hold_count: items.length - delist.length - grow.length,
     sku_count: items.length,
+  };
+}
+
+/**
+ * Margin contribution Pareto — the mockup's headline A6 card (`#ch-a6`).
+ *
+ * Every SKU in scope sorted by contribution/day descending, each carrying the
+ * running share of total contribution at its rank. Two things come out of it:
+ * the curve, over the whole population, and `bars`, its head only — 800 bars
+ * is a texture, not a chart.
+ *
+ * `pareto_rank` is the rank at which the running share first reaches 80%: the
+ * count of SKUs carrying the first four fifths of contribution. It is read off
+ * the data rather than stored, so it moves with the scope and with any lever
+ * that changes contribution.
+ *
+ * Nothing here is a pasted figure. `contribution_per_day` is `ADS x price x
+ * margin %` from the workbook's own columns — the one A6 measure a prior audit
+ * did not flag, and the one that reconciles to `A6 Assortment` exactly.
+ */
+export function computeParetoContribution(items, barCount = PARETO_BARS) {
+  const sorted = [...items]
+    .filter((i) => (Number(i.contribution_per_day) || 0) > 0)
+    .sort((a, b) => b.contribution_per_day - a.contribution_per_day);
+
+  const total = sum(sorted, "contribution_per_day");
+  let running = 0;
+  let paretoRank = 0;
+
+  const curve = sorted.map((item, index) => {
+    running += Number(item.contribution_per_day) || 0;
+    const cumulativeShare = total ? (running / total) * 100 : 0;
+    if (!paretoRank && cumulativeShare >= PARETO_SHARE_PCT) paretoRank = index + 1;
+    return {
+      rank: index + 1,
+      sku_id: item.sku_id,
+      name: item.name,
+      category_label: item.category_label,
+      classification: item.classification,
+      contribution_per_day: item.contribution_per_day,
+      gmroi: item.gmroi,
+      cumulative_share: round(cumulativeShare, 2),
+    };
+  });
+
+  return {
+    bars: curve.slice(0, barCount),
+    sku_count: curve.length,
+    total_contribution: round(total),
+    pareto_rank: paretoRank,
+    pareto_share_pct: PARETO_SHARE_PCT,
   };
 }
 
@@ -515,6 +590,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     by_channel: computeByChannel(stores),
     by_state: computeByState(items),
     by_legal_entity: computeByLegalEntity(stores, legalEntities),
+    pareto: computeParetoContribution(items),
     quadrant: computeQuadrant(items),
     action_preview: computeActionPreview(items),
     best_actions: computeBestActions(items),

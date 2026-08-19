@@ -26,7 +26,8 @@
             "retail_replenishment",
             "retail_replenishment_detail",
             "retail_promotion",
-            "retail_pricing"
+            "retail_pricing",
+            "retail_assortment"
           ],
           "description": "Parent domain agent for this action."
         },
@@ -195,7 +196,8 @@
             "retail_replenishment",
             "retail_replenishment_detail",
             "retail_promotion",
-            "retail_pricing"
+            "retail_pricing",
+            "retail_assortment"
           ],
           "description": "Parent domain agent."
         },
@@ -285,7 +287,8 @@
             "retail_replenishment",
             "retail_replenishment_detail",
             "retail_promotion",
-            "retail_pricing"
+            "retail_pricing",
+            "retail_assortment"
           ],
           "description": "Parent domain agent."
         },

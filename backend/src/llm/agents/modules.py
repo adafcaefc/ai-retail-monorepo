@@ -15,22 +15,27 @@ ENABLED_MODULES: tuple[str, ...] = (
     # "finance.treasury",
     # "finance.collection",
     # "finance.leakage",
-    # Built: chat, monitoring, actions and a Postgres-backed board.
-    "retail.demand_forecasting",
-    "retail.inventory_risk",
-    "retail.replenishment",
-    # Agent 3.1: the line-level evidence behind Agent 3's recommendations.
-    # Sits directly below its parent because list order is sidebar order --
-    # there is no parent/child field, and adjacency is how the relationship is
-    # expressed.
-    "retail.replenishment_detail",
-    "retail.promotion_effectiveness",
-    # Navigation-only: reachable in the sidebar, nothing wired behind them yet.
-    "retail.pricing_markdown",
-    "retail.assortment_optimization",
-    "retail.workforce_optimizer",
-    "retail.vendor_brand_performance",
-    "retail.ai_explanation_summary",
+    # Order is the agent's own number, which is what the sidebar shows and what
+    # every spec, board and audit refers to. Status is marked per line rather
+    # than per block: the two grouped apart once already (A6 built while A5
+    # above it was not), and reordering to keep the blocks tidy would renumber
+    # the sidebar.
+    #
+    #   built  chat, monitoring, actions and a warehouse-backed board
+    #   nav    reachable in the sidebar, nothing wired behind it yet
+    "retail.demand_forecasting",        # A1  built
+    "retail.inventory_risk",            # A2  built
+    "retail.replenishment",             # A3  built
+    # A3.1 is the only sub-numbered agent: the line-level evidence behind
+    # A3's recommendations. There is no parent/child field anywhere, so
+    # adjacency in this list is how the relationship is expressed.
+    "retail.replenishment_detail",      # A3.1 built
+    "retail.promotion_effectiveness",   # A4  built
+    "retail.pricing_markdown",          # A5  built
+    "retail.assortment_optimization",   # A6  built
+    "retail.workforce_optimizer",       # A7  nav
+    "retail.vendor_brand_performance",  # A8  nav
+    "retail.ai_explanation_summary",    # A9  nav
 )
 
 __all__ = ["ENABLED_MODULES"]

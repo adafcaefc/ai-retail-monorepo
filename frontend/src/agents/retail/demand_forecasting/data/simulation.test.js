@@ -81,12 +81,15 @@ describe("Demand Forecasting What-If calculations", () => {
   it("uses the displayed baseline ROP to recover the designated lead input", () => {
     const item = fixture.items[0];
 
-    // The current payload exposes SKU-master lead_days=2 while its baseline
-    // ROP was calculated with the designated Trade Agreement lead of 6.
+    // Payload and baseline agree on the same source: the lead_days the
+    // payload exposes is the one the baseline ROP was calculated from, which
+    // is also the column ENGINE's stored ROP uses.
     expect(item.lead_days).toBe(2);
     // ROP is rounded, so recovering the source day count is approximate even
-    // though it reproduces the displayed baseline exactly.
-    expect(baselineLeadTimeDays(item)).toBeCloseTo(6, 3);
+    // though it reproduces the displayed baseline exactly. The tolerance is
+    // wider than it was against a lead of 6 because the same rounding error
+    // is a larger share of a smaller number.
+    expect(baselineLeadTimeDays(item)).toBeCloseTo(2, 2);
   });
 
   it("implements demand shift as a multiplicative ADS and forecast change", () => {

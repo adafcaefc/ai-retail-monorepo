@@ -179,6 +179,16 @@ PRICING_ALLOWED_TABLES = (
     "retail.dim_item",
 )
 
+# Agent 6 · Assortment Optimization. Chains net inventory, assortment master,
+# and per-store rollups for GMROI, tail analysis and delist rationalization.
+ASSORTMENT_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.assortment",
+    "retail.fact_inventory_chain_daily",
+    "retail.fact_inventory_daily",
+    "retail.dim_vendor",
+)
+
 DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "finance": FINANCE_ALLOWED_TABLES,
     "cashflow": CASHFLOW_ALLOWED_TABLES,
@@ -193,6 +203,7 @@ DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "retail_replenishment_detail": REPLENISHMENT_DETAIL_ALLOWED_TABLES,
     "retail_promotion": PROMOTION_ALLOWED_TABLES,
     "retail_pricing": PRICING_ALLOWED_TABLES,
+    "retail_assortment": ASSORTMENT_ALLOWED_TABLES,
 }
 
 # Domain whose agent is currently running. Simulation/execution tools read
@@ -1323,6 +1334,38 @@ def describe_retail_pricing_tables(
     )
 
 
+def query_retail_assortment(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail assortment optimization tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_assortment_performance_snapshot for the standard view; use this for
+    custom cuts, ranking or drilldowns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
+    retail.assortment, retail.fact_inventory_chain_daily,
+    retail.fact_inventory_daily, retail.dim_vendor, audit.import_batches.
+    """
+    return _domain_query(queries, allowed_tables=ASSORTMENT_ALLOWED_TABLES)
+
+
+def describe_retail_assortment_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail assortment allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=ASSORTMENT_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
 # The shared caveats are appended rather than pasted into each docstring, so
 # the retail query tools cannot drift apart on the one thing they must all say.
 for _tool in (
@@ -1332,6 +1375,7 @@ for _tool in (
     query_retail_replenishment_detail,
     query_retail_promotion,
     query_retail_pricing,
+    query_retail_assortment,
 ):
     _tool.__doc__ = (_tool.__doc__ or "") + _RETAIL_QUERY_NOTES
 del _tool
@@ -1348,6 +1392,7 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "query_retail_replenishment_detail": query_retail_replenishment_detail,
     "query_retail_promotion": query_retail_promotion,
     "query_retail_pricing": query_retail_pricing,
+    "query_retail_assortment": query_retail_assortment,
     "describe_financial_performance_tables": describe_financial_performance_tables,
     "describe_cashflow_tables": describe_cashflow_tables,
     "describe_collections_tables": describe_collections_tables,
@@ -1360,10 +1405,12 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     ),
     "describe_retail_promotion_tables": describe_retail_promotion_tables,
     "describe_retail_pricing_tables": describe_retail_pricing_tables,
+    "describe_retail_assortment_tables": describe_retail_assortment_tables,
 }
 
 
 __all__ = [
+    "ASSORTMENT_ALLOWED_TABLES",
     "CASHFLOW_ALLOWED_TABLES",
     "COLLECTIONS_ALLOWED_TABLES",
     "DEMAND_ALLOWED_TABLES",
@@ -1382,6 +1429,7 @@ __all__ = [
     "describe_collections_tables",
     "describe_financial_performance_tables",
     "describe_payment_leakage_tables",
+    "describe_retail_assortment_tables",
     "describe_retail_demand_tables",
     "describe_retail_inventory_tables",
     "describe_retail_replenishment_tables",
@@ -1393,6 +1441,7 @@ __all__ = [
     "query_collections",
     "query_financial_performance",
     "query_payment_leakage",
+    "query_retail_assortment",
     "query_retail_demand",
     "query_retail_inventory",
     "query_retail_replenishment",

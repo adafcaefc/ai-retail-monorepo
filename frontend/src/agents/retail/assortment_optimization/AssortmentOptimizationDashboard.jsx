@@ -7,6 +7,8 @@ import {
   ContributionByCategoryChart,
   ContributionByVerticalChart,
   DelistVsGrowQuadrant,
+  MarginContributionPareto,
+  RangeDecisionMix,
 } from "./components/AssortmentCharts.jsx";
 import AssortmentFilters from "./components/AssortmentFilters.jsx";
 import AssortmentKpiDrilldown from "./components/AssortmentKpiDrilldown.jsx";
@@ -144,6 +146,9 @@ export default function AssortmentOptimizationDashboard() {
     if (scope.category_group !== ALL) {
       labels.push(optionLabel(options.categories, scope.category_group));
     }
+    if (scope.store_id !== ALL) {
+      labels.push(optionLabel(options.stores, scope.store_id));
+    }
     if (scope.classification !== ALL) labels.push(t(scope.classification));
     if (scope.sku) labels.push(scope.sku);
     return labels;
@@ -251,6 +256,16 @@ export default function AssortmentOptimizationDashboard() {
       />
 
       <p className="assortment-footnote">{t(GMROI_NOTE)}</p>
+
+      {/* The mockup's own pairing: what carries the margin, beside how much of
+          the range is up for a decision. */}
+      <div className="assortment-chart-grid">
+        <MarginContributionPareto
+          pareto={dashboard.pareto}
+          onSelectSku={(sku) => (sku ? patchScope({ sku }) : undefined)}
+        />
+        <RangeDecisionMix kpis={dashboard.kpis} />
+      </div>
 
       <div className="assortment-chart-grid">
         <ContributionByVerticalChart rows={dashboard.by_vertical} />

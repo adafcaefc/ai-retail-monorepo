@@ -26,6 +26,7 @@ than writing a file that looks fine.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -787,6 +788,11 @@ def serialise(tables: list[Table], source: Path) -> str:
     payload = {
         "version": VERSION,
         "source_workbook": source.name,
+        # The name does not identify the workbook: two workbooks with different
+        # ENGINE figures have carried this same file name, and seeding from the
+        # wrong one rewrote the warehouse repeatedly on 2026-08-19. The hash is
+        # what `scripts/workbook_guard.py` checks before any seeder writes.
+        "source_workbook_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         "table_count": len(tables),
         "row_count": sum(len(table.rows) for table in tables),

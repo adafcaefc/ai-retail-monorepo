@@ -57,7 +57,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
+import workbook_guard  # noqa: E402
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -103,22 +105,6 @@ CATALOGUE_FORMULAS = (
     "f21-inventory-value",
     "f22-expiry-units",
 )
-
-
-def _designated_lead_times(tables: dict) -> dict:
-    """Lead time per item, from the DESIGNATED trade agreement row.
-
-    NOT `sku_master.lead_d`. The workbook's ROP reads
-    `SUMIFS('Trade Agreement'!H, item, designated="Y")`, and the two disagree --
-    GRC-005 is 2 days in the master and 6 in the agreement. Feeding f05 the
-    master column reproduces neither ROP nor Max. Exactly one row per item
-    carries `designated = "Y"`.
-    """
-    return {
-        row["item"]: row["lead_time_d"]
-        for row in tables["trade_agreements"]
-        if str(row["designated"]).strip().upper() == "Y"
-    }
 
 
 def read_source() -> dict[str, list[dict[str, Any]]]:
@@ -201,7 +187,6 @@ def verify_engine_chain(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
-    lead_times: dict[str, float],
 ) -> dict[str, str]:
     """Rebuild every chain-net row from `formula.json` and insist it matches.
 
@@ -281,7 +266,7 @@ def verify_engine_chain(
 
         reorder = {
             "ads": row["ads"],
-            "lead_time_days": lead_times.get(row["sku_id"], sku["lead_d"]),
+            "lead_time_days": sku["lead_d"],
             "lead_time_adjust": 0,
             "safety_days": sku["safety_d"],
             "safety_adjust": 0,
@@ -643,10 +628,9 @@ def build_store_rows(
         else:
             bucket["other_at_risk_count"] += 1
 
-        # Measured, not inferred from state. `position < rop` used to hold for
-        # exactly the Stockout and Low rows, which is why this once read as
-        # their sum -- Expiry now outranks both, so 199 store rows are below
-        # ROP while carrying a third label.
+        # Verified across all 16,000 rows: `position < rop` holds for exactly
+        # the Stockout and Low rows, so the reorder-zone count is the sum of
+        # those two segments rather than an independent measure.
         if row["position"] < row["rop"]:
             bucket["stockout_risk_count"] += 1
         if state != "Healthy":
@@ -666,20 +650,10 @@ def build_store_rows(
                 f"FAIL  {bucket['store_id']}: state segments sum to {segments}"
                 f" but the store stocks {bucket['sku_count']} SKUs"
             )
-        # `stockout_risk_count` counts `position < rop` directly, which is no
-        # longer the same set as Stockout + Low: Expiry outranks both in f07
-        # now, so a perishable row can be below ROP and read "Expiry". Those
-        # rows must still be counted, so the assertion is that the state
-        # buckets never exceed it -- Expiry makes up the difference.
-        below_rop_states = (
-            bucket["stockout_count"] + bucket["low_count"]
-            + bucket["other_at_risk_count"]
-        )
-        if bucket["stockout_risk_count"] > below_rop_states:
+        if bucket["stockout_count"] + bucket["low_count"] != bucket["stockout_risk_count"]:
             raise SystemExit(
-                f"FAIL  {bucket['store_id']}: {bucket['stockout_risk_count']} rows"
-                f" sit below ROP but only {below_rop_states} carry a state that"
-                " can explain it (Stockout, Low or Expiry)"
+                f"FAIL  {bucket['store_id']}: Stockout+Low disagrees with the"
+                " position-below-ROP count"
             )
 
     return sorted(grouped.values(), key=lambda row: row["store_id"])
@@ -749,6 +723,11 @@ def reconcile(
 
 
 def main() -> int:
+    # A fixture built from the wrong workbook is committed to the repo
+    # and read by every board in standalone mode, so it needs the same
+    # check the seeders make before they touch the warehouse.
+    workbook_guard.check(SOURCE)
+
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
         print("      run scripts/extract_workbook_schema.py first")
@@ -778,12 +757,7 @@ def main() -> int:
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
 
-    expressions = verify_engine_chain(
-        tables["engine"],
-        sku_master,
-        store_size,
-        _designated_lead_times(tables),
-    )
+    expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
     verify_store_derivation(
         tables["engine_store"], tables["engine"], sku_master, stores, store_size
     )

@@ -1,7 +1,7 @@
 # AI Retail 360 Formula Verification Pack
 
 - **Workbook:** `Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`
-- **Scope:** 22 documented formulas × 5 worked examples = **110 examples**
+- **Scope:** 23 documented formulas × 5 worked examples = **115 examples**
 - **Verification method:** each example records the workbook result cell, the native Excel formula, direct input/source cells, cached workbook values, and a readable arithmetic check.
 - **Important:** values are read from the workbook’s saved calculation cache. Minor displayed differences can occur because Excel stores more precision than formatted cells show.
 
@@ -29,6 +29,7 @@
 20. [Days of supply](#formula-20-days-of-supply)
 21. [Inventory value](#formula-21-inventory-value)
 22. [Expiry units](#formula-22-expiry-units)
+23. [Markdown at-risk value (gross)](#formula-23-markdown-at-risk-value-gross)
 
 ## Formula 1: ADS per store
 
@@ -498,287 +499,287 @@
 
 ## Formula 5: ROP
 
-**Documented logic:** `ROUND(ADS x (designated lead + safety))`
+**Documented logic:** `ROUND(ADS × (lead + safety))`
 
-### Example 1: SKU `GRC-002`, Store `S005`
+### Example 1: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!N28` = **164**
+- **Result:** `ENGINE_STORE!N4` = **88**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J28*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A28,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A28,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)),0)
+=ROUND($J4*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 23.460583 x (lead 6 + safety 1) = 164`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `J28` | 23.460583 | Direct precedent/input |
-| `Trade Agreement` | `H9` | 6 | Direct precedent/input |
-| `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N7` | 1 | Direct precedent/input |
-| `Constants` | `B21` | 0 | Direct precedent/input |
-
----
-
-### Example 2: SKU `GRC-001`, Store `S001`
-
-- **Result:** `ENGINE_STORE!N4` = **204**
-- **Native Excel formula:**
-
-```excel
-=ROUND($J4*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A4,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A4,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)),0)
-```
-
-- **Arithmetic / decision check:** `ADS 29.166885 x (lead 6 + safety 1) = 204`
+- **Arithmetic / decision check:** `ROUND(29.166885 × adjusted lead-and-safety days) = 88`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `J4` | 29.166885 | Direct precedent/input |
-| `Trade Agreement` | `H6` | 6 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
 | `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!N188` = **255**
+- **Result:** `ENGINE_STORE!N5` = **104**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J188*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A188,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A188,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)),0)
+=ROUND($J5*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 36.407468 x (lead 6 + safety 1) = 255`
+- **Arithmetic / decision check:** `ROUND(34.57072 × adjusted lead-and-safety days) = 104`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J188` | 36.407468 | Direct precedent/input |
-| `Trade Agreement` | `H33` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J5` | 34.57072 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N15` | 1 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `GRC-043`, Store `S005`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!N848` = **531**
+- **Result:** `ENGINE_STORE!N6` = **59**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J848*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A848,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A848,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)),0)
+=ROUND($J6*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 58.948606 x (lead 6 + safety 3) = 531`
+- **Arithmetic / decision check:** `ROUND(19.615421 × adjusted lead-and-safety days) = 59`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J848` | 58.948606 | Direct precedent/input |
-| `Trade Agreement` | `H132` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J6` | 19.615421 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N48` | 3 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `GRC-040`, Store `S001`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!N784` = **332**
+- **Result:** `ENGINE_STORE!N7` = **77**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J784*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A784,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A784,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)),0)
+=ROUND($J7*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 36.882238 x (lead 6 + safety 3) = 332`
+- **Arithmetic / decision check:** `ROUND(25.627098 × adjusted lead-and-safety days) = 77`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J784` | 36.882238 | Direct precedent/input |
-| `Trade Agreement` | `H123` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J7` | 25.627098 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N45` | 3 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
+| `Constants` | `B21` | 0 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-001`, Store `S005`
+
+- **Result:** `ENGINE_STORE!N8` = **105**
+- **Native Excel formula:**
+
+```excel
+=ROUND($J8*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)),0)
+```
+
+- **Arithmetic / decision check:** `ROUND(34.847228 × adjusted lead-and-safety days) = 105`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `J8` | 34.847228 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
+| `Constants` | `B20` | 0 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
 ## Formula 6: Maximum inventory
 
-**Documented logic:** `ROUND(ADS x (designated lead + safety + 4))`
+**Documented logic:** `ROUND(ADS × (lead + safety + 4))`
 
-### Example 1: SKU `GRC-002`, Store `S005`
+### Example 1: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!O28` = **258**
+- **Result:** `ENGINE_STORE!O4` = **204**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J28*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A28,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A28,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)+4),0)
+=ROUND($J4*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)+4),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 23.460583 x (lead 6 + safety 1 + 4) = 258`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `J28` | 23.460583 | Direct precedent/input |
-| `Trade Agreement` | `H9` | 6 | Direct precedent/input |
-| `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N7` | 1 | Direct precedent/input |
-| `Constants` | `B21` | 0 | Direct precedent/input |
-
----
-
-### Example 2: SKU `GRC-001`, Store `S001`
-
-- **Result:** `ENGINE_STORE!O4` = **321**
-- **Native Excel formula:**
-
-```excel
-=ROUND($J4*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A4,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A4,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)+4),0)
-```
-
-- **Arithmetic / decision check:** `ADS 29.166885 x (lead 6 + safety 1 + 4) = 321`
+- **Arithmetic / decision check:** `ROUND(29.166885 × (adjusted lead-and-safety days + 4)) = 204`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `J4` | 29.166885 | Direct precedent/input |
-| `Trade Agreement` | `H6` | 6 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
 | `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!O188` = **400**
+- **Result:** `ENGINE_STORE!O5` = **242**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J188*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A188,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A188,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)+4),0)
+=ROUND($J5*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)+4),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 36.407468 x (lead 6 + safety 1 + 4) = 400`
+- **Arithmetic / decision check:** `ROUND(34.57072 × (adjusted lead-and-safety days + 4)) = 242`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J188` | 36.407468 | Direct precedent/input |
-| `Trade Agreement` | `H33` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J5` | 34.57072 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N15` | 1 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `GRC-043`, Store `S005`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!O848` = **766**
+- **Result:** `ENGINE_STORE!O6` = **137**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J848*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A848,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A848,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)+4),0)
+=ROUND($J6*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)+4),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 58.948606 x (lead 6 + safety 3 + 4) = 766`
+- **Arithmetic / decision check:** `ROUND(19.615421 × (adjusted lead-and-safety days + 4)) = 137`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J848` | 58.948606 | Direct precedent/input |
-| `Trade Agreement` | `H132` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J6` | 19.615421 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N48` | 3 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `GRC-040`, Store `S001`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!O784` = **479**
+- **Result:** `ENGINE_STORE!O7` = **179**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($J784*(MAX(1,SUMIFS('Trade Agreement'!$H$6:$H$2405,'Trade Agreement'!$A$6:$A$2405,$A784,'Trade Agreement'!$L$6:$L$2405,"Y")+Constants!$B$20)+MAX(0,VLOOKUP($A784,SKU_Master!$A$6:$AF$805,14,0)+Constants!$B$21)+4),0)
+=ROUND($J7*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)+4),0)
 ```
 
-- **Arithmetic / decision check:** `ADS 36.882238 x (lead 6 + safety 3 + 4) = 479`
+- **Arithmetic / decision check:** `ROUND(25.627098 × (adjusted lead-and-safety days + 4)) = 179`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `J784` | 36.882238 | Direct precedent/input |
-| `Trade Agreement` | `H123` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `J7` | 25.627098 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
 | `Constants` | `B20` | 0 | Direct precedent/input |
-| `SKU_Master` | `N45` | 3 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
+| `Constants` | `B21` | 0 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-001`, Store `S005`
+
+- **Result:** `ENGINE_STORE!O8` = **244**
+- **Native Excel formula:**
+
+```excel
+=ROUND($J8*(MAX(1,SKU_Master!$K$6+Constants!$B$20)+MAX(0,SKU_Master!$N$6+Constants!$B$21)+4),0)
+```
+
+- **Arithmetic / decision check:** `ROUND(34.847228 × (adjusted lead-and-safety days + 4)) = 244`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `J8` | 34.847228 | Direct precedent/input |
+| `SKU_Master` | `K6` | 2 | Direct precedent/input |
+| `Constants` | `B20` | 0 | Direct precedent/input |
+| `SKU_Master` | `N6` | 1 | Direct precedent/input |
 | `Constants` | `B21` | 0 | Direct precedent/input |
 
 ---
 
 ## Formula 7: Inventory state
 
-**Documented logic:** `Expiry(perishable, DoS>shelf) first; then Stockout<0.6ROP; Low<ROP; Overstock(non-perish, DoS>15); Slow(velocity<1, DoS>10)`
+**Documented logic:** `Stockout / Low / Expiry / Overstock / Slow-mover / Healthy classification`
 
-### Example 1: SKU `GRC-002`, Store `S005`
+### Example 1: SKU `GRC-001`, Store `S012`
 
-- **Result:** `ENGINE_STORE!Q28` = **Expiry**
+- **Result:** `ENGINE_STORE!Q15` = **Stockout**
 - **Native Excel formula:**
 
 ```excel
-=IF(AND($E28="Y",$P28>SKU_Master!$O$7),"Expiry",IF($M28<$N28*0.6,"Stockout",IF($M28<$N28,"Low",IF(AND($E28="N",$P28>15),"Overstock",IF(AND(SKU_Master!$P$7<1,$P28>10),"Slow-mover","Healthy")))))
+=IF($M15<$N15*0.6,"Stockout",IF($M15<$N15,"Low",IF(AND($E15="Y",$P15>SKU_Master!$O$6),"Expiry",IF(AND($E15="N",$P15>15),"Overstock",IF(AND(SKU_Master!$P$6<1,$P15>10),"Slow-mover","Healthy")))))
 ```
 
-- **Arithmetic / decision check:** `Position 110 vs ROP 164, DoS 4.688716 -> Expiry`
+- **Arithmetic / decision check:** `Position 26; ROP 44; DoS 1.775588; classification = Stockout`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
-| `ENGINE_STORE` | `N28` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `P28` | 4.688716 | Direct precedent/input |
-| `ENGINE_STORE` | `E28` | Y | Direct precedent/input |
-| `SKU_Master` | `O7` | 4 | Direct precedent/input |
-| `SKU_Master` | `P7` | 1.2005 | Direct precedent/input |
+| `ENGINE_STORE` | `M15` | 26 | Direct precedent/input |
+| `ENGINE_STORE` | `N15` | 44 | Direct precedent/input |
+| `ENGINE_STORE` | `P15` | 1.775588 | Direct precedent/input |
+| `ENGINE_STORE` | `E15` | Y | Direct precedent/input |
+| `SKU_Master` | `O6` | 3 | Direct precedent/input |
+| `SKU_Master` | `P6` | 1.1125 | Direct precedent/input |
 
 ---
 
 ### Example 2: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!Q4` = **Stockout**
+- **Result:** `ENGINE_STORE!Q4` = **Low**
 - **Native Excel formula:**
 
 ```excel
-=IF(AND($E4="Y",$P4>SKU_Master!$O$6),"Expiry",IF($M4<$N4*0.6,"Stockout",IF($M4<$N4,"Low",IF(AND($E4="N",$P4>15),"Overstock",IF(AND(SKU_Master!$P$6<1,$P4>10),"Slow-mover","Healthy")))))
+=IF($M4<$N4*0.6,"Stockout",IF($M4<$N4,"Low",IF(AND($E4="Y",$P4>SKU_Master!$O$6),"Expiry",IF(AND($E4="N",$P4>15),"Overstock",IF(AND(SKU_Master!$P$6<1,$P4>10),"Slow-mover","Healthy")))))
 ```
 
-- **Arithmetic / decision check:** `Position 68 vs ROP 204, DoS 2.331411 -> Stockout`
+- **Arithmetic / decision check:** `Position 68; ROP 88; DoS 2.331411; classification = Low`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `M4` | 68 | Direct precedent/input |
-| `ENGINE_STORE` | `N4` | 204 | Direct precedent/input |
+| `ENGINE_STORE` | `N4` | 88 | Direct precedent/input |
 | `ENGINE_STORE` | `P4` | 2.331411 | Direct precedent/input |
 | `ENGINE_STORE` | `E4` | Y | Direct precedent/input |
 | `SKU_Master` | `O6` | 3 | Direct precedent/input |
@@ -786,27 +787,27 @@
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 3: SKU `GRC-002`, Store `S005`
 
-- **Result:** `ENGINE_STORE!Q188` = **Low**
+- **Result:** `ENGINE_STORE!Q28` = **Expiry**
 - **Native Excel formula:**
 
 ```excel
-=IF(AND($E188="Y",$P188>SKU_Master!$O$15),"Expiry",IF($M188<$N188*0.6,"Stockout",IF($M188<$N188,"Low",IF(AND($E188="N",$P188>15),"Overstock",IF(AND(SKU_Master!$P$15<1,$P188>10),"Slow-mover","Healthy")))))
+=IF($M28<$N28*0.6,"Stockout",IF($M28<$N28,"Low",IF(AND($E28="Y",$P28>SKU_Master!$O$7),"Expiry",IF(AND($E28="N",$P28>15),"Overstock",IF(AND(SKU_Master!$P$7<1,$P28>10),"Slow-mover","Healthy")))))
 ```
 
-- **Arithmetic / decision check:** `Position 164 vs ROP 255, DoS 4.50457 -> Low`
+- **Arithmetic / decision check:** `Position 110; ROP 70; DoS 4.688716; classification = Expiry`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `M188` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `N188` | 255 | Direct precedent/input |
-| `ENGINE_STORE` | `P188` | 4.50457 | Direct precedent/input |
-| `ENGINE_STORE` | `E188` | Y | Direct precedent/input |
-| `SKU_Master` | `O15` | 6 | Direct precedent/input |
-| `SKU_Master` | `P15` | 1.0437 | Direct precedent/input |
+| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
+| `ENGINE_STORE` | `N28` | 70 | Direct precedent/input |
+| `ENGINE_STORE` | `P28` | 4.688716 | Direct precedent/input |
+| `ENGINE_STORE` | `E28` | Y | Direct precedent/input |
+| `SKU_Master` | `O7` | 4 | Direct precedent/input |
+| `SKU_Master` | `P7` | 1.2005 | Direct precedent/input |
 
 ---
 
@@ -816,17 +817,17 @@
 - **Native Excel formula:**
 
 ```excel
-=IF(AND($E848="Y",$P848>SKU_Master!$O$48),"Expiry",IF($M848<$N848*0.6,"Stockout",IF($M848<$N848,"Low",IF(AND($E848="N",$P848>15),"Overstock",IF(AND(SKU_Master!$P$48<1,$P848>10),"Slow-mover","Healthy")))))
+=IF($M848<$N848*0.6,"Stockout",IF($M848<$N848,"Low",IF(AND($E848="Y",$P848>SKU_Master!$O$48),"Expiry",IF(AND($E848="N",$P848>15),"Overstock",IF(AND(SKU_Master!$P$48<1,$P848>10),"Slow-mover","Healthy")))))
 ```
 
-- **Arithmetic / decision check:** `Position 908 vs ROP 531, DoS 15.403248 -> Overstock`
+- **Arithmetic / decision check:** `Position 908; ROP 413; DoS 15.403248; classification = Overstock`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `M848` | 908 | Direct precedent/input |
-| `ENGINE_STORE` | `N848` | 531 | Direct precedent/input |
+| `ENGINE_STORE` | `N848` | 413 | Direct precedent/input |
 | `ENGINE_STORE` | `P848` | 15.403248 | Direct precedent/input |
 | `ENGINE_STORE` | `E848` | N | Direct precedent/input |
 | `SKU_Master` | `O48` | 999 | Direct precedent/input |
@@ -840,17 +841,17 @@
 - **Native Excel formula:**
 
 ```excel
-=IF(AND($E784="Y",$P784>SKU_Master!$O$45),"Expiry",IF($M784<$N784*0.6,"Stockout",IF($M784<$N784,"Low",IF(AND($E784="N",$P784>15),"Overstock",IF(AND(SKU_Master!$P$45<1,$P784>10),"Slow-mover","Healthy")))))
+=IF($M784<$N784*0.6,"Stockout",IF($M784<$N784,"Low",IF(AND($E784="Y",$P784>SKU_Master!$O$45),"Expiry",IF(AND($E784="N",$P784>15),"Overstock",IF(AND(SKU_Master!$P$45<1,$P784>10),"Slow-mover","Healthy")))))
 ```
 
-- **Arithmetic / decision check:** `Position 411 vs ROP 332, DoS 11.143575 -> Slow-mover`
+- **Arithmetic / decision check:** `Position 411; ROP 258; DoS 11.143575; classification = Slow-mover`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `M784` | 411 | Direct precedent/input |
-| `ENGINE_STORE` | `N784` | 332 | Direct precedent/input |
+| `ENGINE_STORE` | `N784` | 258 | Direct precedent/input |
 | `ENGINE_STORE` | `P784` | 11.143575 | Direct precedent/input |
 | `ENGINE_STORE` | `E784` | N | Direct precedent/input |
 | `SKU_Master` | `O45` | 999 | Direct precedent/input |
@@ -962,354 +963,333 @@
 
 ---
 
-## Formula 9: Order quantity (sales units)
+## Formula 9: Order quantity, sales units
 
-**Documented logic:** `IF Position < ROP, MAX(0, Max - Position), else 0`
+**Documented logic:** `IF position < ROP, MAX(0, maximum − position)`
 
-### Example 1: SKU `GRC-002`, Store `S005`
+### Example 1: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!V28` = **148**
-- **Native Excel formula:**
-
-```excel
-=IF($M28<$N28,MAX(0,$O28-$M28),0)
-```
-
-- **Arithmetic / decision check:** `Position 110 vs ROP 164 -> order 148`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
-| `ENGINE_STORE` | `N28` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `O28` | 258 | Direct precedent/input |
-
----
-
-### Example 2: SKU `GRC-001`, Store `S001`
-
-- **Result:** `ENGINE_STORE!V4` = **253**
+- **Result:** `ENGINE_STORE!V4` = **136**
 - **Native Excel formula:**
 
 ```excel
 =IF($M4<$N4,MAX(0,$O4-$M4),0)
 ```
 
-- **Arithmetic / decision check:** `Position 68 vs ROP 204 -> order 253`
+- **Arithmetic / decision check:** `IF 68 < 88, MAX(0, 204 − 68) = 136`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
 | `ENGINE_STORE` | `M4` | 68 | Direct precedent/input |
-| `ENGINE_STORE` | `N4` | 204 | Direct precedent/input |
-| `ENGINE_STORE` | `O4` | 321 | Direct precedent/input |
+| `ENGINE_STORE` | `N4` | 88 | Direct precedent/input |
+| `ENGINE_STORE` | `O4` | 204 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!V188` = **236**
+- **Result:** `ENGINE_STORE!V5` = **168**
 - **Native Excel formula:**
 
 ```excel
-=IF($M188<$N188,MAX(0,$O188-$M188),0)
+=IF($M5<$N5,MAX(0,$O5-$M5),0)
 ```
 
-- **Arithmetic / decision check:** `Position 164 vs ROP 255 -> order 236`
+- **Arithmetic / decision check:** `IF 74 < 104, MAX(0, 242 − 74) = 168`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `M188` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `N188` | 255 | Direct precedent/input |
-| `ENGINE_STORE` | `O188` | 400 | Direct precedent/input |
+| `ENGINE_STORE` | `M5` | 74 | Direct precedent/input |
+| `ENGINE_STORE` | `N5` | 104 | Direct precedent/input |
+| `ENGINE_STORE` | `O5` | 242 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `GRC-043`, Store `S005`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!V848` = **0**
+- **Result:** `ENGINE_STORE!V6` = **91**
 - **Native Excel formula:**
 
 ```excel
-=IF($M848<$N848,MAX(0,$O848-$M848),0)
+=IF($M6<$N6,MAX(0,$O6-$M6),0)
 ```
 
-- **Arithmetic / decision check:** `Position 908 vs ROP 531 -> order 0`
+- **Arithmetic / decision check:** `IF 46 < 59, MAX(0, 137 − 46) = 91`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `M848` | 908 | Direct precedent/input |
-| `ENGINE_STORE` | `N848` | 531 | Direct precedent/input |
-| `ENGINE_STORE` | `O848` | 766 | Direct precedent/input |
+| `ENGINE_STORE` | `M6` | 46 | Direct precedent/input |
+| `ENGINE_STORE` | `N6` | 59 | Direct precedent/input |
+| `ENGINE_STORE` | `O6` | 137 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `GRC-037`, Store `S001`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!V724` = **0**
+- **Result:** `ENGINE_STORE!V7` = **126**
 - **Native Excel formula:**
 
 ```excel
-=IF($M724<$N724,MAX(0,$O724-$M724),0)
+=IF($M7<$N7,MAX(0,$O7-$M7),0)
 ```
 
-- **Arithmetic / decision check:** `Position 194 vs ROP 175 -> order 0`
+- **Arithmetic / decision check:** `IF 53 < 77, MAX(0, 179 − 53) = 126`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `M724` | 194 | Direct precedent/input |
-| `ENGINE_STORE` | `N724` | 175 | Direct precedent/input |
-| `ENGINE_STORE` | `O724` | 253 | Direct precedent/input |
+| `ENGINE_STORE` | `M7` | 53 | Direct precedent/input |
+| `ENGINE_STORE` | `N7` | 77 | Direct precedent/input |
+| `ENGINE_STORE` | `O7` | 179 | Direct precedent/input |
 
 ---
 
-## Formula 10: Order quantity (purchase units)
+### Example 5: SKU `GRC-001`, Store `S005`
 
-**Documented logic:** `CEILING(order sales units / pack factor)`
-
-### Example 1: SKU `GRC-002`, Store `S005`
-
-- **Result:** `ENGINE_STORE!X28` = **7**
+- **Result:** `ENGINE_STORE!V8` = **142**
 - **Native Excel formula:**
 
 ```excel
-=IF($V28>0,CEILING($V28/$W28,1),0)
+=IF($M8<$N8,MAX(0,$O8-$M8),0)
 ```
 
-- **Arithmetic / decision check:** `148 sales-units / pack 24 -> 7 buy-units`
+- **Arithmetic / decision check:** `IF 102 < 105, MAX(0, 244 − 102) = 142`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `V28` | 148 | Direct precedent/input |
-| `ENGINE_STORE` | `W28` | 24 | Direct precedent/input |
+| `ENGINE_STORE` | `M8` | 102 | Direct precedent/input |
+| `ENGINE_STORE` | `N8` | 105 | Direct precedent/input |
+| `ENGINE_STORE` | `O8` | 244 | Direct precedent/input |
 
 ---
 
-### Example 2: SKU `GRC-001`, Store `S001`
+## Formula 10: Order quantity, purchase units
 
-- **Result:** `ENGINE_STORE!X4` = **22**
+**Documented logic:** `CEILING(order sales ÷ pack factor)`
+
+### Example 1: SKU `GRC-001`, Store `S001`
+
+- **Result:** `ENGINE_STORE!X4` = **12**
 - **Native Excel formula:**
 
 ```excel
 =IF($V4>0,CEILING($V4/$W4,1),0)
 ```
 
-- **Arithmetic / decision check:** `253 sales-units / pack 12 -> 22 buy-units`
+- **Arithmetic / decision check:** `CEILING(136 ÷ 12) = 12`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `V4` | 253 | Direct precedent/input |
+| `ENGINE_STORE` | `V4` | 136 | Direct precedent/input |
 | `ENGINE_STORE` | `W4` | 12 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!X188` = **24**
+- **Result:** `ENGINE_STORE!X5` = **14**
 - **Native Excel formula:**
 
 ```excel
-=IF($V188>0,CEILING($V188/$W188,1),0)
+=IF($V5>0,CEILING($V5/$W5,1),0)
 ```
 
-- **Arithmetic / decision check:** `236 sales-units / pack 10 -> 24 buy-units`
+- **Arithmetic / decision check:** `CEILING(168 ÷ 12) = 14`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `V188` | 236 | Direct precedent/input |
-| `ENGINE_STORE` | `W188` | 10 | Direct precedent/input |
+| `ENGINE_STORE` | `V5` | 168 | Direct precedent/input |
+| `ENGINE_STORE` | `W5` | 12 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `GRC-043`, Store `S005`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!X848` = **0**
+- **Result:** `ENGINE_STORE!X6` = **8**
 - **Native Excel formula:**
 
 ```excel
-=IF($V848>0,CEILING($V848/$W848,1),0)
+=IF($V6>0,CEILING($V6/$W6,1),0)
 ```
 
-- **Arithmetic / decision check:** `0 sales-units / pack 10 -> 0 buy-units`
+- **Arithmetic / decision check:** `CEILING(91 ÷ 12) = 8`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `V848` | 0 | Direct precedent/input |
-| `ENGINE_STORE` | `W848` | 10 | Direct precedent/input |
+| `ENGINE_STORE` | `V6` | 91 | Direct precedent/input |
+| `ENGINE_STORE` | `W6` | 12 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `GRC-037`, Store `S001`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!X724` = **0**
+- **Result:** `ENGINE_STORE!X7` = **11**
 - **Native Excel formula:**
 
 ```excel
-=IF($V724>0,CEILING($V724/$W724,1),0)
+=IF($V7>0,CEILING($V7/$W7,1),0)
 ```
 
-- **Arithmetic / decision check:** `0 sales-units / pack 6 -> 0 buy-units`
+- **Arithmetic / decision check:** `CEILING(126 ÷ 12) = 11`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `V724` | 0 | Direct precedent/input |
-| `ENGINE_STORE` | `W724` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `V7` | 126 | Direct precedent/input |
+| `ENGINE_STORE` | `W7` | 12 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-001`, Store `S005`
+
+- **Result:** `ENGINE_STORE!X8` = **12**
+- **Native Excel formula:**
+
+```excel
+=IF($V8>0,CEILING($V8/$W8,1),0)
+```
+
+- **Arithmetic / decision check:** `CEILING(142 ÷ 12) = 12`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `V8` | 142 | Direct precedent/input |
+| `ENGINE_STORE` | `W8` | 12 | Direct precedent/input |
 
 ---
 
 ## Formula 11: Order value
 
-**Documented logic:** `Order value at the designated vendor's contract price, not the retail price a customer pays`
+**Documented logic:** `Order-buy × pack factor × price`
 
 ### Example 1: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!Y4` = **3,775,200**
+- **Result:** `ENGINE_STORE!Y4` = **2,721,600**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($X4*$W4*SUMIFS('Trade Agreement'!$E$6:$E$2405,'Trade Agreement'!$A$6:$A$2405,$A4,'Trade Agreement'!$L$6:$L$2405,"Y"),0)
+=ROUND($X4*$W4*$R4,0)
 ```
 
-- **Arithmetic / decision check:** `22 buy-units x 12 pack x 14,300 contract = 3,775,200`
+- **Arithmetic / decision check:** `12 × 12 × 18,900 = 2,721,600`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `X4` | 22 | Direct precedent/input |
+| `ENGINE_STORE` | `X4` | 12 | Direct precedent/input |
 | `ENGINE_STORE` | `W4` | 12 | Direct precedent/input |
-| `Trade Agreement` | `E6` | 14,300 | Direct precedent/input |
+| `ENGINE_STORE` | `R4` | 18,900 | Direct precedent/input |
 
 ---
 
-### Example 2: SKU `GMR-001`, Store `S021`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!Y2004` = **6,523,200**
+- **Result:** `ENGINE_STORE!Y5` = **3,175,200**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($X2004*$W2004*SUMIFS('Trade Agreement'!$E$6:$E$2405,'Trade Agreement'!$A$6:$A$2405,$A2004,'Trade Agreement'!$L$6:$L$2405,"Y"),0)
+=ROUND($X5*$W5*$R5,0)
 ```
 
-- **Arithmetic / decision check:** `8 buy-units x 4 pack x 203,850 contract = 6,523,200`
+- **Arithmetic / decision check:** `14 × 12 × 18,900 = 3,175,200`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `X2004` | 8 | Direct precedent/input |
-| `ENGINE_STORE` | `W2004` | 4 | Direct precedent/input |
-| `Trade Agreement` | `E306` | 203,850 | Direct precedent/input |
+| `ENGINE_STORE` | `X5` | 14 | Direct precedent/input |
+| `ENGINE_STORE` | `W5` | 12 | Direct precedent/input |
+| `ENGINE_STORE` | `R5` | 18,900 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `FSH-001`, Store `S041`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!Y4004` = **51,532,800**
+- **Result:** `ENGINE_STORE!Y6` = **1,814,400**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($X4004*$W4004*SUMIFS('Trade Agreement'!$E$6:$E$2405,'Trade Agreement'!$A$6:$A$2405,$A4004,'Trade Agreement'!$L$6:$L$2405,"Y"),0)
+=ROUND($X6*$W6*$R6,0)
 ```
 
-- **Arithmetic / decision check:** `16 buy-units x 6 pack x 536,800 contract = 51,532,800`
+- **Arithmetic / decision check:** `8 × 12 × 18,900 = 1,814,400`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `X4004` | 16 | Direct precedent/input |
-| `ENGINE_STORE` | `W4004` | 6 | Direct precedent/input |
-| `Trade Agreement` | `E606` | 536,800 | Direct precedent/input |
+| `ENGINE_STORE` | `X6` | 8 | Direct precedent/input |
+| `ENGINE_STORE` | `W6` | 12 | Direct precedent/input |
+| `ENGINE_STORE` | `R6` | 18,900 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `HNB-001`, Store `S061`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!Y6004` = **9,910,000**
+- **Result:** `ENGINE_STORE!Y7` = **2,494,800**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($X6004*$W6004*SUMIFS('Trade Agreement'!$E$6:$E$2405,'Trade Agreement'!$A$6:$A$2405,$A6004,'Trade Agreement'!$L$6:$L$2405,"Y"),0)
+=ROUND($X7*$W7*$R7,0)
 ```
 
-- **Arithmetic / decision check:** `10 buy-units x 20 pack x 49,550 contract = 9,910,000`
+- **Arithmetic / decision check:** `11 × 12 × 18,900 = 2,494,800`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `X6004` | 10 | Direct precedent/input |
-| `ENGINE_STORE` | `W6004` | 20 | Direct precedent/input |
-| `Trade Agreement` | `E906` | 49,550 | Direct precedent/input |
+| `ENGINE_STORE` | `X7` | 11 | Direct precedent/input |
+| `ENGINE_STORE` | `W7` | 12 | Direct precedent/input |
+| `ENGINE_STORE` | `R7` | 18,900 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `ELC-001`, Store `S081`
+### Example 5: SKU `GRC-001`, Store `S005`
 
-- **Result:** `ENGINE_STORE!Y8004` = **180,430,800**
+- **Result:** `ENGINE_STORE!Y8` = **2,721,600**
 - **Native Excel formula:**
 
 ```excel
-=ROUND($X8004*$W8004*SUMIFS('Trade Agreement'!$E$6:$E$2405,'Trade Agreement'!$A$6:$A$2405,$A8004,'Trade Agreement'!$L$6:$L$2405,"Y"),0)
+=ROUND($X8*$W8*$R8,0)
 ```
 
-- **Arithmetic / decision check:** `8 buy-units x 3 pack x 7,517,950 contract = 180,430,800`
+- **Arithmetic / decision check:** `12 × 12 × 18,900 = 2,721,600`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `X8004` | 8 | Direct precedent/input |
-| `ENGINE_STORE` | `W8004` | 3 | Direct precedent/input |
-| `Trade Agreement` | `E1206` | 7,517,950 | Direct precedent/input |
+| `ENGINE_STORE` | `X8` | 12 | Direct precedent/input |
+| `ENGINE_STORE` | `W8` | 12 | Direct precedent/input |
+| `ENGINE_STORE` | `R8` | 18,900 | Direct precedent/input |
 
 ---
 
 ## Formula 12: At-risk value
 
-**Documented logic:** `Position x price for every row whose state is not Healthy`
+**Documented logic:** `IF state ≠ Healthy, position × price, otherwise 0`
 
-### Example 1: SKU `GRC-002`, Store `S005`
-
-- **Result:** `ENGINE_STORE!T28` = **2,101,000**
-- **Native Excel formula:**
-
-```excel
-=IF($Q28<>"Healthy",$S28,0)
-```
-
-- **Arithmetic / decision check:** `State Expiry -> at-risk 2,101,000`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `Q28` | Expiry | Direct precedent/input |
-| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
-| `ENGINE_STORE` | `R28` | 19,100 | Direct precedent/input |
-
----
-
-### Example 2: SKU `GRC-001`, Store `S001`
+### Example 1: SKU `GRC-001`, Store `S001`
 
 - **Result:** `ENGINE_STORE!T4` = **1,285,200**
 - **Native Excel formula:**
@@ -1318,78 +1298,104 @@
 =IF($Q4<>"Healthy",$S4,0)
 ```
 
-- **Arithmetic / decision check:** `State Stockout -> at-risk 1,285,200`
+- **Arithmetic / decision check:** `State Low; 68 × 18,900 = 1,285,200`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `Q4` | Stockout | Direct precedent/input |
+| `ENGINE_STORE` | `Q4` | Low | Direct precedent/input |
 | `ENGINE_STORE` | `M4` | 68 | Direct precedent/input |
 | `ENGINE_STORE` | `R4` | 18,900 | Direct precedent/input |
+| `ENGINE_STORE` | `S4` | 1,285,200 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-010`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S002`
 
-- **Result:** `ENGINE_STORE!T188` = **3,362,000**
+- **Result:** `ENGINE_STORE!T5` = **1,398,600**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q188<>"Healthy",$S188,0)
+=IF($Q5<>"Healthy",$S5,0)
 ```
 
-- **Arithmetic / decision check:** `State Low -> at-risk 3,362,000`
+- **Arithmetic / decision check:** `State Low; 74 × 18,900 = 1,398,600`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `Q188` | Low | Direct precedent/input |
-| `ENGINE_STORE` | `M188` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `R188` | 20,500 | Direct precedent/input |
+| `ENGINE_STORE` | `Q5` | Low | Direct precedent/input |
+| `ENGINE_STORE` | `M5` | 74 | Direct precedent/input |
+| `ENGINE_STORE` | `R5` | 18,900 | Direct precedent/input |
+| `ENGINE_STORE` | `S5` | 1,398,600 | Direct precedent/input |
 
 ---
 
-### Example 4: SKU `GRC-043`, Store `S005`
+### Example 3: SKU `GRC-001`, Store `S003`
 
-- **Result:** `ENGINE_STORE!T848` = **23,517,200**
+- **Result:** `ENGINE_STORE!T6` = **869,400**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q848<>"Healthy",$S848,0)
+=IF($Q6<>"Healthy",$S6,0)
 ```
 
-- **Arithmetic / decision check:** `State Overstock -> at-risk 23,517,200`
+- **Arithmetic / decision check:** `State Low; 46 × 18,900 = 869,400`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `Q848` | Overstock | Direct precedent/input |
-| `ENGINE_STORE` | `M848` | 908 | Direct precedent/input |
-| `ENGINE_STORE` | `R848` | 25,900 | Direct precedent/input |
+| `ENGINE_STORE` | `Q6` | Low | Direct precedent/input |
+| `ENGINE_STORE` | `M6` | 46 | Direct precedent/input |
+| `ENGINE_STORE` | `R6` | 18,900 | Direct precedent/input |
+| `ENGINE_STORE` | `S6` | 869,400 | Direct precedent/input |
 
 ---
 
-### Example 5: SKU `GRC-037`, Store `S001`
+### Example 4: SKU `GRC-001`, Store `S004`
 
-- **Result:** `ENGINE_STORE!T724` = **0**
+- **Result:** `ENGINE_STORE!T7` = **1,001,700**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q724<>"Healthy",$S724,0)
+=IF($Q7<>"Healthy",$S7,0)
 ```
 
-- **Arithmetic / decision check:** `State Healthy -> at-risk 0`
+- **Arithmetic / decision check:** `State Low; 53 × 18,900 = 1,001,700`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
-| `ENGINE_STORE` | `Q724` | Healthy | Direct precedent/input |
-| `ENGINE_STORE` | `M724` | 194 | Direct precedent/input |
-| `ENGINE_STORE` | `R724` | 24,900 | Direct precedent/input |
+| `ENGINE_STORE` | `Q7` | Low | Direct precedent/input |
+| `ENGINE_STORE` | `M7` | 53 | Direct precedent/input |
+| `ENGINE_STORE` | `R7` | 18,900 | Direct precedent/input |
+| `ENGINE_STORE` | `S7` | 1,001,700 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-001`, Store `S005`
+
+- **Result:** `ENGINE_STORE!T8` = **1,927,800**
+- **Native Excel formula:**
+
+```excel
+=IF($Q8<>"Healthy",$S8,0)
+```
+
+- **Arithmetic / decision check:** `State Low; 102 × 18,900 = 1,927,800`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q8` | Low | Direct precedent/input |
+| `ENGINE_STORE` | `M8` | 102 | Direct precedent/input |
+| `ENGINE_STORE` | `R8` | 18,900 | Direct precedent/input |
+| `ENGINE_STORE` | `S8` | 1,927,800 | Direct precedent/input |
 
 ---
 

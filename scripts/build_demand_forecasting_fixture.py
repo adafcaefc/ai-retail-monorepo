@@ -58,7 +58,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
+import workbook_guard  # noqa: E402
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -120,22 +122,6 @@ MONTH_LABELS = (
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )
-
-
-def _designated_lead_times(tables: dict) -> dict:
-    """Lead time per item, from the DESIGNATED trade agreement row.
-
-    NOT `sku_master.lead_d`. The workbook's ROP reads
-    `SUMIFS('Trade Agreement'!H, item, designated="Y")`, and the two disagree --
-    GRC-005 is 2 days in the master and 6 in the agreement. Feeding f05 the
-    master column reproduces neither ROP nor Max. Exactly one row per item
-    carries `designated = "Y"`.
-    """
-    return {
-        row["item"]: row["lead_time_d"]
-        for row in tables["trade_agreements"]
-        if str(row["designated"]).strip().upper() == "Y"
-    }
 
 
 def read_source() -> dict[str, list[dict[str, Any]]]:
@@ -221,7 +207,6 @@ def verify_engine_chain(
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
     week_factor: float,
-    lead_times: dict[str, float],
 ) -> dict[str, str]:
     """Rebuild every chain-net row from the catalogue and insist it matches.
 
@@ -258,9 +243,7 @@ def verify_engine_chain(
             asts["f05-rop"],
             {
                 "ads": row["ads"],
-                "lead_time_days": lead_times.get(
-                    row["sku_id"], sku["lead_d"]
-                ),
+                "lead_time_days": sku["lead_d"],
                 "lead_time_adjust": 0,
                 "safety_days": sku["safety_d"],
                 "safety_adjust": 0,
@@ -446,13 +429,8 @@ def reconcile(
     items: list[dict[str, Any]],
     reference: dict[str, dict[str, Any]],
     label_of: dict[str, str],
-    a2_reference: dict[str, dict[str, Any]],
 ) -> list[str]:
-    """Diff the computable KPIs against the workbook, per vertical.
-
-    Forecast 7d comes from A1, whose own column is a live SUMIFS. The
-    stockout-risk count comes from A2, because A1 holds that one as a pasted
-    value and froze at the pre-fix number.
+    """Diff the computable KPIs against the A1 sheet, per vertical.
 
     Only two of the six can be checked, because only two are calculated
     anywhere: Forecast 7d (the sheet's own SUMIFS) and Stockout-risk SKUs
@@ -473,17 +451,11 @@ def reconcile(
                 f" {book['forecast_7d']}"
             )
 
-        # Checked against `A2 Inventory Risk`, not this board's own `A1`.
-        # A1 carries this metric as a pasted value -- only its `Forecast 7d`
-        # column is a formula -- so it still reads the pre-fix 302 across its
-        # verticals. A2 computes the same metric and recomputed to 438, which
-        # is `position < rop` over ENGINE row for row.
         at_risk = sum(1 for row in scoped if row["is_stockout_risk"])
-        expected_at_risk = a2_reference[label]["stockout_risk_skus"]
-        if at_risk != expected_at_risk:
+        if at_risk != book["stockout_risk_skus"]:
             failures.append(
-                f"{label} / stockout_risk_skus: computed {at_risk},"
-                f" A2 {expected_at_risk}"
+                f"{label} / stockout_risk_skus: computed {at_risk}, workbook"
+                f" {book['stockout_risk_skus']}"
             )
 
         trending = sum(1 for row in scoped if row["is_trending"])
@@ -497,6 +469,11 @@ def reconcile(
 
 
 def main() -> int:
+    # A fixture built from the wrong workbook is committed to the repo
+    # and read by every board in standalone mode, so it needs the same
+    # check the seeders make before they touch the warehouse.
+    workbook_guard.check(SOURCE)
+
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
         return 1
@@ -531,11 +508,7 @@ def main() -> int:
     )
 
     expressions = verify_engine_chain(
-        tables["engine"],
-        sku_master,
-        store_size,
-        constants["dow_sum"],
-        _designated_lead_times(tables),
+        tables["engine"], sku_master, store_size, constants["dow_sum"]
     )
 
     trending = allocate_trending(
@@ -552,12 +525,7 @@ def main() -> int:
         tables["engine_store"], stores, constants["dow_sum"]
     )
 
-    # A2 supplies the stockout-risk count: A1 carries it as a pasted value
-    # and still reads the pre-ROP-fix number.
-    a2_reference = {
-        row["vertical_label"]: row for row in tables["a2_inventory_risk"]
-    }
-    failures = reconcile(items, reference, label_of, a2_reference)
+    failures = reconcile(items, reference, label_of)
     if failures:
         print(f"FAIL  {len(failures)} figure(s) disagree with the A1 sheet:")
         for line in failures:

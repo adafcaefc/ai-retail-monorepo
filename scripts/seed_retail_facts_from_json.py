@@ -34,7 +34,10 @@ client states a real as-of date; nothing else needs to move.
 
 from __future__ import annotations
 
+import getpass
 import json
+import socket
+import subprocess
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -44,7 +47,11 @@ from sqlalchemy import text
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+# `scripts/` is not a package, and this file is also imported by path from
+# backend/tests, which puts neither directory on the path for us.
+sys.path.insert(0, str(REPO / "scripts"))
 
+import workbook_guard  # noqa: E402
 from src.db.db import get_engine  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
@@ -266,6 +273,23 @@ def build_agent_kpi_reference(
             ("active_promo_skus", "uplift_pct", "incremental_margin", "roi_x",
              "cannib_pct", "funding_pct"),
         ),
+        # A6 carries ONE metric, not the six its sheet has. A prior audit
+        # (RC-2) found `delist_candidates`, `grow_candidates`, `avg_gmroi`,
+        # `tail_share_pct` and `capital_freed` in B:F to be pasted values
+        # rather than formulas -- they never recomputed, and the board derives
+        # all five from the item rows instead. `contribution_day` is the one
+        # column that audit did not flag, and it reconciles exactly, so it is
+        # the only one worth storing as a reconciliation anchor. Seeding the
+        # other five would put figures in the warehouse that nothing should
+        # ever compare against.
+        "retail.assortment_optimization": (
+            "a6_assortment",
+            # Stored under the name the board reads it by, not the name the
+            # sheet spells it. Every other entry here happens to agree on both;
+            # this one does not, and the alias belongs at the point of write so
+            # exactly one spelling ever reaches the warehouse.
+            (("contribution_day", "contribution_per_day"),),
+        ),
     }
 
     rows: list[dict[str, Any]] = []
@@ -277,12 +301,15 @@ def build_agent_kpi_reference(
                 unresolved.add(row["vertical_label"])
                 continue
             for metric in metrics:
+                # A metric is either a column name that doubles as the stored
+                # name, or an explicit (column, stored_name) pair.
+                column, stored = metric if isinstance(metric, tuple) else (metric, metric)
                 rows.append(
                     {
                         "agent_id": agent_id,
                         "vertical_id": vertical_id,
-                        "metric": metric,
-                        "value": row[metric],
+                        "metric": stored,
+                        "value": row[column],
                         "import_batch_id": None,
                     }
                 )
@@ -477,6 +504,117 @@ def replace_all(
     return len(rows)
 
 
+# ---------------------------------------------------------------------- audit
+
+
+def run_fingerprint(workbook_sha: str, overridden: bool) -> str:
+    """Who ran this, from where, against which workbook -- as the audit metadata.
+
+    `workbook_path` already narrows a run to a checkout, which is how the three
+    machines seeding this database were told apart after the fact. It does not
+    name a person or a branch, and on the day two workbooks took turns in the
+    warehouse that was the missing half: the times were recoverable from Query
+    Store, the "who" was not recorded anywhere at all.
+
+    `overridden` matters most of all. A run that skipped the workbook check is
+    the one most worth finding later, so it is written down rather than merely
+    printed to a terminal nobody kept.
+    """
+    def git(*args: str) -> str | None:
+        try:
+            done = subprocess.run(
+                ["git", *args], cwd=REPO, capture_output=True, text=True, timeout=10
+            )
+        except (OSError, subprocess.SubprocessError):
+            return None
+        return done.stdout.strip() or None if done.returncode == 0 else None
+
+    return json.dumps(
+        {
+            "host": socket.gethostname(),
+            "os_user": getpass.getuser(),
+            "git_branch": git("rev-parse", "--abbrev-ref", "HEAD"),
+            "git_commit": git("rev-parse", "--short", "HEAD"),
+            "workbook_sha256": workbook_sha or None,
+            "workbook_check_overridden": overridden,
+        }
+    )
+
+
+def open_batch(engine: Any, metadata: str, total_sheets: int) -> int:
+    """Record the run as STARTED and return its id, in its own transaction.
+
+    STARTED rather than any word of one's choosing: the table carries
+    CK_audit_import_batches_status, which admits only STARTED, COMPLETED,
+    FAILED and CANCELLED.
+
+    Deliberately committed before the load rather than inside it. The load is
+    one transaction so a reader never sees a half-rewritten table; if the audit
+    row rode along, a failed seed would roll its own record away and leave no
+    trace that anything was attempted. A crashed run is exactly the one worth
+    finding.
+    """
+    with engine.begin() as connection:
+        return connection.execute(
+            text(
+                """
+                INSERT INTO audit.import_batches (
+                    agent_name, workbook_name, workbook_version, workbook_path,
+                    import_status, imported_by, total_sheets, metadata
+                )
+                OUTPUT INSERTED.id
+                VALUES (
+                    'retail_facts_seed', :workbook_name, 'v8.2', :workbook_path,
+                    'STARTED', 'seed_retail_facts_from_json.py', :total_sheets,
+                    :metadata
+                )
+                """
+            ),
+            {
+                "workbook_name": SOURCE.name,
+                "workbook_path": str(SOURCE),
+                "total_sheets": total_sheets,
+                "metadata": metadata,
+            },
+        ).scalar_one()
+
+
+def close_batch(
+    engine: Any,
+    batch_id: int,
+    status: str,
+    total_rows: int,
+    error: str | None = None,
+) -> None:
+    """Stamp the run COMPLETED or FAILED. Never raises over the original error."""
+    try:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    """
+                    UPDATE audit.import_batches
+                       SET import_status = :status,
+                           completed_at  = CURRENT_TIMESTAMP,
+                           total_rows    = :total_rows,
+                           error_message = :error
+                     WHERE id = :id
+                    """
+                ),
+                {
+                    "status": status,
+                    "total_rows": total_rows,
+                    # The column is narrower than a traceback, and the first
+                    # line is the part that names the failure anyway.
+                    "error": (error or "")[:1000] or None,
+                    "id": batch_id,
+                },
+            )
+    except Exception as closing:  # noqa: BLE001
+        # A seed that worked must not be reported as broken because its
+        # bookkeeping could not be written.
+        print(f"WARN  could not close import batch {batch_id}: {closing}")
+
+
 def dimension_counts(connection: Any) -> dict[str, int]:
     return {
         name: connection.execute(
@@ -491,6 +629,11 @@ def main() -> int:
         print(f"FAIL  source not found: {SOURCE}")
         print("      run scripts/extract_workbook_schema.py first")
         return 1
+
+    # Before anything is read into memory, let alone written: this runs in
+    # whichever checkout invoked it, and a stale one holds a different
+    # workbook's figures under the same file name.
+    workbook_sha, overridden = workbook_guard.check(SOURCE)
 
     tables = load_tables()
     required = (
@@ -547,12 +690,30 @@ def main() -> int:
         ("promotion_vertical_kpi", build_promotion_vertical_kpi(tables)),
     )
 
-    with engine.begin() as connection:
-        for table, rows in loads:
-            written = replace_all(connection, table, rows)
-            print(f"  ok  {table:24} {written:>6} rows")
+    batch_id = open_batch(
+        engine, run_fingerprint(workbook_sha, overridden), len(loads)
+    )
+    written_total = 0
 
-    print(f"\nSnapshot date: {SNAPSHOT_DATE}")
+    try:
+        with engine.begin() as connection:
+            for table, rows in loads:
+                # Stamped here rather than in the nine builders, so the id has
+                # one home and a new builder cannot forget it. The key is
+                # already present in every row, so column order does not move.
+                for row in rows:
+                    row["import_batch_id"] = batch_id
+                written = replace_all(connection, table, rows)
+                written_total += written
+                print(f"  ok  {table:24} {written:>6} rows")
+    except Exception as error:  # noqa: BLE001
+        close_batch(engine, batch_id, "FAILED", written_total, str(error))
+        raise
+
+    close_batch(engine, batch_id, "COMPLETED", written_total)
+
+    print(f"\nImport batch {batch_id}")
+    print(f"Snapshot date: {SNAPSHOT_DATE}")
     print("fact_sales_daily left empty on purpose — see the module docstring.")
     return 0
 
