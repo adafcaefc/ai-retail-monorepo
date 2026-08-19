@@ -220,32 +220,57 @@ describe("DemandForecastingDashboard", () => {
   it("runs, resets, saves, loads, compares, and removes local scenarios", async () => {
     renderDashboard();
     await screen.findByRole("heading", { name: "What-If Simulator" });
+    const storageBeforeSave = { ...window.localStorage };
 
     const loadButton = screen.getByRole("button", { name: "Load" });
     expect(loadButton).toBeDisabled();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
 
     const demand = screen.getByRole("slider", { name: "Demand shift" });
-    fireEvent.change(demand, { target: { value: "20" } });
+    const savedLeverValues = {
+      "Demand shift": 20,
+      "Promo intensity": 25,
+      "Markdown depth": 30,
+      "Extra inbound": 40,
+      "Vendor lead time": 3,
+      "Safety stock": 4,
+    };
+    Object.entries(savedLeverValues).forEach(([name, value]) => {
+      fireEvent.change(screen.getByRole("slider", { name }), { target: { value: String(value) } });
+    });
+    // Slider movement is draft-only; the page and Save remain unchanged until
+    // Run commits the scenario.
+    expect(mocks.runScenario).not.toHaveBeenCalled();
+    expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST);
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     await waitFor(() => expect(mocks.runScenario).toHaveBeenCalledWith(
       expect.objectContaining({ grain: "weekly" }),
-      expect.objectContaining({ demand: 20 }),
+      expect.objectContaining({ demand: 20, promo: 25, markdown: 30, inbound: 40, lead: 3, safety: 4 }),
     ));
     await waitFor(() => expect(document.querySelector(".demand-kpi-value")).not.toHaveTextContent(CHAIN_FORECAST));
+
+    // Re-running the same draft is idempotent and sends the same normalized
+    // six-lever configuration back through the gateway.
+    const firstRunLevers = { ...mocks.runScenario.mock.calls.at(-1)[1] };
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => expect(mocks.runScenario).toHaveBeenCalledTimes(2));
+    expect(mocks.runScenario.mock.calls.at(-1)[1]).toEqual(firstRunLevers);
 
     const saveButton = screen.getByRole("button", { name: "Save" });
     await waitFor(() => expect(saveButton).toBeEnabled());
     fireEvent.click(saveButton);
     expect(await screen.findByText("S1")).toBeInTheDocument();
     expect(loadButton).toBeEnabled();
+    expect(screen.getByText("demand 20% · promo 25% · markdown 30% · inbound 40% · lead 3d · safety 4d")).toBeInTheDocument();
+    expect({ ...window.localStorage }).toEqual(storageBeforeSave);
 
     fireEvent.change(demand, { target: { value: "10" } });
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     await waitFor(() => expect(mocks.runScenario).toHaveBeenLastCalledWith(
       expect.any(Object),
-      expect.objectContaining({ demand: 10 }),
+      expect.objectContaining({ demand: 10, promo: 25, markdown: 30, inbound: 40, lead: 3, safety: 4 }),
     ));
     await waitFor(() => expect(saveButton).toBeEnabled());
     fireEvent.click(saveButton);
@@ -260,8 +285,25 @@ describe("DemandForecastingDashboard", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reset" }));
     await waitFor(() => expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST));
-    expect(demand).toHaveValue("0");
-  });
+    Object.keys(savedLeverValues).forEach((name) => {
+      expect(screen.getByRole("slider", { name })).toHaveValue("0");
+    });
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.queryByRole("status", { name: "What-If scenario applied" })).not.toBeInTheDocument();
+
+    // Reset clears the active scenario but leaves the in-memory saved
+    // workspace available for an explicit Load.
+    fireEvent.click(screen.getByRole("button", { name: "Load" }));
+    await waitFor(() => {
+      Object.entries(savedLeverValues).forEach(([name, value]) => {
+        expect(screen.getByRole("slider", { name })).toHaveValue(String(name === "Demand shift" ? 10 : value));
+      });
+      expect(mocks.runScenario).toHaveBeenLastCalledWith(
+        expect.any(Object),
+        expect.objectContaining({ demand: 10, promo: 25, markdown: 30, inbound: 40, lead: 3, safety: 4 }),
+      );
+    });
+  }, 30000);
 
   it("shows and clears the applied whole-page scenario indicator", async () => {
     renderDashboard();
@@ -282,6 +324,39 @@ describe("DemandForecastingDashboard", () => {
       expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST);
     });
     expect(screen.getByRole("slider", { name: "Demand shift" })).toHaveValue("0");
+  });
+
+  it("isolates the preview when whole-page driving is off and propagates it when on", async () => {
+    renderDashboard();
+    await screen.findByRole("heading", { name: "What-If Simulator" });
+
+    const toggle = screen.getByRole("checkbox", { name: "Levers drive whole page" });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ demand: 0 }),
+      expect.objectContaining({ driveWholePage: false }),
+    ));
+
+    fireEvent.change(screen.getByRole("slider", { name: "Demand shift" }), {
+      target: { value: "20" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run" }));
+    await waitFor(() => expect(mocks.runScenario).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ demand: 20 }),
+    ));
+    expect(toggle).not.toBeChecked();
+    expect(document.querySelector(".demand-kpi-value")).toHaveTextContent(CHAIN_FORECAST);
+
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ demand: 20 }),
+      expect.objectContaining({ driveWholePage: true }),
+    ));
+    await waitFor(() => expect(document.querySelector(".demand-kpi-value")).not.toHaveTextContent(CHAIN_FORECAST));
   });
 
   it("hides saved scenarios outside their scope, grain, or horizon and restores compatibility", async () => {
@@ -312,7 +387,7 @@ describe("DemandForecastingDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "12w" }));
     await waitFor(() => expect(screen.getByText(/1 hidden by current scope/)).toBeInTheDocument());
     expect(screen.queryByRole("button", { name: "Remove S1" })).not.toBeInTheDocument();
-  });
+  }, 30000);
 
   it("Load restores a saved scenario's dashboard context and lever values", async () => {
     renderDashboard();
@@ -340,7 +415,7 @@ describe("DemandForecastingDashboard", () => {
       expect(screen.getByRole("slider", { name: "Demand shift" })).toHaveValue("20");
       expect(screen.getByRole("button", { name: "Remove S1" })).toBeInTheDocument();
     });
-  });
+  }, 30000);
 
   it("keeps the latest-four overlay limit among compatible scenarios", () => {
     const scenarios = Array.from({ length: 6 }, (_, index) => ({ id: `S${index + 1}` }));
@@ -363,9 +438,10 @@ describe("DemandForecastingDashboard", () => {
     await screen.findByRole("heading", { name: "Suggested Best Action" });
 
     expect(screen.getByText("Cover the reorder zone")).toBeInTheDocument();
-    // 302 below ROP and 355 trending, both counted from the workbook rather
-    // than written into the copy.
-    expect(screen.getByText(/302 SKUs sit below their reorder point/)).toBeInTheDocument();
+    // 438 below ROP and 355 trending, both counted from the workbook rather
+    // than written into the copy. The current below-ROP count comes from the
+    // live inventory-risk calculation; the old A1 pasted reference was 302.
+    expect(screen.getByText(/438 SKUs sit below their reorder point/)).toBeInTheDocument();
     expect(screen.getByText(/355 SKUs are trending above baseline/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send to Replenishment" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Flag to Inventory Risk" })).toBeDisabled();

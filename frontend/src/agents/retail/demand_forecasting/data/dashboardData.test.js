@@ -51,7 +51,7 @@ describe("the Demand Forecasting gateway", () => {
     expect(ids).not.toContain("HME");
   });
 
-  it("matches the A1 sheet on the two figures the workbook actually computes", async () => {
+  it("matches the A1 forecast/trend references and derives live below-ROP risk", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       legal_entity_id: "GRC",
     });
@@ -60,7 +60,12 @@ describe("the Demand Forecasting gateway", () => {
     );
 
     expect(byId.forecast_next_7d).toBeCloseTo(grocery.forecast_7d, 3);
-    expect(byId.stockout_risk_skus).toBe(grocery.stockout_risk_skus);
+    // A1's 46 is a pasted historical reference. Current below-ROP exposure
+    // is live in the fixture's item rows, matching the A2 inventory-risk
+    // calculation used by the dashboard.
+    expect(byId.stockout_risk_skus).toBe(
+      fixture.items.filter((item) => item.vertical_id === "GRC" && item.is_stockout_risk).length,
+    );
     expect(byId.predicted_to_trend).toBe(grocery.trending_skus);
   });
 
