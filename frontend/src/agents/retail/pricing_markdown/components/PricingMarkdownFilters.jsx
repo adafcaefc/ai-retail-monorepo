@@ -2,16 +2,17 @@ import { ALL, STATE_ORDER } from "../data/contract.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
 /**
- * The top filter row: vertical, category, inventory state, and a free-text
- * search across SKU, name, vendor and brand.
+ * The top filter row: vertical, category, store, inventory state, and a
+ * free-text search across SKU, name, vendor and brand.
  *
- * No store filter: `store_id` would only ever narrow
- * `by_store`/`by_cluster`/`by_channel` (selectors.js's scopeStores), never
- * `items` -- a SKU's own at-risk/recoverable value is a chain-wide figure
- * across all its stores, not a per-store one (see dashboard.py's module
- * docstring for the backend side of that same rule) -- so a store control
- * here would filter the dimension charts while leaving every KPI card and
- * the candidate table unchanged, which reads as broken rather than scoped.
+ * `store_id` narrows `by_store`/`by_cluster`/`by_channel`
+ * (selectors.js's scopeStores) AND, when the board is reading from the API
+ * (see dataSource.js), narrows `items` itself: dashboard.py's `build()`
+ * recomputes each item's state/at-risk/recoverable at that one store's
+ * grain rather than its chain-wide total, and a SKU the store does not stock
+ * drops out entirely. Running off the bundled fixture (standalone/offline
+ * builds only) still shows the chain-wide `items` regardless of store,
+ * since that path has no backend to rerun the aggregation against.
  */
 export default function PricingMarkdownFilters({
   scope,
@@ -26,6 +27,7 @@ export default function PricingMarkdownFilters({
   const hasFilter =
     scope.legal_entity_id !== ALL ||
     scope.category_group !== ALL ||
+    scope.store_id !== ALL ||
     scope.state !== ALL ||
     (scope.sku && scope.sku.trim());
 
@@ -37,9 +39,9 @@ export default function PricingMarkdownFilters({
         options={options.legal_entities}
         disabled={busy}
         onChange={(value) =>
-          // A category from the previous vertical cannot exist under the
-          // new one, so reset it rather than load a stale scope.
-          onPatch({ legal_entity_id: value, category_group: ALL })
+          // A category or store from the previous vertical cannot exist
+          // under the new one, so reset both rather than load a stale scope.
+          onPatch({ legal_entity_id: value, category_group: ALL, store_id: ALL })
         }
       />
       <SelectField
@@ -48,6 +50,13 @@ export default function PricingMarkdownFilters({
         options={categoriesInScope(options.categories, scope.legal_entity_id)}
         disabled={busy}
         onChange={(value) => onPatch({ category_group: value })}
+      />
+      <SelectField
+        label={t("Store")}
+        value={scope.store_id}
+        options={storesInScope(options.stores, scope.legal_entity_id)}
+        disabled={busy}
+        onChange={(value) => onPatch({ store_id: value })}
       />
       <SelectField
         label={t("State")}
@@ -80,6 +89,11 @@ export default function PricingMarkdownFilters({
 function categoriesInScope(categories, vertical) {
   if (!vertical || vertical === ALL) return categories;
   return categories.filter((c) => c.legal_entity_id === vertical);
+}
+
+function storesInScope(stores, vertical) {
+  if (!vertical || vertical === ALL) return stores;
+  return stores.filter((s) => s.legal_entity_id === vertical);
 }
 
 function SelectField({ label, value, options, disabled, onChange }) {

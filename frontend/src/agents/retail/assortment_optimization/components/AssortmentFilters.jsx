@@ -18,6 +18,7 @@ export default function AssortmentFilters({
   const hasFilter =
     scope.legal_entity_id !== ALL ||
     scope.category_group !== ALL ||
+    scope.store_id !== ALL ||
     scope.classification !== ALL ||
     (scope.sku && scope.sku.trim());
 
@@ -28,7 +29,9 @@ export default function AssortmentFilters({
         value={scope.legal_entity_id}
         options={options.legal_entities}
         disabled={busy}
-        onChange={(value) => onPatch({ legal_entity_id: value, category_group: ALL })}
+        onChange={(value) =>
+          onPatch({ legal_entity_id: value, category_group: ALL, store_id: ALL })
+        }
       />
       <SelectField
         label={t("Category")}
@@ -36,6 +39,13 @@ export default function AssortmentFilters({
         options={categoriesInScope(options.categories, scope.legal_entity_id)}
         disabled={busy}
         onChange={(value) => onPatch({ category_group: value })}
+      />
+      <SelectField
+        label={t("Store")}
+        value={scope.store_id}
+        options={storesInScope(options.stores, scope.legal_entity_id)}
+        disabled={busy}
+        onChange={(value) => onPatch({ store_id: value })}
       />
       <SelectField
         label={t("Verdict")}
@@ -71,9 +81,14 @@ const VERDICT_LABELS = {
   hold: "Hold",
 };
 
-function categoriesInScope(categories, vertical) {
+function categoriesInScope(categories = [], vertical) {
   if (!vertical || vertical === ALL) return categories;
   return categories.filter((c) => c.legal_entity_id === vertical);
+}
+
+function storesInScope(stores = [], vertical) {
+  if (!vertical || vertical === ALL) return stores;
+  return stores.filter((s) => s.vertical_id === vertical || s.legal_entity_id === vertical);
 }
 
 function SelectField({ label, value, options, disabled, onChange }) {

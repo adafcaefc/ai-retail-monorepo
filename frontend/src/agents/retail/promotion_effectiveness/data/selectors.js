@@ -216,7 +216,10 @@ export function computeBySeason(campaigns) {
         label: t,
         value: g.byType.get(t) ?? 0,
       })),
-      total: round(sum([...g.byType.values()])),
+      // `sum` reads a named key off each row; these are bare numbers, so
+      // they have to be added directly — the keyed call returned 0 for every
+      // season.
+      total: round([...g.byType.values()].reduce((a, b) => a + b, 0)),
     }));
 }
 

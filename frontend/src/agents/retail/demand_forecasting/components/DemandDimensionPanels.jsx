@@ -9,8 +9,13 @@ import {
   YAxis,
 } from "recharts";
 
+import { useMemo } from "react";
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
+import {
+  takeTopForecastDimensions,
+  TOP_FORECAST_DIMENSION_LIMIT,
+} from "../data/topForecastDimensions.js";
 
 function DimensionTooltip({ active, payload, label }) {
   const { language, t } = useLanguage();
@@ -96,12 +101,12 @@ function RankedStoreChart({ rows, onSelect }) {
   );
 }
 
-function DrilldownButtons({ rows, onSelect, label }) {
+function DrilldownButtons({ rows, onSelect, label, limit = 12 }) {
   const { t } = useLanguage();
   if (!onSelect || !rows.length) return null;
   return (
     <div className="demand-dimension-drilldowns" aria-label={t(label)}>
-      {rows.slice(0, 12).map((row) => (
+      {rows.slice(0, limit).map((row) => (
         <button key={row.id} type="button" onClick={() => onSelect(row.id)}>{row.label}</button>
       ))}
     </div>
@@ -110,18 +115,27 @@ function DrilldownButtons({ rows, onSelect, label }) {
 
 export default function DemandDimensionPanels({ dimensions, onCategory, onStore, onLegalEntity }) {
   const { language, t } = useLanguage();
+  const categoryRows = useMemo(
+    () => takeTopForecastDimensions(dimensions.categories),
+    [dimensions.categories],
+  );
+  const storeRows = useMemo(
+    () => takeTopForecastDimensions(dimensions.stores),
+    [dimensions.stores],
+  );
+
   return (
     <section className="demand-dimensions" aria-label={t("Demand forecast dimensions")}>
       <div className="demand-dimension-row">
         <article className="demand-panel demand-dimension-panel">
-          <PanelHeader eyebrow="Demand dimensions" title="Forecast by category" hint="Next 7d forecast · Select a category to update the Demand scope" />
-          <VerticalDimensionChart rows={dimensions.categories} ariaLabel={t("Forecast by category chart")} onSelect={onCategory} />
-          <DrilldownButtons rows={dimensions.categories} onSelect={onCategory} label="Category filter shortcuts" />
+          <PanelHeader eyebrow="Demand dimensions" title="Forecast by category" hint="Next 7d forecast · Top 20 · Select a category to update the Demand scope" />
+          <VerticalDimensionChart rows={categoryRows} ariaLabel={t("Forecast by category chart")} onSelect={onCategory} />
+          <DrilldownButtons rows={categoryRows} onSelect={onCategory} limit={TOP_FORECAST_DIMENSION_LIMIT} label="Category filter shortcuts" />
         </article>
         <article className="demand-panel demand-dimension-panel">
-          <PanelHeader eyebrow="Demand dimensions" title="Forecast by store" hint="Next 7d forecast · Highest forecast first" />
-          <RankedStoreChart rows={dimensions.stores} onSelect={onStore} />
-          <DrilldownButtons rows={dimensions.stores} onSelect={onStore} label="Store filter shortcuts" />
+          <PanelHeader eyebrow="Demand dimensions" title="Forecast by store" hint="Next 7d forecast · Top 20 highest forecast" />
+          <RankedStoreChart rows={storeRows} onSelect={onStore} />
+          <DrilldownButtons rows={storeRows} onSelect={onStore} limit={TOP_FORECAST_DIMENSION_LIMIT} label="Store filter shortcuts" />
         </article>
       </div>
 

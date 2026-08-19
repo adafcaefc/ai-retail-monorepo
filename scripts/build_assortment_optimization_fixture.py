@@ -65,7 +65,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
+import workbook_guard  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
@@ -84,8 +86,9 @@ SOURCE_WORKBOOK = "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx"
 
 DELIST_STATES = ("Slow-mover", "Overstock", "Expiry")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
-VENDOR_REVIEW_THRESHOLD = 5
-REBALANCE_CATEGORY_SHARE = 0.5
+# Vendor and category concentration carry no constant: `assign_best_action_tabs`
+# compares each group's delist rate against the chain's own, so the cutoff is a
+# fact about this population rather than a number three files have to agree on.
 
 # Formulas the browser What-If engine re-evaluates (unaffected by the
 # delist/grow classification, which is percentile-based and recomputed
@@ -143,6 +146,34 @@ def percentile(sorted_values: list[float], pct: float) -> float:
     return sorted_values[lower] + (sorted_values[upper] - sorted_values[lower]) * frac
 
 
+def chain_store_size(stores: list[dict[str, Any]]) -> dict[str, float]:
+    """Total store-size index per vertical.
+
+    `f01-ads-per-store` reads a single store's size index. A chain-net row is
+    that same formula summed over every store in the vertical, and because
+    `base_ads` and `seasonality` are SKU attributes rather than store ones,
+    the sum factorises: pass the vertical's total size index as `store_size`
+    and f01 returns the chain-net ADS unchanged.
+
+    Do not substitute `sku_master.sum_vert_size` here -- this file used to,
+    and it is the one thing that stopped the backend module from reproducing
+    this fixture. That column carries the same quantity rounded to four
+    decimals (Grocery: 20.8447 against a true 20.8445), which moves ADS by
+    about 1e-5 relative: invisible in a displayed figure, decisive for the SKU
+    sitting on the P75 cutoff. It is also not a column the warehouse carries,
+    so a backend serving this board could never have matched it.
+
+    Same rule, same wording, as `build_inventory_risk_fixture.chain_store_size`
+    and `retail/common/warehouse.chain_store_size`.
+    """
+    totals: dict[str, float] = {}
+    for store in stores:
+        totals[store["vertical_id"]] = totals.get(store["vertical_id"], 0.0) + _num(
+            store.get("size")
+        )
+    return totals
+
+
 def contribution_by_sku(engine_store: list[dict[str, Any]]) -> dict[str, float]:
     totals: dict[str, float] = {}
     for row in engine_store:
@@ -150,32 +181,29 @@ def contribution_by_sku(engine_store: list[dict[str, Any]]) -> dict[str, float]:
     return totals
 
 
-def designated_lead_times(trade_agreements: list[dict[str, Any]]) -> dict[str, float]:
-    """Vendor lead time per item, from the DESIGNATED trade agreement.
+def designated_lead_times(sku_master: list[dict[str, Any]]) -> dict[str, float]:
+    """Lead time per item, from `sku_master.lead_d`.
 
-    NOT `sku_master.lead_d`. The workbook's own ROP formula (ENGINE!G, read
-    directly from the file) is:
+    The name is historical and the source is not. This read the DESIGNATED
+    trade agreement row while the revised workbook was in the tree, because
+    that workbook's ROP did:
 
         ROUND(ADS * (MAX(1, SUMIFS('Trade Agreement'!H, item, designated="Y")
                             + Constants!B20)
                      + MAX(0, SKU_Master.safety_d + Constants!B21)))
 
-    -- the lead term is the trade agreement's, which is audit fix T-05/T-06
-    ("ROP pakai lead statis di SKU master, bukan lead vendor") already ported
-    into this workbook. Feeding f05 `sku_master.lead_d` instead reproduces
-    neither ROP nor Max, which shifts the inventory state and therefore the
-    delist verdict. Verified: this source reproduces all 800 stored ROP and
-    Max values exactly.
+    That revision was withdrawn. The workbook now in `resources/` computes ROP
+    from `SKU_Master.Lead (d)`, and the two columns disagree on all 800 items
+    -- GRC-001 is 2 days in the master and 6 in the agreement. Feeding f05 the
+    agreement's term against this workbook reproduces neither ROP nor Max:
+    3,478 against the stored 1,491 for GRC-001, which is a different inventory
+    state and therefore a different delist verdict.
 
-    SUMIFS, not a lookup, because that is what the workbook does -- an item
-    with two designated rows would sum them there, so it sums them here.
+    `verify_engine_chain` asserts the reproduction over all 800 rows, so a
+    future workbook that moves the lead term back will fail the build here
+    rather than ship a fixture that disagrees with its own source.
     """
-    totals: dict[str, float] = {}
-    for row in trade_agreements:
-        if str(row.get("designated", "")).strip().upper() != "Y":
-            continue
-        totals[row["item"]] = totals.get(row["item"], 0.0) + _num(row.get("lead_time_d"))
-    return totals
+    return {row["sku_id"]: _num(row.get("lead_d")) for row in sku_master}
 
 
 def verify_reorder_inputs(
@@ -223,6 +251,7 @@ def build_items(
     verticals: list[dict[str, Any]],
     contribution: dict[str, float],
     lead_times: dict[str, float],
+    store_size: dict[str, float],
     asts: dict[str, Any],
 ) -> list[dict[str, Any]]:
     """One row per SKU, with the whole productivity chain DERIVED here.
@@ -271,7 +300,7 @@ def build_items(
             {
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
-                "store_size": _num(master.get("sum_vert_size")),
+                "store_size": store_size[row["vertical_id"]],
                 "demand_lever": 0,
                 "promo_eligible": master.get("promo", "N"),
                 "promo_lever": 0,
@@ -326,11 +355,14 @@ def build_items(
                 # What-If cascade inputs for the browser engine.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
-                "store_size": _num(master.get("sum_vert_size")),
+                "store_size": store_size[row["vertical_id"]],
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
-                # The designated trade agreement's lead time -- see
-                # designated_lead_times() for why this is not sku_master.lead_d.
+                # `SKU_Master.Lead (d)`, which is what this workbook's ROP
+                # is computed from -- see designated_lead_times(). The browser
+                # engine recomputes ROP from this field on every lever move,
+                # so a different column here means the board jumps the moment
+                # a slider is touched.
                 "lead_days": lead_times.get(row["sku_id"], 0.0),
                 "safety_days": _num(master.get("safety_d")),
                 "margin_pct": _num(master.get("margin_pct")),
@@ -383,34 +415,47 @@ def classify(items: list[dict[str, Any]]) -> dict[str, float]:
     }
 
 
+def delist_share(items: list[dict[str, Any]], key: str) -> dict[str, float]:
+    """Each group's delist rate: delist SKUs over that group's whole range."""
+    totals: dict[str, int] = {}
+    delisted: dict[str, int] = {}
+    for item in items:
+        group = item[key]
+        totals[group] = totals.get(group, 0) + 1
+        if item["classification"] == "delist":
+            delisted[group] = delisted.get(group, 0) + 1
+    return {g: delisted.get(g, 0) / n for g, n in totals.items() if n}
+
+
 def assign_best_action_tabs(items: list[dict[str, Any]]) -> None:
     """Adds `best_action_tab` in place. Grow Winners is the grow population;
-    the delist population splits into Vendor/Brand Review, Rebalance Space,
-    or plain Delist Tail -- see the module docstring for the thresholds.
+    the delist population splits into Vendor/Brand Review, Rebalance Space, or
+    plain Delist Tail by which decision it actually is.
+
+    A group earns its tab by being OVER-REPRESENTED in the delist list -- its
+    own delist rate above the chain's -- rather than by clearing a stored
+    count. The previous rule ("a vendor with >= 5 delist SKUs") could not
+    express concentration at this scale: all eight vendors carry 33 to 75, so
+    every one cleared it and all 404 delist rows collapsed into Vendor Review.
+    Kept character for character with `dashboard.assign_best_action_tabs` and
+    `selectors.assignBestActionTabs`.
     """
-    delist_items = [i for i in items if i["classification"] == "delist"]
+    if not items:
+        return
 
-    vendor_delist_counts: dict[str, int] = {}
-    for i in delist_items:
-        vendor_delist_counts[i["vendor"]] = vendor_delist_counts.get(i["vendor"], 0) + 1
-
-    category_totals: dict[str, int] = {}
-    category_delist: dict[str, int] = {}
-    for i in items:
-        category_totals[i["category_id"]] = category_totals.get(i["category_id"], 0) + 1
-    for i in delist_items:
-        category_delist[i["category_id"]] = category_delist.get(i["category_id"], 0) + 1
+    chain_rate = sum(1 for i in items if i["classification"] == "delist") / len(items)
+    vendor_rate = delist_share(items, "vendor")
+    category_rate = delist_share(items, "category_id")
 
     for item in items:
         if item["classification"] == "grow":
             item["best_action_tab"] = "grow_winners"
             item["recommendation"] = "Grow range / add space / expand stores"
         elif item["classification"] == "delist":
-            category_share = category_delist.get(item["category_id"], 0) / max(1, category_totals.get(item["category_id"], 1))
-            if vendor_delist_counts.get(item["vendor"], 0) >= VENDOR_REVIEW_THRESHOLD:
+            if vendor_rate.get(item["vendor"], 0.0) > chain_rate:
                 item["best_action_tab"] = "vendor_brand_review"
                 item["recommendation"] = "Vendor or brand review"
-            elif category_share >= REBALANCE_CATEGORY_SHARE:
+            elif category_rate.get(item["category_id"], 0.0) > chain_rate:
                 item["best_action_tab"] = "rebalance_space"
                 item["recommendation"] = "Rationalize tail and rebalance category"
             else:
@@ -458,7 +503,11 @@ def build_state_value(engine_store: list[dict[str, Any]]) -> list[dict[str, Any]
     totals: dict[str, float] = {}
     for row in engine_store:
         totals[row["state"]] = totals.get(row["state"], 0.0) + _num(row["inv_value"])
-    return [{"state": state, "value": round(value, 2)} for state, value in totals.items()]
+    return [
+        {"state": state, "value": round(totals[state], 2)}
+        for state in STATE_ORDER
+        if state in totals
+    ]
 
 
 def build_reference(
@@ -508,7 +557,10 @@ def build_filter_options(
         categories.append(
             {
                 "value": cat_id,
-                "label": row.get("category", cat_id),
+                # id first: category name is not unique across verticals
+                # (e.g. DGT-C01 and OMN-C01 are both "Electronics"), so the
+                # bare name alone cannot tell two dropdown entries apart.
+                "label": f"{cat_id} · {row.get('category', cat_id)}",
                 "legal_entity_id": row["vertical_id"],
             }
         )
@@ -522,10 +574,20 @@ def build_filter_options(
         }
         for row in stores
     ]
-    return {"legal_entities": legal_entities, "categories": categories, "stores": store_rows}
+    return {
+        "legal_entities": legal_entities,
+        "categories": categories,
+        "stores": store_rows,
+        "states": list(STATE_ORDER),
+    }
 
 
 def main() -> int:
+    # A fixture built from the wrong workbook is committed to the repo
+    # and read by every board in standalone mode, so it needs the same
+    # check the seeders make before they touch the warehouse.
+    workbook_guard.check(SOURCE)
+
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
         return 1
@@ -549,7 +611,7 @@ def main() -> int:
     stores_by_id = {row["store_id"]: row for row in tables["stores"]}
 
     contribution = contribution_by_sku(tables["engine_store"])
-    lead_times = designated_lead_times(tables["trade_agreements"])
+    lead_times = designated_lead_times(tables["sku_master"])
 
     reorder_failures = verify_reorder_inputs(
         tables["engine"], {r["sku_id"]: r for r in tables["sku_master"]}, lead_times, asts
@@ -560,8 +622,10 @@ def main() -> int:
             print(f"      {line}")
         return 1
 
+    store_size = chain_store_size(tables["stores"])
     items = build_items(
-        tables["engine"], tables["sku_master"], tables["verticals"], contribution, lead_times, asts
+        tables["engine"], tables["sku_master"], tables["verticals"],
+        contribution, lead_times, store_size, asts
     )
     thresholds = classify(items)
     assign_best_action_tabs(items)

@@ -503,10 +503,17 @@ export function buildDrilldownFromFixture(fixture, query = {}, metricId, options
   const board = buildDashboardFromFixture(fixture, query, options);
   const merged = normalizeDemandQuery({ ...DEFAULT_DEMAND_QUERY, ...query });
   const card = board.kpis.find((kpi) => kpi.id === metricId);
+  const baselineItems = scopeItems(fixture.items, merged);
+  const levers = normalizeDemandLevers(options.levers ?? DEFAULT_DEMAND_LEVERS);
+  const applyLevers = engineFor(fixture.formulas, fixture.constants.dow_sum);
+  const items =
+    options.driveWholePage !== false && !isDemandBaseline(levers)
+      ? baselineItems.map((item) => applyLevers(item, levers))
+      : baselineItems;
 
   return buildDrilldown(
     metricId,
-    scopeItems(fixture.items, merged),
+    items,
     scopeStores(fixture.stores, merged),
     card?.value ?? 0,
   );

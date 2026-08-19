@@ -14,6 +14,7 @@ import {
   buildDashboardFromFixture,
   computeByChannel,
   computeByCluster,
+  computeBySeason,
   computeByState,
   computeByStore,
   computeKpis,
@@ -21,6 +22,7 @@ import {
   scopeCampaigns,
   scopeItems,
   scopeStores,
+  sum,
 } from "./selectors.js";
 
 const scopeOf = (overrides) => ({ ...DEFAULT_SCOPE, ...overrides });
@@ -209,6 +211,36 @@ describe("the Store filter", () => {
 
     expect(storeDashboard.campaigns).toEqual(chainDashboard.campaigns);
     expect(storeDashboard.by_season).toEqual(chainDashboard.by_season);
+  });
+});
+
+describe("the season mix", () => {
+  // Regression test: `total` called the keyed `sum` helper on a bare array of
+  // numbers, so it read `row[undefined]` and came back 0 for every season.
+  it("totals each season's segments, and the seasons total the campaign units", () => {
+    const rows = computeBySeason(fixture.campaigns);
+    expect(rows.length).toBeGreaterThan(0);
+
+    for (const row of rows) {
+      const segments = row.segments.reduce((total, s) => total + s.value, 0);
+      expect(row.total).toBeGreaterThan(0);
+      expect(row.total).toBeCloseTo(segments, 2);
+    }
+
+    const allSeasons = rows.reduce((total, row) => total + row.total, 0);
+    expect(allSeasons).toBeCloseTo(sum(fixture.campaigns, "pre_buy_uplift_units"), 2);
+  });
+
+  it("carries one segment per discount type on every season, zero-filled", () => {
+    const rows = computeBySeason(fixture.campaigns);
+    const types = [...new Set(fixture.campaigns.map((c) => c.discount_type))];
+
+    for (const row of rows) {
+      expect(row.segments.map((s) => s.discount_type)).toEqual(types);
+      for (const segment of row.segments) {
+        expect(Number.isFinite(segment.value)).toBe(true);
+      }
+    }
   });
 });
 

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.promotion_effectiveness",
-  "generated_at": "2026-08-19T04:06:15+00:00",
+  "generated_at": "2026-08-19T07:24:48+00:00",
   "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP or D365 Commerce position. ROI is a stored KPI; no separate promo-investment column is exposed.",
@@ -62,802 +62,802 @@
     "categories": [
       {
         "value": "DGT-C01",
-        "label": "Electronics",
+        "label": "DGT-C01 · Electronics",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C02",
-        "label": "Fashion",
+        "label": "DGT-C02 · Fashion",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C03",
-        "label": "Health & Beauty",
+        "label": "DGT-C03 · Health & Beauty",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C04",
-        "label": "Home & Living",
+        "label": "DGT-C04 · Home & Living",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C05",
-        "label": "Groceries",
+        "label": "DGT-C05 · Groceries",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C06",
-        "label": "Baby & Kids",
+        "label": "DGT-C06 · Baby & Kids",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C07",
-        "label": "Sports & Outdoor",
+        "label": "DGT-C07 · Sports & Outdoor",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C08",
-        "label": "Automotive",
+        "label": "DGT-C08 · Automotive",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C09",
-        "label": "Books & Stationery",
+        "label": "DGT-C09 · Books & Stationery",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C10",
-        "label": "Toys & Hobbies",
+        "label": "DGT-C10 · Toys & Hobbies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C11",
-        "label": "Digital Goods & Vouchers",
+        "label": "DGT-C11 · Digital Goods & Vouchers",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C12",
-        "label": "Mobile & Accessories",
+        "label": "DGT-C12 · Mobile & Accessories",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C13",
-        "label": "Computers",
+        "label": "DGT-C13 · Computers",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C14",
-        "label": "Gaming",
+        "label": "DGT-C14 · Gaming",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C15",
-        "label": "Fashion Accessories",
+        "label": "DGT-C15 · Fashion Accessories",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C16",
-        "label": "Beauty & Personal Care",
+        "label": "DGT-C16 · Beauty & Personal Care",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C17",
-        "label": "Furniture",
+        "label": "DGT-C17 · Furniture",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C18",
-        "label": "Kitchen",
+        "label": "DGT-C18 · Kitchen",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C19",
-        "label": "Pet Supplies",
+        "label": "DGT-C19 · Pet Supplies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C20",
-        "label": "Office Supplies",
+        "label": "DGT-C20 · Office Supplies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "ELC-C01",
-        "label": "Smartphones",
+        "label": "ELC-C01 · Smartphones",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C02",
-        "label": "Laptops & Notebooks",
+        "label": "ELC-C02 · Laptops & Notebooks",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C03",
-        "label": "Tablets",
+        "label": "ELC-C03 · Tablets",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C04",
-        "label": "Televisions",
+        "label": "ELC-C04 · Televisions",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C05",
-        "label": "Audio & Headphones",
+        "label": "ELC-C05 · Audio & Headphones",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C06",
-        "label": "Cameras",
+        "label": "ELC-C06 · Cameras",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C07",
-        "label": "Gaming Consoles",
+        "label": "ELC-C07 · Gaming Consoles",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C08",
-        "label": "Wearables & Smartwatch",
+        "label": "ELC-C08 · Wearables & Smartwatch",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C09",
-        "label": "Large Appliances",
+        "label": "ELC-C09 · Large Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C10",
-        "label": "Small Appliances",
+        "label": "ELC-C10 · Small Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C11",
-        "label": "Computer Components",
+        "label": "ELC-C11 · Computer Components",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C12",
-        "label": "Networking",
+        "label": "ELC-C12 · Networking",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C13",
-        "label": "Storage & Peripherals",
+        "label": "ELC-C13 · Storage & Peripherals",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C14",
-        "label": "Printers & Scanners",
+        "label": "ELC-C14 · Printers & Scanners",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C15",
-        "label": "Smart Home",
+        "label": "ELC-C15 · Smart Home",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C16",
-        "label": "Power & Charging",
+        "label": "ELC-C16 · Power & Charging",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C17",
-        "label": "Cables & Adapters",
+        "label": "ELC-C17 · Cables & Adapters",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C18",
-        "label": "Air Treatment",
+        "label": "ELC-C18 · Air Treatment",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C19",
-        "label": "Kitchen Appliances",
+        "label": "ELC-C19 · Kitchen Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C20",
-        "label": "Personal Care Electronics",
+        "label": "ELC-C20 · Personal Care Electronics",
         "legal_entity_id": "ELC"
       },
       {
         "value": "FSH-C01",
-        "label": "Men's Apparel",
+        "label": "FSH-C01 · Men's Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C02",
-        "label": "Women's Apparel",
+        "label": "FSH-C02 · Women's Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C03",
-        "label": "Kids' Apparel",
+        "label": "FSH-C03 · Kids' Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C04",
-        "label": "Men's Footwear",
+        "label": "FSH-C04 · Men's Footwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C05",
-        "label": "Women's Footwear",
+        "label": "FSH-C05 · Women's Footwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C06",
-        "label": "Bags & Luggage",
+        "label": "FSH-C06 · Bags & Luggage",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C07",
-        "label": "Accessories",
+        "label": "FSH-C07 · Accessories",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C08",
-        "label": "Watches",
+        "label": "FSH-C08 · Watches",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C09",
-        "label": "Jewelry",
+        "label": "FSH-C09 · Jewelry",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C10",
-        "label": "Sportswear",
+        "label": "FSH-C10 · Sportswear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C11",
-        "label": "Denim",
+        "label": "FSH-C11 · Denim",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C12",
-        "label": "Outerwear",
+        "label": "FSH-C12 · Outerwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C13",
-        "label": "Innerwear & Basics",
+        "label": "FSH-C13 · Innerwear & Basics",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C14",
-        "label": "Swimwear",
+        "label": "FSH-C14 · Swimwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C15",
-        "label": "Formalwear",
+        "label": "FSH-C15 · Formalwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C16",
-        "label": "Activewear",
+        "label": "FSH-C16 · Activewear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C17",
-        "label": "Eyewear",
+        "label": "FSH-C17 · Eyewear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C18",
-        "label": "Belts & Wallets",
+        "label": "FSH-C18 · Belts & Wallets",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C19",
-        "label": "Headwear",
+        "label": "FSH-C19 · Headwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C20",
-        "label": "Hosiery & Socks",
+        "label": "FSH-C20 · Hosiery & Socks",
         "legal_entity_id": "FSH"
       },
       {
         "value": "GMR-C01",
-        "label": "Menswear",
+        "label": "GMR-C01 · Menswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C02",
-        "label": "Womenswear",
+        "label": "GMR-C02 · Womenswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C03",
-        "label": "Kidswear",
+        "label": "GMR-C03 · Kidswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C04",
-        "label": "Footwear",
+        "label": "GMR-C04 · Footwear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C05",
-        "label": "Home Textiles",
+        "label": "GMR-C05 · Home Textiles",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C06",
-        "label": "Kitchenware",
+        "label": "GMR-C06 · Kitchenware",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C07",
-        "label": "Toys & Games",
+        "label": "GMR-C07 · Toys & Games",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C08",
-        "label": "Stationery",
+        "label": "GMR-C08 · Stationery",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C09",
-        "label": "Sporting Goods",
+        "label": "GMR-C09 · Sporting Goods",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C10",
-        "label": "Luggage & Travel",
+        "label": "GMR-C10 · Luggage & Travel",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C11",
-        "label": "Beauty & Fragrance",
+        "label": "GMR-C11 · Beauty & Fragrance",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C12",
-        "label": "Watches & Jewelry",
+        "label": "GMR-C12 · Watches & Jewelry",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C13",
-        "label": "Electronics Accessories",
+        "label": "GMR-C13 · Electronics Accessories",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C14",
-        "label": "Bedding",
+        "label": "GMR-C14 · Bedding",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C15",
-        "label": "Bath & Body",
+        "label": "GMR-C15 · Bath & Body",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C16",
-        "label": "Party & Seasonal",
+        "label": "GMR-C16 · Party & Seasonal",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C17",
-        "label": "Books & Media",
+        "label": "GMR-C17 · Books & Media",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C18",
-        "label": "Automotive Accessories",
+        "label": "GMR-C18 · Automotive Accessories",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C19",
-        "label": "Gifts & Novelty",
+        "label": "GMR-C19 · Gifts & Novelty",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C20",
-        "label": "Pet Supplies",
+        "label": "GMR-C20 · Pet Supplies",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GRC-C01",
-        "label": "Fruit",
+        "label": "GRC-C01 · Fruit",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C02",
-        "label": "Vegetable",
+        "label": "GRC-C02 · Vegetable",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C03",
-        "label": "Meat & Poultry",
+        "label": "GRC-C03 · Meat & Poultry",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C04",
-        "label": "Seafood",
+        "label": "GRC-C04 · Seafood",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C05",
-        "label": "Bakery",
+        "label": "GRC-C05 · Bakery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C06",
-        "label": "Dairy",
+        "label": "GRC-C06 · Dairy",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C07",
-        "label": "Frozen Food",
+        "label": "GRC-C07 · Frozen Food",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C08",
-        "label": "Beverages",
+        "label": "GRC-C08 · Beverages",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C09",
-        "label": "Snacks",
+        "label": "GRC-C09 · Snacks",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C10",
-        "label": "Confectionery",
+        "label": "GRC-C10 · Confectionery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C11",
-        "label": "Dry Grocery",
+        "label": "GRC-C11 · Dry Grocery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C12",
-        "label": "Canned & Jarred",
+        "label": "GRC-C12 · Canned & Jarred",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C13",
-        "label": "Condiments & Sauces",
+        "label": "GRC-C13 · Condiments & Sauces",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C14",
-        "label": "Household Care",
+        "label": "GRC-C14 · Household Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C15",
-        "label": "Personal Care",
+        "label": "GRC-C15 · Personal Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C16",
-        "label": "Baby Care",
+        "label": "GRC-C16 · Baby Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C17",
-        "label": "Pet Care",
+        "label": "GRC-C17 · Pet Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C18",
-        "label": "Health & Wellness",
+        "label": "GRC-C18 · Health & Wellness",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C19",
-        "label": "Ready Meals",
+        "label": "GRC-C19 · Ready Meals",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C20",
-        "label": "Beer Wine & Spirits",
+        "label": "GRC-C20 · Beer Wine & Spirits",
         "legal_entity_id": "GRC"
       },
       {
         "value": "HNB-C01",
-        "label": "OTC Medicine",
+        "label": "HNB-C01 · OTC Medicine",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C02",
-        "label": "Prescription (Rx)",
+        "label": "HNB-C02 · Prescription (Rx)",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C03",
-        "label": "Vitamins & Supplements",
+        "label": "HNB-C03 · Vitamins & Supplements",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C04",
-        "label": "First Aid",
+        "label": "HNB-C04 · First Aid",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C05",
-        "label": "Skincare",
+        "label": "HNB-C05 · Skincare",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C06",
-        "label": "Haircare",
+        "label": "HNB-C06 · Haircare",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C07",
-        "label": "Makeup & Cosmetics",
+        "label": "HNB-C07 · Makeup & Cosmetics",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C08",
-        "label": "Fragrance",
+        "label": "HNB-C08 · Fragrance",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C09",
-        "label": "Oral Care",
+        "label": "HNB-C09 · Oral Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C10",
-        "label": "Feminine Care",
+        "label": "HNB-C10 · Feminine Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C11",
-        "label": "Baby & Mother",
+        "label": "HNB-C11 · Baby & Mother",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C12",
-        "label": "Medical Devices",
+        "label": "HNB-C12 · Medical Devices",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C13",
-        "label": "Sun Care",
+        "label": "HNB-C13 · Sun Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C14",
-        "label": "Men's Grooming",
+        "label": "HNB-C14 · Men's Grooming",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C15",
-        "label": "Nutrition Drinks",
+        "label": "HNB-C15 · Nutrition Drinks",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C16",
-        "label": "Herbal & Traditional",
+        "label": "HNB-C16 · Herbal & Traditional",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C17",
-        "label": "Personal Wash",
+        "label": "HNB-C17 · Personal Wash",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C18",
-        "label": "Sanitizers & Hygiene",
+        "label": "HNB-C18 · Sanitizers & Hygiene",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C19",
-        "label": "Contact Lens & Care",
+        "label": "HNB-C19 · Contact Lens & Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C20",
-        "label": "Wellness Supplements",
+        "label": "HNB-C20 · Wellness Supplements",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNL-C01",
-        "label": "Sofas & Seating",
+        "label": "HNL-C01 · Sofas & Seating",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C02",
-        "label": "Beds & Mattresses",
+        "label": "HNL-C02 · Beds & Mattresses",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C03",
-        "label": "Dining Sets",
+        "label": "HNL-C03 · Dining Sets",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C04",
-        "label": "Wardrobes & Storage",
+        "label": "HNL-C04 · Wardrobes & Storage",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C05",
-        "label": "Office Furniture",
+        "label": "HNL-C05 · Office Furniture",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C06",
-        "label": "Shelving & Bookcases",
+        "label": "HNL-C06 · Shelving & Bookcases",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C07",
-        "label": "Lighting",
+        "label": "HNL-C07 · Lighting",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C08",
-        "label": "Rugs & Carpets",
+        "label": "HNL-C08 · Rugs & Carpets",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C09",
-        "label": "Curtains & Blinds",
+        "label": "HNL-C09 · Curtains & Blinds",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C10",
-        "label": "Home Decor",
+        "label": "HNL-C10 · Home Decor",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C11",
-        "label": "Wall Art",
+        "label": "HNL-C11 · Wall Art",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C12",
-        "label": "Kitchen & Dining",
+        "label": "HNL-C12 · Kitchen & Dining",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C13",
-        "label": "Bedding & Linen",
+        "label": "HNL-C13 · Bedding & Linen",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C14",
-        "label": "Bathroom",
+        "label": "HNL-C14 · Bathroom",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C15",
-        "label": "Outdoor & Garden",
+        "label": "HNL-C15 · Outdoor & Garden",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C16",
-        "label": "Kids' Furniture",
+        "label": "HNL-C16 · Kids' Furniture",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C17",
-        "label": "Mirrors",
+        "label": "HNL-C17 · Mirrors",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C18",
-        "label": "Clocks",
+        "label": "HNL-C18 · Clocks",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C19",
-        "label": "Artificial Plants",
+        "label": "HNL-C19 · Artificial Plants",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C20",
-        "label": "Home Organization",
+        "label": "HNL-C20 · Home Organization",
         "legal_entity_id": "HNL"
       },
       {
         "value": "OMN-C01",
-        "label": "Electronics",
+        "label": "OMN-C01 · Electronics",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C02",
-        "label": "Apparel",
+        "label": "OMN-C02 · Apparel",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C03",
-        "label": "Footwear",
+        "label": "OMN-C03 · Footwear",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C04",
-        "label": "Health & Beauty",
+        "label": "OMN-C04 · Health & Beauty",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C05",
-        "label": "Home & Living",
+        "label": "OMN-C05 · Home & Living",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C06",
-        "label": "Groceries & Fresh",
+        "label": "OMN-C06 · Groceries & Fresh",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C07",
-        "label": "Baby & Kids",
+        "label": "OMN-C07 · Baby & Kids",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C08",
-        "label": "Sports & Leisure",
+        "label": "OMN-C08 · Sports & Leisure",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C09",
-        "label": "Accessories",
+        "label": "OMN-C09 · Accessories",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C10",
-        "label": "Beauty & Cosmetics",
+        "label": "OMN-C10 · Beauty & Cosmetics",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C11",
-        "label": "Mobile & Gadgets",
+        "label": "OMN-C11 · Mobile & Gadgets",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C12",
-        "label": "Computers & Office",
+        "label": "OMN-C12 · Computers & Office",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C13",
-        "label": "Kitchen & Dining",
+        "label": "OMN-C13 · Kitchen & Dining",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C14",
-        "label": "Furniture",
+        "label": "OMN-C14 · Furniture",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C15",
-        "label": "Toys & Games",
+        "label": "OMN-C15 · Toys & Games",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C16",
-        "label": "Books & Media",
+        "label": "OMN-C16 · Books & Media",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C17",
-        "label": "Automotive",
+        "label": "OMN-C17 · Automotive",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C18",
-        "label": "Pet Care",
+        "label": "OMN-C18 · Pet Care",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C19",
-        "label": "Seasonal & Gifts",
+        "label": "OMN-C19 · Seasonal & Gifts",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C20",
-        "label": "Digital & Services",
+        "label": "OMN-C20 · Digital & Services",
         "legal_entity_id": "OMN"
       }
     ],
@@ -1839,7 +1839,7 @@
       "supplier_funding": 33539865.560720883,
       "supplier_funding_pct": 21.57,
       "cannibalisation_pct": 22.98,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 42297000.0,
       "base_ads": 40.6433,
       "seasonality": 1.14,
@@ -1885,7 +1885,7 @@
       "supplier_funding": 33047224.60762798,
       "supplier_funding_pct": 22.15,
       "cannibalisation_pct": 26.58,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 111518000.0,
       "base_ads": 32.7353,
       "seasonality": 1.14,
@@ -1908,7 +1908,7 @@
       "supplier_funding": 40779464.920053795,
       "supplier_funding_pct": 28.49,
       "cannibalisation_pct": 23.62,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 177354000.0,
       "base_ads": 25.7637,
       "seasonality": 1.14,
@@ -1931,7 +1931,7 @@
       "supplier_funding": 74513881.8362673,
       "supplier_funding_pct": 64.41,
       "cannibalisation_pct": 28.689999999999998,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 54786000.0,
       "base_ads": 30.2386,
       "seasonality": 1.14,
@@ -1977,7 +1977,7 @@
       "supplier_funding": 71234582.98740281,
       "supplier_funding_pct": 45.989999999999995,
       "cannibalisation_pct": 14.099999999999998,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 70241500.0,
       "base_ads": 38.0073,
       "seasonality": 1.14,
@@ -2023,7 +2023,7 @@
       "supplier_funding": 68559216.2742362,
       "supplier_funding_pct": 63.260000000000005,
       "cannibalisation_pct": 20.880000000000003,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 43192500.0,
       "base_ads": 33.4124,
       "seasonality": 1.14,
@@ -2046,7 +2046,7 @@
       "supplier_funding": 85145785.9725422,
       "supplier_funding_pct": 59.050000000000004,
       "cannibalisation_pct": 15.14,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 180979200.0,
       "base_ads": 30.0993,
       "seasonality": 1.14,
@@ -2092,7 +2092,7 @@
       "supplier_funding": 22504372.775317397,
       "supplier_funding_pct": 30.209999999999997,
       "cannibalisation_pct": 26.369999999999997,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 38704000.0,
       "base_ads": 21.8458,
       "seasonality": 1.14,
@@ -2115,7 +2115,7 @@
       "supplier_funding": 55139102.03897078,
       "supplier_funding_pct": 36.59,
       "cannibalisation_pct": 10.05,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 110214500.0,
       "base_ads": 28.3996,
       "seasonality": 1.14,
@@ -2138,7 +2138,7 @@
       "supplier_funding": 47222762.743467614,
       "supplier_funding_pct": 39.98,
       "cannibalisation_pct": 12.57,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 34495200.0,
       "base_ads": 32.8746,
       "seasonality": 1.14,
@@ -2184,7 +2184,7 @@
       "supplier_funding": 30493133.03987861,
       "supplier_funding_pct": 44.83,
       "cannibalisation_pct": 29.87,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 43120500.0,
       "base_ads": 16.0361,
       "seasonality": 1.14,
@@ -2230,7 +2230,7 @@
       "supplier_funding": 74437731.95937918,
       "supplier_funding_pct": 53.16,
       "cannibalisation_pct": 14.510000000000002,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 143957000.0,
       "base_ads": 33.2731,
       "seasonality": 1.14,
@@ -2253,7 +2253,7 @@
       "supplier_funding": 41597173.66268374,
       "supplier_funding_pct": 51.93,
       "cannibalisation_pct": 18.07,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 33086400.0,
       "base_ads": 21.308,
       "seasonality": 1.14,
@@ -2368,7 +2368,7 @@
       "supplier_funding": 23466165.31117674,
       "supplier_funding_pct": 31.35,
       "cannibalisation_pct": 34.18,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 44488600.0,
       "base_ads": 18.6721,
       "seasonality": 1.14,
@@ -2460,7 +2460,7 @@
       "supplier_funding": 21744978.17189161,
       "supplier_funding_pct": 48.620000000000005,
       "cannibalisation_pct": 15.959999999999999,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 24123300.0,
       "base_ads": 14.0772,
       "seasonality": 1.14,
@@ -2483,7 +2483,7 @@
       "supplier_funding": 23405554.7915283,
       "supplier_funding_pct": 30.48,
       "cannibalisation_pct": 11.21,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 87665600.0,
       "base_ads": 16.9723,
       "seasonality": 1.14,
@@ -2598,7 +2598,7 @@
       "supplier_funding": 237005235.76845545,
       "supplier_funding_pct": 28.08,
       "cannibalisation_pct": 23.45,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 1001651200.0,
       "base_ads": 14.2022,
       "seasonality": 1.0,
@@ -2782,7 +2782,7 @@
       "supplier_funding": 394836318.9177911,
       "supplier_funding_pct": 41.71,
       "cannibalisation_pct": 28.93,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 1040758800.0,
       "base_ads": 14.1431,
       "seasonality": 1.0,
@@ -2874,7 +2874,7 @@
       "supplier_funding": 488590189.90922654,
       "supplier_funding_pct": 62.4,
       "cannibalisation_pct": 19.63,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 846211200.0,
       "base_ads": 10.7882,
       "seasonality": 1.0,
@@ -3012,7 +3012,7 @@
       "supplier_funding": 266455611.46078882,
       "supplier_funding_pct": 64.75,
       "cannibalisation_pct": 13.819999999999999,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 293150000.0,
       "base_ads": 6.8895,
       "seasonality": 1.0,
@@ -3219,7 +3219,7 @@
       "supplier_funding": 115318905.62209749,
       "supplier_funding_pct": 39.72,
       "cannibalisation_pct": 16.33,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 347742500.0,
       "base_ads": 3.8727,
       "seasonality": 1.0,
@@ -3541,7 +3541,7 @@
       "supplier_funding": 396930405.47551465,
       "supplier_funding_pct": 39.68,
       "cannibalisation_pct": 22.759999999999998,
-      "state": "Low",
+      "state": "Stockout",
       "inventory_value": 798613200.0,
       "base_ads": 7.8234,
       "seasonality": 0.98,
@@ -3725,7 +3725,7 @@
       "supplier_funding": 111324846.23817398,
       "supplier_funding_pct": 51.31,
       "cannibalisation_pct": 15.64,
-      "state": "Low",
+      "state": "Stockout",
       "inventory_value": 180560700.0,
       "base_ads": 10.9696,
       "seasonality": 0.98,
@@ -3840,7 +3840,7 @@
       "supplier_funding": 60563327.41099669,
       "supplier_funding_pct": 59.64,
       "cannibalisation_pct": 25.28,
-      "state": "Healthy",
+      "state": "Low",
       "inventory_value": 144075600.0,
       "base_ads": 5.2376,
       "seasonality": 0.98,
@@ -3978,7 +3978,7 @@
       "supplier_funding": 247389007.36858228,
       "supplier_funding_pct": 63.129999999999995,
       "cannibalisation_pct": 13.15,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 413776800.0,
       "base_ads": 20.0724,
       "seasonality": 1.05,
@@ -4116,7 +4116,7 @@
       "supplier_funding": 181980128.19517785,
       "supplier_funding_pct": 52.790000000000006,
       "cannibalisation_pct": 18.94,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 101137200.0,
       "base_ads": 17.2032,
       "seasonality": 1.05,
@@ -4139,7 +4139,7 @@
       "supplier_funding": 109945927.1848349,
       "supplier_funding_pct": 44.5,
       "cannibalisation_pct": 26.790000000000003,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 132012000.0,
       "base_ads": 17.9395,
       "seasonality": 1.05,
@@ -4162,7 +4162,7 @@
       "supplier_funding": 127124332.32312289,
       "supplier_funding_pct": 32.57,
       "cannibalisation_pct": 21.63,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 405588000.0,
       "base_ads": 17.4448,
       "seasonality": 1.05,
@@ -4231,7 +4231,7 @@
       "supplier_funding": 85277955.76508807,
       "supplier_funding_pct": 40.45,
       "cannibalisation_pct": 34.849999999999994,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 247298400.0,
       "base_ads": 10.1932,
       "seasonality": 1.05,
@@ -4300,7 +4300,7 @@
       "supplier_funding": 66883082.667571865,
       "supplier_funding_pct": 34.93,
       "cannibalisation_pct": 15.809999999999999,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 138238100.0,
       "base_ads": 11.8752,
       "seasonality": 1.05,
@@ -4392,7 +4392,7 @@
       "supplier_funding": 130647765.35357961,
       "supplier_funding_pct": 63.0,
       "cannibalisation_pct": 29.759999999999998,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 130946000.0,
       "base_ads": 9.1631,
       "seasonality": 1.05,
@@ -4484,7 +4484,7 @@
       "supplier_funding": 107129328.96643886,
       "supplier_funding_pct": 62.91,
       "cannibalisation_pct": 16.38,
-      "state": "Stockout",
+      "state": "Healthy",
       "inventory_value": 95560400.0,
       "base_ads": 13.2312,
       "seasonality": 1.05,
@@ -4576,7 +4576,7 @@
       "supplier_funding": 21150109.303366482,
       "supplier_funding_pct": 32.550000000000004,
       "cannibalisation_pct": 21.3,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 26569000.0,
       "base_ads": 4.9495,
       "seasonality": 1.05,
@@ -4599,7 +4599,7 @@
       "supplier_funding": 36215190.34851643,
       "supplier_funding_pct": 54.269999999999996,
       "cannibalisation_pct": 12.989999999999998,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 20339200.0,
       "base_ads": 4.6236,
       "seasonality": 1.05,
@@ -4622,7 +4622,7 @@
       "supplier_funding": 2441436825.2027063,
       "supplier_funding_pct": 21.48,
       "cannibalisation_pct": 17.64,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 8469565400.0,
       "base_ads": 5.6686,
       "seasonality": 1.02,
@@ -4645,7 +4645,7 @@
       "supplier_funding": 4471596162.700482,
       "supplier_funding_pct": 38.05,
       "cannibalisation_pct": 22.09,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 12880024500.0,
       "base_ads": 6.6138,
       "seasonality": 1.02,
@@ -4737,7 +4737,7 @@
       "supplier_funding": 1666517880.701406,
       "supplier_funding_pct": 23.48,
       "cannibalisation_pct": 30.23,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 4515199100.0,
       "base_ads": 3.9637,
       "seasonality": 1.02,
@@ -4852,7 +4852,7 @@
       "supplier_funding": 1554882857.9429486,
       "supplier_funding_pct": 29.81,
       "cannibalisation_pct": 27.27,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 6192891000.0,
       "base_ads": 2.6116,
       "seasonality": 1.02,
@@ -4921,7 +4921,7 @@
       "supplier_funding": 3836660140.197997,
       "supplier_funding_pct": 60.370000000000005,
       "cannibalisation_pct": 18.8,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 7657185600.0,
       "base_ads": 3.4524,
       "seasonality": 1.02,
@@ -4944,7 +4944,7 @@
       "supplier_funding": 3482444701.8797255,
       "supplier_funding_pct": 54.85,
       "cannibalisation_pct": 24.759999999999998,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 4672515600.0,
       "base_ads": 3.9907,
       "seasonality": 1.02,
@@ -4967,7 +4967,7 @@
       "supplier_funding": 2083499859.0331779,
       "supplier_funding_pct": 44.17,
       "cannibalisation_pct": 20.93,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 2918646200.0,
       "base_ads": 2.43,
       "seasonality": 1.02,
@@ -5059,7 +5059,7 @@
       "supplier_funding": 5859363682.970809,
       "supplier_funding_pct": 52.5,
       "cannibalisation_pct": 30.570000000000004,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 12034478400.0,
       "base_ads": 5.7729,
       "seasonality": 1.02,
@@ -5381,7 +5381,7 @@
       "supplier_funding": 801036983.6983988,
       "supplier_funding_pct": 43.53,
       "cannibalisation_pct": 22.56,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 1989134000.0,
       "base_ads": 1.3525,
       "seasonality": 1.0,
@@ -5496,7 +5496,7 @@
       "supplier_funding": 561965526.2001581,
       "supplier_funding_pct": 55.85,
       "cannibalisation_pct": 10.05,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 688424700.0,
       "base_ads": 4.0645,
       "seasonality": 1.0,
@@ -5565,7 +5565,7 @@
       "supplier_funding": 310087634.9692133,
       "supplier_funding_pct": 41.410000000000004,
       "cannibalisation_pct": 26.58,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 526838400.0,
       "base_ads": 4.6688,
       "seasonality": 1.0,
@@ -5588,7 +5588,7 @@
       "supplier_funding": 156584258.54032066,
       "supplier_funding_pct": 27.42,
       "cannibalisation_pct": 14.510000000000002,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 597622200.0,
       "base_ads": 4.7438,
       "seasonality": 1.0,
@@ -5818,7 +5818,7 @@
       "supplier_funding": 168729802.0747702,
       "supplier_funding_pct": 55.98,
       "cannibalisation_pct": 18.44,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 354387300.0,
       "base_ads": 1.9736,
       "seasonality": 1.0,
@@ -5864,7 +5864,7 @@
       "supplier_funding": 74733704.80594636,
       "supplier_funding_pct": 35.29,
       "cannibalisation_pct": 27.74,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 253125300.0,
       "base_ads": 3.076,
       "seasonality": 1.0,
@@ -5887,7 +5887,7 @@
       "supplier_funding": 61111755.57331355,
       "supplier_funding_pct": 43.4,
       "cannibalisation_pct": 14.17,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 85987200.0,
       "base_ads": 3.4434,
       "seasonality": 1.0,
@@ -5979,7 +5979,7 @@
       "supplier_funding": 14406440.18624778,
       "supplier_funding_pct": 57.98,
       "cannibalisation_pct": 31.04,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 26444800.0,
       "base_ads": 0.7482,
       "seasonality": 1.0,
@@ -6025,7 +6025,7 @@
       "supplier_funding": 3308822555.7021194,
       "supplier_funding_pct": 53.23,
       "cannibalisation_pct": 24.09,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 6961160800.0,
       "base_ads": 33.525,
       "seasonality": 1.04,
@@ -6186,7 +6186,7 @@
       "supplier_funding": 989346925.615162,
       "supplier_funding_pct": 30.91,
       "cannibalisation_pct": 27.389999999999997,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 3209430400.0,
       "base_ads": 18.3439,
       "seasonality": 1.04,
@@ -6209,7 +6209,7 @@
       "supplier_funding": 1762668763.1165442,
       "supplier_funding_pct": 59.34,
       "cannibalisation_pct": 22.93,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 2064971400.0,
       "base_ads": 13.9134,
       "seasonality": 1.04,
@@ -6232,7 +6232,7 @@
       "supplier_funding": 1121704921.2225676,
       "supplier_funding_pct": 30.54,
       "cannibalisation_pct": 20.79,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 4542576000.0,
       "base_ads": 18.7061,
       "seasonality": 1.04,
@@ -6324,7 +6324,7 @@
       "supplier_funding": 1422810658.2516968,
       "supplier_funding_pct": 22.67,
       "cannibalisation_pct": 32.57,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 6926144900.0,
       "base_ads": 29.5835,
       "seasonality": 1.04,
@@ -6347,7 +6347,7 @@
       "supplier_funding": 1635656039.9527287,
       "supplier_funding_pct": 50.14999999999999,
       "cannibalisation_pct": 23.82,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 914112200.0,
       "base_ads": 21.2291,
       "seasonality": 1.04,
@@ -6393,7 +6393,7 @@
       "supplier_funding": 1310260560.6484559,
       "supplier_funding_pct": 51.23,
       "cannibalisation_pct": 11.5,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 3120751800.0,
       "base_ads": 11.5171,
       "seasonality": 1.04,
@@ -6531,7 +6531,7 @@
       "supplier_funding": 1531505486.247992,
       "supplier_funding_pct": 38.65,
       "cannibalisation_pct": 32.23,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 2820511900.0,
       "base_ads": 21.1025,
       "seasonality": 1.04,
@@ -6577,7 +6577,7 @@
       "supplier_funding": 2097199213.9266531,
       "supplier_funding_pct": 55.22,
       "cannibalisation_pct": 11.68,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 3871431000.0,
       "base_ads": 25.5329,
       "seasonality": 1.04,
@@ -6623,7 +6623,7 @@
       "supplier_funding": 459463383.1996241,
       "supplier_funding_pct": 38.78,
       "cannibalisation_pct": 15.620000000000001,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 1345784700.0,
       "base_ads": 7.4665,
       "seasonality": 1.04,
@@ -6876,7 +6876,7 @@
       "supplier_funding": 1781677617.2395122,
       "supplier_funding_pct": 34.260000000000005,
       "cannibalisation_pct": 31.869999999999997,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 3402848400.0,
       "base_ads": 11.3297,
       "seasonality": 1.02,
@@ -6922,7 +6922,7 @@
       "supplier_funding": 3199494207.1995416,
       "supplier_funding_pct": 50.470000000000006,
       "cannibalisation_pct": 29.74,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 7661346000.0,
       "base_ads": 14.5248,
       "seasonality": 1.02,
@@ -6968,7 +6968,7 @@
       "supplier_funding": 2292389313.929612,
       "supplier_funding_pct": 36.39,
       "cannibalisation_pct": 27.860000000000003,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 6323499700.0,
       "base_ads": 16.911,
       "seasonality": 1.02,
@@ -6991,7 +6991,7 @@
       "supplier_funding": 3834490674.511696,
       "supplier_funding_pct": 64.82,
       "cannibalisation_pct": 23.400000000000002,
-      "state": "Stockout",
+      "state": "Low",
       "inventory_value": 3970158300.0,
       "base_ads": 13.9573,
       "seasonality": 1.02,
@@ -7037,7 +7037,7 @@
       "supplier_funding": 1197340960.9311285,
       "supplier_funding_pct": 26.16,
       "cannibalisation_pct": 20.44,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 5455925000.0,
       "base_ads": 9.7321,
       "seasonality": 1.02,
@@ -7060,7 +7060,7 @@
       "supplier_funding": 2479123648.3282843,
       "supplier_funding_pct": 36.02,
       "cannibalisation_pct": 21.26,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 8435704200.0,
       "base_ads": 17.1525,
       "seasonality": 1.02,
@@ -7244,7 +7244,7 @@
       "supplier_funding": 523240016.1409186,
       "supplier_funding_pct": 28.15,
       "cannibalisation_pct": 33.03,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 2021724300.0,
       "base_ads": 4.404,
       "seasonality": 1.02,
@@ -7267,7 +7267,7 @@
       "supplier_funding": 1597182280.6330333,
       "supplier_funding_pct": 58.709999999999994,
       "cannibalisation_pct": 24.560000000000002,
-      "state": "Low",
+      "state": "Healthy",
       "inventory_value": 3007079600.0,
       "base_ads": 7.0317,
       "seasonality": 1.02,

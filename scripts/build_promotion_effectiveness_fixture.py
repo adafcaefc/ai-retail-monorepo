@@ -46,7 +46,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
+import workbook_guard  # noqa: E402
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -391,7 +393,10 @@ def build_filter_options(
         categories.append(
             {
                 "value": cat_id,
-                "label": row.get("category", cat_id),
+                # id first: category name is not unique across verticals
+                # (e.g. DGT-C01 and OMN-C01 are both "Electronics"), so the
+                # bare name alone cannot tell two dropdown entries apart.
+                "label": f"{cat_id} · {row.get('category', cat_id)}",
                 "legal_entity_id": row["vertical_id"],
             }
         )
@@ -447,6 +452,11 @@ def _iso(value: Any) -> str | None:
 
 
 def main() -> int:
+    # A fixture built from the wrong workbook is committed to the repo
+    # and read by every board in standalone mode, so it needs the same
+    # check the seeders make before they touch the warehouse.
+    workbook_guard.check(SOURCE)
+
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
         print("      run scripts/extract_workbook_schema.py first")

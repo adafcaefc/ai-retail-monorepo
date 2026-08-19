@@ -46,6 +46,9 @@ describe("AssortmentOptimizationDashboard", () => {
 
     expect(document.querySelectorAll(".assortment-kpi")).toHaveLength(6);
     expect(screen.getByText("Delist vs grow opportunity")).toBeInTheDocument();
+    // The Demo Script names this one for step 7: "A6 Pareto + GMROI".
+    expect(screen.getByText("Margin contribution Pareto")).toBeInTheDocument();
+    expect(screen.getByText("Range decision mix")).toBeInTheDocument();
     expect(screen.getByText("Contribution/day by vertical")).toBeInTheDocument();
     expect(screen.getByText("Contribution/day by category")).toBeInTheDocument();
     expect(screen.getByText("Contribution/day by store")).toBeInTheDocument();

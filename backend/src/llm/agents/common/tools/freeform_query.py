@@ -13,6 +13,7 @@ from typing import Any, Literal
 import sqlglot
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlglot import exp
 from sqlglot.errors import OptimizeError, ParseError
 from sqlglot.optimizer.qualify import qualify
@@ -132,6 +133,25 @@ REPLENISHMENT_ALLOWED_TABLES = (
     "retail.fact_inventory_chain_daily",
 )
 
+# Agent 3.1 · Replenishment Detail. The same tables as Agent 3, because it is
+# the line-level view of the same recommendation - `replenishment_proposal` IS
+# the `Replenishment Detail` worksheet. It reads its own tuple rather than
+# aliasing Replenishment's, and carries its own `db_domain`, because
+# `CANONICAL_AGENT` in `src/actions/service.py` maps a domain back to exactly
+# one agent id: two boards sharing a domain would make each one's alerts
+# resolve to the other.
+#
+# It does not read `fact_inventory_chain_daily`. Agent 3 joins it for What-If
+# parameters and the retail-priced order value; this board has no simulator and
+# prices at cost, so an agent given it would be told it may read a fact nothing
+# on the board is derived from.
+REPLENISHMENT_DETAIL_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.replenishment_proposal",
+    "retail.trade_agreement",
+    "retail.dim_vendor",
+)
+
 # Agent 4 · Promotion Effectiveness. The two promo tables are its own; the
 # chain-net inventory fact is where per-SKU promo margin is rolled up from
 # (margin_rp / funding_rp), joined to dim_item for the promo-eligible flag,
@@ -159,6 +179,16 @@ PRICING_ALLOWED_TABLES = (
     "retail.dim_item",
 )
 
+# Agent 6 · Assortment Optimization. Chains net inventory, assortment master,
+# and per-store rollups for GMROI, tail analysis and delist rationalization.
+ASSORTMENT_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.assortment",
+    "retail.fact_inventory_chain_daily",
+    "retail.fact_inventory_daily",
+    "retail.dim_vendor",
+)
+
 DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "finance": FINANCE_ALLOWED_TABLES,
     "cashflow": CASHFLOW_ALLOWED_TABLES,
@@ -170,8 +200,10 @@ DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "retail_demand": DEMAND_ALLOWED_TABLES,
     "retail_inventory": INVENTORY_ALLOWED_TABLES,
     "retail_replenishment": REPLENISHMENT_ALLOWED_TABLES,
+    "retail_replenishment_detail": REPLENISHMENT_DETAIL_ALLOWED_TABLES,
     "retail_promotion": PROMOTION_ALLOWED_TABLES,
     "retail_pricing": PRICING_ALLOWED_TABLES,
+    "retail_assortment": ASSORTMENT_ALLOWED_TABLES,
 }
 
 # Domain whose agent is currently running. Simulation/execution tools read
@@ -488,51 +520,68 @@ def freeform_query(
 
     with sql_engine.connect() as connection:
         for index, raw_query in enumerate(queries):
-            validated = _validate_query(
-                raw_query,
-                allowed_types=type_allow,
-                allowed_tables=table_allow,
-                schema=schema,
-            )
-            result = connection.execute(text(validated))
-
-            if result.returns_rows:
-                mappings = result.mappings().all()
-                truncated = len(mappings) > max_rows
-                rows = [
-                    {
-                        str(key): _json_value(value)
-                        for key, value in row.items()
-                    }
-                    for row in mappings[:max_rows]
-                ]
-                results.append(
-                    {
-                        "index": index,
-                        "query": validated,
-                        "count": len(rows),
-                        "truncated": truncated,
-                        "max_rows": max_rows,
-                        "rows": rows,
-                    }
+            # A bad column/table/statement is the model's mistake to fix, not
+            # ours to crash on: raising here would escape wrap_tool's re-raise
+            # (see tool_events.py) uncaught, abort the whole agent run, and
+            # leave the model without the "call describe_*_tables()" guidance
+            # _validate_query put in the message. Every other tool in this
+            # package (formula_tools.py) returns {"error": ...} for the same
+            # reason -- so the model sees the failure and can retry.
+            try:
+                validated = _validate_query(
+                    raw_query,
+                    allowed_types=type_allow,
+                    allowed_tables=table_allow,
+                    schema=schema,
                 )
-            else:
-                if read_only:
-                    connection.rollback()
-                    raise ValueError(
-                        "Write statements are not permitted for this tool configuration."
+                result = connection.execute(text(validated))
+
+                if result.returns_rows:
+                    mappings = result.mappings().all()
+                    truncated = len(mappings) > max_rows
+                    rows = [
+                        {
+                            str(key): _json_value(value)
+                            for key, value in row.items()
+                        }
+                        for row in mappings[:max_rows]
+                    ]
+                    results.append(
+                        {
+                            "index": index,
+                            "query": validated,
+                            "count": len(rows),
+                            "truncated": truncated,
+                            "max_rows": max_rows,
+                            "rows": rows,
+                        }
                     )
-                connection.commit()
+                else:
+                    if read_only:
+                        connection.rollback()
+                        raise ValueError(
+                            "Write statements are not permitted for this tool configuration."
+                        )
+                    connection.commit()
+                    results.append(
+                        {
+                            "index": index,
+                            "query": validated,
+                            "count": result.rowcount,
+                            "truncated": False,
+                            "max_rows": max_rows,
+                            "rows": [],
+                            "rowcount": result.rowcount,
+                        }
+                    )
+            except ValueError as exc:
                 results.append(
-                    {
-                        "index": index,
-                        "query": validated,
-                        "count": result.rowcount,
-                        "truncated": False,
-                        "max_rows": max_rows,
-                        "rows": [],
-                        "rowcount": result.rowcount,
-                    }
+                    {"index": index, "query": raw_query, "error": str(exc)}
+                )
+            except SQLAlchemyError as exc:
+                connection.rollback()
+                results.append(
+                    {"index": index, "query": raw_query, "error": str(exc)}
                 )
 
     return {
@@ -1104,6 +1153,40 @@ def query_retail_replenishment(queries: list[str]) -> dict[str, Any]:
     return _domain_query(queries, allowed_tables=REPLENISHMENT_ALLOWED_TABLES)
 
 
+def query_retail_replenishment_detail(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail replenishment detail tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_replenishment_detail_snapshot for the standard view; use this for
+    custom filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.dim_vendor, retail.agent_kpi_reference,
+    retail.formula, retail.replenishment_proposal, retail.trade_agreement,
+    audit.import_batches.
+
+    `replenishment_proposal` is the `Replenishment Detail` worksheet: one row
+    per SKU, 800 rows, keyed (item_key, as_of_date). It has NO store, cluster,
+    channel, run id or approval state, so no query here can answer a per-store
+    or per-run question.
+
+    GRAIN AND UNITS. Position is not stored -- it is qty_on_hand + open_po_qty.
+    is_reorder is a strict Position < ROP; equality does not trigger.
+    unit_price_ta and best_price are per SALES unit, so
+    amount = order_qty_buy * dim_item.pack_factor * unit_price_ta and
+    saving_vs_designated prices that same rounded quantity. Multiplying by
+    order_qty_buy alone understates a Crate line twelvefold. order_qty_buy is a
+    CEILING against pack_factor, so it intentionally buys at or above the
+    Max - Position requirement.
+
+    Never SUM(order_qty_buy) across rows without grouping by buy_uom: Crates,
+    Pallets and Packs are not a common unit.
+    """
+    return _domain_query(queries, allowed_tables=REPLENISHMENT_DETAIL_ALLOWED_TABLES)
+
+
 def describe_retail_demand_tables(
     tables: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -1145,6 +1228,21 @@ def describe_retail_replenishment_tables(
     """
     return describe_tables(
         allowed_tables=REPLENISHMENT_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
+def describe_retail_replenishment_detail_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail replenishment detail allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=REPLENISHMENT_DETAIL_ALLOWED_TABLES,
         tables=tables,
     )
 
@@ -1236,14 +1334,48 @@ def describe_retail_pricing_tables(
     )
 
 
+def query_retail_assortment(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail assortment optimization tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_assortment_performance_snapshot for the standard view; use this for
+    custom cuts, ranking or drilldowns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
+    retail.assortment, retail.fact_inventory_chain_daily,
+    retail.fact_inventory_daily, retail.dim_vendor, audit.import_batches.
+    """
+    return _domain_query(queries, allowed_tables=ASSORTMENT_ALLOWED_TABLES)
+
+
+def describe_retail_assortment_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail assortment allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=ASSORTMENT_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
 # The shared caveats are appended rather than pasted into each docstring, so
 # the retail query tools cannot drift apart on the one thing they must all say.
 for _tool in (
     query_retail_demand,
     query_retail_inventory,
     query_retail_replenishment,
+    query_retail_replenishment_detail,
     query_retail_promotion,
     query_retail_pricing,
+    query_retail_assortment,
 ):
     _tool.__doc__ = (_tool.__doc__ or "") + _RETAIL_QUERY_NOTES
 del _tool
@@ -1257,8 +1389,10 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "query_retail_demand": query_retail_demand,
     "query_retail_inventory": query_retail_inventory,
     "query_retail_replenishment": query_retail_replenishment,
+    "query_retail_replenishment_detail": query_retail_replenishment_detail,
     "query_retail_promotion": query_retail_promotion,
     "query_retail_pricing": query_retail_pricing,
+    "query_retail_assortment": query_retail_assortment,
     "describe_financial_performance_tables": describe_financial_performance_tables,
     "describe_cashflow_tables": describe_cashflow_tables,
     "describe_collections_tables": describe_collections_tables,
@@ -1266,12 +1400,17 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "describe_retail_demand_tables": describe_retail_demand_tables,
     "describe_retail_inventory_tables": describe_retail_inventory_tables,
     "describe_retail_replenishment_tables": describe_retail_replenishment_tables,
+    "describe_retail_replenishment_detail_tables": (
+        describe_retail_replenishment_detail_tables
+    ),
     "describe_retail_promotion_tables": describe_retail_promotion_tables,
     "describe_retail_pricing_tables": describe_retail_pricing_tables,
+    "describe_retail_assortment_tables": describe_retail_assortment_tables,
 }
 
 
 __all__ = [
+    "ASSORTMENT_ALLOWED_TABLES",
     "CASHFLOW_ALLOWED_TABLES",
     "COLLECTIONS_ALLOWED_TABLES",
     "DEMAND_ALLOWED_TABLES",
@@ -1283,12 +1422,14 @@ __all__ = [
     "PRICING_ALLOWED_TABLES",
     "PROMOTION_ALLOWED_TABLES",
     "REPLENISHMENT_ALLOWED_TABLES",
+    "REPLENISHMENT_DETAIL_ALLOWED_TABLES",
     "RETAIL_SHARED_TABLES",
     "clear_schema_cache",
     "describe_cashflow_tables",
     "describe_collections_tables",
     "describe_financial_performance_tables",
     "describe_payment_leakage_tables",
+    "describe_retail_assortment_tables",
     "describe_retail_demand_tables",
     "describe_retail_inventory_tables",
     "describe_retail_replenishment_tables",
@@ -1300,6 +1441,7 @@ __all__ = [
     "query_collections",
     "query_financial_performance",
     "query_payment_leakage",
+    "query_retail_assortment",
     "query_retail_demand",
     "query_retail_inventory",
     "query_retail_replenishment",

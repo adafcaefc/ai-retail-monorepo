@@ -16,20 +16,28 @@ audit did not flag these as broken.
 
 `fact_inventory_daily` (store grain, ~16,000 rows) is where markdown
 candidacy and its money figures come from, per the audit's own recommended
-fix (F-05): a SKU is a markdown candidate if ANY of its stores show state in
-{Expiry, Overstock, Slow-mover}, and `at_risk_value` / `recoverable_value` are
-summed across that SKU's stores rather than read off the chain fact's own
-`at_risk_value` column (a different, chain-net figure). Neither
+fix (F-05): with no `store_id` in scope, a SKU is a markdown candidate if ANY
+of its stores show state in {Expiry, Overstock, Slow-mover}, and
+`at_risk_value` / `recoverable_value` are summed across that SKU's stores
+rather than read off the chain fact's own `at_risk_value` column (a
+different, chain-net figure). Scoped to one store, `build()` reruns that same
+aggregation (`aggregate_markdown_by_sku`) over just that store's rows instead
+-- state/candidacy/money then reflect that store alone, and SKUs the store
+does not stock drop out of `items` entirely, rather than the chain-wide
+total silently standing in unchanged. Neither
 `fact_inventory_daily` nor `fact_inventory_chain_daily` stores the two
 markdown-specific columns migration 004 added
 (`markdown_at_risk_value`/`markdown_recoverable`) populated — the seeder never
 wrote them — so this module computes them itself, at request time, via the
 same f12/f23/f14 formulas the browser's What-If engine runs, read from
-`retail.formula` (never hand-restated). This is deliberately unscoped by any
-filter: an item's own money figures must be its true full-chain values
-regardless of which vertical/category the caller is looking at, exactly as
+`retail.formula` (never hand-restated). Deliberately unscoped by
+legal_entity_id/category_group: an item's own money figures must be its true
+total across whichever stores are in view regardless of which vertical/
+category the caller is looking at, exactly as
 `scripts/build_pricing_markdown_fixture.py::aggregate_markdown_by_sku` runs
-over the whole ENGINE_STORE table before any scope is applied.
+over the whole ENGINE_STORE table before that scope is applied. `store_id` is
+the one filter that does narrow it -- "whichever stores are in view" becomes
+one store instead of every store the SKU sits in.
 
 WHY `is_mock` STAYS TRUE
 See `warehouse.envelope()`: rows are real, but they are one workbook snapshot
@@ -49,7 +57,7 @@ from src.llm.agents.retail.common.warehouse import (
     SCHEMA,
     SNAPSHOT_DATE,
     STATE_ORDER,
-    SUPPORTED_FILTERS,
+    SUPPORTED_FILTERS as _BASE_SUPPORTED_FILTERS,
     _rows,
     chain_store_size,
     envelope,
@@ -57,6 +65,14 @@ from src.llm.agents.retail.common.warehouse import (
     formulas,
     get_engine,
 )
+
+# store_id is this agent's own addition on top of the pair every Retail board
+# shares (legal_entity_id/category_group): unlike them, narrowing it means
+# recomputing an item's money/candidacy at store grain rather than merely
+# trimming rows, so it stays a local override rather than moving into
+# warehouse.SUPPORTED_FILTERS, which promotion_effectiveness also imports and
+# still only honours client-side. See `build()` below.
+SUPPORTED_FILTERS: frozenset[str] = _BASE_SUPPORTED_FILTERS | {"store_id"}
 
 AGENT_ID = "retail.pricing_markdown"
 
@@ -110,13 +126,14 @@ NOTE = (
     "chain-net headline."
 )
 
-# legal_entity_id and category_group narrow the returned `items`; state and
-# store_id stay client-side only (frontend/.../data/selectors.js's scopeItems
-# and scopeStores), the same split promotion_effectiveness uses for store_id.
-# An item's own at-risk/recoverable value must reflect its true full-chain
-# total regardless of scope, so narrowing further here would corrupt that
-# figure rather than merely trim the payload -- see the module docstring.
-# (Imported from warehouse, already exactly this pair -- re-exported below.)
+# legal_entity_id and category_group narrow the returned `items` by row;
+# store_id narrows it by row AND recomputes each item's state/candidacy/money
+# at that one store's grain (see `build()` and the module docstring). `state`
+# stays client-side only (frontend/.../data/selectors.js's scopeItems), since
+# it labels a row post-hoc rather than selecting which stores feed its money.
+# promotion_effectiveness still treats store_id as client-side-only -- this
+# agent is the one exception, hence the local SUPPORTED_FILTERS override
+# above rather than changing the pair every Retail board shares.
 
 _MONEY_FORMULA_IDS = (
     "f12-at-risk-value",
@@ -402,8 +419,11 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     scope = scope or DashboardScope()
 
     with get_engine().connect() as connection:
-        # UNSCOPED on purpose -- see the module docstring. Every store row
-        # chain-wide is needed to get any one SKU's own money figures right.
+        # UNSCOPED in SQL on purpose -- see the module docstring. Read every
+        # store row chain-wide; `scope.store_id` (if any) is applied in
+        # Python below, once these rows are already in hand, since both the
+        # unscoped `reference` block and a store-scoped `items` need to
+        # aggregate over this same set.
         store_rows = _rows(
             connection,
             f"""
@@ -451,11 +471,29 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         options = filter_options(connection)
 
     all_items = build_items(chain_rows, markdown_by_sku, lead_days, store_sizes)
+    # Reference stays chain-wide even under a store scope: it is a benchmark
+    # (avg markdown depth per vertical), not a figure the store filter claims
+    # to narrow, same as agent_kpi_reference is never scoped for the sibling
+    # boards.
     reference = build_reference(all_items, options["legal_entities"])
+
+    if scope.store_id:
+        # Rerun the same store-grain aggregation the unscoped path used
+        # above, but over just this store's rows -- state/candidacy/money
+        # then reflect that one store, and a SKU the store does not stock
+        # simply is not in `store_scoped_items` below (dropped further down,
+        # after the vertical/category filters, alongside everything else).
+        rows_at_store = [row for row in store_money_rows if row["store_key"] == scope.store_id]
+        store_markdown_by_sku = aggregate_markdown_by_sku(rows_at_store)
+        store_scoped_items = build_items(chain_rows, store_markdown_by_sku, lead_days, store_sizes)
+        stocked_skus = {row["item_key"] for row in rows_at_store}
+        population = [item for item in store_scoped_items if item["sku_id"] in stocked_skus]
+    else:
+        population = all_items
 
     items = [
         item
-        for item in all_items
+        for item in population
         if (not scope.legal_entity_id or item["vertical_id"] == scope.legal_entity_id)
         and (not scope.category_group or item["category_id"] == scope.category_group)
     ]

@@ -2,27 +2,11 @@
  * The only place Pricing & Markdown chooses where its data comes from.
  *
  * Components import `loadPricingMarkdownDashboard` and never touch the
- * fixture, the selectors, or `fetch` directly.
- *
- * THE API BRANCH FALLS BACK TO THE FIXTURE, ON PURPOSE.
- * `retail.pricing_markdown` has no backend module yet: its descriptor is
- * still `navigation_module(..., dashboard_only=True)` in
- * `backend/src/llm/agents/retail/pricing_markdown/__init__.py`, so
- * `GET /api/html/dashboard/retail.pricing_markdown` answers with an empty
- * shell — no `items`, no `formulas`. Handing that to the selectors throws
- * ("cannot simulate without f01-ads-per-store..."), which is a blank error
- * screen where a board should be.
- *
- * So the API branch checks what came back and falls back to the bundled
- * workbook fixture when the backend has nothing to give. The board then
- * renders the same figures the standalone build shows, and its own data
- * note ("Workbook demonstration data, not a live ERP position") is already
- * on screen saying where they came from — the reader is not told these are
- * live numbers.
- *
- * When the backend module lands and starts returning real rows, this file
- * needs no change: `isUnusable` stops matching and the API rows flow
- * through the identical selectors.
+ * fixture, the selectors, or `fetch` directly. Same seam as Replenishment
+ * and Promotion Effectiveness: a failed request propagates to the caller's
+ * existing error state instead of being swapped for the bundled fixture —
+ * silently substituting demo data for a real backend failure reads as the
+ * board working when it is not.
  */
 
 import { fetchDashboard } from "../../../../api/dashboard.js";
@@ -41,37 +25,13 @@ async function loadFromFixture(scope, options) {
 }
 
 /**
- * True when a payload carries nothing this board can render.
- *
- * The navigation-stub backend returns a structurally valid but empty
- * dashboard (`{agent, default_view: "", kpis: [], views: {}, ...}`) with no
- * `items` and no `formulas`. That is the case this catches.
- */
-function isUnusable(payload) {
-  return (
-    !payload ||
-    !Array.isArray(payload.items) ||
-    payload.items.length === 0 ||
-    !payload.formulas ||
-    Object.keys(payload.formulas).length === 0
-  );
-}
-
-/**
- * The canonical dashboard route every agent is served through. Falls back to
- * the bundled workbook fixture while the backend module is still a stub —
- * see the module docstring for why that is the honest choice here.
+ * The canonical dashboard route every agent is served through. The response
+ * is the same row shape the fixture holds, so it runs through the identical
+ * selectors — the API returns rows, not a finished dashboard, deliberately.
  */
 async function loadFromApi(scope, options) {
-  let rows = null;
-  try {
-    rows = await fetchDashboard("retail.pricing_markdown", serializeScope(scope));
-  } catch {
-    // A 404/503/network failure is the same situation as an empty payload:
-    // the backend cannot answer for this agent yet. Fall through.
-    rows = null;
-  }
-  return buildDashboardFromFixture(isUnusable(rows) ? fixture : rows, scope, options);
+  const rows = await fetchDashboard("retail.pricing_markdown", serializeScope(scope));
+  return buildDashboardFromFixture(rows, scope, options);
 }
 
 /**
@@ -96,19 +56,13 @@ export async function loadPricingMarkdownDrilldown(scope, metricId, options = {}
   if (!drillableMetrics().includes(metricId)) {
     throw new Error(`Pricing & Markdown KPI ${metricId} is not drillable`);
   }
-  // Same source resolution as the board itself, fallback included — a drawer
-  // that opened against different rows than the tile it came from would be
-  // worse than one that does not open.
-  let rows = fixture;
-  if (DATA_SOURCE === "api") {
-    let fetched = null;
-    try {
-      fetched = await fetchDashboard("retail.pricing_markdown", serializeScope(scope));
-    } catch {
-      fetched = null;
-    }
-    rows = isUnusable(fetched) ? fixture : fetched;
-  }
+  // Same source resolution as the board itself — a drawer that opened
+  // against different rows than the tile it came from would be worse than
+  // one that does not open.
+  const rows =
+    DATA_SOURCE === "api"
+      ? await fetchDashboard("retail.pricing_markdown", serializeScope(scope))
+      : fixture;
 
   // The drawer needs the scoped, lever-driven candidate rows, not the
   // finished dashboard. `candidates` on the built dashboard is the preview
