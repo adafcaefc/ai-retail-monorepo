@@ -587,7 +587,10 @@ def main() -> int:
             row["category_id"],
             {
                 "value": row["category_id"],
-                "label": row["category_label"],
+                # id first: category_label is not unique across verticals
+                # (e.g. DGT-C01 and OMN-C01 are both "Electronics"), so the
+                # bare name alone cannot tell two dropdown entries apart.
+                "label": f"{row['category_id']} · {row['category_label']}",
                 "legal_entity_id": row["vertical_id"],
             },
         )
