@@ -172,6 +172,15 @@ function dailyDemand(ads, day, profile, curve, currentMonth, trendPct) {
   return ads * dow * seasonal * trend;
 }
 
+// TEMPORARY: there is no real sales history anywhere in this system yet.
+// These 12 numbers are made up, on purpose kept as one flat literal list
+// (not a formula) so this line is trivial to find and delete once real
+// history is wired in. Applied as a multiplier on the same real ads-based
+// baseline the forecast side already uses, oldest first.
+const FAKE_HISTORY_MULTIPLIERS = [
+  0.91, 1.04, 0.97, 1.08, 0.95, 1.12, 1.02, 0.89, 1.06, 0.98, 1.1, 1.0,
+];
+
 export function buildForecastSeries(options) {
   const {
     ads,
@@ -191,6 +200,40 @@ export function buildForecastSeries(options) {
   const prefix = GRAIN_PREFIX[grain] ?? "W";
   // Relative error per period, from the workbook's accuracy figure.
   const relativeError = Math.max(0, 1 - accuracyPct / 100);
+
+  // Illustrative history: same real ads-based baseline as the forecast below.
+  // Daily grain uses that formula untouched -- no fabricated wave. Coarser
+  // grains still scale it by the flat fake-multiplier list above, until real
+  // history exists at those grains too. See FAKE_HISTORY_MULTIPLIERS.
+  const historyPoints = FAKE_HISTORY_MULTIPLIERS.map((multiplier, i) => {
+    const index = FAKE_HISTORY_MULTIPLIERS.length - i; // counts down to 1
+    // Rounded to whole days, same as the forecast loop's own period
+    // boundaries below (`Math.round(period * periodDays)`) -- periodDays is
+    // fractional for monthly/quarterly grains, and dailyDemand's day-of-week
+    // lookup indexes an array, so a fractional `day` silently reads
+    // `undefined` and poisons the sum to NaN.
+    const endDay = -Math.round((index - 1) * periodDays);
+    const startDay = -Math.round(index * periodDays);
+    let total = 0;
+    for (let d = startDay; d < endDay; d += 1) {
+      total += dailyDemand(ads, d, profile, curve, currentMonth, trendPct);
+    }
+    const actual = Math.round(total * (grain === "daily" ? 1 : multiplier));
+    const isBoundary = index === 1; // the history point right before day 0
+    return {
+      key: `${prefix}-${index}`,
+      label: `${prefix}-${index}`,
+      actual,
+      // The boundary point also carries `forecast` equal to `actual`, so the
+      // dashed forecast line starts exactly where the solid actual line ends
+      // -- one continuous line with a style change, not a gap. Mirrors the
+      // mockup's own lineBand(), which prepends the last actual point onto
+      // the forecast path for the same reason.
+      forecast: isBoundary ? actual : null,
+      confidence_low: null,
+      confidence_high: null,
+    };
+  });
 
   const points = [];
   let day = 0;
@@ -215,10 +258,10 @@ export function buildForecastSeries(options) {
 
   return {
     grain,
-    history_count: 0,
+    history_count: historyPoints.length,
     horizon_weeks: horizonWeeks,
     horizon_label: `${horizonWeeks} ${horizonWeeks === 1 ? "week" : "weeks"}`,
-    points,
+    points: [...historyPoints, ...points],
     summary: [
       { id: "next_period", label: "Next period", value: points[0]?.forecast ?? 0, unit: "units" },
       {
@@ -301,14 +344,18 @@ export function computeTrending(items, limit = 8) {
     .filter((item) => item.is_trending)
     .sort((a, b) => b.growth - a.growth)
     .slice(0, limit)
-    .map((item) => ({
-      sku_id: item.sku_id,
-      sku_name: item.name,
-      // Velocity above 1.0 is the uplift the workbook attributes to the SKU.
-      predicted_uplift_pct: (item.growth - 1) * 100,
-      signals: item.signals,
-      ads_units_per_day: item.ads,
-    }));
+    .map((item) => {
+      const viral = item.signals.includes("viral");
+      return {
+        sku_id: item.sku_id,
+        sku_name: item.name,
+        // Uplift = growth + viral signal, per the A1 spec/mockup:
+        // (growth-1)*100, plus a flat 18-point bump when the SKU is viral.
+        predicted_uplift_pct: (item.growth - 1) * 100 + (viral ? 18 : 0),
+        signals: item.signals,
+        ads_units_per_day: item.ads,
+      };
+    });
 }
 
 export function computeDetails(items, query, periodDays) {

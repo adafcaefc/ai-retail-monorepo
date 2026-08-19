@@ -43,7 +43,11 @@ export default function ForecastLineChart({ points, ariaLabel, compact = false }
         ? null
         : [point.confidence_low, point.confidence_high],
   }));
-  const boundary = data.find((point) => point.forecast != null)?.key;
+  // The history point right before the boundary also carries a `forecast`
+  // value (equal to its own `actual`) so the two lines connect with no gap
+  // -- see buildForecastSeries(). Skip it here so "Forecast starts" still
+  // lands on the first genuine forecast point, not that connector.
+  const boundary = data.find((point) => point.actual == null && point.forecast != null)?.key;
 
   return (
     <div className={`demand-forecast-chart${compact ? " demand-forecast-chart--compact" : ""}`} role="img" aria-label={ariaLabel}>

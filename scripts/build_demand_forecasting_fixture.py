@@ -302,7 +302,6 @@ def build_items(
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
     week_factor: float,
-    trending: dict[str, set[str]],
 ) -> list[dict[str, Any]]:
     """One row per SKU at chain-net level."""
     items = []
@@ -331,7 +330,7 @@ def build_items(
                 "growth": sku["growth"],
                 "state": row["state"],
                 "is_stockout_risk": row["position"] < row["rop"],
-                "is_trending": row["sku_id"] in trending[row["vertical_id"]],
+                "is_trending": is_trending(sku),
                 "signals": signals,
                 # What-If parameters, identical in meaning to the Inventory
                 # Risk fixture's so both boards move the same way.
@@ -353,45 +352,17 @@ def build_items(
     return items
 
 
-def allocate_trending(
-    engine: list[dict[str, Any]],
-    sku_master: dict[str, dict[str, Any]],
-    reference: dict[str, dict[str, Any]],
-    label_of: dict[str, str],
-) -> dict[str, set[str]]:
-    """Pick each vertical's trending SKUs, sized to the workbook's count.
+def is_trending(sku: dict[str, Any]) -> bool:
+    """The A1 spec's own test: `count(viral OR growth>1.25)`.
 
-    The A1 sheet types `Trending SKUs` per vertical and offers no per-SKU
-    basis, but the board has to filter and list them, so a basis is needed.
-
-    The allocation is the standard one: rank by velocity -- `sku_master.growth`
-    -- and take the top N, where N is the number the workbook already states.
-    Every vertical therefore reconciles exactly, and the ordering is a real
-    column rather than a hash. Which SKUs are chosen is modelled; how many are
-    chosen is measured.
+    A per-SKU predicate, not a rank+quota allocation against the sheet's
+    vertical-wide `Trending SKUs` count -- it composes correctly under any
+    later UI-level scoping (category, store) because it never depends on how
+    many other SKUs are in the group. It still reconciles exactly to the
+    workbook's typed count at vertical grain -- see `reconcile()` -- it is no
+    longer *forced* to.
     """
-    by_vertical: dict[str, list[dict[str, Any]]] = {}
-    for row in engine:
-        by_vertical.setdefault(row["vertical_id"], []).append(row)
-
-    chosen: dict[str, set[str]] = {}
-    for vertical, rows in by_vertical.items():
-        wanted = reference[label_of[vertical]]["trending_skus"]
-        ranked = sorted(
-            rows,
-            key=lambda row: (
-                -sku_master[row["sku_id"]]["growth"],
-                row["sku_id"],
-            ),
-        )
-        if wanted > len(ranked):
-            raise SystemExit(
-                f"FAIL  {vertical} needs {wanted} trending SKUs but stocks"
-                f" {len(ranked)}"
-            )
-        chosen[vertical] = {row["sku_id"] for row in ranked[:wanted]}
-
-    return chosen
+    return sku["viral"] == "Y" or sku["growth"] > 1.25
 
 
 def build_stores(
@@ -538,15 +509,11 @@ def main() -> int:
         _designated_lead_times(tables),
     )
 
-    trending = allocate_trending(
-        tables["engine"], sku_master, reference, label_of
-    )
     items = build_items(
         tables["engine"],
         sku_master,
         store_size,
         constants["dow_sum"],
-        trending,
     )
     store_rows = build_stores(
         tables["engine_store"], stores, constants["dow_sum"]
@@ -602,7 +569,7 @@ def main() -> int:
         "derivation": {
             "forecast_next_7d": "measured",
             "stockout_risk_skus": "measured",
-            "predicted_to_trend": "measured-count-modelled-membership",
+            "predicted_to_trend": "measured-formula",
             "forecast_accuracy": "typed-constant",
             "demand_trend": "typed-constant",
             "seasonality_index": "typed-constant",

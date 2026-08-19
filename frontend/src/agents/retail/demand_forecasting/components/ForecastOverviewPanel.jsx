@@ -29,6 +29,9 @@ export default function ForecastOverviewPanel({ forecast, grains, onGrainChange 
           <p>{t("Demand outlook")}</p>
           <h2 id="demand-overview-title">{t("Demand forecast — actual vs AI")}</h2>
           <span>{t(forecast.horizon_label)}</span>
+          {forecast.history_count > 0 ? (
+            <small className="demand-history-caveat">{t("Illustrative history — not real transaction data")}</small>
+          ) : null}
         </div>
         <div className="demand-period-selector" aria-label={t("Forecast period")}>
           {grains.map((grain) => (

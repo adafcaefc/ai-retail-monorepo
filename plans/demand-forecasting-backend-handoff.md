@@ -1080,12 +1080,18 @@ provide a genuine Store-grain source:
   actuals remain null;
 - accuracy/MAPE and demand trend: the existing values are vertical-level
   workbook constants, not Store-grain backtests;
-- seasonality: `fact_gmv_monthly` is vertical-level and has no Store key;
-- predicted-to-trend count: the ranking runs over selected Store items, but
-  the requested count is a vertical-level reference value.
+- seasonality: `fact_gmv_monthly` is vertical-level and has no Store key.
 
 These limitations are returned as `scope_limitations` and displayed in the
 Store-scoped dashboard. They are not represented as if they were Store facts.
+
+**Resolved**: predicted-to-trend was previously listed here too — the count
+was a vertical-level reference value while the ranked items were Store-scoped,
+so 100% of a Store's SKUs could get marked trending once the requested count
+exceeded the Store's row count. `is_trending` is now a per-row formula
+(`viral OR growth > 1.25`, see `dashboard.py`'s `is_trending()`) that needs no
+vertical-wide count and is correctly computable at Store/category grain, so
+this is no longer a limitation.
 
 #### Before/after live evidence
 

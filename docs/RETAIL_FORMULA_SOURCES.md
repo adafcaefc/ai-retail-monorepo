@@ -73,7 +73,7 @@ Seasonality idx  114, 100, 98, …                     <- typed
 |---|---|---|
 | Forecast next 7 days | measured | f01 → f08, reconciled to 1,656,178.216 |
 | Stockout-risk SKUs | measured | `Position < ROP` via f03/f04/f05. A1 types 46; this computes 46 |
-| Predicted to trend | measured count, modelled membership | Count from the sheet; which SKUs, by ranking `sku_master.growth` |
+| Predicted to trend | measured formula | `viral OR growth > 1.25`, per SKU. Reconciles exactly to the sheet's typed count |
 | Forecast accuracy | typed | 92.4 for **all eight** verticals — a demo constant, not a backtest |
 | Demand trend | typed | Per vertical, and unsupported by the series (see below) |
 | Seasonality index | typed | 114 typed against 108.3 derived — both kept, both labelled |
@@ -103,7 +103,7 @@ Consequences:
 | Prediction interval | `ŷ ± z · (1 − accuracy/100) · √h`, z = 1.645 | At h=1 with 92.4% accuracy this is ±12.5% — which is where the A1 spec's flat "±12%" comes from. Stated this way it widens with horizon, as an interval must |
 | Seasonal curve | month GMV ÷ series mean, per vertical | `time_series_24mo` |
 | Current month | July | `Constants` B6 = 6 |
-| Trending membership | top N by `growth` within each vertical, N from the sheet | Reconciles per vertical exactly |
+| Trending membership | `viral OR growth > 1.25`, per SKU — a formula, not a rank+quota allocation, so it composes correctly under category/store scoping | Reconciles per vertical exactly |
 
 ### What-If
 

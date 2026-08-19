@@ -91,7 +91,7 @@ NOTE = (
 DERIVATION = {
     "forecast_next_7d": "measured",
     "stockout_risk_skus": "measured",
-    "predicted_to_trend": "measured-count-modelled-membership",
+    "predicted_to_trend": "measured-formula",
     "forecast_accuracy": "typed-constant",
     "demand_trend": "typed-constant",
     "seasonality_index": "typed-constant",
@@ -106,8 +106,6 @@ STORE_SCOPE_LIMITATIONS = (
     "constants; no Store-grain backtest source is loaded.",
     "Seasonality remains vertical-level: fact_gmv_monthly has no store key, "
     "so the selected Store uses its owning vertical's curve.",
-    "Predicted-to-trend count remains vertical-level reference data; the ranked "
-    "items are Store-scoped, but the requested count is not measured per Store.",
 )
 
 
@@ -146,23 +144,18 @@ def build_signals(row: dict) -> list[str]:
     return signals
 
 
-def allocate_trending(items: list[dict], counts: dict[str, int]) -> None:
-    """Mark the top N by growth in each vertical, N from the A1 sheet.
+def is_trending(is_viral: bool, growth_index: float) -> bool:
+    """The A1 spec's own test: `count(viral OR growth>1.25)`.
 
-    The sheet states how many SKUs are trending per vertical but never which
-    ones, so membership is modelled: rank by `growth_index` and take the count
-    the workbook gives. The totals reconcile exactly; the selection is a stated
-    method, and `derivation` says so.
+    A per-row predicate, not a rank+quota allocation against the sheet's
+    vertical-wide `Trending SKUs` count -- it composes correctly under any
+    scope filter (category, store, vertical) because it never depends on how
+    many other rows are in the result set. It still reconciles exactly to
+    the workbook's typed count at vertical grain (see
+    `scripts/build_demand_forecasting_fixture.py`'s `reconcile()`); it is no
+    longer *forced* to.
     """
-    by_vertical: dict[str, list[dict]] = {}
-    for item in items:
-        by_vertical.setdefault(item["vertical_id"], []).append(item)
-
-    for vertical_id, group in by_vertical.items():
-        wanted = counts.get(vertical_id, 0)
-        ranked = sorted(group, key=lambda item: item["growth"], reverse=True)
-        for item in ranked[:wanted]:
-            item["is_trending"] = True
+    return bool(is_viral) or growth_index > 1.25
 
 
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
@@ -253,19 +246,13 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             """,
         )
 
-        # The A1 sheet's own KPI row per vertical, and the source of the
-        # trending counts below.
+        # The A1 sheet's own KPI row per vertical. `trending_skus` is still
+        # surfaced to the frontend for its tooltip/comparison label, but no
+        # longer used to compute membership -- see `is_trending()`.
         reference = agent_reference(connection, AGENT_ID)
 
         options = filter_options(connection)
         store_size = chain_store_size(connection)
-
-    # How many SKUs each vertical says are trending. The sheet states the
-    # count but never which ones, so membership is modelled below.
-    trending_counts = {
-        entry["legal_entity_id"]: int(entry.get("trending_skus", 0))
-        for entry in reference
-    }
 
     items = []
     for row in chain:
@@ -289,7 +276,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             "price": _float(row["unit_price"]),
             "growth": _float(row["growth_index"]),
             "is_stockout_risk": _float(row["position_qty"]) < _float(row["rop_qty"]),
-            "is_trending": False,
+            "is_trending": is_trending(row["is_viral"], _float(row["growth_index"])),
             "signals": build_signals(row),
             "shelf_life_days": row["shelf_life_days"],
             "perishable": "Y" if row["is_perishable"] else "N",
@@ -306,7 +293,6 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         if row.get("store_id"):
             item["store_id"] = row["store_id"]
         items.append(item)
-    allocate_trending(items, trending_counts)
 
     gmv_by_vertical: dict[str, dict[int, float]] = {}
     for row in gmv:

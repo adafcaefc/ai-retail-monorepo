@@ -53,6 +53,29 @@ def test_store_scope_uses_store_grain_rows_for_all_downstream_inputs() -> None:
     assert s001["scope_limitations"]
 
 
+def test_predicted_to_trend_is_not_the_whole_store_under_store_scope() -> None:
+    """Regression: `is_trending` used to be a rank+quota allocation sized to
+    the vertical-wide `Trending SKUs` reference count. Once scoped to a
+    single Store (100 rows, far fewer than most verticals' count), the quota
+    always exceeded the row count and every row in the Store was marked
+    trending. `is_trending` is now a per-row formula (`viral OR growth>1.25`)
+    that composes correctly under scope -- it should mark only some rows.
+    """
+    s001 = _build_or_skip(DashboardScope.from_query(store_id="S001"))
+
+    trending = [row for row in s001["items"] if row["is_trending"]]
+    assert 0 < len(trending) < len(s001["items"])
+
+    # And membership must exactly match the stated formula -- not merely be
+    # "fewer than all of them".
+    expected = {
+        row["sku_id"]
+        for row in s001["items"]
+        if "viral" in row["signals"] or float(row["growth"]) > 1.25
+    }
+    assert {row["sku_id"] for row in trending} == expected
+
+
 def test_store_scope_is_not_reported_as_ignored_by_the_descriptor() -> None:
     payload = _build_or_skip(DashboardScope.from_query(store_id="S001"))
 
