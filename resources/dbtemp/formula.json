@@ -466,11 +466,17 @@
             "id": "f14-recoverable-at-risk-value",
             "number": 14,
             "name": "Recoverable at-risk value",
-            "logic": "Expiry excess value; otherwise overstock/slow-mover excess or 30% fallback",
+            "logic": "Gross exposure recovered after markdown depth and the sell-through that depth buys; depth scales with the markdown lever and caps at 65%",
             "sheet": "ENGINE_STORE",
             "result_type": "number",
-            "expression": "IF(state = \"Expiry\", MAX(0, position - ads * shelf_life_days) * price, IF(OR(state = \"Overstock\", state = \"Slow-mover\"), IF(MAX(0, position - max_inventory) > 0, (position - max_inventory) * price, position * 0.3 * price), 0))",
+            "expression": "IF(gross <= 0, 0, ROUND(gross * MIN(0.95, 0.35 + MAX(elasticity, 0 - elasticity) * (MIN(0.65, IF(state = \"Expiry\", 0.4, IF(state = \"Overstock\", 0.25, 0.3)) * (25 + markdown_lever) / 25)) * 1.15) * (1 - (MIN(0.65, IF(state = \"Expiry\", 0.4, IF(state = \"Overstock\", 0.25, 0.3)) * (25 + markdown_lever) / 25))), 0))",
             "parameters": [
+                {
+                    "key": "gross",
+                    "label": "Markdown at-risk value (gross)",
+                    "type": "number",
+                    "default": 1394300
+                },
                 {
                     "key": "state",
                     "label": "Inventory state",
@@ -478,34 +484,16 @@
                     "default": "Expiry"
                 },
                 {
-                    "key": "position",
-                    "label": "Position units",
+                    "key": "elasticity",
+                    "label": "Price elasticity",
                     "type": "number",
-                    "default": 110
+                    "default": -1.2489
                 },
                 {
-                    "key": "ads",
-                    "label": "ADS per store",
+                    "key": "markdown_lever",
+                    "label": "Markdown depth % (Constants B18)",
                     "type": "number",
-                    "default": 23.460583
-                },
-                {
-                    "key": "shelf_life_days",
-                    "label": "Shelf life days",
-                    "type": "number",
-                    "default": 4
-                },
-                {
-                    "key": "max_inventory",
-                    "label": "Maximum inventory",
-                    "type": "number",
-                    "default": 164
-                },
-                {
-                    "key": "price",
-                    "label": "Unit price",
-                    "type": "number",
-                    "default": 19100
+                    "default": 0
                 }
             ]
         },
@@ -738,6 +726,53 @@
                     "label": "Shelf life (days)",
                     "type": "number",
                     "default": 3
+                }
+            ]
+        },
+        {
+            "id": "f23-markdown-at-risk-gross",
+            "number": 23,
+            "name": "Markdown at-risk value (gross)",
+            "logic": "Expiry excess value; otherwise overstock/slow-mover excess or 30% fallback",
+            "sheet": "ENGINE_STORE",
+            "result_type": "number",
+            "expression": "IF(state = \"Expiry\", MAX(0, position - ads * shelf_life_days) * price, IF(OR(state = \"Overstock\", state = \"Slow-mover\"), IF(MAX(0, position - max_inventory) > 0, (position - max_inventory) * price, position * 0.3 * price), 0))",
+            "parameters": [
+                {
+                    "key": "state",
+                    "label": "Inventory state",
+                    "type": "text",
+                    "default": "Expiry"
+                },
+                {
+                    "key": "position",
+                    "label": "Position units",
+                    "type": "number",
+                    "default": 110
+                },
+                {
+                    "key": "ads",
+                    "label": "ADS per store",
+                    "type": "number",
+                    "default": 23.460583
+                },
+                {
+                    "key": "shelf_life_days",
+                    "label": "Shelf life days",
+                    "type": "number",
+                    "default": 4
+                },
+                {
+                    "key": "max_inventory",
+                    "label": "Maximum inventory",
+                    "type": "number",
+                    "default": 164
+                },
+                {
+                    "key": "price",
+                    "label": "Unit price",
+                    "type": "number",
+                    "default": 19100
                 }
             ]
         }

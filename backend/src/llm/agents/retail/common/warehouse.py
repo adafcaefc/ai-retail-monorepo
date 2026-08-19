@@ -187,7 +187,11 @@ def filter_options(connection: Any) -> dict[str, list]:
         "categories": [
             {
                 "value": row["category_id"],
-                "label": row["category_name"],
+                # id first, like legal_entities/stores above: category_name
+                # is not unique across verticals (e.g. DGT-C01 and OMN-C01
+                # are both "Electronics"), so the bare name alone is not
+                # enough to tell two dropdown entries apart.
+                "label": f"{row['category_id']} · {row['category_name']}",
                 "legal_entity_id": row["vertical_id"],
             }
             for row in categories

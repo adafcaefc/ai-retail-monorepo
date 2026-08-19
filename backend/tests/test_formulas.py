@@ -70,7 +70,7 @@ CORPUS = corpus()
 
 
 def test_corpus_covers_every_documented_example() -> None:
-    """22 formulas x 5 examples, per formula.md's coverage summary.
+    """23 formulas x 5 examples, per formula.md's coverage summary.
 
     Nineteen of these transcribe the workbook's `Formulas` sheet. Twenty to
     twenty-two are ENGINE columns I, L and N -- real workbook formulas the
@@ -80,8 +80,8 @@ def test_corpus_covers_every_documented_example() -> None:
     formulas = load_formulas()
     examples = load_examples()
 
-    assert len(formulas) == 22
-    assert len(CORPUS) == 110
+    assert len(formulas) == 23
+    assert len(CORPUS) == 115
     assert all(len(examples[formula["id"]]) == 5 for formula in formulas)
 
 
@@ -501,4 +501,4 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
         assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
         split[grain] = split.get(grain, 0) + 1
 
-    assert split == {"store_sku": 16, "chain_sku": 3, "store_roster": 3}
+    assert split == {"store_sku": 17, "chain_sku": 3, "store_roster": 3}

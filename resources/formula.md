@@ -1,7 +1,7 @@
 # AI Retail 360 Formula Verification Pack
 
 - **Workbook:** `Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`
-- **Scope:** 22 documented formulas × 5 worked examples = **110 examples**
+- **Scope:** 23 documented formulas × 5 worked examples = **115 examples**
 - **Verification method:** each example records the workbook result cell, the native Excel formula, direct input/source cells, cached workbook values, and a readable arithmetic check.
 - **Important:** values are read from the workbook’s saved calculation cache. Minor displayed differences can occur because Excel stores more precision than formatted cells show.
 
@@ -29,6 +29,7 @@
 20. [Days of supply](#formula-20-days-of-supply)
 21. [Inventory value](#formula-21-inventory-value)
 22. [Expiry units](#formula-22-expiry-units)
+23. [Markdown at-risk value (gross)](#formula-23-markdown-at-risk-value-gross)
 
 ## Formula 1: ADS per store
 
@@ -1524,125 +1525,115 @@
 
 ## Formula 14: Recoverable at-risk value
 
-**Documented logic:** `Expiry excess value; otherwise overstock/slow-mover excess or 30% fallback`
+**Documented logic:** `Gross exposure recovered after markdown depth and the sell-through that depth buys; depth scales with the markdown lever and caps at 65%`
 
 ### Example 1: SKU `GRC-002`, Store `S005`
 
-- **Result:** `ENGINE_STORE!AA28` = **308,611.466807**
+- **Result:** `ENGINE_STORE!AA28` = **175,909**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q28="Expiry",MAX(0,$M28-$J28*SKU_Master!$O$7)*$R28,IF(OR($Q28="Overstock",$Q28="Slow-mover"),IF(MAX(0,$M28-$O28)>0,($M28-$O28)*$R28,$M28*0.3*$R28),0))
+=LET(g,$AF28,IF(g<=0,0,LET(bd,IF($Q28="Expiry",0.4,IF($Q28="Overstock",0.25,0.3)),d,MIN(0.65,bd*(25+Constants!$B$18)/25),el,ABS(VLOOKUP($A28,SKU_Master!$A$6:$AF$805,17,0)),st,MIN(0.95,0.35+el*d*1.15),ROUND(g*st*(1-d),0))))
 ```
 
-- **Arithmetic / decision check:** `State Expiry; recovery branch result = 308,611.466807`
+- **Arithmetic / decision check:** `Gross 308,611.466807, base depth 0.4, lever 0 -> net 175,909`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
+| `ENGINE_STORE` | `AF28` | 308,611.466807 | Direct precedent/input |
 | `ENGINE_STORE` | `Q28` | Expiry | Direct precedent/input |
-| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
-| `ENGINE_STORE` | `J28` | 23.460583 | Direct precedent/input |
-| `SKU_Master` | `O7` | 4 | Direct precedent/input |
-| `ENGINE_STORE` | `O28` | 164 | Direct precedent/input |
-| `ENGINE_STORE` | `R28` | 19,100 | Direct precedent/input |
+| `SKU_Master` | `Q7` | -1.5289 | Direct precedent/input |
+| `Constants` | `B18` | 0 | Direct precedent/input |
 
 ---
 
-### Example 2: SKU `GRC-043`, Store `S005`
+### Example 2: SKU `GRC-001`, Store `S001`
 
-- **Result:** `ENGINE_STORE!AA848` = **6,734,000**
+- **Result:** `ENGINE_STORE!AA4` = **0**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q848="Expiry",MAX(0,$M848-$J848*SKU_Master!$O$48)*$R848,IF(OR($Q848="Overstock",$Q848="Slow-mover"),IF(MAX(0,$M848-$O848)>0,($M848-$O848)*$R848,$M848*0.3*$R848),0))
+=LET(g,$AF4,IF(g<=0,0,LET(bd,IF($Q4="Expiry",0.4,IF($Q4="Overstock",0.25,0.3)),d,MIN(0.65,bd*(25+Constants!$B$18)/25),el,ABS(VLOOKUP($A4,SKU_Master!$A$6:$AF$805,17,0)),st,MIN(0.95,0.35+el*d*1.15),ROUND(g*st*(1-d),0))))
 ```
 
-- **Arithmetic / decision check:** `State Overstock; recovery branch result = 6,734,000`
+- **Arithmetic / decision check:** `Gross 0, base depth 0.3, lever 0 -> net 0`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
+| `ENGINE_STORE` | `AF4` | 0 | Direct precedent/input |
+| `ENGINE_STORE` | `Q4` | Stockout | Direct precedent/input |
+| `SKU_Master` | `Q6` | -1.8178 | Direct precedent/input |
+| `Constants` | `B18` | 0 | Direct precedent/input |
+
+---
+
+### Example 3: SKU `GRC-010`, Store `S005`
+
+- **Result:** `ENGINE_STORE!AA188` = **0**
+- **Native Excel formula:**
+
+```excel
+=LET(g,$AF188,IF(g<=0,0,LET(bd,IF($Q188="Expiry",0.4,IF($Q188="Overstock",0.25,0.3)),d,MIN(0.65,bd*(25+Constants!$B$18)/25),el,ABS(VLOOKUP($A188,SKU_Master!$A$6:$AF$805,17,0)),st,MIN(0.95,0.35+el*d*1.15),ROUND(g*st*(1-d),0))))
+```
+
+- **Arithmetic / decision check:** `Gross 0, base depth 0.3, lever 0 -> net 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `AF188` | 0 | Direct precedent/input |
+| `ENGINE_STORE` | `Q188` | Low | Direct precedent/input |
+| `SKU_Master` | `Q15` | -1.8658 | Direct precedent/input |
+| `Constants` | `B18` | 0 | Direct precedent/input |
+
+---
+
+### Example 4: SKU `GRC-043`, Store `S005`
+
+- **Result:** `ENGINE_STORE!AA848` = **1,566,615**
+- **Native Excel formula:**
+
+```excel
+=LET(g,$AF848,IF(g<=0,0,LET(bd,IF($Q848="Expiry",0.4,IF($Q848="Overstock",0.25,0.3)),d,MIN(0.65,bd*(25+Constants!$B$18)/25),el,ABS(VLOOKUP($A848,SKU_Master!$A$6:$AF$805,17,0)),st,MIN(0.95,0.35+el*d*1.15),ROUND(g*st*(1-d),0))))
+```
+
+- **Arithmetic / decision check:** `Gross 3,677,800, base depth 0.25, lever 0 -> net 1,566,615`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `AF848` | 3,677,800 | Direct precedent/input |
 | `ENGINE_STORE` | `Q848` | Overstock | Direct precedent/input |
-| `ENGINE_STORE` | `M848` | 908 | Direct precedent/input |
-| `ENGINE_STORE` | `J848` | 58.948606 | Direct precedent/input |
-| `SKU_Master` | `O48` | 999 | Direct precedent/input |
-| `ENGINE_STORE` | `O848` | 648 | Direct precedent/input |
-| `ENGINE_STORE` | `R848` | 25,900 | Direct precedent/input |
+| `SKU_Master` | `Q48` | -0.7581 | Direct precedent/input |
+| `Constants` | `B18` | 0 | Direct precedent/input |
 
 ---
 
-### Example 3: SKU `GRC-040`, Store `S001`
+### Example 5: SKU `GRC-040`, Store `S001`
 
-- **Result:** `ENGINE_STORE!AA784` = **127,500**
+- **Result:** `ENGINE_STORE!AA784` = **1,552,256**
 - **Native Excel formula:**
 
 ```excel
-=IF($Q784="Expiry",MAX(0,$M784-$J784*SKU_Master!$O$45)*$R784,IF(OR($Q784="Overstock",$Q784="Slow-mover"),IF(MAX(0,$M784-$O784)>0,($M784-$O784)*$R784,$M784*0.3*$R784),0))
+=LET(g,$AF784,IF(g<=0,0,LET(bd,IF($Q784="Expiry",0.4,IF($Q784="Overstock",0.25,0.3)),d,MIN(0.65,bd*(25+Constants!$B$18)/25),el,ABS(VLOOKUP($A784,SKU_Master!$A$6:$AF$805,17,0)),st,MIN(0.95,0.35+el*d*1.15),ROUND(g*st*(1-d),0))))
 ```
 
-- **Arithmetic / decision check:** `State Slow-mover; recovery branch result = 127,500`
+- **Arithmetic / decision check:** `Gross 3,144,150, base depth 0.3, lever 0 -> net 1,552,256`
 
 **Input and source-cell verification:**
 
 | Source sheet | Cell | Saved value | Role |
 |---|---:|---:|---|
+| `ENGINE_STORE` | `AF784` | 3,144,150 | Direct precedent/input |
 | `ENGINE_STORE` | `Q784` | Slow-mover | Direct precedent/input |
-| `ENGINE_STORE` | `M784` | 411 | Direct precedent/input |
-| `ENGINE_STORE` | `J784` | 36.882238 | Direct precedent/input |
-| `SKU_Master` | `O45` | 999 | Direct precedent/input |
-| `ENGINE_STORE` | `O784` | 406 | Direct precedent/input |
-| `ENGINE_STORE` | `R784` | 25,500 | Direct precedent/input |
-
----
-
-### Example 4: SKU `GRC-002`, Store `S008`
-
-- **Result:** `ENGINE_STORE!AA31` = **168,759.956272**
-- **Native Excel formula:**
-
-```excel
-=IF($Q31="Expiry",MAX(0,$M31-$J31*SKU_Master!$O$7)*$R31,IF(OR($Q31="Overstock",$Q31="Slow-mover"),IF(MAX(0,$M31-$O31)>0,($M31-$O31)*$R31,$M31*0.3*$R31),0))
-```
-
-- **Arithmetic / decision check:** `State Expiry; recovery branch result = 168,759.956272`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `Q31` | Expiry | Direct precedent/input |
-| `ENGINE_STORE` | `M31` | 67 | Direct precedent/input |
-| `ENGINE_STORE` | `J31` | 14.5411 | Direct precedent/input |
-| `SKU_Master` | `O7` | 4 | Direct precedent/input |
-| `ENGINE_STORE` | `O31` | 102 | Direct precedent/input |
-| `ENGINE_STORE` | `R31` | 19,100 | Direct precedent/input |
-
----
-
-### Example 5: SKU `GRC-002`, Store `S014`
-
-- **Result:** `ENGINE_STORE!AA37` = **69,773.650691**
-- **Native Excel formula:**
-
-```excel
-=IF($Q37="Expiry",MAX(0,$M37-$J37*SKU_Master!$O$7)*$R37,IF(OR($Q37="Overstock",$Q37="Slow-mover"),IF(MAX(0,$M37-$O37)>0,($M37-$O37)*$R37,$M37*0.3*$R37),0))
-```
-
-- **Arithmetic / decision check:** `State Expiry; recovery branch result = 69,773.650691`
-
-**Input and source-cell verification:**
-
-| Source sheet | Cell | Saved value | Role |
-|---|---:|---:|---|
-| `ENGINE_STORE` | `Q37` | Expiry | Direct precedent/input |
-| `ENGINE_STORE` | `M37` | 64 | Direct precedent/input |
-| `ENGINE_STORE` | `J37` | 15.086732 | Direct precedent/input |
-| `SKU_Master` | `O7` | 4 | Direct precedent/input |
-| `ENGINE_STORE` | `O37` | 106 | Direct precedent/input |
-| `ENGINE_STORE` | `R37` | 19,100 | Direct precedent/input |
+| `SKU_Master` | `Q45` | -1.0298 | Direct precedent/input |
+| `Constants` | `B18` | 0 | Direct precedent/input |
 
 ---
 
@@ -2543,3 +2534,128 @@
 | `SKU_Master` | `O42` | 999 | Direct precedent/input |
 
 ---
+
+## Formula 23: Markdown at-risk value (gross)
+
+**Documented logic:** `Expiry excess value; otherwise overstock/slow-mover excess or 30% fallback`
+
+### Example 1: SKU `GRC-002`, Store `S005`
+
+- **Result:** `ENGINE_STORE!AF28` = **308,611.466807**
+- **Native Excel formula:**
+
+```excel
+=IF($Q28="Expiry",MAX(0,$M28-$J28*SKU_Master!$O$7)*$R28,IF(OR($Q28="Overstock",$Q28="Slow-mover"),IF(MAX(0,$M28-$O28)>0,($M28-$O28)*$R28,$M28*0.3*$R28),0))
+```
+
+- **Arithmetic / decision check:** `State Expiry; gross exposure = 308,611.466807`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q28` | Expiry | Direct precedent/input |
+| `ENGINE_STORE` | `M28` | 110 | Direct precedent/input |
+| `ENGINE_STORE` | `J28` | 23.460583 | Direct precedent/input |
+| `SKU_Master` | `O7` | 4 | Direct precedent/input |
+| `ENGINE_STORE` | `O28` | 258 | Direct precedent/input |
+| `ENGINE_STORE` | `R28` | 19,100 | Direct precedent/input |
+
+---
+
+### Example 2: SKU `GRC-001`, Store `S001`
+
+- **Result:** `ENGINE_STORE!AF4` = **0**
+- **Native Excel formula:**
+
+```excel
+=IF($Q4="Expiry",MAX(0,$M4-$J4*SKU_Master!$O$6)*$R4,IF(OR($Q4="Overstock",$Q4="Slow-mover"),IF(MAX(0,$M4-$O4)>0,($M4-$O4)*$R4,$M4*0.3*$R4),0))
+```
+
+- **Arithmetic / decision check:** `State Stockout; gross exposure = 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q4` | Stockout | Direct precedent/input |
+| `ENGINE_STORE` | `M4` | 68 | Direct precedent/input |
+| `ENGINE_STORE` | `J4` | 29.166885 | Direct precedent/input |
+| `SKU_Master` | `O6` | 3 | Direct precedent/input |
+| `ENGINE_STORE` | `O4` | 321 | Direct precedent/input |
+| `ENGINE_STORE` | `R4` | 18,900 | Direct precedent/input |
+
+---
+
+### Example 3: SKU `GRC-010`, Store `S005`
+
+- **Result:** `ENGINE_STORE!AF188` = **0**
+- **Native Excel formula:**
+
+```excel
+=IF($Q188="Expiry",MAX(0,$M188-$J188*SKU_Master!$O$15)*$R188,IF(OR($Q188="Overstock",$Q188="Slow-mover"),IF(MAX(0,$M188-$O188)>0,($M188-$O188)*$R188,$M188*0.3*$R188),0))
+```
+
+- **Arithmetic / decision check:** `State Low; gross exposure = 0`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q188` | Low | Direct precedent/input |
+| `ENGINE_STORE` | `M188` | 164 | Direct precedent/input |
+| `ENGINE_STORE` | `J188` | 36.407468 | Direct precedent/input |
+| `SKU_Master` | `O15` | 6 | Direct precedent/input |
+| `ENGINE_STORE` | `O188` | 400 | Direct precedent/input |
+| `ENGINE_STORE` | `R188` | 20,500 | Direct precedent/input |
+
+---
+
+### Example 4: SKU `GRC-043`, Store `S005`
+
+- **Result:** `ENGINE_STORE!AF848` = **3,677,800**
+- **Native Excel formula:**
+
+```excel
+=IF($Q848="Expiry",MAX(0,$M848-$J848*SKU_Master!$O$48)*$R848,IF(OR($Q848="Overstock",$Q848="Slow-mover"),IF(MAX(0,$M848-$O848)>0,($M848-$O848)*$R848,$M848*0.3*$R848),0))
+```
+
+- **Arithmetic / decision check:** `State Overstock; gross exposure = 3,677,800`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q848` | Overstock | Direct precedent/input |
+| `ENGINE_STORE` | `M848` | 908 | Direct precedent/input |
+| `ENGINE_STORE` | `J848` | 58.948606 | Direct precedent/input |
+| `SKU_Master` | `O48` | 999 | Direct precedent/input |
+| `ENGINE_STORE` | `O848` | 766 | Direct precedent/input |
+| `ENGINE_STORE` | `R848` | 25,900 | Direct precedent/input |
+
+---
+
+### Example 5: SKU `GRC-040`, Store `S001`
+
+- **Result:** `ENGINE_STORE!AF784` = **3,144,150**
+- **Native Excel formula:**
+
+```excel
+=IF($Q784="Expiry",MAX(0,$M784-$J784*SKU_Master!$O$45)*$R784,IF(OR($Q784="Overstock",$Q784="Slow-mover"),IF(MAX(0,$M784-$O784)>0,($M784-$O784)*$R784,$M784*0.3*$R784),0))
+```
+
+- **Arithmetic / decision check:** `State Slow-mover; gross exposure = 3,144,150`
+
+**Input and source-cell verification:**
+
+| Source sheet | Cell | Saved value | Role |
+|---|---:|---:|---|
+| `ENGINE_STORE` | `Q784` | Slow-mover | Direct precedent/input |
+| `ENGINE_STORE` | `M784` | 411 | Direct precedent/input |
+| `ENGINE_STORE` | `J784` | 36.882238 | Direct precedent/input |
+| `SKU_Master` | `O45` | 999 | Direct precedent/input |
+| `ENGINE_STORE` | `O784` | 479 | Direct precedent/input |
+| `ENGINE_STORE` | `R784` | 25,500 | Direct precedent/input |
+
+---
+

@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.assortment_optimization",
-  "generated_at": "2026-08-19T00:28:21+00:00",
+  "generated_at": "2026-08-19T06:39:56+00:00",
   "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP position. Delist/grow classification, GMROI, tail share and capital freed are computed live from ENGINE/ENGINE_STORE/SKU_Master (chain-wide quartiles), not read from the A6 sheet's own B:F cells, which a prior audit found to hold stale hardcoded values. Contribution/day is the one column that audit did not flag, and reconciles exactly.",
@@ -68,802 +68,802 @@
     "categories": [
       {
         "value": "DGT-C01",
-        "label": "Electronics",
+        "label": "DGT-C01 · Electronics",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C02",
-        "label": "Fashion",
+        "label": "DGT-C02 · Fashion",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C03",
-        "label": "Health & Beauty",
+        "label": "DGT-C03 · Health & Beauty",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C04",
-        "label": "Home & Living",
+        "label": "DGT-C04 · Home & Living",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C05",
-        "label": "Groceries",
+        "label": "DGT-C05 · Groceries",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C06",
-        "label": "Baby & Kids",
+        "label": "DGT-C06 · Baby & Kids",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C07",
-        "label": "Sports & Outdoor",
+        "label": "DGT-C07 · Sports & Outdoor",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C08",
-        "label": "Automotive",
+        "label": "DGT-C08 · Automotive",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C09",
-        "label": "Books & Stationery",
+        "label": "DGT-C09 · Books & Stationery",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C10",
-        "label": "Toys & Hobbies",
+        "label": "DGT-C10 · Toys & Hobbies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C11",
-        "label": "Digital Goods & Vouchers",
+        "label": "DGT-C11 · Digital Goods & Vouchers",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C12",
-        "label": "Mobile & Accessories",
+        "label": "DGT-C12 · Mobile & Accessories",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C13",
-        "label": "Computers",
+        "label": "DGT-C13 · Computers",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C14",
-        "label": "Gaming",
+        "label": "DGT-C14 · Gaming",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C15",
-        "label": "Fashion Accessories",
+        "label": "DGT-C15 · Fashion Accessories",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C16",
-        "label": "Beauty & Personal Care",
+        "label": "DGT-C16 · Beauty & Personal Care",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C17",
-        "label": "Furniture",
+        "label": "DGT-C17 · Furniture",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C18",
-        "label": "Kitchen",
+        "label": "DGT-C18 · Kitchen",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C19",
-        "label": "Pet Supplies",
+        "label": "DGT-C19 · Pet Supplies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "DGT-C20",
-        "label": "Office Supplies",
+        "label": "DGT-C20 · Office Supplies",
         "legal_entity_id": "DGT"
       },
       {
         "value": "ELC-C01",
-        "label": "Smartphones",
+        "label": "ELC-C01 · Smartphones",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C02",
-        "label": "Laptops & Notebooks",
+        "label": "ELC-C02 · Laptops & Notebooks",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C03",
-        "label": "Tablets",
+        "label": "ELC-C03 · Tablets",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C04",
-        "label": "Televisions",
+        "label": "ELC-C04 · Televisions",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C05",
-        "label": "Audio & Headphones",
+        "label": "ELC-C05 · Audio & Headphones",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C06",
-        "label": "Cameras",
+        "label": "ELC-C06 · Cameras",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C07",
-        "label": "Gaming Consoles",
+        "label": "ELC-C07 · Gaming Consoles",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C08",
-        "label": "Wearables & Smartwatch",
+        "label": "ELC-C08 · Wearables & Smartwatch",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C09",
-        "label": "Large Appliances",
+        "label": "ELC-C09 · Large Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C10",
-        "label": "Small Appliances",
+        "label": "ELC-C10 · Small Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C11",
-        "label": "Computer Components",
+        "label": "ELC-C11 · Computer Components",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C12",
-        "label": "Networking",
+        "label": "ELC-C12 · Networking",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C13",
-        "label": "Storage & Peripherals",
+        "label": "ELC-C13 · Storage & Peripherals",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C14",
-        "label": "Printers & Scanners",
+        "label": "ELC-C14 · Printers & Scanners",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C15",
-        "label": "Smart Home",
+        "label": "ELC-C15 · Smart Home",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C16",
-        "label": "Power & Charging",
+        "label": "ELC-C16 · Power & Charging",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C17",
-        "label": "Cables & Adapters",
+        "label": "ELC-C17 · Cables & Adapters",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C18",
-        "label": "Air Treatment",
+        "label": "ELC-C18 · Air Treatment",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C19",
-        "label": "Kitchen Appliances",
+        "label": "ELC-C19 · Kitchen Appliances",
         "legal_entity_id": "ELC"
       },
       {
         "value": "ELC-C20",
-        "label": "Personal Care Electronics",
+        "label": "ELC-C20 · Personal Care Electronics",
         "legal_entity_id": "ELC"
       },
       {
         "value": "FSH-C01",
-        "label": "Men's Apparel",
+        "label": "FSH-C01 · Men's Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C02",
-        "label": "Women's Apparel",
+        "label": "FSH-C02 · Women's Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C03",
-        "label": "Kids' Apparel",
+        "label": "FSH-C03 · Kids' Apparel",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C04",
-        "label": "Men's Footwear",
+        "label": "FSH-C04 · Men's Footwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C05",
-        "label": "Women's Footwear",
+        "label": "FSH-C05 · Women's Footwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C06",
-        "label": "Bags & Luggage",
+        "label": "FSH-C06 · Bags & Luggage",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C07",
-        "label": "Accessories",
+        "label": "FSH-C07 · Accessories",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C08",
-        "label": "Watches",
+        "label": "FSH-C08 · Watches",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C09",
-        "label": "Jewelry",
+        "label": "FSH-C09 · Jewelry",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C10",
-        "label": "Sportswear",
+        "label": "FSH-C10 · Sportswear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C11",
-        "label": "Denim",
+        "label": "FSH-C11 · Denim",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C12",
-        "label": "Outerwear",
+        "label": "FSH-C12 · Outerwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C13",
-        "label": "Innerwear & Basics",
+        "label": "FSH-C13 · Innerwear & Basics",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C14",
-        "label": "Swimwear",
+        "label": "FSH-C14 · Swimwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C15",
-        "label": "Formalwear",
+        "label": "FSH-C15 · Formalwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C16",
-        "label": "Activewear",
+        "label": "FSH-C16 · Activewear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C17",
-        "label": "Eyewear",
+        "label": "FSH-C17 · Eyewear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C18",
-        "label": "Belts & Wallets",
+        "label": "FSH-C18 · Belts & Wallets",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C19",
-        "label": "Headwear",
+        "label": "FSH-C19 · Headwear",
         "legal_entity_id": "FSH"
       },
       {
         "value": "FSH-C20",
-        "label": "Hosiery & Socks",
+        "label": "FSH-C20 · Hosiery & Socks",
         "legal_entity_id": "FSH"
       },
       {
         "value": "GMR-C01",
-        "label": "Menswear",
+        "label": "GMR-C01 · Menswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C02",
-        "label": "Womenswear",
+        "label": "GMR-C02 · Womenswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C03",
-        "label": "Kidswear",
+        "label": "GMR-C03 · Kidswear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C04",
-        "label": "Footwear",
+        "label": "GMR-C04 · Footwear",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C05",
-        "label": "Home Textiles",
+        "label": "GMR-C05 · Home Textiles",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C06",
-        "label": "Kitchenware",
+        "label": "GMR-C06 · Kitchenware",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C07",
-        "label": "Toys & Games",
+        "label": "GMR-C07 · Toys & Games",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C08",
-        "label": "Stationery",
+        "label": "GMR-C08 · Stationery",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C09",
-        "label": "Sporting Goods",
+        "label": "GMR-C09 · Sporting Goods",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C10",
-        "label": "Luggage & Travel",
+        "label": "GMR-C10 · Luggage & Travel",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C11",
-        "label": "Beauty & Fragrance",
+        "label": "GMR-C11 · Beauty & Fragrance",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C12",
-        "label": "Watches & Jewelry",
+        "label": "GMR-C12 · Watches & Jewelry",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C13",
-        "label": "Electronics Accessories",
+        "label": "GMR-C13 · Electronics Accessories",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C14",
-        "label": "Bedding",
+        "label": "GMR-C14 · Bedding",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C15",
-        "label": "Bath & Body",
+        "label": "GMR-C15 · Bath & Body",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C16",
-        "label": "Party & Seasonal",
+        "label": "GMR-C16 · Party & Seasonal",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C17",
-        "label": "Books & Media",
+        "label": "GMR-C17 · Books & Media",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C18",
-        "label": "Automotive Accessories",
+        "label": "GMR-C18 · Automotive Accessories",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C19",
-        "label": "Gifts & Novelty",
+        "label": "GMR-C19 · Gifts & Novelty",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GMR-C20",
-        "label": "Pet Supplies",
+        "label": "GMR-C20 · Pet Supplies",
         "legal_entity_id": "GMR"
       },
       {
         "value": "GRC-C01",
-        "label": "Fruit",
+        "label": "GRC-C01 · Fruit",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C02",
-        "label": "Vegetable",
+        "label": "GRC-C02 · Vegetable",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C03",
-        "label": "Meat & Poultry",
+        "label": "GRC-C03 · Meat & Poultry",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C04",
-        "label": "Seafood",
+        "label": "GRC-C04 · Seafood",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C05",
-        "label": "Bakery",
+        "label": "GRC-C05 · Bakery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C06",
-        "label": "Dairy",
+        "label": "GRC-C06 · Dairy",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C07",
-        "label": "Frozen Food",
+        "label": "GRC-C07 · Frozen Food",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C08",
-        "label": "Beverages",
+        "label": "GRC-C08 · Beverages",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C09",
-        "label": "Snacks",
+        "label": "GRC-C09 · Snacks",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C10",
-        "label": "Confectionery",
+        "label": "GRC-C10 · Confectionery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C11",
-        "label": "Dry Grocery",
+        "label": "GRC-C11 · Dry Grocery",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C12",
-        "label": "Canned & Jarred",
+        "label": "GRC-C12 · Canned & Jarred",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C13",
-        "label": "Condiments & Sauces",
+        "label": "GRC-C13 · Condiments & Sauces",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C14",
-        "label": "Household Care",
+        "label": "GRC-C14 · Household Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C15",
-        "label": "Personal Care",
+        "label": "GRC-C15 · Personal Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C16",
-        "label": "Baby Care",
+        "label": "GRC-C16 · Baby Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C17",
-        "label": "Pet Care",
+        "label": "GRC-C17 · Pet Care",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C18",
-        "label": "Health & Wellness",
+        "label": "GRC-C18 · Health & Wellness",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C19",
-        "label": "Ready Meals",
+        "label": "GRC-C19 · Ready Meals",
         "legal_entity_id": "GRC"
       },
       {
         "value": "GRC-C20",
-        "label": "Beer Wine & Spirits",
+        "label": "GRC-C20 · Beer Wine & Spirits",
         "legal_entity_id": "GRC"
       },
       {
         "value": "HNB-C01",
-        "label": "OTC Medicine",
+        "label": "HNB-C01 · OTC Medicine",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C02",
-        "label": "Prescription (Rx)",
+        "label": "HNB-C02 · Prescription (Rx)",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C03",
-        "label": "Vitamins & Supplements",
+        "label": "HNB-C03 · Vitamins & Supplements",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C04",
-        "label": "First Aid",
+        "label": "HNB-C04 · First Aid",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C05",
-        "label": "Skincare",
+        "label": "HNB-C05 · Skincare",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C06",
-        "label": "Haircare",
+        "label": "HNB-C06 · Haircare",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C07",
-        "label": "Makeup & Cosmetics",
+        "label": "HNB-C07 · Makeup & Cosmetics",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C08",
-        "label": "Fragrance",
+        "label": "HNB-C08 · Fragrance",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C09",
-        "label": "Oral Care",
+        "label": "HNB-C09 · Oral Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C10",
-        "label": "Feminine Care",
+        "label": "HNB-C10 · Feminine Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C11",
-        "label": "Baby & Mother",
+        "label": "HNB-C11 · Baby & Mother",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C12",
-        "label": "Medical Devices",
+        "label": "HNB-C12 · Medical Devices",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C13",
-        "label": "Sun Care",
+        "label": "HNB-C13 · Sun Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C14",
-        "label": "Men's Grooming",
+        "label": "HNB-C14 · Men's Grooming",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C15",
-        "label": "Nutrition Drinks",
+        "label": "HNB-C15 · Nutrition Drinks",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C16",
-        "label": "Herbal & Traditional",
+        "label": "HNB-C16 · Herbal & Traditional",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C17",
-        "label": "Personal Wash",
+        "label": "HNB-C17 · Personal Wash",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C18",
-        "label": "Sanitizers & Hygiene",
+        "label": "HNB-C18 · Sanitizers & Hygiene",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C19",
-        "label": "Contact Lens & Care",
+        "label": "HNB-C19 · Contact Lens & Care",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNB-C20",
-        "label": "Wellness Supplements",
+        "label": "HNB-C20 · Wellness Supplements",
         "legal_entity_id": "HNB"
       },
       {
         "value": "HNL-C01",
-        "label": "Sofas & Seating",
+        "label": "HNL-C01 · Sofas & Seating",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C02",
-        "label": "Beds & Mattresses",
+        "label": "HNL-C02 · Beds & Mattresses",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C03",
-        "label": "Dining Sets",
+        "label": "HNL-C03 · Dining Sets",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C04",
-        "label": "Wardrobes & Storage",
+        "label": "HNL-C04 · Wardrobes & Storage",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C05",
-        "label": "Office Furniture",
+        "label": "HNL-C05 · Office Furniture",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C06",
-        "label": "Shelving & Bookcases",
+        "label": "HNL-C06 · Shelving & Bookcases",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C07",
-        "label": "Lighting",
+        "label": "HNL-C07 · Lighting",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C08",
-        "label": "Rugs & Carpets",
+        "label": "HNL-C08 · Rugs & Carpets",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C09",
-        "label": "Curtains & Blinds",
+        "label": "HNL-C09 · Curtains & Blinds",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C10",
-        "label": "Home Decor",
+        "label": "HNL-C10 · Home Decor",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C11",
-        "label": "Wall Art",
+        "label": "HNL-C11 · Wall Art",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C12",
-        "label": "Kitchen & Dining",
+        "label": "HNL-C12 · Kitchen & Dining",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C13",
-        "label": "Bedding & Linen",
+        "label": "HNL-C13 · Bedding & Linen",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C14",
-        "label": "Bathroom",
+        "label": "HNL-C14 · Bathroom",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C15",
-        "label": "Outdoor & Garden",
+        "label": "HNL-C15 · Outdoor & Garden",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C16",
-        "label": "Kids' Furniture",
+        "label": "HNL-C16 · Kids' Furniture",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C17",
-        "label": "Mirrors",
+        "label": "HNL-C17 · Mirrors",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C18",
-        "label": "Clocks",
+        "label": "HNL-C18 · Clocks",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C19",
-        "label": "Artificial Plants",
+        "label": "HNL-C19 · Artificial Plants",
         "legal_entity_id": "HNL"
       },
       {
         "value": "HNL-C20",
-        "label": "Home Organization",
+        "label": "HNL-C20 · Home Organization",
         "legal_entity_id": "HNL"
       },
       {
         "value": "OMN-C01",
-        "label": "Electronics",
+        "label": "OMN-C01 · Electronics",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C02",
-        "label": "Apparel",
+        "label": "OMN-C02 · Apparel",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C03",
-        "label": "Footwear",
+        "label": "OMN-C03 · Footwear",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C04",
-        "label": "Health & Beauty",
+        "label": "OMN-C04 · Health & Beauty",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C05",
-        "label": "Home & Living",
+        "label": "OMN-C05 · Home & Living",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C06",
-        "label": "Groceries & Fresh",
+        "label": "OMN-C06 · Groceries & Fresh",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C07",
-        "label": "Baby & Kids",
+        "label": "OMN-C07 · Baby & Kids",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C08",
-        "label": "Sports & Leisure",
+        "label": "OMN-C08 · Sports & Leisure",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C09",
-        "label": "Accessories",
+        "label": "OMN-C09 · Accessories",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C10",
-        "label": "Beauty & Cosmetics",
+        "label": "OMN-C10 · Beauty & Cosmetics",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C11",
-        "label": "Mobile & Gadgets",
+        "label": "OMN-C11 · Mobile & Gadgets",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C12",
-        "label": "Computers & Office",
+        "label": "OMN-C12 · Computers & Office",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C13",
-        "label": "Kitchen & Dining",
+        "label": "OMN-C13 · Kitchen & Dining",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C14",
-        "label": "Furniture",
+        "label": "OMN-C14 · Furniture",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C15",
-        "label": "Toys & Games",
+        "label": "OMN-C15 · Toys & Games",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C16",
-        "label": "Books & Media",
+        "label": "OMN-C16 · Books & Media",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C17",
-        "label": "Automotive",
+        "label": "OMN-C17 · Automotive",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C18",
-        "label": "Pet Care",
+        "label": "OMN-C18 · Pet Care",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C19",
-        "label": "Seasonal & Gifts",
+        "label": "OMN-C19 · Seasonal & Gifts",
         "legal_entity_id": "OMN"
       },
       {
         "value": "OMN-C20",
-        "label": "Digital & Services",
+        "label": "OMN-C20 · Digital & Services",
         "legal_entity_id": "OMN"
       }
     ],

@@ -13,12 +13,12 @@ from src.llm.agents.modules import ENABLED_MODULES
 
 
 # The mockup's nine retail destinations, in sidebar order, each flagged with
-# whether anything is wired behind it. Built and navigation-only used to be two
-# contiguous blocks, so the built ones could be taken as a prefix. They are not
-# any more: A6 is built while A5 above it is still a placeholder. Order stays
-# the agent's own number, because that is what the sidebar shows and what every
-# spec refers to, so the split has to be per entry rather than per slice.
-# `modules.py` carries the same note beside the same list.
+# whether anything is wired behind it. Built and navigation-only are two
+# contiguous blocks again now that A5 has caught up with A6, but the flag stays
+# per entry rather than a prefix slice: they came apart once already, and order
+# has to stay the agent's own number because that is what the sidebar shows and
+# what every spec refers to. `modules.py` carries the same note beside the same
+# list.
 RETAIL_DESTINATIONS = (
     ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand...", True),
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory...", True),
@@ -29,7 +29,7 @@ RETAIL_DESTINATIONS = (
         "Ask Promotion...",
         True,
     ),
-    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing...", False),
+    ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing...", True),
     (
         "retail.assortment_optimization",
         "Assortment Optimization",
@@ -65,7 +65,7 @@ PASSES_PER_MODULE = 3
 
 
 def test_retail_folder_carries_the_mockups_nine_agents_in_order() -> None:
-    """Four built, five navigation-only, in the mockup's sidebar order.
+    """Six built, three navigation-only, in the mockup's sidebar order.
 
     This asserted exactly three modules while Agents 4-9 did not exist. They
     are now reachable, which is the point of the change rather than a
@@ -278,7 +278,7 @@ def test_placeholder_dashboards_return_a_valid_empty_payload() -> None:
 
 
 def test_placeholder_modules_declare_no_chivon_agents() -> None:
-    """The six carry no config JSON, so they must not name one either.
+    """The three carry no config JSON, so they must not name one either.
 
     `test_every_declared_chivon_agent_exists` catches the reverse for the
     built modules; this is the same guard from the empty side.

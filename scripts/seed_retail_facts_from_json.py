@@ -35,41 +35,12 @@ client states a real as-of date; nothing else needs to move.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import event, text
-from sqlalchemy.engine import Engine as _Engine
-
-# Prefix for the throwaway staging tables `_upsert_mssql` writes through. The
-# process id keeps two concurrent runs from colliding on the same name.
-STAGE_PREFIX = f"stage_{os.getpid()}_"
-
-
-@event.listens_for(_Engine, "before_cursor_execute")
-def _enable_fast_executemany(
-    conn: Any,
-    cursor: Any,
-    statement: str,
-    parameters: Any,
-    context: Any,
-    executemany: bool,
-) -> None:
-    """Send batched inserts as ODBC parameter arrays.
-
-    pyodbc's default executemany loops and calls the server once per parameter
-    set. Against Azure SQL over the public internet that measured ~10
-    rows/second -- a full seed projected past an hour. `fast_executemany` binds
-    the whole batch as arrays instead, which is what makes staging worth doing.
-
-    Scoped to the staged INSERT: the flag rewrites how parameters are bound,
-    and on statements the driver cannot batch that costs more than it saves.
-    """
-    if executemany and conn.dialect.name == "mssql" and STAGE_PREFIX in statement:
-        cursor.fast_executemany = True
+from sqlalchemy import text
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
@@ -490,124 +461,40 @@ def build_promotion_vertical_kpi(
 # -------------------------------------------------------------------- writing
 
 
-def upsert(
+def replace_all(
     connection: Any,
     table: str,
-    keys: tuple[str, ...],
     rows: list[dict[str, Any]],
     chunk: int = 2000,
 ) -> int:
-    """Insert or update by composite key.
+    """Delete every row, then bulk-insert the fresh set.
 
-    Chunked because the driver builds one parameter set per row: 16,000 rows in
-    a single `executemany` is a large allocation for no gain, and a failure in
-    it reports nothing about which row was at fault.
+    This is a full re-import from the workbook, not an incremental sync, so a
+    per-row `MERGE` (Azure SQL's `ON CONFLICT` equivalent) buys nothing but a
+    lookup+branch per row and a round trip per chunk -- both are pure waste
+    against a table that is about to be entirely replaced anyway. Delete-then-
+    insert inside the caller's transaction gives the same guarantee
+    `formulas/repository.py` relies on: a reader never observes a partially
+    rewritten table, and a failed write leaves the previous one intact.
 
-    Two dialects, because the statement has no portable spelling. PostgreSQL
-    takes `ON CONFLICT ... DO UPDATE`; SQL Server takes MERGE. The warehouse
-    this seeds is Azure SQL, so the MERGE branch is the live one -- the
-    Postgres branch stays because the migration path out of Postgres still
-    exists.
+    Chunked on the insert because pyodbc builds one parameter set per row:
+    16,000 rows in a single `executemany` is a large allocation for no gain,
+    and a failure in it reports nothing about which row was at fault.
     """
+    connection.execute(text(f"DELETE FROM {SCHEMA}.{table}"))
     if not rows:
         return 0
 
     columns = list(rows[0].keys())
-    updatable = [name for name in columns if name not in keys]
-
-    if connection.dialect.name == "mssql":
-        return _upsert_mssql(connection, table, keys, columns, updatable, rows, chunk)
-
     quoted = ", ".join(f'"{name}"' for name in columns)
     placeholders = ", ".join(f":{name}" for name in columns)
-    conflict = ", ".join(f'"{name}"' for name in keys)
-    updates = ", ".join(f'"{name}" = EXCLUDED."{name}"' for name in updatable)
-
     statement = text(
         f"INSERT INTO {SCHEMA}.{table} ({quoted}) VALUES ({placeholders})"
-        f" ON CONFLICT ({conflict}) DO UPDATE SET {updates}"
     )
 
     for start in range(0, len(rows), chunk):
         connection.execute(statement, rows[start : start + chunk])
     return len(rows)
-
-
-def _upsert_mssql(
-    connection: Any,
-    table: str,
-    keys: tuple[str, ...],
-    columns: list[str],
-    updatable: list[str],
-    rows: list[dict[str, Any]],
-    chunk: int,
-) -> int:
-    """Stage the rows, then merge them in one statement.
-
-    The obvious spelling -- `MERGE ... USING (VALUES (?, ?, ...))` under
-    executemany -- is correct but unusable here. It makes the driver send one
-    round trip per row, and against Azure SQL over the public internet that
-    measured ~10 rows/second: a full seed of ~36,500 rows projected to over an
-    hour, all inside one transaction that a single dropped connection would
-    roll back to nothing.
-
-    Staging splits it into the two things each engine is good at. Rows go into
-    a session-scoped temp table with `fast_executemany`, which packs them into
-    ODBC parameter arrays instead of individual calls, then a single
-    set-based MERGE moves them across. Same result, two orders of magnitude
-    fewer round trips.
-
-    `SELECT TOP 0` clones the target's own column types, so nothing here has to
-    restate them and they cannot drift apart. Only the columns being written
-    are cloned -- cloning all of them would reproduce NOT NULL on columns this
-    load has no value for.
-
-    The staging table is a real table and NOT a `#temp` one, which matters and
-    is not a style choice. `fast_executemany` asks the driver to describe the
-    parameters before binding them, and ODBC cannot describe parameters against
-    a `#temp` table; it falls back to ANSI `varchar`, and every character
-    outside cp1252 silently becomes `?`. That corrupted `mechanism` in
-    `promotion_detail`: `buy N from set → % off` came back as
-    `buy N from set ? % off`, while `·` survived because cp1252 happens to have
-    it. Describing a real table works, so the round trip stays Unicode.
-    Suffixed with the process id so two runs cannot collide, and created inside
-    the caller's transaction so a failure rolls the table away with the load.
-
-    HOLDLOCK is required, not defensive: without it MERGE takes its ON clause
-    lookups under read-committed and a concurrent insert of the same key can
-    slip between the match test and the insert.
-    """
-    stage = f"{SCHEMA}.{STAGE_PREFIX}{table}"
-    bracketed = ", ".join(f"[{name}]" for name in columns)
-    placeholders = ", ".join(f":{name}" for name in columns)
-
-    connection.exec_driver_sql(
-        f"IF OBJECT_ID('{stage}') IS NOT NULL DROP TABLE {stage}"
-    )
-    connection.exec_driver_sql(
-        f"SELECT TOP 0 {bracketed} INTO {stage} FROM {SCHEMA}.{table}"
-    )
-
-    insert = text(f"INSERT INTO {stage} ({bracketed}) VALUES ({placeholders})")
-    for start in range(0, len(rows), chunk):
-        connection.execute(insert, rows[start : start + chunk])
-
-    on_clause = " AND ".join(f"tgt.[{name}] = src.[{name}]" for name in keys)
-    assignments = ", ".join(f"tgt.[{name}] = src.[{name}]" for name in updatable)
-    connection.exec_driver_sql(
-        # The trailing semicolon is required rather than stylistic -- T-SQL
-        # rejects a MERGE without it. Brackets rather than double quotes:
-        # those depend on QUOTED_IDENTIFIER, brackets never do.
-        f"MERGE INTO {SCHEMA}.{table} WITH (HOLDLOCK) AS tgt"
-        f" USING {stage} AS src"
-        f" ON {on_clause}"
-        + (f" WHEN MATCHED THEN UPDATE SET {assignments}" if updatable else "")
-        + f" WHEN NOT MATCHED THEN INSERT ({bracketed})"
-        f" VALUES ({', '.join(f'src.[{name}]' for name in columns)});"
-    )
-    connection.exec_driver_sql(f"DROP TABLE {stage}")
-    return len(rows)
-
 
 
 def dimension_counts(connection: Any) -> dict[str, int]:
@@ -669,52 +556,20 @@ def main() -> int:
         return 1
 
     loads = (
-        ("assortment", ("item_key", "store_key", "valid_from"), build_assortment(tables)),
-        (
-            "fact_inventory_daily",
-            ("item_key", "store_key", "cal_date"),
-            build_inventory(tables),
-        ),
-        (
-            "fact_inventory_chain_daily",
-            ("item_key", "cal_date"),
-            build_inventory_chain(tables),
-        ),
-        (
-            "trade_agreement",
-            ("item_key", "vendor_account", "valid_from"),
-            build_trade_agreements(tables),
-        ),
-        (
-            "replenishment_proposal",
-            ("item_key", "as_of_date"),
-            build_replenishment(tables),
-        ),
-        (
-            "fact_gmv_monthly",
-            ("vertical_id", "year_index", "month_index"),
-            build_gmv_monthly(tables),
-        ),
-        (
-            "agent_kpi_reference",
-            ("agent_id", "vertical_id", "metric"),
-            build_agent_kpi_reference(tables),
-        ),
-        (
-            "promotion_detail",
-            ("promo_id",),
-            build_promotion_detail(tables),
-        ),
-        (
-            "promotion_vertical_kpi",
-            ("vertical_label",),
-            build_promotion_vertical_kpi(tables),
-        ),
+        ("assortment", build_assortment(tables)),
+        ("fact_inventory_daily", build_inventory(tables)),
+        ("fact_inventory_chain_daily", build_inventory_chain(tables)),
+        ("trade_agreement", build_trade_agreements(tables)),
+        ("replenishment_proposal", build_replenishment(tables)),
+        ("fact_gmv_monthly", build_gmv_monthly(tables)),
+        ("agent_kpi_reference", build_agent_kpi_reference(tables)),
+        ("promotion_detail", build_promotion_detail(tables)),
+        ("promotion_vertical_kpi", build_promotion_vertical_kpi(tables)),
     )
 
     with engine.begin() as connection:
-        for table, keys, rows in loads:
-            written = upsert(connection, table, keys, rows)
+        for table, rows in loads:
+            written = replace_all(connection, table, rows)
             print(f"  ok  {table:24} {written:>6} rows")
 
     print(f"\nSnapshot date: {SNAPSHOT_DATE}")

@@ -1,9 +1,9 @@
 /**
- * The What-If engine re-runs f01..f07 (+f12/f14/f20-f22) from each item's
- * CHAIN-level inputs (position, on_hand, open_po — all from the ENGINE
- * table, which the audit did not flag as broken). The fixture's shipped
- * `at_risk_value` / `recoverable_value` / `state`, by contrast, are summed
- * or chosen from that SKU's STORE-level rows (ENGINE_STORE), per the
+ * The What-If engine re-runs f01..f07 (+f12/f20-f22, plus f23 into f14) from
+ * each item's CHAIN-level inputs (position, on_hand, open_po — all from the
+ * ENGINE table, which the audit did not flag as broken). The fixture's
+ * shipped `at_risk_value` / `recoverable_value` / `state`, by contrast, are
+ * summed or chosen from that SKU's STORE-level rows (ENGINE_STORE), per the
  * decision to follow AUDIT Fix Register's F-05. Those are two different
  * grains by design (see contract.js's module docstring and RC-1 in the
  * audit: "one SKU can be Healthy chain-wide but Low in six stores") — so
@@ -60,12 +60,27 @@ describe("with the demand lever moved", () => {
 });
 
 describe("with the markdown lever moved", () => {
-  it("has no modelled effect on at-risk or recoverable value", () => {
+  // f14-recoverable-at-risk-value is the one formula in this cascade that
+  // reads `markdown`: it widens the recovery depth applied to f23's gross
+  // exposure. Deeper is not always more recovered — past the point where
+  // the recovery factor hits its 0.95 cap, a wider depth mostly gives away
+  // margin for no further recovery credit — so this only asserts the lever
+  // has SOME effect, not a fixed direction. f12-at-risk-value never reads
+  // `markdown`, so at-risk stays exactly put.
+  it("changes recoverable value but never at-risk value", () => {
     const item = fixture.items.find((i) => i.is_markdown_candidate);
     const baseline = applyLevers(item, BASELINE_LEVERS);
     const scenario = applyLevers(item, { ...BASELINE_LEVERS, markdown: 40 });
     expect(scenario.at_risk_value).toBeCloseTo(baseline.at_risk_value, 6);
-    expect(scenario.recoverable_value).toBeCloseTo(baseline.recoverable_value, 6);
+    expect(scenario.recoverable_value).not.toBeCloseTo(baseline.recoverable_value, 2);
+  });
+
+  it("leaves state and position untouched — markdown depth is not a supply lever", () => {
+    const item = fixture.items.find((i) => i.is_markdown_candidate);
+    const baseline = applyLevers(item, BASELINE_LEVERS);
+    const scenario = applyLevers(item, { ...BASELINE_LEVERS, markdown: 40 });
+    expect(scenario.state).toBe(baseline.state);
+    expect(scenario.position).toBe(baseline.position);
   });
 });
 

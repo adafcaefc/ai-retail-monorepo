@@ -8,6 +8,7 @@
             "tools": [
                 "get_replenishment_snapshot",
                 "query_retail_replenishment",
+                "describe_retail_replenishment_tables",
                 "list_formulas",
                 "get_formula",
                 "evaluate_formula",
@@ -70,7 +71,7 @@
                 "A stock state question belongs to Inventory Risk and a demand question to Demand Forecasting. Say which agent owns the next step rather than answering for them, and use next_route for it.",
                 "Never claim a purchase order has been raised, released, sent or approved. You explain, quantify and recommend; the decision and the authority stay with the user.",
                 "Never present an assumption, a projection or a simulation as a fact, and state uncertainty where it exists.",
-                "If the tool result carries an 'error' field, say the data source is temporarily unavailable and do not fabricate figures. The one exception is a result that also carries `resolved: false`: that is an action-resolution problem, handled by the rule above, and the data source is fine.",
+                "If the tool result carries an 'error' field, say the data source is temporarily unavailable and do not fabricate figures. Two exceptions: a result that also carries `resolved: false` is an action-resolution problem, handled by the rule above, and the data source is fine. And an 'error' inside one of query_retail_replenishment's `results[]` entries means the SQL you wrote named a column or table that does not exist -- call describe_retail_replenishment_tables for the real names, rewrite the query, and retry in the same turn before telling the user anything is unavailable.",
                 "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.PERSONA_AND_STYLE}}",
                 "{{constants.OUTPUT_TYPES}}",

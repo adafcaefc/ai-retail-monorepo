@@ -12,10 +12,11 @@ import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { LEVER_DEFINITIONS } from "../data/contract.js";
 
 /**
- * The What-If simulator — A5 spec section 9c. `markdown` is listed but
- * inert (modelled: false): the workbook's formula set has no depth-to-
- * recovery term, matching inventory_risk's identical conclusion for the
- * same lever.
+ * The What-If simulator — A5 spec section 9c. Every lever here is modelled;
+ * `markdown` is the one that moves recoverable value rather than state or
+ * position — it widens the recovery depth f14-recoverable-at-risk-value
+ * applies to f23's gross exposure. `is-inert` styling stays available for a
+ * future lever this formula set genuinely does not model.
  *
  * Draft levers vs applied levers: the sliders hold draft, "Run" applies.
  * Moving a slider is an assumption, never a result.

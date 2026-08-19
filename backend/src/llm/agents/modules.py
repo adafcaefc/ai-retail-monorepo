@@ -17,9 +17,9 @@ ENABLED_MODULES: tuple[str, ...] = (
     # "finance.leakage",
     # Order is the agent's own number, which is what the sidebar shows and what
     # every spec, board and audit refers to. Status is marked per line rather
-    # than per block, because the two no longer group: A6 is built while A5
-    # above it is not, and reordering to keep the blocks tidy would renumber the
-    # sidebar.
+    # than per block: the two grouped apart once already (A6 built while A5
+    # above it was not), and reordering to keep the blocks tidy would renumber
+    # the sidebar.
     #
     #   built  chat, monitoring, actions and a warehouse-backed board
     #   nav    reachable in the sidebar, nothing wired behind it yet
@@ -27,7 +27,7 @@ ENABLED_MODULES: tuple[str, ...] = (
     "retail.inventory_risk",            # A2  built
     "retail.replenishment",             # A3  built
     "retail.promotion_effectiveness",   # A4  built
-    "retail.pricing_markdown",          # A5  nav
+    "retail.pricing_markdown",          # A5  built
     "retail.assortment_optimization",   # A6  built
     "retail.workforce_optimizer",       # A7  nav
     "retail.vendor_brand_performance",  # A8  nav
