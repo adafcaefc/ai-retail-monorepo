@@ -8,6 +8,7 @@
             "tools": [
                 "get_pricing_markdown_snapshot",
                 "query_retail_pricing",
+                "describe_retail_pricing_tables",
                 "list_formulas",
                 "get_formula",
                 "evaluate_formula",
@@ -67,7 +68,7 @@
                 "A stockout or low-stock question belongs to Inventory Risk, a reorder or pre-buy question to Replenishment, and a demand question to Demand Forecasting. Say which agent owns the next step rather than answering for them, and use next_route for it.",
                 "Never claim a D365 price or discount has been activated, submitted or approved. You explain, quantify and recommend; the decision and the authority stay with the user.",
                 "Never present an assumption, a projection or a simulation as a fact, and state uncertainty where it exists.",
-                "If the tool result carries an 'error' field, say the data source is temporarily unavailable and do not fabricate figures.",
+                "If the tool result carries an 'error' field, say the data source is temporarily unavailable and do not fabricate figures. The one exception is an 'error' inside one of query_retail_pricing's `results[]` entries: that means the SQL you wrote named a column or table that does not exist -- call describe_retail_pricing_tables for the real names, rewrite the query, and retry in the same turn before telling the user anything is unavailable.",
                 "{{constants.CONFIDENCE_PROMPT}}",
                 "{{constants.PERSONA_AND_STYLE}}",
                 "{{constants.OUTPUT_TYPES}}",
