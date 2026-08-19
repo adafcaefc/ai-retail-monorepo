@@ -133,6 +133,25 @@ REPLENISHMENT_ALLOWED_TABLES = (
     "retail.fact_inventory_chain_daily",
 )
 
+# Agent 3.1 · Replenishment Detail. The same tables as Agent 3, because it is
+# the line-level view of the same recommendation - `replenishment_proposal` IS
+# the `Replenishment Detail` worksheet. It reads its own tuple rather than
+# aliasing Replenishment's, and carries its own `db_domain`, because
+# `CANONICAL_AGENT` in `src/actions/service.py` maps a domain back to exactly
+# one agent id: two boards sharing a domain would make each one's alerts
+# resolve to the other.
+#
+# It does not read `fact_inventory_chain_daily`. Agent 3 joins it for What-If
+# parameters and the retail-priced order value; this board has no simulator and
+# prices at cost, so an agent given it would be told it may read a fact nothing
+# on the board is derived from.
+REPLENISHMENT_DETAIL_ALLOWED_TABLES = (
+    *RETAIL_SHARED_TABLES,
+    "retail.replenishment_proposal",
+    "retail.trade_agreement",
+    "retail.dim_vendor",
+)
+
 # Agent 4 · Promotion Effectiveness. The two promo tables are its own; the
 # chain-net inventory fact is where per-SKU promo margin is rolled up from
 # (margin_rp / funding_rp), joined to dim_item for the promo-eligible flag,
@@ -171,6 +190,7 @@ DOMAIN_ALLOWED_TABLES: dict[str, tuple[str, ...]] = {
     "retail_demand": DEMAND_ALLOWED_TABLES,
     "retail_inventory": INVENTORY_ALLOWED_TABLES,
     "retail_replenishment": REPLENISHMENT_ALLOWED_TABLES,
+    "retail_replenishment_detail": REPLENISHMENT_DETAIL_ALLOWED_TABLES,
     "retail_promotion": PROMOTION_ALLOWED_TABLES,
     "retail_pricing": PRICING_ALLOWED_TABLES,
 }
@@ -1122,6 +1142,40 @@ def query_retail_replenishment(queries: list[str]) -> dict[str, Any]:
     return _domain_query(queries, allowed_tables=REPLENISHMENT_ALLOWED_TABLES)
 
 
+def query_retail_replenishment_detail(queries: list[str]) -> dict[str, Any]:
+    """
+    Run free-form SELECT queries against the retail replenishment detail tables.
+
+    Accepts a list of SQL SELECT statements (one per list item). Each result
+    set is capped at 100 rows (truncated=true when more matched). Prefer
+    get_replenishment_detail_snapshot for the standard view; use this for
+    custom filters, joins or columns beyond it.
+
+    Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
+    retail.dim_calendar, retail.dim_vendor, retail.agent_kpi_reference,
+    retail.formula, retail.replenishment_proposal, retail.trade_agreement,
+    audit.import_batches.
+
+    `replenishment_proposal` is the `Replenishment Detail` worksheet: one row
+    per SKU, 800 rows, keyed (item_key, as_of_date). It has NO store, cluster,
+    channel, run id or approval state, so no query here can answer a per-store
+    or per-run question.
+
+    GRAIN AND UNITS. Position is not stored -- it is qty_on_hand + open_po_qty.
+    is_reorder is a strict Position < ROP; equality does not trigger.
+    unit_price_ta and best_price are per SALES unit, so
+    amount = order_qty_buy * dim_item.pack_factor * unit_price_ta and
+    saving_vs_designated prices that same rounded quantity. Multiplying by
+    order_qty_buy alone understates a Crate line twelvefold. order_qty_buy is a
+    CEILING against pack_factor, so it intentionally buys at or above the
+    Max - Position requirement.
+
+    Never SUM(order_qty_buy) across rows without grouping by buy_uom: Crates,
+    Pallets and Packs are not a common unit.
+    """
+    return _domain_query(queries, allowed_tables=REPLENISHMENT_DETAIL_ALLOWED_TABLES)
+
+
 def describe_retail_demand_tables(
     tables: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -1163,6 +1217,21 @@ def describe_retail_replenishment_tables(
     """
     return describe_tables(
         allowed_tables=REPLENISHMENT_ALLOWED_TABLES,
+        tables=tables,
+    )
+
+
+def describe_retail_replenishment_detail_tables(
+    tables: list[str] | None = None,
+) -> dict[str, Any]:
+    """
+    List live columns for the retail replenishment detail allow-listed tables.
+
+    Call this before writing custom SQL or impact simulations so you only use
+    real column names. Optional tables filter must stay inside the allow-list.
+    """
+    return describe_tables(
+        allowed_tables=REPLENISHMENT_DETAIL_ALLOWED_TABLES,
         tables=tables,
     )
 
@@ -1260,6 +1329,7 @@ for _tool in (
     query_retail_demand,
     query_retail_inventory,
     query_retail_replenishment,
+    query_retail_replenishment_detail,
     query_retail_promotion,
     query_retail_pricing,
 ):
@@ -1275,6 +1345,7 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "query_retail_demand": query_retail_demand,
     "query_retail_inventory": query_retail_inventory,
     "query_retail_replenishment": query_retail_replenishment,
+    "query_retail_replenishment_detail": query_retail_replenishment_detail,
     "query_retail_promotion": query_retail_promotion,
     "query_retail_pricing": query_retail_pricing,
     "describe_financial_performance_tables": describe_financial_performance_tables,
@@ -1284,6 +1355,9 @@ LOCAL_FREEFORM_QUERY_TOOLS = {
     "describe_retail_demand_tables": describe_retail_demand_tables,
     "describe_retail_inventory_tables": describe_retail_inventory_tables,
     "describe_retail_replenishment_tables": describe_retail_replenishment_tables,
+    "describe_retail_replenishment_detail_tables": (
+        describe_retail_replenishment_detail_tables
+    ),
     "describe_retail_promotion_tables": describe_retail_promotion_tables,
     "describe_retail_pricing_tables": describe_retail_pricing_tables,
 }
@@ -1301,6 +1375,7 @@ __all__ = [
     "PRICING_ALLOWED_TABLES",
     "PROMOTION_ALLOWED_TABLES",
     "REPLENISHMENT_ALLOWED_TABLES",
+    "REPLENISHMENT_DETAIL_ALLOWED_TABLES",
     "RETAIL_SHARED_TABLES",
     "clear_schema_cache",
     "describe_cashflow_tables",

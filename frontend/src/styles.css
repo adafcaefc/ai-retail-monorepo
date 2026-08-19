@@ -12234,3 +12234,660 @@ button.assortment-kpi:hover {
     text-align: left;
   }
 }
+
+/* ==========================================================================
+   Replenishment Detail (Agent 3.1)
+
+   A reading surface, not a summary. Its own prefix rather than reuse of
+   `.po-*`: the two boards answer different questions at different densities,
+   and sharing a layout would tie one board's column widths to the other's
+   cards.
+
+   The rule this board owns is the row state. Blocked outranks everything — a
+   line that cannot be actioned has to look different from one that merely has
+   an opportunity attached, at a glance, before any column is read.
+   ========================================================================== */
+
+.rdet-dashboard {
+  --rdet-state-blocked: var(--red-500);
+  --rdet-state-alternate: var(--amber-500);
+  --rdet-state-saving: var(--green-500);
+  --rdet-state-action: var(--blue-500);
+  --rdet-state-resting: var(--gray-300);
+
+  --rdet-kpi-reorder-sku-count: var(--blue-500);
+  --rdet-kpi-order-qty-sales: var(--blue-500);
+  --rdet-kpi-buy-uom-count: var(--gray-500);
+  --rdet-kpi-purchase-amount: var(--gray-700);
+  --rdet-kpi-potential-saving: var(--green-500);
+  --rdet-kpi-alternate-vendor-count: var(--amber-500);
+
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rdet-dashboard.is-refreshing {
+  opacity: 0.72;
+  transition: opacity 120ms ease-in;
+}
+
+/* ---------- Filter bar ---------- */
+
+.rdet-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-strong);
+}
+
+.rdet-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 132px;
+}
+
+.rdet-field > span,
+.rdet-field > label {
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.rdet-field select,
+.rdet-field input {
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 0.75rem;
+}
+
+.rdet-field select:disabled,
+.rdet-field input:disabled {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.rdet-band {
+  display: flex;
+  gap: 6px;
+}
+
+.rdet-band input {
+  width: 92px;
+}
+
+.rdet-field-search {
+  min-width: 220px;
+}
+
+.rdet-search-row {
+  display: flex;
+  gap: 6px;
+}
+
+.rdet-search-row input {
+  flex: 1;
+}
+
+.rdet-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 7px;
+  color: var(--ink);
+  font-size: 0.72rem;
+}
+
+.rdet-filter-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+  padding-bottom: 1px;
+}
+
+.rdet-filters button,
+.rdet-export,
+.rdet-pager button {
+  padding: 7px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-strong);
+  color: var(--ink);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rdet-filters button:hover:not(:disabled),
+.rdet-export:hover:not(:disabled),
+.rdet-pager button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.rdet-filters button:disabled,
+.rdet-export:disabled,
+.rdet-pager button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* ---------- Scope and data notes ---------- */
+
+.rdet-scope-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+}
+
+.rdet-source {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rdet-note,
+.rdet-footnote,
+.rdet-grid-note {
+  color: var(--muted);
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+.rdet-inline-error {
+  padding: 8px 12px;
+  border: 1px solid var(--accent-danger-border);
+  border-radius: 6px;
+  background: var(--accent-danger-soft);
+  color: var(--red-700);
+  font-size: 0.72rem;
+}
+
+.rdet-error-detail {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+/* ---------- KPI strip ---------- */
+
+.rdet-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rdet-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--rdet-kpi-accent);
+  border-radius: 10px;
+  background: var(--surface-strong);
+  text-align: left;
+  cursor: pointer;
+}
+
+.rdet-kpi:hover {
+  border-color: var(--primary);
+  border-left-color: var(--rdet-kpi-accent);
+}
+
+.rdet-kpi-label {
+  color: var(--muted);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.rdet-kpi-value {
+  color: var(--ink);
+  font-size: 1.32rem;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.rdet-kpi-sub {
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
+/* ---------- Detail grid ---------- */
+
+.rdet-grid-panel,
+.rdet-uom-panel {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-strong);
+}
+
+.rdet-grid-head,
+.rdet-uom-panel > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rdet-grid-head h3,
+.rdet-uom-panel h3 {
+  margin: 0 0 2px;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.rdet-table-scroll {
+  overflow-x: auto;
+}
+
+.rdet-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.rdet-table th,
+.rdet-table td {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.rdet-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.rdet-table th button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.rdet-table th.sorted button {
+  color: var(--primary);
+}
+
+.rdet-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The frozen identifier columns of spec 8.1. Each needs its own offset
+ * because sticky positions against the scroll container, not against its
+ * neighbour.
+ */
+.rdet-table th.sticky,
+.rdet-table td.sticky {
+  position: sticky;
+  z-index: 1;
+  background: var(--surface-strong);
+}
+
+.rdet-table th.sticky {
+  z-index: 3;
+  background: var(--surface);
+}
+
+.rdet-table th.sticky:nth-child(1),
+.rdet-table td.sticky:nth-child(1) {
+  left: 0;
+}
+
+.rdet-table th.sticky:nth-child(2),
+.rdet-table td.sticky:nth-child(2) {
+  left: 96px;
+}
+
+.rdet-table th.sticky:nth-child(3),
+.rdet-table td.sticky:nth-child(3) {
+  left: 276px;
+  box-shadow: 1px 0 0 var(--line);
+}
+
+.rdet-table tbody tr {
+  cursor: pointer;
+}
+
+.rdet-table tbody tr:hover td {
+  background: var(--surface);
+}
+
+.rdet-table tbody tr.is-selected td {
+  background: var(--accent-info-soft);
+}
+
+/* Row states, spec 8.2 — the left edge carries the verdict. */
+.rdet-table tbody tr td.sticky:first-child {
+  border-left: 3px solid transparent;
+}
+
+.rdet-row-blocked td.sticky:first-child {
+  border-left-color: var(--rdet-state-blocked);
+}
+
+.rdet-row-alternate td.sticky:first-child {
+  border-left-color: var(--rdet-state-alternate);
+}
+
+.rdet-row-saving td.sticky:first-child {
+  border-left-color: var(--rdet-state-saving);
+}
+
+.rdet-row-action td.sticky:first-child {
+  border-left-color: var(--rdet-state-action);
+}
+
+.rdet-row-resting {
+  color: var(--muted);
+}
+
+.rdet-pill {
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 700;
+}
+
+.rdet-pill-yes {
+  background: var(--accent-warning-soft);
+  color: var(--amber-600);
+}
+
+.rdet-pill-no {
+  color: var(--muted);
+}
+
+.rdet-alt-vendor {
+  color: var(--green-600);
+  font-weight: 600;
+}
+
+.rdet-empty {
+  padding: 24px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.rdet-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+/* ---------- Buy-UOM breakdown ---------- */
+
+.rdet-uom-list {
+  margin: 0;
+  padding: 8px;
+  list-style: none;
+}
+
+.rdet-uom-list button {
+  display: grid;
+  grid-template-columns: 72px 84px minmax(80px, 1fr) 108px 78px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--ink);
+  font-size: 0.72rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rdet-uom-list button:hover,
+.rdet-uom-list button.is-active {
+  border-color: var(--primary);
+  background: var(--surface);
+}
+
+.rdet-uom-name {
+  font-weight: 600;
+}
+
+.rdet-uom-qty,
+.rdet-uom-amount {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rdet-uom-lines {
+  color: var(--muted);
+  text-align: right;
+}
+
+.rdet-uom-bar {
+  display: block;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--surface);
+}
+
+.rdet-uom-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gray-700);
+}
+
+/* ---------- Line inspector ---------- */
+
+.rdet-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rdet-eligibility {
+  align-self: flex-start;
+  margin: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rdet-eligibility-eligible {
+  background: var(--accent-success-soft);
+  color: var(--green-600);
+}
+
+.rdet-eligibility-blocked {
+  background: var(--accent-danger-soft);
+  color: var(--red-700);
+}
+
+.rdet-eligibility-no_order {
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.rdet-exception-list {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--red-700);
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.rdet-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+  margin: 0;
+}
+
+.rdet-facts > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 4px;
+  border-bottom: 1px dashed var(--line);
+}
+
+.rdet-facts dt {
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.rdet-facts dd {
+  margin: 0;
+  font-size: 0.74rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.rdet-unit {
+  color: var(--muted);
+  font-size: 0.64rem;
+  font-weight: 400;
+}
+
+.rdet-quote-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.rdet-quote-table th,
+.rdet-quote-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+}
+
+.rdet-quote-table th {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rdet-quote-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.rdet-quote-best td {
+  background: var(--accent-success-soft);
+  font-weight: 600;
+}
+
+.rdet-saving-line,
+.rdet-terms,
+.rdet-absent {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.rdet-trace {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--ink);
+  font-size: 0.71rem;
+  line-height: 1.7;
+}
+
+/* ---------- Skeleton ---------- */
+
+.rdet-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.rdet-skeleton-filters {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.rdet-skeleton-kpis {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px;
+}
+
+/* ---------- Narrow viewports ---------- */
+
+@media (max-width: 1100px) {
+  .rdet-kpi-grid,
+  .rdet-skeleton-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .rdet-skeleton-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  /* Freezing columns on a narrow screen leaves no room for the rest. */
+  .rdet-table th.sticky,
+  .rdet-table td.sticky {
+    position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .rdet-kpi-grid,
+  .rdet-skeleton-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .rdet-filter-actions {
+    margin-left: 0;
+  }
+
+  .rdet-facts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .rdet-uom-list button {
+    grid-template-columns: 64px 72px minmax(60px, 1fr) 88px;
+  }
+
+  .rdet-uom-lines {
+    display: none;
+  }
+}

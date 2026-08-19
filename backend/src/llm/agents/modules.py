@@ -19,6 +19,11 @@ ENABLED_MODULES: tuple[str, ...] = (
     "retail.demand_forecasting",
     "retail.inventory_risk",
     "retail.replenishment",
+    # Agent 3.1: the line-level evidence behind Agent 3's recommendations.
+    # Sits directly below its parent because list order is sidebar order --
+    # there is no parent/child field, and adjacency is how the relationship is
+    # expressed.
+    "retail.replenishment_detail",
     "retail.promotion_effectiveness",
     # Navigation-only: reachable in the sidebar, nothing wired behind them yet.
     "retail.pricing_markdown",

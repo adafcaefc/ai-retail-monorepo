@@ -24,6 +24,7 @@
             "retail_demand",
             "retail_inventory",
             "retail_replenishment",
+            "retail_replenishment_detail",
             "retail_promotion",
             "retail_pricing"
           ],
@@ -192,6 +193,7 @@
             "retail_demand",
             "retail_inventory",
             "retail_replenishment",
+            "retail_replenishment_detail",
             "retail_promotion",
             "retail_pricing"
           ],
@@ -281,6 +283,7 @@
             "retail_demand",
             "retail_inventory",
             "retail_replenishment",
+            "retail_replenishment_detail",
             "retail_promotion",
             "retail_pricing"
           ],

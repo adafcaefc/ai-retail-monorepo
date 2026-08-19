@@ -16,6 +16,11 @@ RETAIL_MODULES = (
     ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand..."),
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory..."),
     ("retail.replenishment", "Replenishment", "Ask Replenishment..."),
+    (
+        "retail.replenishment_detail",
+        "Replenishment Detail",
+        "Ask Replenishment Detail...",
+    ),
     ("retail.promotion_effectiveness", "Promotion Effectiveness", "Ask Promotion..."),
     ("retail.pricing_markdown", "Pricing & Markdown", "Ask Pricing..."),
 )
@@ -43,8 +48,8 @@ PLACEHOLDER_MODULES = (
 PASSES_PER_MODULE = 3
 
 
-def test_retail_folder_carries_the_mockups_nine_agents_in_order() -> None:
-    """Five built, four navigation-only, in the mockup's sidebar order.
+def test_retail_folder_carries_every_agent_in_order() -> None:
+    """Six built, four navigation-only, in the mockup's sidebar order.
 
     This asserted exactly three modules while Agents 4-9 did not exist. They
     are now reachable, which is the point of the change rather than a
@@ -275,7 +280,7 @@ def test_placeholder_modules_declare_no_chivon_agents() -> None:
         assert not config_dir.exists(), f"{agent_id} has a config folder"
 
 
-def test_agents_api_exposes_all_nine_retail_destinations() -> None:
+def test_agents_api_exposes_every_retail_destination() -> None:
     payload = asyncio.run(list_agents())
     retail = [item for item in payload["items"] if item["folder"] == "retail"]
     expected = (*RETAIL_MODULES, *PLACEHOLDER_MODULES)
@@ -283,8 +288,8 @@ def test_agents_api_exposes_all_nine_retail_destinations() -> None:
     assert [item["id"] for item in retail] == [item[0] for item in expected]
     assert [item["display"] for item in retail] == [item[1] for item in expected]
     # This flag is what the frontend reads to show chat, the Alerts panel and
-    # the Subagents control — on for the three built boards, off for the six
-    # that have nothing to answer with.
+    # the Subagents control — on for the built boards, off for the four that
+    # have nothing to answer with.
     built = retail[: len(RETAIL_MODULES)]
     placeholders = retail[len(RETAIL_MODULES) :]
     assert all(item["dashboard_only"] is False for item in built)
