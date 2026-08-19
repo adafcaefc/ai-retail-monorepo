@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.promotion_effectiveness",
-  "generated_at": "2026-08-18T07:31:13+00:00",
+  "generated_at": "2026-08-19T04:06:15+00:00",
   "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP or D365 Commerce position. ROI is a stored KPI; no separate promo-investment column is exposed.",
