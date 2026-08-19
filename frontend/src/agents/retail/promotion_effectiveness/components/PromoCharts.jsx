@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { categoryColor, formatIdr, formatPercent } from "../presentation.js";
+import { categoryColor, formatIdr, formatPercent, formatUnits } from "../presentation.js";
 
 /** Active bar stays at full opacity; the rest dim, so a selection reads at a glance. */
 function cellOpacity(key, activeKey) {
@@ -249,12 +249,26 @@ export function InventoryStateChart({ rows }) {
 /**
  * Campaign mix by season (stacked bars of pre-buy units per discount type) —
  * the stacked dimension chart from the A4 spec section 6.
+ *
+ * Recharts reads both the axis domain and the stack off the chart-level
+ * `data`, so every discount type needs its own numeric key on the row. Keeping
+ * the nested `segments` array as the `dataKey` and handing each Bar a private
+ * `data` prop instead does not work: the domain comes out non-numeric, the
+ * axis falls back to 0–4, `stackId` is ignored, and all eleven series are
+ * drawn full-height on the same x band, overdrawing one another.
  */
 export function SeasonMixChart({ rows }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const discountTypes = [
     ...new Set(rows.flatMap((r) => r.segments.map((s) => s.discount_type))),
   ];
+  const data = rows.map((r) => {
+    const point = { season: r.season };
+    for (const type of discountTypes) {
+      point[type] = r.segments.find((s) => s.discount_type === type)?.value ?? 0;
+    }
+    return point;
+  });
 
   if (!rows.length) return <p className="promo-empty">{t("No campaigns in scope.")}</p>;
 
@@ -262,25 +276,19 @@ export function SeasonMixChart({ rows }) {
     <section className="promo-chart-block" data-testid="promo-chart-season">
       <h4>{t("Campaign mix by season (pre-buy units)")}</h4>
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={rows} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="season" tick={{ fontSize: 11 }} />
-          <YAxis tick={{ fontSize: 11 }} />
-          <Tooltip />
+          <YAxis tickFormatter={(v) => formatUnits(v, language)} tick={{ fontSize: 11 }} />
+          <Tooltip formatter={(v) => formatUnits(v, language)} />
           <Legend />
           {discountTypes.map((type, i) => (
             <Bar
               key={type}
-              dataKey={`segments`}
+              dataKey={type}
               name={type}
               stackId="a"
               fill={categoryColor(i)}
-              // Recharts can't filter a nested array by stack directly; map the
-              // data so each Bar sees a flat value for its own discount type.
-              data={rows.map((r) => ({
-                season: r.season,
-                segments: r.segments.find((s) => s.discount_type === type)?.value ?? 0,
-              }))}
             />
           ))}
         </BarChart>

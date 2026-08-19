@@ -79,7 +79,14 @@ export function kpiAccent(id) {
   return `var(--promo-kpi-${id.replace(/_/g, "-")})`;
 }
 
-/** Categorical palette for stacked-bar and donut segments. */
+/**
+ * Categorical palette for stacked-bar and donut segments.
+ *
+ * Eleven entries because the season-mix chart stacks one segment per D365
+ * discount type, and there are eleven of those — at eight the palette wrapped
+ * and three types repeated a colour already in the same stack. The first eight
+ * are unchanged, so the other charts on this board keep the colours they had.
+ */
 export function categoryColor(index) {
   const palette = [
     "var(--blue-500)",
@@ -90,6 +97,9 @@ export function categoryColor(index) {
     "var(--green-600)",
     "var(--gray-500)",
     "var(--amber-600)",
+    "var(--red-600)",
+    "var(--gray-700)",
+    "var(--blue-200)",
   ];
   return palette[index % palette.length];
 }

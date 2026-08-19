@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { LanguageProvider } from "../../../LanguageProvider.jsx";
 import PromotionEffectivenessDashboard from "./PromotionEffectivenessDashboard.jsx";
@@ -30,6 +30,38 @@ beforeEach(() => {
     });
   }
 });
+
+/*
+ * Opt-in, because it is expensive: with charts really laying out, this file
+ * runs five times longer. jsdom has no ResizeObserver, so ResponsiveContainer
+ * never learns its size and draws nothing at all; and the shared setup's
+ * requestAnimationFrame stub calls back with no timestamp, which stalls
+ * Recharts' bar animation before it assigns any geometry. A test that asserts
+ * on SVG needs both stubs, or it asserts on an empty chart. Returns its own
+ * undo, for onTestFinished.
+ */
+function enableChartLayout() {
+  const previousObserver = globalThis.ResizeObserver;
+  const previousFrame = globalThis.requestAnimationFrame;
+
+  globalThis.ResizeObserver = class {
+    constructor(callback) {
+      this.callback = callback;
+    }
+    observe(target) {
+      this.callback([{ target, contentRect: { width: 960, height: 260 } }], this);
+    }
+    unobserve() {}
+    disconnect() {}
+  };
+  globalThis.requestAnimationFrame = (callback) =>
+    setTimeout(() => callback(performance.now()), 16);
+
+  return () => {
+    globalThis.ResizeObserver = previousObserver;
+    globalThis.requestAnimationFrame = previousFrame;
+  };
+}
 
 function renderDashboard() {
   return render(
@@ -83,6 +115,48 @@ describe("PromotionEffectivenessDashboard", () => {
     expect(screen.getByText("Suggested best action")).toBeInTheDocument();
     expect(screen.getByText("Promo margin leaders")).toBeInTheDocument();
     expect(screen.getByText("What-If simulator")).toBeInTheDocument();
+  });
+
+  /*
+   * Regression test: the season-mix bars carried `dataKey="segments"` — the
+   * nested per-type array — plus a private per-Bar `data` prop, which Recharts
+   * ignores when it builds the axis and the stack. The domain came out
+   * non-numeric, so the axis fell back to 0–4, `stackId` did nothing, and all
+   * eleven series were drawn full-height on the same x band: eight identical
+   * blocks reading as one flat colour. The axis labels are what pin it down —
+   * mid-animation the broken bars also differ in size, but a chart of pre-buy
+   * units that tops out at 4 is not measuring anything.
+   */
+  it("draws the season mix as a real stack, scaled to the pre-buy units", async () => {
+    onTestFinished(enableChartLayout());
+    await renderSettled();
+
+    const chart = screen.getByTestId("promo-chart-season");
+    const rects = () => [...chart.querySelectorAll(".recharts-rectangle")];
+    const heightOf = (rect) => Number(rect.getAttribute("height"));
+
+    // Bars grow in, so wait for the animation to put something on screen.
+    await waitFor(
+      () => {
+        expect(rects().length).toBeGreaterThan(0);
+        expect(Math.max(...rects().map(heightOf))).toBeGreaterThan(0);
+      },
+      { timeout: 5000 },
+    );
+
+    // Season labels carry letters; the bare numbers are the y-axis ticks.
+    const axisTicks = [...chart.querySelectorAll("text")]
+      .map((node) => node.textContent.trim())
+      .filter((label) => /^[\d.,]+$/.test(label))
+      .map((label) => Number(label.replace(/\D/g, "")));
+
+    expect(axisTicks.length).toBeGreaterThan(1);
+    expect(Math.max(...axisTicks)).toBeGreaterThan(1000);
+
+    // And the segments stack: they differ in size and sit at different heights.
+    const bars = rects();
+    expect(new Set(bars.map(heightOf)).size).toBeGreaterThan(1);
+    expect(new Set(bars.map((rect) => rect.getAttribute("y"))).size).toBeGreaterThan(1);
   });
 
   it("labels the source rather than presenting workbook figures as live", async () => {
