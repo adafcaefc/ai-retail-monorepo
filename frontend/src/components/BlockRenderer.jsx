@@ -1,6 +1,7 @@
 import ChartRenderer from "./ChartRenderer.jsx";
 import SimulationRenderer from "./SimulationRenderer.jsx";
 import RouteRenderer from "./RouteRenderer.jsx";
+import DashboardActionRenderer from "./DashboardActionRenderer.jsx";
 import { accentHtml } from "../semanticAccent.jsx";
 
 
@@ -37,6 +38,13 @@ export default function BlockRenderer({
       return (
         <RouteRenderer
           data={(block.data)}
+        />
+      );
+
+    case "dashboard_action":
+      return (
+        <DashboardActionRenderer
+          data={block.data}
         />
       );
 

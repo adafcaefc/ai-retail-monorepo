@@ -300,6 +300,7 @@ function summarize(items) {
     at_risk_value: round(atRisk),
     recoverable_value: round(recoverable),
     write_off_value: round(Math.max(0, atRisk - recoverable)),
+    recovery_rate_pct: atRisk ? round((recoverable / atRisk) * 100, 2) : 0,
   };
 }
 

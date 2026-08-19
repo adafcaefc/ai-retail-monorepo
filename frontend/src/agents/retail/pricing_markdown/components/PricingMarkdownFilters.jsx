@@ -13,6 +13,16 @@ import { useLanguage } from "../../../../LanguageProvider.jsx";
  * drops out entirely. Running off the bundled fixture (standalone/offline
  * builds only) still shows the chain-wide `items` regardless of store,
  * since that path has no backend to rerun the aggregation against.
+ *
+ * `category_group` and `state` also narrow `by_store`/`by_cluster`/
+ * `by_channel`/`by_legal_entity` (DimensionCharts), but only when the board
+ * is reading from the API: dashboard.py's `build()` re-aggregates the store
+ * rollup from category/state-filtered rows before scopeStores ever sees it,
+ * since a store row has already summed away category/state by the time it
+ * exists (unlike store_id, which is still an intrinsic field on that row and
+ * so stays filterable client-side). The bundled fixture has no equivalent
+ * recompute step, so those four charts keep showing each store's full
+ * all-category/all-state total there, regardless of category/state filter.
  */
 export default function PricingMarkdownFilters({
   scope,

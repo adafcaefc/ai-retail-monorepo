@@ -14,6 +14,25 @@ import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { categoryColor, formatIdr } from "../presentation.js";
 
 /**
+ * When a chart's own grouping dimension has been narrowed to a single bar by
+ * the active scope, the chart is still numerically correct but has nothing
+ * left to compare — this points at where the actual breakdown lives instead
+ * of leaving a bare 1-bar chart that reads as broken. Data-driven (checks
+ * the computed row count), not scope-condition-driven, so it also covers
+ * cases where a dimension only ever has one value regardless of filters.
+ */
+function ScopeCollapseNote({ data, hint }) {
+  const { t } = useLanguage();
+  if (data.length !== 1) return null;
+  return (
+    <p className="pricing-footnote">
+      {t("Scoped to")} <b>{data[0].label}</b>
+      {hint ? <> — {t(hint)}</> : null}
+    </p>
+  );
+}
+
+/**
  * At-risk value by vertical (vertical bars) — A5 spec section 5a. Sorted
  * desc, value labels on.
  */
@@ -29,6 +48,7 @@ export function AtRiskByVerticalChart({ rows }) {
   return (
     <section className="pricing-chart-block" data-testid="pricing-chart-vertical">
       <h4>{t("At-risk value by vertical")}</h4>
+      <ScopeCollapseNote data={data} />
       <ResponsiveContainer width="100%" height={260}>
         <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -56,6 +76,7 @@ export function AtRiskByCategoryChart({ rows }) {
   return (
     <section className="pricing-chart-block" data-testid="pricing-chart-category">
       <h4>{t("At-risk value by category")}</h4>
+      <ScopeCollapseNote data={data} hint='See "At-risk value by vertical" and the store charts for more context.' />
       <ResponsiveContainer width="100%" height={260}>
         <BarChart layout="vertical" data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" horizontal={false} />
@@ -93,6 +114,10 @@ export function AtRiskVsRecoverableChart({ rows }) {
   return (
     <section className="pricing-chart-block" data-testid="pricing-chart-main">
       <h4>{t("At-risk value vs recoverable markdown")}</h4>
+      <ScopeCollapseNote
+        data={data}
+        hint='See "At-risk value by category" and the store charts below for the breakdown.'
+      />
       <ResponsiveContainer width="100%" height={300}>
         <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />

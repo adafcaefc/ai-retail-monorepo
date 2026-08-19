@@ -12,21 +12,37 @@ function displayValue(kpi, language) {
   return `${prefix}${value}${kpi.unit === "%" ? "%" : ""}`;
 }
 
+// Stockout-risk SKUs is the one tile A1 doesn't own the story for: A2
+// (Inventory Risk) is where a reader acts on it, matching the mockup's own
+// `nav("a2")` on this tile. Every other tile opens its own decomposition
+// in place. The app has no router -- navigation is `activeAgent` state in
+// App.jsx, reached by a real `#pageId` hash link (see `pages/excelAddress.js`)
+// -- so this is a genuine <a href>, not a button with a side effect.
+const CROSS_AGENT_LINKS = {
+  stockout_risk_skus: "retail.inventory_risk",
+};
+
 export default function DemandKpiGrid({ kpis, onOpenDrilldown }) {
   const { language, t } = useLanguage();
 
   return (
     <section className="demand-kpi-grid" aria-label={t("Demand forecast summary") }>
-      {kpis.map((kpi) => (
-        /* Every tile opens its own decomposition, so the tile face is a
-           button. A1 has no second per-tile action, so unlike A2 and A3 there
-           is no scope pill beside it. */
-        <button
+      {kpis.map((kpi) => {
+        const crossAgentId = CROSS_AGENT_LINKS[kpi.id];
+        const Tile = crossAgentId ? "a" : "button";
+        const tileProps = crossAgentId
+          ? { href: `#${crossAgentId}`, title: t("Open in Inventory Risk") }
+          : {
+              type: "button",
+              title: t("Click to break this number down"),
+              onClick: () => onOpenDrilldown?.(kpi.id),
+            };
+
+        return (
+        <Tile
           key={kpi.id}
-          type="button"
           className={`demand-kpi demand-kpi--${kpi.status}`}
-          title={t("Click to break this number down")}
-          onClick={() => onOpenDrilldown?.(kpi.id)}
+          {...tileProps}
         >
           <div className="demand-kpi-text">
             <div className="demand-kpi-label">{t(kpi.label)}</div>
@@ -54,8 +70,9 @@ export default function DemandKpiGrid({ kpis, onOpenDrilldown }) {
               />
             </div>
           ) : null}
-        </button>
-      ))}
+        </Tile>
+        );
+      })}
     </section>
   );
 }

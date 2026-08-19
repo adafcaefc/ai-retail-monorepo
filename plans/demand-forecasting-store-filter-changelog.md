@@ -108,11 +108,16 @@ levels.
   Store-grain backtest source exists.
 - Seasonality remains vertical-level because `fact_gmv_monthly` has no Store
   key.
-- The predicted-to-trend count remains a vertical-level reference value; only
-  the ranked Store items are scoped.
 
 The backend returns these limitations as `scope_limitations`, and the frontend
 shows them in the Store-scoped view.
+
+**Resolved**: the predicted-to-trend count used to be listed here too — it
+stayed a vertical-level reference value while the ranked items were
+Store-scoped, so a Store's row count below that reference value meant every
+row in the Store got marked trending. `is_trending` is now a per-row formula
+(`viral OR growth > 1.25`) that needs no vertical-wide count, so it is
+correctly computable at Store/category grain and is no longer a limitation.
 
 ## Tests and validation
 

@@ -55,7 +55,8 @@
                         "recommendation",
                         "simulation",
                         "next_route",
-                        "confidence"
+                        "confidence",
+                        "dashboard_action"
                     ],
                     "description": "The format in which the agent wishes to output the content of this componenet. Used to convert to html or react."
                 },

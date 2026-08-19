@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.assortment_optimization",
-  "generated_at": "2026-08-19T22:44:38+00:00",
+  "generated_at": "2026-08-19T23:37:20+00:00",
   "source_workbook": "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP position. Delist/grow classification, GMROI, tail share and capital freed are computed live from ENGINE/ENGINE_STORE/SKU_Master (chain-wide quartiles), not read from the A6 sheet's own B:F cells, which a prior audit found to hold stale hardcoded values. Contribution/day is the one column that audit did not flag, and reconciles exactly.",

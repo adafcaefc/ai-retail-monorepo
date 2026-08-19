@@ -9,9 +9,11 @@ import {
   computeByVertical,
   computeBestActions,
   computeKpis,
+  computeSimulation,
   scopeItems,
 } from "./selectors.js";
-import { ALL, BEST_ACTION_TABS, CANDIDATE_STATES } from "./contract.js";
+import { ALL, BASELINE_LEVERS, BEST_ACTION_TABS, CANDIDATE_STATES } from "./contract.js";
+import { createEngine } from "./engine.js";
 
 describe("candidatesOf", () => {
   it("keeps only SKUs flagged as markdown candidates", () => {
@@ -97,5 +99,52 @@ describe("computeBestActions", () => {
     const tabs = computeBestActions(fixture.items);
     const tabbed = BEST_ACTION_TABS.reduce((t, tab) => t + tabs[tab.id].length, 0);
     expect(tabbed).toBe(candidatesOf(fixture.items).length);
+  });
+});
+
+describe("computeSimulation", () => {
+  const applyLevers = createEngine(fixture.formulas);
+
+  it("reports unapplied at the baseline levers", () => {
+    const simulation = computeSimulation(fixture.items, BASELINE_LEVERS, applyLevers);
+    expect(simulation.applied).toBe(false);
+    expect(simulation.baseline).toBeNull();
+    expect(simulation.scenario).toBeNull();
+  });
+
+  it("carries recovery_rate_pct on baseline, scenario and index once a lever moves", () => {
+    const simulation = computeSimulation(
+      fixture.items,
+      { ...BASELINE_LEVERS, markdown: 40 },
+      applyLevers,
+    );
+    expect(simulation.applied).toBe(true);
+    expect(simulation.baseline.recovery_rate_pct).toBeGreaterThanOrEqual(0);
+    expect(simulation.scenario.recovery_rate_pct).toBeGreaterThanOrEqual(0);
+    // recovery_rate_pct = recoverable / at-risk * 100, both at the baseline lever setting.
+    expect(simulation.baseline.recovery_rate_pct).toBeCloseTo(
+      (simulation.baseline.recoverable_value / simulation.baseline.at_risk_value) * 100,
+      1,
+    );
+  });
+
+  it("widening markdown depth moves recovery_rate_pct without moving at-risk value", () => {
+    // Per f14-recoverable-at-risk-value, a deeper markdown raises the sell-through
+    // probability but cuts the price it sells at — recovered dollar value (and so
+    // recovery_rate_pct) is not guaranteed to move in a fixed direction, only to move.
+    // See engine.test.js's own "with the markdown lever moved" suite for the same call.
+    const baselineSim = computeSimulation(fixture.items, BASELINE_LEVERS, applyLevers);
+    const scenarioSim = computeSimulation(
+      fixture.items,
+      { ...BASELINE_LEVERS, markdown: 40 },
+      applyLevers,
+    );
+    expect(scenarioSim.scenario.recovery_rate_pct).not.toBeCloseTo(
+      scenarioSim.baseline.recovery_rate_pct,
+      1,
+    );
+    expect(scenarioSim.scenario.at_risk_value).toBeCloseTo(scenarioSim.baseline.at_risk_value, 0);
+    // the unapplied simulation is a distinct all-zero shape, not a real baseline read.
+    expect(baselineSim.applied).toBe(false);
   });
 });

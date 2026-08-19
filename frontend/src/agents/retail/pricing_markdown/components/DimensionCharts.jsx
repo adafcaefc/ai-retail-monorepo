@@ -46,6 +46,23 @@ function StoreTooltip({ active, payload }) {
   );
 }
 
+/**
+ * When a panel's own grouping dimension has been narrowed to a single bar by
+ * the active scope, it's still numerically correct but has nothing left to
+ * compare — a short pointer beats a bare 1-bar chart that reads as broken.
+ * Data-driven (row count), not scope-condition-driven; see PricingCharts.jsx's
+ * copy of the same idea for why.
+ */
+function ScopeCollapseNote({ data, labelKey = "name" }) {
+  const { t } = useLanguage();
+  if (data.length !== 1) return null;
+  return (
+    <p className="pricing-footnote">
+      {t("Scoped to")} <b>{data[0][labelKey]}</b>
+    </p>
+  );
+}
+
 function ValueBarChart({ data, xKey }) {
   const { language, t } = useLanguage();
   return (
@@ -104,6 +121,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
             {t("Gross · top 12")}
           </span>
         </header>
+        <ScopeCollapseNote data={storeData} />
         <div className="pricing-chart" role="img" aria-label={t("At-risk value by store")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={storeData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
@@ -131,6 +149,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
           <h3>{t("At-risk value by cluster")}</h3>
           <span className="pricing-panel-note" title={t(GRAIN_NOTE)}>{t("Gross")}</span>
         </header>
+        <ScopeCollapseNote data={clusterData} />
         <ValueBarChart data={clusterData} xKey="name" />
       </article>
 
@@ -139,6 +158,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
           <h3>{t("At-risk value by channel")}</h3>
           <span className="pricing-panel-note" title={t(GRAIN_NOTE)}>{t("Gross")}</span>
         </header>
+        <ScopeCollapseNote data={channelData} />
         <ValueBarChart data={channelData} xKey="name" />
       </article>
 
@@ -147,6 +167,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
           <h3>{t("Inventory value by state")}</h3>
           <span className="pricing-panel-note">{t("All states, not only markdown candidates")}</span>
         </header>
+        <ScopeCollapseNote data={stateData} />
         <div className="pricing-chart" role="img" aria-label={t("Inventory value by state")}>
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={stateData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
@@ -169,6 +190,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
           <h3>{t("At-risk value by legal entity")}</h3>
           <span className="pricing-panel-note" title={t(GRAIN_NOTE)}>{t("Gross")}</span>
         </header>
+        <ScopeCollapseNote data={entityData} />
         <ValueBarChart data={entityData} xKey="name" />
       </article>
     </section>

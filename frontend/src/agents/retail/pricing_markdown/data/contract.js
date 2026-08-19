@@ -148,6 +148,18 @@ export const SIMULATION_METRICS = Object.freeze([
 ]);
 
 /**
+ * The What-If metrics strip, A5 spec section 9c (#sim-metrics) -- distinct
+ * from SIMULATION_METRICS above, which drives the paired index-bar chart.
+ * Each tile shows the scenario value with a delta-vs-baseline badge.
+ */
+export const SIMULATION_STRIP_METRICS = Object.freeze([
+  { id: "at_risk_value", label: "At-risk", lowerIsBetter: true },
+  { id: "recoverable_value", label: "Recoverable", lowerIsBetter: false },
+  { id: "write_off_value", label: "Write-off", lowerIsBetter: true },
+  { id: "recovery_rate_pct", label: "Recovery rate", lowerIsBetter: false },
+]);
+
+/**
  * @typedef {Object} PricingScope
  * @property {string} legal_entity_id  Vertical id, or "ALL".
  * @property {string} category_group   Category id, or "ALL".

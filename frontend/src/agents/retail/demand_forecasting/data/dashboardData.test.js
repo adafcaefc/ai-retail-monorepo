@@ -22,6 +22,7 @@ import {
   loadDemandForecastingDashboard,
   loadDemandForecastingScenario,
 } from "./dashboardData.js";
+import { computeTrending } from "./selectors.js";
 import fixture from "./fixture.json";
 
 const grocery = fixture.reference_by_vertical.find(
@@ -67,6 +68,33 @@ describe("the Demand Forecasting gateway", () => {
       fixture.items.filter((item) => item.vertical_id === "GRC" && item.is_stockout_risk).length,
     );
     expect(byId.predicted_to_trend).toBe(grocery.trending_skus);
+  });
+
+  it("does not mark every SKU in a scoped category as trending", async () => {
+    // Regression: `is_trending` used to be a rank+quota allocation sized to
+    // the vertical-wide `trending_skus` count. Once scoped to a category
+    // (a handful of SKUs, far fewer than that count), the quota always
+    // exceeded the row count and every row in the category was marked
+    // trending — this is the bug a user reported: every category showed the
+    // same "5", because every GRC category happens to hold exactly 5 SKUs.
+    const category = fixture.filter_options.categories.find(
+      (row) => row.legal_entity_id === "GRC",
+    );
+    const dashboard = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+      category_group: category.value,
+    });
+    const trending = dashboard.kpis.find(
+      (kpi) => kpi.id === "predicted_to_trend",
+    ).value;
+    const totalInCategory = fixture.items.filter(
+      (item) =>
+        item.vertical_id === "GRC" && item.category_id === category.value,
+    ).length;
+
+    expect(totalInCategory).toBeGreaterThan(0);
+    expect(trending).toBeGreaterThan(0);
+    expect(trending).toBeLessThan(totalInCategory);
   });
 
   it("passes the typed constants through untouched, and labels them", async () => {
@@ -116,19 +144,52 @@ describe("the Demand Forecasting gateway", () => {
     expect(dashboard.details.total).toBe(800);
   });
 
-  it("emits a forecast series with a widening interval and no actuals", async () => {
+  it("keeps the chart's first forecast week reconciled with the Forecast next 7d KPI", async () => {
+    // Regression: the chart's period-1 point used to carry the same
+    // illustrativeForecastWave() cosmetic wiggle as every later period, so
+    // "next week" on the chart could read visibly off the KPI tile and the
+    // "Next period" summary stat -- both meant to be the exact same quantity.
+    const dashboard = await loadDemandForecastingDashboard();
+    const kpi = dashboard.kpis.find((row) => row.id === "forecast_next_7d").value;
+    const { points, history_count: historyCount, summary } = dashboard.forecast;
+    const [firstForecast, secondForecast, thirdForecast] = points.slice(historyCount, historyCount + 3);
+
+    expect(Math.abs(firstForecast.forecast - kpi) / kpi).toBeLessThan(0.005);
+    expect(summary.find((row) => row.id === "next_period").value).toBe(firstForecast.forecast);
+
+    // The illustrative wave still applies from period 2 onward -- the fix
+    // only exempts period 1 -- so the line still visibly wiggles rather than
+    // reading flat.
+    const laterDelta = Math.abs(thirdForecast.forecast - secondForecast.forecast) / secondForecast.forecast;
+    expect(laterDelta).toBeGreaterThan(0.01);
+  });
+
+  it("emits a forecast series with a widening interval, and an illustrative history", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       horizon_weeks: 8,
       grain: "weekly",
     });
-    const { points } = dashboard.forecast;
+    const { points, history_count: historyCount } = dashboard.forecast;
 
-    expect(points).toHaveLength(8);
-    // No sales history exists at any grain, so nothing claims to be measured.
-    expect(points.every((point) => point.actual === null)).toBe(true);
+    // No real sales history exists at any grain, so the leading points are
+    // clearly-labeled fabricated placeholders (see FAKE_HISTORY_MULTIPLIERS
+    // in selectors.js), not something claiming to be measured.
+    expect(historyCount).toBeGreaterThan(0);
+    expect(points).toHaveLength(historyCount + 8);
+
+    const history = points.slice(0, historyCount);
+    const forecast = points.slice(historyCount);
+    expect(history.every((point) => point.actual !== null)).toBe(true);
+    // Every history point but the last has no forecast value. The last one
+    // (the boundary, right before the forecast starts) repeats its own
+    // `actual` as `forecast` too, so the chart draws one continuous line
+    // with a style change at the boundary, not a gap.
+    expect(history.slice(0, -1).every((point) => point.forecast === null)).toBe(true);
+    expect(history.at(-1).forecast).toBe(history.at(-1).actual);
+    expect(forecast.every((point) => point.actual === null && point.forecast !== null)).toBe(true);
 
     const width = (point) => point.confidence_high - point.confidence_low;
-    const relative = points.map((point) => width(point) / point.forecast);
+    const relative = forecast.map((point) => width(point) / point.forecast);
     // sqrt(h) growth: the band is wider at the far end than the near one.
     expect(relative.at(-1)).toBeGreaterThan(relative[0]);
     // The chain-blended accuracy behind this moved with the v8.5 workbook
@@ -139,6 +200,25 @@ describe("the Demand Forecasting gateway", () => {
       0,
     ) / fixture.reference_by_vertical.reduce((running, row) => running + row.forecast_7d, 0);
     expect(relative[0] / 2).toBeCloseTo(fixture.constants.interval_z * (1 - chainAccuracy / 100), 6);
+  });
+
+  it("uses the real demand formula for Daily history, not the fabricated multiplier", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      horizon_weeks: 8,
+      grain: "daily",
+    });
+    const { points, history_count: historyCount } = dashboard.forecast;
+    const history = points.slice(0, historyCount);
+
+    // Two history points exactly 7 days apart share the same day-of-week
+    // and (this close together) the same seasonal month, so under the real
+    // ads x DOW x seasonal x trend formula their values should be nearly
+    // identical -- only the trend's tiny 7-day compounding separates them.
+    // Under FAKE_HISTORY_MULTIPLIERS' scaling they'd differ by whatever
+    // arbitrary ratio those two entries happened to have (~5%+ here).
+    const weekBefore = history.at(-8);
+    const boundary = history.at(-1);
+    expect(boundary.actual / weekBefore.actual).toBeCloseTo(1, 2);
   });
 
   it("keeps the board on the workbook until a lever is moved", async () => {
@@ -182,6 +262,37 @@ describe("the Demand Forecasting gateway", () => {
     );
     expect(preview.simulation.applied).toBe(true);
     expect(preview.forecast.points.length).toBeGreaterThan(0);
+  });
+});
+
+describe("computeTrending", () => {
+  it("adds the mockup's +18 uplift bonus for viral SKUs", () => {
+    const items = [
+      {
+        sku_id: "A",
+        name: "Viral SKU",
+        growth: 1.3,
+        is_trending: true,
+        signals: ["viral", "growth"],
+        ads: 10,
+      },
+      {
+        sku_id: "B",
+        name: "Plain SKU",
+        growth: 1.3,
+        is_trending: true,
+        signals: ["growth"],
+        ads: 10,
+      },
+    ];
+
+    const [viral, plain] = computeTrending(items).sort((a, b) =>
+      a.sku_id.localeCompare(b.sku_id),
+    );
+
+    // uplift = (growth-1)*100, plus 18 when the SKU is viral.
+    expect(plain.predicted_uplift_pct).toBeCloseTo(30, 6);
+    expect(viral.predicted_uplift_pct).toBeCloseTo(48, 6);
   });
 });
 

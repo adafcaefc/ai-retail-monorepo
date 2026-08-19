@@ -460,4 +460,46 @@ describe("DemandForecastingDashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Preview forecast basket" }));
     expect(screen.getByRole("button", { name: "Generate forecast basket" })).toBeDisabled();
   });
+
+  it("applies a chat dashboard_action's query patch the same as a manual filter change", async () => {
+    const onApplied = vi.fn();
+    render(
+      <LanguageProvider>
+        <DemandForecastingDashboard
+          pendingDashboardAction={{ id: "action-1", query: { legal_entity_id: "GRC" } }}
+          onDashboardActionApplied={onApplied}
+        />
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(mocks.load).toHaveBeenLastCalledWith(
+      expect.objectContaining({ legal_entity_id: "GRC", category_group: "ALL", store_id: "ALL" }),
+      expect.any(Object),
+      expect.any(Object),
+    ));
+    expect(await screen.findByLabelText("Legal entity")).toHaveValue("GRC");
+    expect(onApplied).toHaveBeenCalledTimes(1);
+  });
+
+  it("applies a chat dashboard_action's lever patch and runs the scenario when told to", async () => {
+    const onApplied = vi.fn();
+    render(
+      <LanguageProvider>
+        <DemandForecastingDashboard
+          pendingDashboardAction={{ id: "action-2", levers: { promo: 15 }, run_scenario: true }}
+          onDashboardActionApplied={onApplied}
+        />
+      </LanguageProvider>,
+    );
+
+    await waitFor(() => expect(mocks.runScenario).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ promo: 15, demand: 0, markdown: 0, inbound: 0, lead: 0, safety: 0 }),
+    ));
+    // Same banner a manual "Run" click produces — driveWholePage defaults on.
+    expect(await screen.findByRole("status", { name: "What-If scenario applied" }))
+      .toHaveTextContent("Promo intensity 15%");
+    expect(screen.getByRole("slider", { name: "Promo intensity" })).toHaveValue("15");
+    expect(onApplied).toHaveBeenCalledTimes(1);
+  });
 });
