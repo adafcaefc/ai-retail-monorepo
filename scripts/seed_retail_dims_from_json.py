@@ -269,6 +269,10 @@ def main() -> int:
                 # SKU_Master col R. Agent 5's Competitive index KPI -- needs
                 # sql/retail/005_add_dim_item_competitor_index.sql applied first.
                 "competitor_index": row["comp_idx"],
+                # SKU_Master "Pattern (archetype)", v8.5. Feeds the ADS-per-store
+                # formula's archetype/horizon factor -- needs
+                # sql/retail/006_add_dim_item_archetype_pattern.sql applied first.
+                "archetype_pattern": row["pattern_archetype"],
             }
         )
 
@@ -305,7 +309,7 @@ def main() -> int:
                 )
                 OUTPUT INSERTED.id
                 VALUES (
-                    'retail_dims_seed', :workbook_name, 'v8.2', :workbook_path,
+                    'retail_dims_seed', :workbook_name, 'v8.5', :workbook_path,
                     'COMPLETED', 'seed_retail_dims_from_json.py',
                     CURRENT_TIMESTAMP, :total_sheets, :total_rows
                 )

@@ -133,9 +133,15 @@ class TestMapping:
         # a while, when `ROP` was taking its lead time from the designated
         # Trade Agreement row rather than the static `SKU_Master.Lead (d)`.
         # That revision was withdrawn -- the workbook is not being changed --
-        # so the lead term is the master column again and the count is back to
-        # what the database has held all along.
-        assert sum(1 for r in rows if r["is_reorder"]) == 302
+        # so the lead term is the master column again.
+        #
+        # 302 under v8.2; 345 from the v8.5 migration onward. v8.5 revised
+        # ADS per store to include an archetype/horizon factor (SKU_Master's
+        # new `Pattern (archetype)` column via ENGINE_STORE's `archHz`), which
+        # shifts ADS for every SKU and therefore how many now sit below ROP.
+        # See `retail.formula` id `f01-ads-per-store` (resources/dbtemp/formula.json)
+        # for the exact expression.
+        assert sum(1 for r in rows if r["is_reorder"]) == 345
 
     def test_assortment_is_the_item_store_pairs_that_exist(self, tables) -> None:
         rows = seeder.build_assortment(tables)
@@ -248,10 +254,12 @@ class TestReconciliation:
         mean `Position < ROP` summed across every store. The same number either
         way, or the two boards will disagree the moment they read from here.
 
-        302 on both sides now. The note that used to sit here explained why
-        the database lagged the workbook at 302 against 438; the workbook
-        revision was withdrawn, so the two agree again and there is nothing
-        left to reconcile across.
+        302 under v8.2; 345 from the v8.5 migration onward (the note that used
+        to sit here explained why the database lagged the workbook at 302
+        against 438 -- that revision was withdrawn, so the two agreed at 302
+        for a while). v8.5's ADS-per-store revision (see
+        `test_reorder_count_survives_the_yes_no_coercion`) moved this number
+        again, on purpose, in step with the workbook.
         """
         with engine.connect() as c:
             at_risk = c.execute(
@@ -268,7 +276,7 @@ class TestReconciliation:
             ).scalar_one()
 
         assert at_risk == sum(1 for item in a2_fixture["items"] if item["is_stockout_risk"])
-        assert at_risk == 302
+        assert at_risk == 345
 
     def test_every_foreign_key_resolves(self, engine) -> None:
         with engine.connect() as c:

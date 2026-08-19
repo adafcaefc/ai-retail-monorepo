@@ -2,9 +2,11 @@
  * Derive a Demand Forecasting payload from the workbook fixture.
  *
  * WHAT IS MEASURED AND WHAT IS MODELLED
- * The A1 sheet computes one of its six KPIs. The rest are constants somebody
- * typed. This file never blurs the two: `fixture.derivation` says which is
- * which, the payload carries it through, and the UI labels accordingly.
+ * The A1 sheet types five of its six KPIs as constants; only Forecast 7d is
+ * a workbook formula. This board additionally derives the seasonality index
+ * from real `fact_gmv_monthly` data rather than presenting the sheet's typed
+ * figure (`computeKpis` below) — the other four stay typed. `fixture.derivation`
+ * says which tile is which, and the UI labels accordingly.
  *
  * THE FORECAST MODEL
  * Classical multiplicative decomposition, the ordinary retail one:
@@ -48,6 +50,12 @@ import {
   normalizeDemandQuery,
 } from "./contract.js";
 import { growthHistogram, topGroups } from "../../common/distributions.js";
+import {
+  blend,
+  blendSeasonality,
+  dailyDemand,
+  peakDay,
+} from "../../common/demandModel.js";
 import { buildDrilldown } from "./drilldown.js";
 import { createDemandEngine, isDemandBaseline } from "./engine.js";
 
@@ -69,8 +77,6 @@ const GRAIN_PREFIX = {
   quarterly: "Q",
   yearly: "Y",
 };
-
-const DAYS_PER_MONTH = 30.44;
 
 // -- scoping -----------------------------------------------------------
 
@@ -102,75 +108,32 @@ function scopeStores(stores, query) {
 
 const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 0);
 
-/**
- * Blend a per-vertical constant across the scope, weighted by forecast.
- *
- * Accuracy, trend and the seasonality index exist only per vertical. Looking at
- * two verticals at once has to produce one number, and weighting by volume is
- * the only sensible way — an unweighted mean would let a tiny vertical move the
- * chain's reported accuracy as much as the largest one.
- */
-function blend(items, referenceBy, key) {
-  let weighted = 0;
-  let weight = 0;
-  for (const item of items) {
-    const row = referenceBy[item.vertical_id];
-    if (!row) continue;
-    weighted += row[key] * item.forecast_7d;
-    weight += item.forecast_7d;
-  }
-  return weight ? weighted / weight : 0;
-}
-
-/** The scope's seasonal curve, blended the same way. */
-function blendSeasonality(items, seasonality) {
-  const curves = seasonality.by_legal_entity;
-  const weights = {};
-  for (const item of items) {
-    weights[item.vertical_id] = (weights[item.vertical_id] || 0) + item.forecast_7d;
-  }
-  const total = Object.values(weights).reduce((running, value) => running + value, 0);
-  if (!total) return new Array(12).fill(100);
-
-  return Array.from({ length: 12 }, (_unused, month) =>
-    Object.entries(weights).reduce(
-      (running, [vertical, weight]) =>
-        running + (curves[vertical]?.[month] ?? 100) * (weight / total),
-      0,
-    ),
-  );
-}
-
 // -- KPIs --------------------------------------------------------------
 
-export function computeKpis(items, referenceBy) {
+/**
+ * The six A1 headline tiles, over exactly the rows in scope.
+ *
+ * `seasonality_index` used to blend the A1 sheet's typed `seasonality_idx`
+ * reference constant — the same number `fixture.reference_by_vertical`
+ * carries and the tile now bypasses. It reads the scope's own derived curve
+ * (`blendSeasonality`, `fc01-seasonal-index` under the hood) at the current
+ * month instead, the same figure the seasonality chart already draws — see
+ * `docs/RETAIL_FORMULA_SOURCES.md` for both numbers side by side.
+ */
+export function computeKpis(items, referenceBy, seasonality) {
+  const curve = blendSeasonality(items, seasonality);
   return {
     forecast_next_7d: sum(items, "forecast_7d"),
     forecast_accuracy: blend(items, referenceBy, "accuracy_pct"),
     demand_trend: blend(items, referenceBy, "trend_pct"),
     stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
     predicted_to_trend: items.filter((item) => item.is_trending).length,
-    seasonality_index: blend(items, referenceBy, "seasonality_idx"),
+    seasonality_index: curve[seasonality.current_month_index],
     sku_count: items.length,
   };
 }
 
 // -- the forecast series ----------------------------------------------
-
-/**
- * Demand for one day out, as the decomposition above.
- *
- * `curve` is the scope's twelve seasonal indices; dividing by the current
- * month's keeps the level where f01 put it, because f01 already evaluated each
- * SKU's seasonality at that month.
- */
-function dailyDemand(ads, day, profile, curve, currentMonth, trendPct) {
-  const dow = profile[((day % 7) + 7) % 7];
-  const month = Math.floor(currentMonth + day / DAYS_PER_MONTH) % 12;
-  const seasonal = curve[(month + 12) % 12] / curve[currentMonth % 12];
-  const trend = (1 + trendPct / 100) ** (day / 365);
-  return ads * dow * seasonal * trend;
-}
 
 export function buildForecastSeries(options) {
   const {
@@ -213,6 +176,8 @@ export function buildForecastSeries(options) {
     });
   }
 
+  const peak = peakDay(profile);
+
   return {
     grain,
     history_count: 0,
@@ -228,7 +193,7 @@ export function buildForecastSeries(options) {
         unit: "units",
       },
       { id: "interval", label: "Interval", value: `${Math.round(intervalZ * relativeError * 1000) / 10}% at P+1`, unit: null },
-      { id: "peak", label: "Peak day", value: "Saturday ×1.35", unit: null },
+      { id: "peak", label: "Peak day", value: `${peak.label} ×${peak.factor}`, unit: null },
     ],
   };
 }
@@ -395,12 +360,12 @@ function engineFor(formulas, weekFactor) {
  * near them — see `unmodelled` below, which the panel reads to say so rather
  * than leaving a reader to wonder why a slider did nothing.
  */
-export function computeSimulation(items, levers, applyLevers, referenceBy) {
+export function computeSimulation(items, levers, applyLevers, referenceBy, seasonality) {
   const merged = normalizeDemandLevers(levers);
   const applied = !isDemandBaseline(merged);
-  const baseline = computeKpis(items, referenceBy);
+  const baseline = computeKpis(items, referenceBy, seasonality);
   const scenario = applied
-    ? computeKpis(items.map((item) => applyLevers(item, merged)), referenceBy)
+    ? computeKpis(items.map((item) => applyLevers(item, merged)), referenceBy, seasonality)
     : baseline;
 
   const shape = (source) => ({
@@ -466,6 +431,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     levers,
     applyLevers,
     referenceBy,
+    fixture.seasonality,
   );
 
   const driveWholePage = options.driveWholePage !== false;
@@ -475,7 +441,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       : baselineItems;
 
   const stores = scopeStores(fixture.stores, merged);
-  const kpis = computeKpis(items, referenceBy);
+  const kpis = computeKpis(items, referenceBy, fixture.seasonality);
   const curve = blendSeasonality(items, fixture.seasonality);
   const periodDays = GRAIN_DAYS[merged.grain] ?? GRAIN_DAYS.weekly;
 

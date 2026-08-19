@@ -23,6 +23,10 @@ const GRAINS = [
   {
     value: "store_roster",
     label: "Per store roster — one store's workforce"
+  },
+  {
+    value: "vertical",
+    label: "Per vertical — one legal entity's own figure"
   }
 ];
 

@@ -69,6 +69,7 @@ export function createEngine(formulas, thresholds = {}) {
     const ads = run("f01-ads-per-store", {
       base_ads: item.base_ads,
       seasonality: item.seasonality,
+      arch_horizon_factor: item.arch_horizon_factor,
       store_size: item.store_size,
       demand_lever: lever.demand,
       promo_eligible: item.promo_eligible,
@@ -93,7 +94,10 @@ export function createEngine(formulas, thresholds = {}) {
       safety_adjust: lever.safety,
     };
     const rop = run("f05-rop", reorder);
-    const max = run("f06-maximum-inventory", reorder);
+    const max = run("f06-maximum-inventory", {
+      ...reorder,
+      horizon_coverage: item.horizon_coverage,
+    });
     const dos = run("f20-days-of-supply", { ads, position });
 
     const state = run("f07-inventory-state", {

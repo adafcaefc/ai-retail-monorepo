@@ -16,9 +16,12 @@ Three labels are used throughout, and they are not interchangeable:
 
 ## 1. The formula catalogue
 
-`resources/dbtemp/formula.json` holds 22 expressions. Nineteen transcribe the
-workbook's `Formulas` sheet; f20–f22 are ENGINE columns I, L and N — real
-workbook formulas that sheet simply does not list.
+`resources/dbtemp/formula.json` holds 23 expressions. Nineteen transcribe the
+workbook's `Formulas` sheet; f20–f23 are ENGINE columns and a fourth rule that
+sheet simply does not list. A separate file, `resources/custom_formulas.json`,
+holds this project's own rules with no workbook transcription at all — `fc`
+ids rather than `f`, so the two kinds are never confused. See §2's
+`fc01-seasonal-index`.
 
 **The catalogue is a hand transcription, not an extraction.** It arrived in
 commit `791aa14`, converting nineteen rows of prose like
@@ -76,7 +79,7 @@ Seasonality idx  114, 100, 98, …                     <- typed
 | Predicted to trend | measured count, modelled membership | Count from the sheet; which SKUs, by ranking `sku_master.growth` |
 | Forecast accuracy | typed | 92.4 for **all eight** verticals — a demo constant, not a backtest |
 | Demand trend | typed | Per vertical, and unsupported by the series (see below) |
-| Seasonality index | typed | 114 typed against 108.3 derived — both kept, both labelled |
+| Seasonality index | derived | 108.3 derived (`fc01-seasonal-index`) is what the tile shows; 114 is the sheet's own typed figure, still carried in `reference_by_vertical` for comparison |
 
 ### `time_series_24mo` is not history
 
@@ -101,7 +104,7 @@ Consequences:
 | Forecast curve | `ADS × DOW(d) × seasonal(month) × (1+trend)^(d/365)` — classical multiplicative decomposition | f01 for level, `Constants` B7 for the week |
 | Day-of-week profile | `[0.85, 0.90, 0.95, 1.00, 1.15, 1.35, 1.25]`, Monday first | Sums to **exactly 7.45**, which is `Constants` B7 and what f08 multiplies by. A modelled allocation of a measured total |
 | Prediction interval | `ŷ ± z · (1 − accuracy/100) · √h`, z = 1.645 | At h=1 with 92.4% accuracy this is ±12.5% — which is where the A1 spec's flat "±12%" comes from. Stated this way it widens with horizon, as an interval must |
-| Seasonal curve | month GMV ÷ series mean, per vertical | `time_series_24mo` |
+| Seasonal curve | month GMV ÷ series mean, per vertical — catalogued as `fc01-seasonal-index` (`resources/custom_formulas.json`), not a workbook transcription | `time_series_24mo` |
 | Current month | July | `Constants` B6 = 6 |
 | Trending membership | top N by `growth` within each vertical, N from the sheet | Reconciles per vertical exactly |
 

@@ -77,12 +77,31 @@ describe("the Demand Forecasting gateway", () => {
 
     expect(kpi("forecast_accuracy").value).toBeCloseTo(grocery.accuracy_pct, 6);
     expect(kpi("demand_trend").value).toBeCloseTo(grocery.trend_pct, 6);
-    expect(kpi("seasonality_index").value).toBeCloseTo(grocery.seasonality_idx, 6);
 
     // The tile says where its number came from rather than implying it was
-    // calculated. Four of the six were keyed in by hand.
+    // calculated. Two of the six were keyed in by hand; a third (seasonality
+    // index) used to be but now reads the derived `fc01-seasonal-index`
+    // curve instead — see RETAIL_FORMULA_HARDCODING_AUDIT.md section F.
     expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
+    expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
+  });
+
+  it("derives the seasonality index from the monthly GMV curve, not the typed constant", async () => {
+    const dashboard = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+    });
+    const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
+    const { by_legal_entity, current_month_index } = fixture.seasonality;
+
+    // Scoped to one vertical, the blend is just that vertical's own curve at
+    // the current month -- no weighting across verticals left to do.
+    expect(kpi("seasonality_index").value).toBeCloseTo(
+      by_legal_entity.GRC[current_month_index],
+      6,
+    );
+    // The two numbers really do differ -- this is not a no-op switch.
+    expect(kpi("seasonality_index").value).not.toBeCloseTo(grocery.seasonality_idx, 1);
   });
 
   it("totals the chain to the sum of its verticals", async () => {
@@ -112,8 +131,14 @@ describe("the Demand Forecasting gateway", () => {
     const relative = points.map((point) => width(point) / point.forecast);
     // sqrt(h) growth: the band is wider at the far end than the near one.
     expect(relative.at(-1)).toBeGreaterThan(relative[0]);
-    // And the first period lands on the ±12% the A1 spec asserts flatly.
-    expect(relative[0] / 2).toBeCloseTo(0.125, 2);
+    // The chain-blended accuracy behind this moved with the v8.5 workbook
+    // (the A1 spec's flat "±12%" was read off v8.2's figures), so this reads
+    // the fixture's own accuracy_pct rather than re-asserting a stale number.
+    const chainAccuracy = fixture.reference_by_vertical.reduce(
+      (running, row) => running + row.accuracy_pct * row.forecast_7d,
+      0,
+    ) / fixture.reference_by_vertical.reduce((running, row) => running + row.forecast_7d, 0);
+    expect(relative[0] / 2).toBeCloseTo(fixture.constants.interval_z * (1 - chainAccuracy / 100), 6);
   });
 
   it("keeps the board on the workbook until a lever is moved", async () => {

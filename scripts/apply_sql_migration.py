@@ -61,6 +61,10 @@ def layout(cur: pyodbc.Cursor, label: str) -> None:
     cur.execute("select count(*) from sys.partition_functions where name = 'pf_retail_month'")
     print(f"  pf_retail_month: {'present' if cur.fetchone()[0] else 'absent'}")
     for table in WATCHED:
+        cur.execute(f"select object_id('retail.{table}', 'U')")
+        if cur.fetchone()[0] is None:
+            print(f"  retail.{table:<28} absent")
+            continue
         cur.execute(
             f"""
             select (select count(*) from sys.partitions

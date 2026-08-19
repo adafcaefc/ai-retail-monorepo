@@ -63,7 +63,7 @@ TARGET = (
     / "data"
     / "fixture.json"
 )
-SOURCE_WORKBOOK = "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx"
+SOURCE_WORKBOOK = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 
 # The two expressions the browser What-If engine evaluates. Read from the
 # catalogue rather than restated, so the fixture and the agents can never

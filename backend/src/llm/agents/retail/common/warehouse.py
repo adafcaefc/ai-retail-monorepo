@@ -272,18 +272,37 @@ def constants() -> dict[str, Any]:
     }
 
 
-def seasonal_indices(gmv_by_month: dict[int, float]) -> list[float]:
+def seasonal_indices(
+    gmv_by_month: dict[int, float], node: tuple | None = None
+) -> list[float]:
     """Twelve classical indices: month GMV over the series mean, times 100.
 
-    Rounded to four places because that is what the fixtures carry and what the
-    charts draw; the extra digits describe a profile written twice, not a
-    measurement worth more precision.
+    Evaluates `fc01-seasonal-index` from the catalogue rather than doing the
+    arithmetic here -- this is the rule the "Seasonality index" KPI tile
+    reads too (`demand_forecasting/data/selectors.js`'s `computeKpis`), and a
+    Formula Manager edit to `fc01` should reach both without either being
+    retyped. `fc01` sits in a separate `fc`-prefixed id space from the
+    workbook's own `f01`-`fNN` because it is not a transcription of any
+    workbook cell -- see `resources/custom_formulas.json`.
+
+    `node` lets a caller looping over several verticals (`seasonality()`
+    below) parse `fc01` once and pass the AST in, rather than every vertical
+    re-parsing the same three-token expression. Left optional so this
+    function still works stood alone.
     """
+    from src.formulas.expression import evaluate, parse
+
+    if node is None:
+        node = parse(formulas(("fc01-seasonal-index",))["fc01-seasonal-index"])
+
     values = [gmv_by_month.get(month, 0.0) for month in range(12)]
     mean = sum(values) / len(values) if values else 0.0
     if not mean:
         return [100.0] * 12
-    return [round(value / mean * 100, 4) for value in values]
+    return [
+        evaluate(node, {"month_gmv": value, "series_mean": mean})
+        for value in values
+    ]
 
 
 def seasonality(connection: Any) -> dict[str, Any]:
@@ -296,6 +315,8 @@ def seasonality(connection: Any) -> dict[str, Any]:
     series repeats one year twice -- but it is written as an average so a real
     second year would be handled rather than silently halved.
     """
+    from src.formulas.expression import parse
+
     rows = _rows(
         connection,
         f"""
@@ -312,11 +333,13 @@ def seasonality(connection: Any) -> dict[str, Any]:
             float(row["gmv"]) if row["gmv"] is not None else 0.0
         )
 
+    node = parse(formulas(("fc01-seasonal-index",))["fc01-seasonal-index"])
+
     return {
         "month_labels": list(MONTH_LABELS),
         "current_month_index": MONTH_INDEX,
         "by_legal_entity": {
-            vertical_id: seasonal_indices(months)
+            vertical_id: seasonal_indices(months, node)
             for vertical_id, months in sorted(by_vertical.items())
         },
     }

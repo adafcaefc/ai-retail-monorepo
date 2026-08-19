@@ -10,14 +10,16 @@ import workedExamples from "./workedExamples.json";
 const GRAIN_LABELS = {
   store_sku: "store × SKU",
   chain_sku: "SKU, chain-wide",
-  store_roster: "store roster"
+  store_roster: "store roster",
+  vertical: "vertical"
 };
 
 const GRAIN_HINTS = {
   store_sku: "One store's stock of one item — feed it per-store figures.",
   chain_sku:
     "One SKU netted across all stores — feed it chain-net figures, not one store's.",
-  store_roster: "One store's workforce roster."
+  store_roster: "One store's workforce roster.",
+  vertical: "One legal entity's own figure — not per store or per SKU."
 };
 
 function defaultValues(formula) {

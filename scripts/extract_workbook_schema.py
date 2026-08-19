@@ -93,6 +93,11 @@ class SheetSpec:
     # Sheets that end in a TOTAL row: the aggregate is kept, flagged, and its
     # foreign keys are exempted rather than the row being dropped.
     total_row_marker: str | None = None
+    # {column: {old_value: new_value}}, applied after `rename`. For a value
+    # that means the same thing but is spelled differently on this sheet than
+    # on the sheet a foreign key checks it against -- see the v8.5 note on
+    # `Promotion & Discount Detail` below.
+    value_aliases: dict[str, dict[Any, Any]] = field(default_factory=dict)
 
 
 @dataclass
@@ -197,8 +202,9 @@ def read_grid(
     The captions are kept verbatim as each column's `source_header` — that is
     what maps a column back to the worksheet a reader is looking at.
 
-    Trailing all-blank rows and columns beyond the last named header are
-    dropped: openpyxl's max_row/max_column follow formatting, not content.
+    Columns beyond the last named header are dropped: openpyxl's max_column
+    follows formatting, not content. Reading stops at the first row that
+    isn't recognisably a data row — see `_looks_like_data_row`.
     """
     rows = list(worksheet.iter_rows(min_row=header_row, values_only=True))
     raw = rows[0]
@@ -213,10 +219,32 @@ def read_grid(
         values = [
             json_value(row[i]) if i < len(row) else None for i in keep
         ]
-        if all(v is None for v in values):
-            continue
+        if not _looks_like_data_row(values):
+            break
         body.append((offset, values))
     return headers, captions, body
+
+
+def _looks_like_data_row(values: list[Any]) -> bool:
+    """A real row fills (nearly) every column; trailing prose does not.
+
+    v8.5 appends explanatory content straight after some tables' real rows,
+    reusing the same columns: `Replenishment Detail` gets four blank rows
+    then a 3-row "Route summary" block and a footnote sentence;
+    `What-If Simulator` gets one footnote sentence with no blank row before
+    it at all. Both would otherwise be read as more data rows -- the footnote
+    sentence lands in column A, which is exactly the column real rows key
+    their primary key from, so it fails as a bad SKU/vertical rather than
+    getting silently dropped.
+
+    A blank row (0 populated) always ends the table. Otherwise, require at
+    least half the columns filled -- every real row in every sheet this
+    script reads is populated in nearly every column (a spare field like
+    Trade Agreement's open-ended `valid_to` is one blank among ten-plus), so
+    this only catches rows that are mostly empty, not sparse real ones.
+    """
+    populated = sum(1 for value in values if value is not None)
+    return populated >= max(1, len(values) / 2)
 
 
 # --------------------------------------------------------------------------
@@ -356,6 +384,18 @@ SHEET_SPECS: list[SheetSpec] = [
         primary_key=["promo_id"],
         rename={"vertical": "vertical_label"},
         foreign_keys=[VERTICAL_LABEL_FK],
+        # v8.5 shortened three vertical labels on every A-sheet (the source
+        # of `dashboard_label`: "General Merch" -> "Gen.Merchandise",
+        # "Digital/Online" -> "Digital", "Omnichannel" -> "Omni") but this
+        # sheet's own `vertical` column was not updated to match, so the
+        # foreign key would otherwise orphan 3 of the 8 verticals' rows.
+        value_aliases={
+            "vertical_label": {
+                "General Merch": "Gen.Merchandise",
+                "Digital/Online": "Digital",
+                "Omnichannel": "Omni",
+            },
+        },
     ),
     SheetSpec(
         sheet="Brand Events",
@@ -408,9 +448,12 @@ SHEET_SPECS: list[SheetSpec] = [
         table="what_if_simulator",
         description="Baseline vs live-lever value, 3 metrics per vertical.",
         header_row=6,
-        primary_key=["vertical_label", "metric"],
-        rename={"vertical": "vertical_label"},
-        foreign_keys=[VERTICAL_LABEL_FK],
+        # v8.5 changed this sheet's `Vertical` column from the full label
+        # ("Grocery", "General Merch", ...) v8.2 used to the 3-letter code
+        # ("GRC", "GMR", ...) -- keyed on vertical_id, not vertical_label.
+        primary_key=["vertical_id", "metric"],
+        rename={"vertical": "vertical_id"},
+        foreign_keys=[VERTICAL_ID_FK],
     ),
     SheetSpec(
         sheet="Vendor Scorecard",
@@ -467,6 +510,12 @@ def build_table(worksheet: Any, spec: SheetSpec) -> Table:
     source_headers: list[str | None] = list(captions)
 
     rows = [list(values) for _, values in body]
+
+    for column, aliases in spec.value_aliases.items():
+        index = columns.index(column)
+        for row in rows:
+            if row[index] in aliases:
+                row[index] = aliases[row[index]]
 
     if spec.total_row_marker is not None:
         columns.append("is_total")

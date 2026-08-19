@@ -623,7 +623,7 @@ def main() -> int:
         "schema_version": SCHEMA_VERSION,
         "agent": AGENT_ID,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
+        "source_workbook": "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx",
         "is_mock": True,
         "note": (
             "Workbook demonstration data, not a live ERP position. Order value "

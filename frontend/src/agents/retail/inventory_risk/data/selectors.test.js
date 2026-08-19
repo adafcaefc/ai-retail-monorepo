@@ -694,15 +694,15 @@ describe("the simulation block", () => {
 });
 
 describe("money figures behind the counts", () => {
-  it("prices overstock as the excess above Max, not the whole position", () => {
+  it("prices overstock from f23, not the whole position", () => {
     const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const overstocked = fixture.items.filter((item) => item.is_overstock);
 
-    const excess = overstocked.reduce(
-      (running, item) =>
-        item.position > item.max
-          ? running + (item.position - item.max) * item.price
-          : running,
+    // f23-markdown-at-risk-gross's Overstock/Slow-mover branch: excess above
+    // Max where there is any, else 30% of position -- never the full
+    // position value, which is the distinction A2 spec 10 note 3 draws.
+    const atRisk = overstocked.reduce(
+      (running, item) => running + item.markdown_at_risk_gross,
       0,
     );
     const fullPosition = overstocked.reduce(
@@ -710,15 +710,15 @@ describe("money figures behind the counts", () => {
       0,
     );
 
-    expect(kpis.overstock_excess_value).toBeCloseTo(excess, 6);
-    // A2 spec 10 note 3: the two senses of "overstock" must not be conflated.
+    expect(kpis.overstock_excess_value).toBeCloseTo(atRisk, 6);
     expect(kpis.overstock_excess_value).toBeLessThan(fullPosition);
   });
 
-  it("prices expiry exposure from the units already past cover", () => {
+  it("prices expiry exposure from f23's Expiry branch", () => {
     const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const expected = fixture.items.reduce(
-      (running, item) => running + item.expiry_units * item.price,
+      (running, item) =>
+        item.state === "Expiry" ? running + item.markdown_at_risk_gross : running,
       0,
     );
 

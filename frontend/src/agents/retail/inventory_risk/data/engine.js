@@ -8,7 +8,7 @@
  * to read, so the answer has to be computed.
  *
  * It computes it without knowing anything. There is no threshold here, no
- * state name, no policy. `fixture.formulas` carries ten expressions and
+ * state name, no policy. `fixture.formulas` carries eleven expressions and
  * `expression.js` runs them; this file only decides the order, because each
  * formula consumes the one above it. Swap a threshold in `formula.json` and
  * this module changes behaviour without being edited, which is the point.
@@ -109,6 +109,7 @@ export function createEngine(formulas) {
     const ads = run("f01-ads-per-store", {
       base_ads: item.base_ads,
       seasonality: item.seasonality,
+      arch_horizon_factor: item.arch_horizon_factor,
       store_size: item.store_size,
       demand_lever: lever.demand,
       promo_eligible: item.promo_eligible,
@@ -140,7 +141,10 @@ export function createEngine(formulas) {
       safety_adjust: lever.safety,
     };
     const rop = run("f05-rop", reorder);
-    const max = run("f06-maximum-inventory", reorder);
+    const max = run("f06-maximum-inventory", {
+      ...reorder,
+      horizon_coverage: item.horizon_coverage,
+    });
 
     const dos = run("f20-days-of-supply", { ads, position });
 
@@ -178,6 +182,14 @@ export function createEngine(formulas) {
         ads,
         shelf_life_days: item.shelf_life_days,
       }),
+      markdown_at_risk_gross: run("f23-markdown-at-risk-gross", {
+        state,
+        position,
+        ads,
+        shelf_life_days: item.shelf_life_days,
+        max_inventory: max,
+        price: item.price,
+      }),
       /*
        * The KPI flags follow the state rather than re-testing a threshold —
        * the same choice the fixture builder makes, and for the same reason:
@@ -205,4 +217,5 @@ const REQUIRED_FORMULAS = [
   "f20-days-of-supply",
   "f21-inventory-value",
   "f22-expiry-units",
+  "f23-markdown-at-risk-gross",
 ];

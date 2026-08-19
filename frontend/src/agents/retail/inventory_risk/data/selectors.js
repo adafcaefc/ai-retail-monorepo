@@ -117,11 +117,20 @@ function sum(rows, key) {
 /**
  * The six A2 KPIs plus slow-mover, from pre-resolved flags only.
  *
- * Two of the tiles carry a money figure under their count:
- * `overstock_excess_value` is only the position ABOVE Max, not the full value
- * of every overstocked SKU — the workbook keeps both senses of "overstock"
- * alive and this is the narrower one (A2 spec section 10 note 3).
- * `expiry_value` prices the units already past their shelf-life cover.
+ * Two of the tiles carry a money figure under their count, and both now sum
+ * `markdown_at_risk_gross` — `f23-markdown-at-risk-gross`, evaluated per item
+ * in `dashboard.py`'s `build_items()` / `engine.js`'s `applyLevers()` — rather
+ * than re-deriving the arithmetic here. `overstock_excess_value` scopes to
+ * Overstock-state rows only, not Slow-mover, matching this tile's existing
+ * name even though f23 shares one branch across both states.
+ *
+ * f23's Overstock/Slow-mover branch has a fallback this tile used to drop:
+ * a row already overstocked but with `position <= max` still carries 30% of
+ * its position as at-risk, not zero. Both tiles now include it.
+ *
+ * `expiry_value` prices the units already past their shelf-life cover; f23's
+ * Expiry branch and `expiry_units * price` agree exactly, so this tile's
+ * number is unchanged by the switch.
  */
 export function computeKpis(items) {
   const count = items.length;
@@ -130,14 +139,13 @@ export function computeKpis(items) {
     overstock_skus: items.filter((item) => item.is_overstock).length,
     overstock_excess_value: items.reduce(
       (total, item) =>
-        item.is_overstock && item.position > item.max
-          ? total + (item.position - item.max) * item.price
-          : total,
+        item.is_overstock ? total + item.markdown_at_risk_gross : total,
       0,
     ),
     expiry_units: sum(items, "expiry_units"),
     expiry_value: items.reduce(
-      (total, item) => total + item.expiry_units * item.price,
+      (total, item) =>
+        item.state === "Expiry" ? total + item.markdown_at_risk_gross : total,
       0,
     ),
     slow_mover_skus: items.filter((item) => item.is_slow_mover).length,

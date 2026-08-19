@@ -1,11 +1,17 @@
 # Retail formula hardcoding audit — what the boards retype instead of read
 
-Audit date: 2026-08-19. Branch: `fix/promo-season-mix-chart`.
+Audit date: 2026-08-19, updated 2026-08-20. Branch: `fix/promo-season-mix-chart`.
 
 Companion to [RETAIL_FORMULA_SOURCES.md](./RETAIL_FORMULA_SOURCES.md), which
 answers "where does this number come from". This file answers a narrower
 question: **which business rules does a dashboard compute from a hand-typed
 copy rather than from the catalogue?**
+
+Section F, added 2026-08-20, widens that question: some tiles compute from a
+hand-typed copy of something that was never in the catalogue at all, when a
+derived figure from real data was sitting in the same payload unused. Not the
+same bypass as sections A–E, but the same failure for whoever is reading the
+tile.
 
 ## The contract being audited
 
@@ -26,7 +32,7 @@ fixes it in the UI.
 | Board | Ships | Evaluates | Dead in payload |
 |---|---|---|---|
 | A1 Demand Forecasting | 8 | 5 | f06, f07, f20 |
-| A2 Inventory Risk | 10 | 10 | — |
+| A2 Inventory Risk | 11 | 11 | — |
 | A3 Replenishment | 9 | 9 | — |
 | A3.1 Replenishment Detail | 6 | **0** | all six |
 | A4 Promotion Effectiveness | 2 | 2 | — |
@@ -118,11 +124,25 @@ recovers the baseline lead term as `rop / ads - safety`. That inverse is only
 valid where f05's `MAX(1, …)` floor did not engage, which is exactly the case
 `test_formula_conformance.py` singles out as worth testing.
 
-### f23's overstock branch
+### f23, both branches — fixed
 
-[inventory_risk/data/selectors.js:127](../frontend/src/agents/retail/inventory_risk/data/selectors.js#L127)
-computes `(item.position - item.max) * item.price` for the overstock excess —
-the same expression f23 carries for its Overstock/Slow-mover case.
+**Resolved.** A2's `expiry_value` and `overstock_excess_value` tiles used to
+retype two different pieces of f23 by hand:
+`inventory_risk/data/selectors.js`'s `overstock_excess_value` computed
+`(item.position - item.max) * item.price` — f23's Overstock/Slow-mover case,
+but missing the `position * 0.3 * price` fallback the catalogue expression
+carries for a row that is already Overstock/Slow-mover with `position ≤ max`.
+`expiry_value` separately retyped `expiry_units * price` — numerically equal
+to f23's Expiry branch, but still a second copy of a rule the catalogue
+already states, and not previously listed in this document at all.
+
+Both now sum a `markdown_at_risk_gross` field — f23 evaluated once per item
+in [`inventory_risk/dashboard.py`](../backend/src/llm/agents/retail/inventory_risk/dashboard.py)'s
+`build_items()` and [`inventory_risk/data/engine.js`](../frontend/src/agents/retail/inventory_risk/data/engine.js)'s
+`applyLevers()`, added to A2's `ENGINE_FORMULAS`/`REQUIRED_FORMULAS` — instead
+of either branch being retyped. The overstock figure changed as a result: a
+row overstocked but not yet above Max now carries its 30% fallback value
+instead of contributing zero.
 
 ---
 
@@ -189,6 +209,42 @@ and renders `LINE_FORMULAS` / `KPI_FORMULAS` instead.
 
 ---
 
+## F. A typed constant shipped where a derived figure was already sitting unused
+
+Sections A–E are all a catalogue bypass: `retail.formula` has a rule, and a
+board retypes it anyway. This section is the adjacent failure — no catalogue
+entry existed, real data to derive one from was already in the codebase, and
+the tile shipped the workbook's typed constant instead.
+
+### A1 Demand — the "Seasonality index" tile
+
+**Fixed 2026-08-20.** `demand_forecasting/data/selectors.js`'s `computeKpis()`
+set `seasonality_index` by blending the A1 sheet's typed per-vertical
+constant (`seasonality_idx` — 114, 100, 98… on `agent_kpi_reference`), while
+`blendSeasonality()` two lines away already derived a real monthly index from
+`fact_gmv_monthly` for the chart beside it. Both numbers shipped in the same
+payload (`docs/RETAIL_FORMULA_SOURCES.md` already documented both — Grocery:
+114 typed against 108.3 derived); the headline tile just read the wrong one.
+
+Now catalogued as `fc01-seasonal-index` (`resources/custom_formulas.json`) —
+a new `fc`-prefixed namespace rather than the next `fNN`, because this rule
+was never a row on the workbook's `Formulas` sheet; it is this project's own
+method for filling a gap the workbook left typed. `warehouse.seasonal_indices()`
+evaluates it; the tile now reads `blendSeasonality(...)`'s curve at the
+current month instead of the typed blend.
+
+### What else to watch for
+
+Any tile whose `derivation` label reads `typed-constant` is a candidate:
+check whether the data it would need to derive from for real already exists
+elsewhere in the payload before assuming none does. A1's `forecast_accuracy`
+and `demand_trend` are typed for a different reason — no data exists to
+derive them from at all (`docs/RETAIL_FORMULA_SOURCES.md`'s "Still missing"
+table) — so they are not the same case; `seasonality_index` was, because
+`fact_gmv_monthly` already existed and was already being read for the chart.
+
+---
+
 ## Why no test catches any of this
 
 [test_formula_conformance.py](../backend/tests/test_formula_conformance.py)
@@ -222,5 +278,15 @@ Two consequences:
 6. **Hover text** — derive from the catalogue's `logic`/`expression` instead of
    `KPI_FORMULAS`, or add a test asserting the two agree.
 
-Also worth fixing while here: `RETAIL_FORMULA_SOURCES.md` still says the
-catalogue holds 22 expressions; it holds 23 since f23 was added.
+Already fixed as of 2026-08-20: `RETAIL_FORMULA_SOURCES.md`'s expression
+count (was still 22, now 23 plus a note on the separate `fc`-prefixed custom
+namespace), and section B's "f23's overstock branch" entry (see section F's
+sibling fix above it in A2, and the new §2 entry for its previously-undocumented
+Expiry-branch twin).
+
+**A citation-drift note.** File:line references throughout this document are
+a snapshot from the audit date, not a live index — several have already moved
+by a few lines as of this update (e.g. section B's f23 citation was
+`selectors.js:127`, confirmed at `:131` before this session's fix changed the
+file again). Treat every `file:line` here as "was here as of 2026-08-19",
+and re-locate by the quoted code if a line number no longer matches.

@@ -37,12 +37,13 @@ from typing import Any
 
 FLAG = "--allow-workbook-change"
 
-# `Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`, 10,003,637 bytes.
-# The workbook whose ENGINE sheet stores the ROP column every retail board
-# reconciles against: 302 SKUs below reorder point, states 106/196/399/51/40/8.
-EXPECTED_WORKBOOK_NAME = "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx"
+# `AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx`, 9,042,515 bytes.
+# Migrated from the v8.2 pin (`Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx`,
+# sha256 5d7c0c72d25cc2deacffe8f0364be946105f9af85354d36d9b9d13e819a6ae74) in
+# the same change that re-extracted and re-seeded the retail.* tables from v8.5.
+EXPECTED_WORKBOOK_NAME = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 EXPECTED_WORKBOOK_SHA256 = (
-    "5d7c0c72d25cc2deacffe8f0364be946105f9af85354d36d9b9d13e819a6ae74"
+    "a6f4c7fabae4c27af9c4c035adb8252fa27cc062ea6b4bad4b0f81c976ec9510"
 )
 
 HASH_FIELD = "source_workbook_sha256"

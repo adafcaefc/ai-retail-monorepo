@@ -109,6 +109,7 @@ CATALOGUE_FORMULAS = (
     "f20-days-of-supply",
     "f21-inventory-value",
     "f22-expiry-units",
+    "f23-markdown-at-risk-gross",
 )
 
 
@@ -192,6 +193,7 @@ def verify_engine_chain(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
+    hz_cov: float,
 ) -> dict[str, str]:
     """Rebuild every chain-net row from `formula.json` and insist it matches.
 
@@ -243,6 +245,7 @@ def verify_engine_chain(
                     {
                         "base_ads": sku["base_ads"],
                         "seasonality": sku["seasonality"],
+                        "arch_horizon_factor": sku["arch_horizon_factor"],
                         "store_size": size,
                         "demand_lever": 0,
                         "promo_eligible": sku["promo"],
@@ -278,7 +281,14 @@ def verify_engine_chain(
         }
         checks.append(("rop", evaluate(asts["f05-rop"], reorder), row["rop"]))
         checks.append(
-            ("max", evaluate(asts["f06-maximum-inventory"], reorder), row["max"])
+            (
+                "max",
+                evaluate(
+                    asts["f06-maximum-inventory"],
+                    {**reorder, "horizon_coverage": hz_cov},
+                ),
+                row["max"],
+            )
         )
         checks.append(
             (
@@ -364,6 +374,12 @@ def verify_engine_chain(
                 row["expiry_u"],
             )
         )
+        # f23-markdown-at-risk-gross has no check here: unlike the other nine,
+        # its output is not itself a raw ENGINE column -- the chain-net sheet
+        # has no markdown-at-risk figure to compare against (only
+        # ENGINE_STORE!AF does, at store grain). `build_items` below still
+        # evaluates it, same as every other formula, from the ENGINE inputs
+        # this loop already trusts.
 
         for name, computed, stored in checks:
             if not agrees(computed, stored):
@@ -405,10 +421,13 @@ def verify_store_derivation(
     arithmetic: `ENGINE_STORE` is not an independent measurement, it is the SKU
     attributes crossed with the store attributes. Three products reproduce it.
 
-        ads      = base_ads * seasonality * store.size
+        ads      = base_ads * seasonality * arch_horizon_factor * store.size
         on_hand  = base_ads * onhand_days * stock_factor
                    * store.health * store.size
         open_po  = open_po_chain * (store.size / total_size_in_vertical)
+
+    `arch_horizon_factor` (v8.5) is the SKU's archetype/horizon multiplier,
+    constant across stores -- see `arch_horizon_factor` in `main`.
 
     So the board can scope to a store by carrying two extra numbers per SKU and
     two per store -- about 960 values -- instead of the 16,000-row grid those
@@ -417,6 +436,13 @@ def verify_store_derivation(
     That is a strong claim, so it is checked rather than asserted, over every
     row, every time this fixture is built. `open_po` gets a 1e-3 tolerance
     because the workbook stores it rounded; the other two must be exact.
+
+    `stock_factor` comes from ENGINE_STORE's own `StockF` column
+    (`row["stockf"]`), not SKU_Master's (`sku["stockf"]`): the real formula
+    (`=AG*AI*G*I*H`, i.e. base*onHandDays*StockF*Health*Size) reads the local
+    copy, and in v8.5 that copy is stored to 4 decimals where SKU_Master's is
+    5 (1.0379 against 1.03793) -- close enough to look right, off by ~0.003%,
+    and exactly reproducible only from the column Excel actually reads.
 
     If this ever fails, the store filter is lying and must go back to disabled
     -- do not widen the tolerance to make it pass.
@@ -430,12 +456,20 @@ def verify_store_derivation(
         ratio = store["size"] / store_size[store["vertical_id"]]
 
         checks = (
-            ("ads", sku["base_ads"] * sku["seasonality"] * store["size"], row["ads"], 1e-9),
+            (
+                "ads",
+                sku["base_ads"]
+                * sku["seasonality"]
+                * sku["arch_horizon_factor"]
+                * store["size"],
+                row["ads"],
+                1e-9,
+            ),
             (
                 "on_hand",
                 sku["base_ads"]
                 * sku["onhand_days"]
-                * sku["stockf"]
+                * row["stockf"]
                 * store["health"]
                 * store["size"],
                 row["on_hand"],
@@ -474,8 +508,16 @@ def build_items(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
+    hz_cov: float,
+    f23_node: tuple,
 ) -> list[dict[str, Any]]:
-    """One row per SKU at chain-net level, with every predicate pre-resolved."""
+    """One row per SKU at chain-net level, with every predicate pre-resolved.
+
+    `f23_node` is `f23-markdown-at-risk-gross`, parsed once by the caller --
+    the fixture's `expiry_value`/`overstock_excess_value` tiles sum this
+    field client-side instead of re-deriving the arithmetic; see
+    `frontend/.../inventory_risk/data/selectors.js`'s `computeKpis`.
+    """
     items = []
     for row in engine:
         sku = sku_master[row["sku_id"]]
@@ -508,6 +550,17 @@ def build_items(
                 "inv_value": row["inv_value"],
                 "at_risk_value": row["at_risk"],
                 "expiry_units": row["expiry_u"],
+                "markdown_at_risk_gross": evaluate(
+                    f23_node,
+                    {
+                        "state": state,
+                        "position": row["position"],
+                        "ads": row["ads"],
+                        "shelf_life_days": sku["expiry_d"],
+                        "max_inventory": row["max"],
+                        "price": row["price"],
+                    },
+                ),
                 "shelf_life_days": sku["expiry_d"],
                 "is_perishable": str(row["perish"]).strip().upper() == "Y",
                 "growth": growth,
@@ -544,6 +597,7 @@ def build_items(
                 # returns the columns above unchanged.
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
+                "arch_horizon_factor": sku["arch_horizon_factor"],
                 # The vertical's total size index, not one store's. See
                 # `chain_store_size` for why f01 still applies.
                 "store_size": store_size[row["vertical_id"]],
@@ -564,6 +618,8 @@ def build_items(
                 "promo_depth": sku["cannib_pct"],
                 "lead_days": sku["lead_d"],
                 "safety_days": sku["safety_d"],
+                # f06-maximum-inventory's hzCov term (Constants!B24, v8.5).
+                "horizon_coverage": hz_cov,
                 "perishable": row["perish"],
                 "next_agent": (
                     "3 Replenish" if state in REPLENISH_STATES else "5 Markdown"
@@ -668,22 +724,25 @@ def kpis_for(items: list[dict[str, Any]]) -> dict[str, Any]:
     """The six A2 KPIs plus slow-mover, from pre-resolved flags only.
 
     `overstock_excess_value` and `expiry_value` are the money figures the A2
-    cards show underneath their counts. Note `overstock_excess_value` counts
-    only the position above Max, not the full position value — the workbook
-    keeps two different senses of "overstock" side by side (A2 spec section 10
-    note 3), and this is the narrower one.
+    cards show underneath their counts, both summing `markdown_at_risk_gross`
+    (`f23-markdown-at-risk-gross`) rather than re-deriving it -- the same
+    switch `computeKpis` makes client-side, kept identical here since this
+    function exists only to mirror it for `reconcile()`.
+    `overstock_excess_value` scopes to Overstock-state rows only, not
+    Slow-mover, matching the tile's name even though f23 shares one branch
+    across both states.
     """
     count = len(items)
     return {
         "stockout_risk_skus": sum(1 for row in items if row["is_stockout_risk"]),
         "overstock_skus": sum(1 for row in items if row["is_overstock"]),
         "overstock_excess_value": sum(
-            (row["position"] - row["max"]) * row["price"]
-            for row in items
-            if row["is_overstock"] and row["position"] > row["max"]
+            row["markdown_at_risk_gross"] for row in items if row["is_overstock"]
         ),
         "expiry_units": sum(row["expiry_units"] for row in items),
-        "expiry_value": sum(row["expiry_units"] * row["price"] for row in items),
+        "expiry_value": sum(
+            row["markdown_at_risk_gross"] for row in items if row["state"] == "Expiry"
+        ),
         "slow_mover_skus": sum(1 for row in items if row["is_slow_mover"]),
         "avg_dos": (sum(row["dos"] for row in items) / count) if count else 0.0,
         "inventory_value": sum(row["inv_value"] for row in items),
@@ -766,14 +825,23 @@ def main() -> int:
     label_of = resolve_vertical_labels(verticals, reference)
 
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU -- so it's read off any one
+    # ENGINE_STORE row per SKU and carried on sku_master like every other
+    # per-SKU f01 input.
+    for row in tables["engine_store"]:
+        sku_master[row["sku_id"]]["arch_horizon_factor"] = row["archhz"]
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
 
     constants = constants_from_cells(
-        tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+        tables["constants"],
+        {"dow_sum": "B7", "month_index": "B6", "hz_cov": "B24"},
     )
     check_profile(constants["dow_sum"])
     month_index = int(constants["month_index"])
+    hz_cov = float(constants["hz_cov"])
     seasonality = seasonality_payload(tables["time_series_24mo"], month_index)
     # A1's typed `Trend %`, keyed the way this file already keys A2's totals.
     trend_by_label = {
@@ -781,12 +849,13 @@ def main() -> int:
         for row in tables["a1_demand_forecasting"]
     }
 
-    expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
+    expressions = verify_engine_chain(tables["engine"], sku_master, store_size, hz_cov)
     verify_store_derivation(
         tables["engine_store"], tables["engine"], sku_master, stores, store_size
     )
 
-    items = build_items(tables["engine"], sku_master, store_size)
+    f23_node = parse(expressions["f23-markdown-at-risk-gross"])
+    items = build_items(tables["engine"], sku_master, store_size, hz_cov, f23_node)
     store_rows = build_store_rows(tables["engine_store"], stores)
 
     failures = reconcile(items, reference, label_of)
@@ -821,7 +890,7 @@ def main() -> int:
         "schema_version": SCHEMA_VERSION,
         "agent": AGENT_ID,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
+        "source_workbook": "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx",
         "is_mock": True,
         "note": (
             "Workbook demonstration data, not a live ERP position. On-hand in "

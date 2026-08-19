@@ -373,8 +373,10 @@ export const KPI_FORMULAS = Object.freeze({
   stockout_risk_skus: "count( Position < ROP )",
   overstock_skus:
     "count( state = Overstock: non-perishable, DoS > 15 )" +
-    " · excess = Σ (Position − Max) × price",
+    " · at-risk = Σ (Position − Max) × price, or 30% × Position × price" +
+    " where Position ≤ Max",
   expiry_units: "Σ max(0, Position − ADS × shelf-life)",
+  expiry_value: "Σ Expiry-units at-risk value, state = Expiry",
   // "not already worse off" is the whole difference between this count and a
   // bare growth/DoS predicate: a slow SKU that is also short of stock is
   // counted once, under the more urgent state. Reading 51 here and 62 from the

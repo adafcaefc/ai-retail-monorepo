@@ -19,6 +19,11 @@ constants:
 tell a backtest from a demo constant. Accuracy in particular is 92.4 in every
 vertical, which no real measurement ever is.
 
+Seasonality idx is the one exception: this board reports the derived figure
+(`warehouse.seasonality()`, catalogue formula `fc01-seasonal-index`), not the
+sheet's typed 114/100/98/... — see `docs/RETAIL_FORMULA_SOURCES.md` for both
+numbers side by side.
+
 AND `time_series_24mo` IS NOT HISTORY
 ------------------------------------
 Its second year is byte-identical to its first in all eight verticals, so
@@ -39,10 +44,12 @@ from src.llm.agents.retail.common.warehouse import (
     _scope_clause,
     agent_reference,
     chain_store_size,
+    constants,
     envelope,
     filter_options,
     formulas,
     get_engine,
+    seasonality,
 )
 
 AGENT_ID = "retail.demand_forecasting"
@@ -66,15 +73,6 @@ ENGINE_FORMULAS = (
     "f20-days-of-supply",
 )
 
-MONTH_LABELS = (
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-)
-
-# Monday first, summing to exactly 7.45 — which is `Constants` B7 and what f08
-# multiplies a daily rate by. A modelled allocation of a measured total.
-DOW_PROFILE = (0.85, 0.90, 0.95, 1.00, 1.15, 1.35, 1.25)
-
 # 90% two-sided normal quantile. With the workbook's 92.4% accuracy this puts
 # the one-day band at +/-12.5%, which is where the A1 spec's flat "+/-12%"
 # comes from — stated this way it widens with horizon, as an interval must.
@@ -94,7 +92,7 @@ DERIVATION = {
     "predicted_to_trend": "measured-count-modelled-membership",
     "forecast_accuracy": "typed-constant",
     "demand_trend": "typed-constant",
-    "seasonality_index": "typed-constant",
+    "seasonality_index": "derived-from-gmv-profile",
     "seasonality_curve": "derived-from-gmv-profile",
     "history": "unavailable",
 }
@@ -113,20 +111,6 @@ STORE_SCOPE_LIMITATIONS = (
 
 def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
-
-
-def seasonal_indices(gmv_by_month: dict[int, float]) -> list[float]:
-    """Twelve classical indices: month GMV over the series mean, times 100.
-
-    Rounded to four places because that is what the fixture carries and what
-    the chart draws; the extra digits describe a profile written twice, not a
-    measurement worth more precision.
-    """
-    values = [gmv_by_month.get(month, 0.0) for month in range(12)]
-    mean = sum(values) / len(values) if values else 0.0
-    if not mean:
-        return [100.0] * 12
-    return [round(value / mean * 100, 4) for value in values]
 
 
 def build_signals(row: dict) -> list[str]:
@@ -243,15 +227,9 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             store_params,
         )
 
-        gmv = _rows(
-            connection,
-            f"""
-            SELECT vertical_id, month_index, avg(gmv) AS gmv
-            FROM {SCHEMA}.fact_gmv_monthly
-            GROUP BY vertical_id, month_index
-            ORDER BY vertical_id, month_index
-            """,
-        )
+        # Shared with Inventory Risk's projection so the two boards cannot
+        # disagree about what next month looks like.
+        seasonal = seasonality(connection)
 
         # The A1 sheet's own KPI row per vertical, and the source of the
         # trending counts below.
@@ -308,12 +286,6 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         items.append(item)
     allocate_trending(items, trending_counts)
 
-    gmv_by_vertical: dict[str, dict[int, float]] = {}
-    for row in gmv:
-        gmv_by_vertical.setdefault(row["vertical_id"], {})[
-            int(row["month_index"])
-        ] = _float(row["gmv"])
-
     forecast_by_store = {
         row["store_id"]: _float(row["forecast_7d"]) for row in stores
     }
@@ -322,12 +294,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         **envelope(AGENT_ID, NOTE),
         "scope": scope.as_query(),
         "scope_limitations": list(STORE_SCOPE_LIMITATIONS) if scope.store_id else [],
-        "constants": {
-            "dow_sum": 7.45,
-            "month_index": 6,
-            "dow_profile": list(DOW_PROFILE),
-            "interval_z": INTERVAL_Z,
-        },
+        "constants": {**constants(), "interval_z": INTERVAL_Z},
         "derivation": DERIVATION,
         "formulas": formulas(ENGINE_FORMULAS),
         "filter_options": {
@@ -346,14 +313,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             }
             for row in stores
         ],
-        "seasonality": {
-            "month_labels": list(MONTH_LABELS),
-            "current_month_index": 6,
-            "by_legal_entity": {
-                vertical_id: seasonal_indices(months)
-                for vertical_id, months in sorted(gmv_by_vertical.items())
-            },
-        },
+        "seasonality": seasonal,
         "reference_by_vertical": reference,
     }
 

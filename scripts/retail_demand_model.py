@@ -19,9 +19,11 @@ from typing import Any
 # holds the canonical copy (`warehouse.DOW_PROFILE`). `scripts/` already puts
 # `backend/` on sys.path to reach the formula catalogue, so importing costs
 # nothing and removes the last place these numbers could drift.
+from src.formulas.expression import evaluate, parse  # noqa: E402
 from src.llm.agents.retail.common.warehouse import (  # noqa: E402
     DOW_PROFILE,
     MONTH_LABELS,
+    formulas,
 )
 
 # z for a two-sided 90% prediction interval.
@@ -48,6 +50,16 @@ def seasonal_indices(
     exact rather than noisy, and means no de-trending step is needed. There is
     no trend to remove.
 
+    The per-month ratio itself is `fc01-seasonal-index`
+    (`resources/custom_formulas.json`), evaluated here rather than retyped, so
+    a fixture built offline from this script and a live board's
+    `warehouse.seasonal_indices()` cannot drift onto two different rules.
+
+    This function's job is the part `fc01` cannot do alone: multi-year
+    averaging. `fc01` takes one month's GMV and the series mean as plain
+    numbers; folding several years of the same calendar month into one
+    observation happens here, before the formula ever runs.
+
     These are NOT the `Seasonality idx` KPI. That column is typed into the A1
     sheet and does not agree with this calculation (Grocery: 114 typed against
     108.3 derived). Both are kept, and the payload labels which is which.
@@ -62,6 +74,8 @@ def seasonal_indices(
         if row["month"] not in order:
             order.append(row["month"])
 
+    node = parse(formulas(("fc01-seasonal-index",))["fc01-seasonal-index"])
+
     indices: dict[str, list[float]] = {}
     for vertical, order in months.items():
         observations = [values[vertical][month] for month in order]
@@ -73,9 +87,17 @@ def seasonal_indices(
         mean = sum(observations) / len(observations)
         years = len(observations) // 12
         indices[vertical] = [
-            sum(observations[month + 12 * year] for year in range(years))
-            / years
-            / mean
+            evaluate(
+                node,
+                {
+                    "month_gmv": sum(
+                        observations[month + 12 * year] for year in range(years)
+                    )
+                    / years,
+                    "series_mean": mean,
+                },
+            )
+            / 100
             for month in range(12)
         ]
 

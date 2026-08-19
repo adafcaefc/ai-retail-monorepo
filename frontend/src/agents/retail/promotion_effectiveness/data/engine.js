@@ -64,6 +64,7 @@ export function createEngine(formulas) {
     const ads = run("f01-ads-per-store", {
       base_ads: item.base_ads,
       seasonality: item.seasonality,
+      arch_horizon_factor: item.arch_horizon_factor,
       store_size: item.store_size,
       demand_lever: lever.demand,
       promo_eligible: item.promo_eligible,

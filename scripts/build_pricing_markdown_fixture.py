@@ -101,7 +101,7 @@ TARGET = (
     / "data"
     / "fixture.json"
 )
-SOURCE_WORKBOOK = "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx"
+SOURCE_WORKBOOK = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 
 CANDIDATE_STATES = ("Expiry", "Overstock", "Slow-mover")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
@@ -192,6 +192,7 @@ def verify_reorder_inputs(
     sku_master: dict[str, dict[str, Any]],
     lead_times: dict[str, float],
     asts: dict[str, Any],
+    hz_cov: float,
 ) -> list[str]:
     """Re-derive every stored ROP and Max from f05/f06 and insist they match.
 
@@ -212,7 +213,9 @@ def verify_reorder_inputs(
             "safety_adjust": 0,
         }
         rop = evaluate(asts["f05-rop"], reorder)
-        max_inventory = evaluate(asts["f06-maximum-inventory"], reorder)
+        max_inventory = evaluate(
+            asts["f06-maximum-inventory"], {**reorder, "horizon_coverage": hz_cov}
+        )
         if abs(rop - _num(row["rop"])) > 1:
             failures.append(f"{row['sku_id']}: f05 gives ROP {rop:,.0f}, ENGINE stores {_num(row['rop']):,.0f}")
         if abs(max_inventory - _num(row["max"])) > 1:
@@ -548,10 +551,18 @@ def main() -> int:
         "verticals",
         "trade_agreements",
         "a5_pricing_markdown",
+        "constants",
     ):
         if required not in tables:
             print(f"FAIL  source is missing table: {required}")
             return 1
+
+    # f06-maximum-inventory's hzCov term (Constants!B24, v8.5).
+    by_cell = {row["source_cell"]: row for row in tables["constants"]}
+    if "B24" not in by_cell:
+        print("FAIL  Constants!B24 (hzCov) is not in the extract")
+        return 1
+    hz_cov = float(by_cell["B24"]["value"])
 
     formulas = load_formulas()
     asts = {name: parse(expr) for name, expr in formulas.items()}
@@ -565,7 +576,11 @@ def main() -> int:
 
     lead_times = designated_lead_times(tables["trade_agreements"])
     reorder_failures = verify_reorder_inputs(
-        tables["engine"], {r["sku_id"]: r for r in tables["sku_master"]}, lead_times, asts
+        tables["engine"],
+        {r["sku_id"]: r for r in tables["sku_master"]},
+        lead_times,
+        asts,
+        hz_cov,
     )
     if reorder_failures:
         print("FAIL  f05/f06 do not reproduce the stored ROP/Max:")

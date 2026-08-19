@@ -18,7 +18,13 @@ ParameterType = Literal["number", "text", "boolean"]
 # agent cannot safely use, and defaulting would pick the majority answer
 # (store_sku, 16 of 22) silently -- wrong for exactly the chain-net rules where
 # it matters most.
-Grain = Literal["store_sku", "chain_sku", "store_roster"]
+#
+# `vertical` was added alongside `fc01-seasonal-index` (a rule with no
+# per-store or per-SKU row at all, only a per-vertical monthly figure) and is
+# the grain the v8.5 per-vertical formulas (Accuracy %, Fill rate, Service
+# level) also need -- see `docs/v8.5-new-agent-formulas.md`'s open design
+# question.
+Grain = Literal["store_sku", "chain_sku", "store_roster", "vertical"]
 
 # The label the Formula Manager shows for each grain, and the table a rule at
 # that grain reads from. Kept beside the type so the UI, the API docs and the
@@ -27,12 +33,14 @@ GRAIN_LABELS: dict[str, str] = {
     "store_sku": "Per store x SKU - one store's stock of one item",
     "chain_sku": "Chain-wide per SKU - netted across all stores",
     "store_roster": "Per store roster - one store's workforce",
+    "vertical": "Per vertical - one legal entity's own figure",
 }
 
 GRAIN_TABLES: dict[str, str] = {
     "store_sku": "retail.fact_inventory_daily",
     "chain_sku": "retail.fact_inventory_chain_daily",
     "store_roster": "",
+    "vertical": "retail.agent_kpi_reference",
 }
 
 

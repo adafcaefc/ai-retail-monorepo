@@ -61,6 +61,12 @@ SCHEMA = "retail"
 # dimension seeder generates for 2024-01-01 .. 2027-12-31.
 SNAPSHOT_DATE = date(2026, 7, 1)
 
+# Tables in `loads` (see `main`) whose CREATE TABLE in 002_create_orm_schema.sql
+# has no import_batch_id column -- their builders correctly never set it.
+TABLES_WITHOUT_IMPORT_BATCH_ID = frozenset(
+    {"assortment", "promotion_detail", "promotion_vertical_kpi"}
+)
+
 
 # --------------------------------------------------------------------- loading
 
@@ -564,7 +570,7 @@ def open_batch(engine: Any, metadata: str, total_sheets: int) -> int:
                 )
                 OUTPUT INSERTED.id
                 VALUES (
-                    'retail_facts_seed', :workbook_name, 'v8.2', :workbook_path,
+                    'retail_facts_seed', :workbook_name, 'v8.5', :workbook_path,
                     'STARTED', 'seed_retail_facts_from_json.py', :total_sheets,
                     :metadata
                 )
@@ -698,11 +704,17 @@ def main() -> int:
     try:
         with engine.begin() as connection:
             for table, rows in loads:
-                # Stamped here rather than in the nine builders, so the id has
-                # one home and a new builder cannot forget it. The key is
-                # already present in every row, so column order does not move.
-                for row in rows:
-                    row["import_batch_id"] = batch_id
+                # Stamped here rather than in the builders, so the id has one
+                # home and a new builder cannot forget it -- except on the
+                # three tables that were deliberately designed without this
+                # column (see 002_create_orm_schema.sql: `assortment` and
+                # `promotion_vertical_kpi` carry no import lineage at all,
+                # and `promotion_detail` tracks provenance via `source_row`
+                # instead). Stamping it there anyway fails the insert with
+                # "Invalid column name 'import_batch_id'".
+                if table not in TABLES_WITHOUT_IMPORT_BATCH_ID:
+                    for row in rows:
+                        row["import_batch_id"] = batch_id
                 written = replace_all(connection, table, rows)
                 written_total += written
                 print(f"  ok  {table:24} {written:>6} rows")

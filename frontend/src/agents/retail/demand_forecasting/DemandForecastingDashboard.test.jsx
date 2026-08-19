@@ -42,8 +42,14 @@ mocks.drilldown.mockImplementation(async (query, metricId) =>
   buildDrilldownFromFixture(fixture, query, metricId),
 );
 
-/** The chain's Forecast 7d, as the KPI tile prints it. */
-const CHAIN_FORECAST = "1,656,178";
+/**
+ * The chain's Forecast 7d, as the KPI tile prints it.
+ *
+ * Moved with the v8.5 workbook re-extraction (f01's archetype/horizon
+ * factor) -- not a hand-typed guess, `fixture.reference_by_vertical`'s own
+ * total, formatted the way the tile does.
+ */
+const CHAIN_FORECAST = "1,809,147";
 
 function renderDashboard() {
   return render(

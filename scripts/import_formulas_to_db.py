@@ -1,4 +1,5 @@
-"""Seed `retail.formula` from `resources/dbtemp/formula.json`.
+"""Seed `retail.formula` from `resources/dbtemp/formula.json` and
+`resources/custom_formulas.json`.
 
 Run it yourself:
 
@@ -8,11 +9,28 @@ Run it yourself:
 Idempotent: upserts by `id`, so a rerun reports every row as updated and
 changes nothing. This is how a fresh database gets its catalogue.
 
+TWO SOURCES, NOT ONE
+---------------------
+`resources/dbtemp/formula.json` is regenerated output -- `dbtemp` holds
+whatever `extract_workbook_schema.py` last produced from the workbook, and it
+carries only formulas transcribed from a real row on the workbook's own
+`Formulas` sheet (or a named `ENGINE` column standing in for one).
+
+`resources/custom_formulas.json` is hand-maintained and never touched by
+extraction. It holds this project's own rules -- ones with no workbook
+transcription to point at, like `fc01-seasonal-index`, which combines
+`fact_gmv_monthly` with a "month over mean" method the workbook never wrote
+down as a numbered formula. Its ids are prefixed `fc` (formula,
+custom/app-derived) precisely so they read as a different kind of thing than
+`f01`..`fNN`, and its `number` values are drawn from their own disjoint range
+(starting at 501) so `idx_retail_formula_number` never collides with the
+workbook sequence as either grows.
+
 WHERE GRAIN COMES FROM
 ----------------------
-`formula.json` has no `grain` field -- it records `sheet`, the workbook sheet
-each rule was transcribed from. The two are not the same idea, and only one of
-them is safe to keep asking people for.
+`formula.json` records has no `grain` field -- it records `sheet`, the
+workbook sheet each rule was transcribed from. The two are not the same idea,
+and only one of them is safe to keep asking people for.
 
 `sheet` is provenance. `grain` is what one row of the rule's inputs counts, and
 it decides which table the rule may be fed from:
@@ -32,6 +50,11 @@ reached an agent ungrained and nothing caught it.
 An unmapped sheet fails the run and names the formula. It is the one moment the
 inference is applied, so a guess here would be permanent and silent -- which is
 exactly the failure the column exists to prevent.
+
+Custom formulas have no sheet to infer from in the first place, so they carry
+their `grain` directly in `custom_formulas.json` instead of leaving it to be
+guessed -- explicit for the same reason the sheet mapping above is explicit,
+not because the rule is being relaxed.
 """
 
 from __future__ import annotations
@@ -49,6 +72,7 @@ sys.path.insert(0, str(REPO / "backend"))
 from src.db.db import get_engine  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "formula.json"
+CUSTOM_SOURCE = REPO / "resources" / "custom_formulas.json"
 
 GRAIN_FROM_SHEET: dict[str, str] = {
     "ENGINE_STORE": "store_sku",
@@ -56,13 +80,15 @@ GRAIN_FROM_SHEET: dict[str, str] = {
     "Workforce": "store_roster",
 }
 
-# What the workbook transcript holds today. Asserted rather than assumed: if
-# the split moves, the mapping above deserves a second look before 22 rows are
+# What the workbook transcript plus the custom file hold today. Asserted
+# rather than assumed: if the split moves, the mapping above (or a custom
+# formula's stated grain) deserves a second look before these rows are
 # written under it.
 EXPECTED_SPLIT: dict[str, int] = {
-    "store_sku": 16,
+    "store_sku": 17,
     "chain_sku": 3,
     "store_roster": 3,
+    "vertical": 1,
 }
 
 UPSERT = """
@@ -87,11 +113,11 @@ WHEN NOT MATCHED THEN INSERT
 """
 
 
-def load_source() -> list[dict[str, Any]]:
-    payload = json.loads(SOURCE.read_text(encoding="utf-8"))
+def load_formulas(source: Path) -> list[dict[str, Any]]:
+    payload = json.loads(source.read_text(encoding="utf-8"))
     formulas = payload["formulas"] if isinstance(payload, dict) else payload
     if not isinstance(formulas, list) or not formulas:
-        raise SystemExit(f"FAIL  {SOURCE} holds no formulas.")
+        raise SystemExit(f"FAIL  {source} holds no formulas.")
     return formulas
 
 
@@ -102,14 +128,22 @@ def to_row(formula: dict[str, Any]) -> dict[str, Any]:
         raise SystemExit(f"FAIL  a formula has no id: {formula!r}")
 
     sheet = str(formula.get("sheet") or "").strip()
-    grain = GRAIN_FROM_SHEET.get(sheet)
-    if grain is None:
-        raise SystemExit(
-            f"FAIL  {formula_id} has sheet {sheet!r}, which maps to no grain.\n"
-            f"      Known sheets: {', '.join(sorted(GRAIN_FROM_SHEET))}.\n"
-            f"      Add the mapping deliberately -- a guessed grain is silent "
-            f"and permanent."
-        )
+
+    # A formula that states its own grain (only custom_formulas.json records
+    # do) is trusted rather than routed through the sheet inference below --
+    # it has no workbook sheet to infer from in the first place.
+    stated_grain = formula.get("grain")
+    if stated_grain is not None:
+        grain = str(stated_grain).strip()
+    else:
+        grain = GRAIN_FROM_SHEET.get(sheet)
+        if grain is None:
+            raise SystemExit(
+                f"FAIL  {formula_id} has sheet {sheet!r}, which maps to no grain.\n"
+                f"      Known sheets: {', '.join(sorted(GRAIN_FROM_SHEET))}.\n"
+                f"      Add the mapping deliberately -- a guessed grain is silent "
+                f"and permanent."
+            )
 
     return {
         "id": formula_id,
@@ -127,9 +161,11 @@ def to_row(formula: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     engine = get_engine()
     print(f"database: {engine.url.database}")
-    print(f"source:   {SOURCE.relative_to(REPO)}\n")
+    print(f"sources:  {SOURCE.relative_to(REPO)}")
+    print(f"          {CUSTOM_SOURCE.relative_to(REPO)}\n")
 
-    rows = [to_row(formula) for formula in load_source()]
+    formulas = load_formulas(SOURCE) + load_formulas(CUSTOM_SOURCE)
+    rows = [to_row(formula) for formula in formulas]
 
     split: dict[str, int] = {}
     for row in rows:

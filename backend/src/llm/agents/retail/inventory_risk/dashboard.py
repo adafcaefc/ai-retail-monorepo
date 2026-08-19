@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
     REPLENISH_STATES,
@@ -38,8 +39,8 @@ from src.llm.agents.retail.common.warehouse import (
 
 AGENT_ID = "retail.inventory_risk"
 
-# The ten expressions A2's What-If engine evaluates, in dependency order. It
-# refuses to start without all of them, so the board fails loudly at load
+# The eleven expressions A2's What-If engine evaluates, in dependency order.
+# It refuses to start without all of them, so the board fails loudly at load
 # rather than silently at the first slider drag.
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
@@ -52,6 +53,7 @@ ENGINE_FORMULAS = (
     "f20-days-of-supply",
     "f21-inventory-value",
     "f22-expiry-units",
+    "f23-markdown-at-risk-gross",
 )
 
 NOTE = (
@@ -66,7 +68,9 @@ def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
 
 
-def build_items(rows: list[dict], store_size: dict[str, float]) -> list[dict]:
+def build_items(
+    rows: list[dict], store_size: dict[str, float], f23_node: tuple
+) -> list[dict]:
     """One row per SKU at chain-net level, every predicate pre-resolved.
 
     The three KPI predicates follow the workbook's own A2 sheet, not the A2
@@ -75,11 +79,22 @@ def build_items(rows: list[dict], store_size: dict[str, float]) -> list[dict]:
     `growth < 1 and dos > 10` predicate gives 62, because 11 SKUs satisfy it
     but were already claimed by a more urgent state. Following the spec made
     the card contradict the chart directly beneath it.
+
+    `f23_node` is `f23-markdown-at-risk-gross`, parsed once by the caller and
+    evaluated per row here rather than retyped -- the KPI tiles that used to
+    hand-write its Expiry and Overstock/Slow-mover branches
+    (`inventory_risk/data/selectors.js`'s `expiry_value` and
+    `overstock_excess_value`) now just sum this stored field.
     """
     items = []
     for row in rows:
         state = row["state"]
         perishable = "Y" if row["is_perishable"] else "N"
+        position = _float(row["position_qty"])
+        max_qty = _float(row["max_qty"])
+        ads = _float(row["ads"])
+        price = _float(row["unit_price"])
+        shelf_life_days = row["shelf_life_days"]
 
         items.append(
             {
@@ -94,16 +109,27 @@ def build_items(rows: list[dict], store_size: dict[str, float]) -> list[dict]:
                 "severity_rank": STATE_ORDER.index(state),
                 "on_hand": _float(row["on_hand_qty"]),
                 "open_po": _float(row["open_po_qty"]),
-                "position": _float(row["position_qty"]),
+                "position": position,
                 "rop": _float(row["rop_qty"]),
-                "max": _float(row["max_qty"]),
+                "max": max_qty,
                 "dos": _float(row["days_cover"]),
-                "ads": _float(row["ads"]),
-                "price": _float(row["unit_price"]),
+                "ads": ads,
+                "price": price,
                 "inv_value": _float(row["inventory_value"]),
                 "at_risk_value": _float(row["at_risk_value"]),
                 "expiry_units": _float(row["expiry_units"]),
-                "shelf_life_days": row["shelf_life_days"],
+                "markdown_at_risk_gross": evaluate(
+                    f23_node,
+                    {
+                        "state": state,
+                        "position": position,
+                        "ads": ads,
+                        "shelf_life_days": shelf_life_days or 0,
+                        "max_inventory": max_qty,
+                        "price": price,
+                    },
+                ),
+                "shelf_life_days": shelf_life_days,
                 "is_perishable": bool(row["is_perishable"]),
                 "growth": _float(row["growth_index"]),
                 "is_stockout_risk": _float(row["position_qty"]) < _float(row["rop_qty"]),
@@ -234,14 +260,17 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             for row in agent_reference(connection, "retail.demand_forecasting")
         }
 
+    catalogue_formulas = formulas(ENGINE_FORMULAS)
+    f23_node = parse(catalogue_formulas["f23-markdown-at-risk-gross"])
+
     return {
         **envelope(AGENT_ID, NOTE),
         "state_order": list(STATE_ORDER),
         "constants": constants(),
         "seasonality": seasonal,
-        "formulas": formulas(ENGINE_FORMULAS),
+        "formulas": catalogue_formulas,
         "filter_options": options,
-        "items": build_items(chain, store_size),
+        "items": build_items(chain, store_size, f23_node),
         "stores": [
             {
                 "store_id": row["store_id"],

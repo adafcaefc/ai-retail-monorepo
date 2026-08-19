@@ -61,6 +61,13 @@ sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
 import workbook_guard  # noqa: E402
+from retail_demand_model import (  # noqa: E402
+    DOW_PROFILE,
+    INTERVAL_Z,
+    MONTH_LABELS,
+    check_profile,
+    seasonal_indices,
+)
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -93,35 +100,11 @@ CATALOGUE_FORMULAS = (
     "f20-days-of-supply",
 )
 
-# Day-of-week demand profile, Monday first.
-#
-# Not in the workbook as seven numbers -- but `Constants` B7 stores their sum,
-# 7.45, and f08 multiplies ADS by it to get a week. These seven allocate that
-# total across the week and sum to exactly 7.45, so any daily view rolls back
-# up to the weekly figure the workbook publishes.
-#
-# The shape is the ordinary Indonesian retail week: flat Monday to Thursday,
-# lifting into the weekend, peaking Saturday. It is a modelled allocation of a
-# measured total, and the payload says so.
-DOW_PROFILE = (0.85, 0.90, 0.95, 1.00, 1.15, 1.35, 1.25)
-
-# z for a two-sided 90% prediction interval.
-#
-# This is what puts a number on the A1 spec's "band ±12%". Forecast error grows
-# with the square root of the horizon (variance accumulates linearly under a
-# random walk), so the band at horizon h is
-#
-#     yhat +/- z * (1 - accuracy/100) * sqrt(h)
-#
-# At h = 1 with the workbook's 92.4% accuracy that is 1.645 * 0.076 = 12.5%,
-# which is where the spec's flat ±12% comes from. Stating it this way makes the
-# band widen with horizon, as a prediction interval must.
-INTERVAL_Z = 1.645
-
-MONTH_LABELS = (
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-)
+# DOW_PROFILE, INTERVAL_Z and MONTH_LABELS all come from retail_demand_model
+# now -- this script used to carry its own copies, independent of the ones
+# build_inventory_risk_fixture.py and build_replenishment_fixture.py already
+# imported, which is exactly the "one rule, several homes" shape this project
+# keeps paying for. See retail_demand_model.py's module docstring.
 
 
 def read_source() -> dict[str, list[dict[str, Any]]]:
@@ -157,51 +140,6 @@ def chain_store_size(stores: list[dict[str, Any]]) -> dict[str, float]:
     return totals
 
 
-def seasonal_indices(
-    series: list[dict[str, Any]],
-) -> dict[str, list[float]]:
-    """Twelve classical seasonal indices per vertical, from monthly GMV.
-
-    Textbook decomposition: each calendar month's average divided by the
-    series average. The workbook's series repeats one year twice, so the two
-    observations per month are the same number -- which makes the average
-    exact rather than noisy, and means no de-trending step is needed. There is
-    no trend to remove.
-
-    These are NOT the `Seasonality idx` KPI. That column is typed into the A1
-    sheet and does not agree with this calculation (Grocery: 114 typed against
-    108.3 derived). Both are kept, and the payload labels which is which.
-    """
-    months: dict[str, list[str]] = {}
-    values: dict[str, dict[str, float]] = {}
-
-    for row in series:
-        vertical = row["vertical_id"]
-        values.setdefault(vertical, {})[row["month"]] = row["gmv"]
-        order = months.setdefault(vertical, [])
-        if row["month"] not in order:
-            order.append(row["month"])
-
-    indices: dict[str, list[float]] = {}
-    for vertical, order in months.items():
-        observations = [values[vertical][month] for month in order]
-        if len(observations) % 12:
-            raise SystemExit(
-                f"FAIL  {vertical} has {len(observations)} months, not a whole"
-                " number of years"
-            )
-        mean = sum(observations) / len(observations)
-        years = len(observations) // 12
-        indices[vertical] = [
-            sum(observations[month + 12 * year] for year in range(years))
-            / years
-            / mean
-            for month in range(12)
-        ]
-
-    return indices
-
-
 def verify_engine_chain(
     engine: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
@@ -232,6 +170,7 @@ def verify_engine_chain(
             {
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
+                "arch_horizon_factor": sku["arch_horizon_factor"],
                 "store_size": size,
                 "demand_lever": 0,
                 "promo_eligible": sku["promo"],
@@ -320,6 +259,7 @@ def build_items(
                 # Risk fixture's so both boards move the same way.
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
+                "arch_horizon_factor": sku["arch_horizon_factor"],
                 "store_size": store_size[row["vertical_id"]],
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
@@ -501,11 +441,20 @@ def main() -> int:
     reference = {row["vertical_label"]: row for row in reference_rows}
 
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU -- so it's read off any one
+    # ENGINE_STORE row per SKU and carried on sku_master like every other
+    # per-SKU f01 input. See build_inventory_risk_fixture.py's version of
+    # this same fix for the full explanation.
+    for row in tables["engine_store"]:
+        sku_master[row["sku_id"]]["arch_horizon_factor"] = row["archhz"]
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
     constants = constants_from_cells(
         tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
     )
+    check_profile(constants["dow_sum"])
 
     expressions = verify_engine_chain(
         tables["engine"], sku_master, store_size, constants["dow_sum"]
@@ -554,11 +503,11 @@ def main() -> int:
         "schema_version": SCHEMA_VERSION,
         "agent": AGENT_ID,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
+        "source_workbook": "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx",
         "is_mock": True,
         "note": (
-            "Workbook demonstration data. Forecast 7d and the reorder position "
-            "are calculated; accuracy, trend and the seasonality index are "
+            "Workbook demonstration data. Forecast 7d, the reorder position and "
+            "the seasonality index are calculated; accuracy and trend are "
             "constants typed into the A1 sheet, and no sales history exists at "
             "any grain."
         ),
@@ -576,7 +525,7 @@ def main() -> int:
             "predicted_to_trend": "measured-count-modelled-membership",
             "forecast_accuracy": "typed-constant",
             "demand_trend": "typed-constant",
-            "seasonality_index": "typed-constant",
+            "seasonality_index": "derived-from-gmv-profile",
             "seasonality_curve": "derived-from-gmv-profile",
             "history": "unavailable",
         },

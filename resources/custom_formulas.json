@@ -1,0 +1,29 @@
+{
+    "version": 1,
+    "formulas": [
+        {
+            "id": "fc01-seasonal-index",
+            "number": 501,
+            "name": "Seasonal index (derived)",
+            "logic": "Month GMV over the 12-month series mean, times 100",
+            "sheet": null,
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "ROUND(month_gmv / series_mean * 100, 4)",
+            "parameters": [
+                {
+                    "key": "month_gmv",
+                    "label": "Month GMV",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "series_mean",
+                    "label": "12-month mean GMV",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        }
+    ]
+}

@@ -82,7 +82,7 @@ TARGET = (
     / "data"
     / "fixture.json"
 )
-SOURCE_WORKBOOK = "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx"
+SOURCE_WORKBOOK = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 
 DELIST_STATES = ("Slow-mover", "Overstock", "Expiry")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
@@ -211,6 +211,7 @@ def verify_reorder_inputs(
     sku_master: dict[str, dict[str, Any]],
     lead_times: dict[str, float],
     asts: dict[str, Any],
+    hz_cov: float,
 ) -> list[str]:
     """Re-derive every stored ROP and Max from f05/f06 and insist they match.
 
@@ -232,7 +233,9 @@ def verify_reorder_inputs(
             "safety_adjust": 0,
         }
         rop = evaluate(asts["f05-rop"], reorder)
-        max_inventory = evaluate(asts["f06-maximum-inventory"], reorder)
+        max_inventory = evaluate(
+            asts["f06-maximum-inventory"], {**reorder, "horizon_coverage": hz_cov}
+        )
         if abs(rop - _num(row["rop"])) > 1:
             failures.append(f"{row['sku_id']}: f05 gives ROP {rop:,.0f}, ENGINE stores {_num(row['rop']):,.0f}")
         if abs(max_inventory - _num(row["max"])) > 1:
@@ -253,6 +256,8 @@ def build_items(
     lead_times: dict[str, float],
     store_size: dict[str, float],
     asts: dict[str, Any],
+    engine_store: list[dict[str, Any]],
+    hz_cov: float,
 ) -> list[dict[str, Any]]:
     """One row per SKU, with the whole productivity chain DERIVED here.
 
@@ -275,6 +280,12 @@ def build_items(
     the derivation stays anchored to the workbook rather than floating free.
     """
     by_sku = {row["sku_id"]: row for row in sku_master}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU. See
+    # build_inventory_risk_fixture.py's version of this same fix.
+    for row in engine_store:
+        by_sku[row["sku_id"]]["arch_horizon_factor"] = row["archhz"]
     vertical_order = {row["vertical_id"]: i for i, row in enumerate(verticals)}
     ordered = sorted(
         engine,
@@ -300,6 +311,7 @@ def build_items(
             {
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
+                "arch_horizon_factor": _num(master.get("arch_horizon_factor")),
                 "store_size": store_size[row["vertical_id"]],
                 "demand_lever": 0,
                 "promo_eligible": master.get("promo", "N"),
@@ -355,6 +367,7 @@ def build_items(
                 # What-If cascade inputs for the browser engine.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
+                "arch_horizon_factor": _num(master.get("arch_horizon_factor")),
                 "store_size": store_size[row["vertical_id"]],
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
@@ -365,6 +378,11 @@ def build_items(
                 # a slider is touched.
                 "lead_days": lead_times.get(row["sku_id"], 0.0),
                 "safety_days": _num(master.get("safety_d")),
+                # f06-maximum-inventory's hzCov term (Constants!B24, v8.5) --
+                # one workbook-wide value, carried per item like the other
+                # What-If inputs above rather than a second delivery
+                # mechanism just for this one.
+                "horizon_coverage": hz_cov,
                 "margin_pct": _num(master.get("margin_pct")),
             }
         )
@@ -601,10 +619,18 @@ def main() -> int:
         "verticals",
         "trade_agreements",
         "a6_assortment",
+        "constants",
     ):
         if required not in tables:
             print(f"FAIL  source is missing table: {required}")
             return 1
+
+    # f06-maximum-inventory's hzCov term (Constants!B24, v8.5).
+    by_cell = {row["source_cell"]: row for row in tables["constants"]}
+    if "B24" not in by_cell:
+        print("FAIL  Constants!B24 (hzCov) is not in the extract")
+        return 1
+    hz_cov = float(by_cell["B24"]["value"])
 
     formulas = load_formulas()
     asts = {name: parse(expr) for name, expr in formulas.items()}
@@ -614,7 +640,11 @@ def main() -> int:
     lead_times = designated_lead_times(tables["sku_master"])
 
     reorder_failures = verify_reorder_inputs(
-        tables["engine"], {r["sku_id"]: r for r in tables["sku_master"]}, lead_times, asts
+        tables["engine"],
+        {r["sku_id"]: r for r in tables["sku_master"]},
+        lead_times,
+        asts,
+        hz_cov,
     )
     if reorder_failures:
         print("FAIL  f05/f06 do not reproduce the stored ROP/Max:")
@@ -625,7 +655,8 @@ def main() -> int:
     store_size = chain_store_size(tables["stores"])
     items = build_items(
         tables["engine"], tables["sku_master"], tables["verticals"],
-        contribution, lead_times, store_size, asts
+        contribution, lead_times, store_size, asts, tables["engine_store"],
+        hz_cov,
     )
     thresholds = classify(items)
     assign_best_action_tabs(items)
