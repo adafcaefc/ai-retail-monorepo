@@ -181,6 +181,25 @@ const FAKE_HISTORY_MULTIPLIERS = [
   0.91, 1.04, 0.97, 1.08, 0.95, 1.12, 1.02, 0.89, 1.06, 0.98, 1.1, 1.0,
 ];
 
+// TEMPORARY: same reasoning as FAKE_HISTORY_MULTIPLIERS above, applied to the
+// forward-looking side instead. Daily grain already varies for real -- the
+// day-of-week profile swings day to day -- and monthly/yearly grain varies
+// for real as the seasonal curve moves from month to month. Weekly and
+// quarterly sit in between: dow averages out over 7 summed days, and the
+// seasonal curve barely shifts within a handful of weeks or a couple of
+// quarters, so `dailyDemand` summed over those grains comes out nearly flat.
+// This wave restores that period-to-period wiggle (same amplitude/frequency
+// as the mockup's own genSeriesP() forecast wave -- resources/AI_360_Retail
+// _Suite_v8.2_General_9Agents 20260806.html) until a real intra-period demand
+// signal exists to drive it instead. `phase` continues the same sine phase
+// history's FAKE_HISTORY_MULTIPLIERS implicitly ends on, so the line reads as
+// one continuous wiggle through the actual/forecast boundary, not a seam.
+function illustrativeForecastWave(grain, phase) {
+  if (grain === "weekly") return 1 + 0.1 * Math.sin(phase / 2.3);
+  if (grain === "quarterly") return 1 + 0.08 * Math.sin(phase / 1.5);
+  return 1;
+}
+
 export function buildForecastSeries(options) {
   const {
     ads,
@@ -244,6 +263,7 @@ export function buildForecastSeries(options) {
     for (; day < end; day += 1) {
       forecast += dailyDemand(ads, day, profile, curve, currentMonth, trendPct);
     }
+    forecast *= illustrativeForecastWave(grain, FAKE_HISTORY_MULTIPLIERS.length + period);
 
     const band = forecast * intervalZ * relativeError * Math.sqrt(period);
     points.push({

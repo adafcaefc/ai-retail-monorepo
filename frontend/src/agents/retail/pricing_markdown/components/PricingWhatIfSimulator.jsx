@@ -9,7 +9,14 @@ import {
   YAxis,
 } from "recharts";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { LEVER_DEFINITIONS } from "../data/contract.js";
+import { LEVER_DEFINITIONS, SIMULATION_STRIP_METRICS } from "../data/contract.js";
+import { formatIdr, formatPercent } from "../presentation.js";
+
+/** How each metrics-strip tile reads as text — A5 spec section 9c (#sim-metrics). */
+function stripMetricValue(id, value, language) {
+  if (id === "recovery_rate_pct") return formatPercent(value / 100, language, { digits: 1 });
+  return formatIdr(value, language);
+}
 
 /**
  * The What-If simulator — A5 spec section 9c. Every lever here is modelled;
@@ -33,7 +40,7 @@ export default function PricingWhatIfSimulator({
   canSave,
   busy,
 }) {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   const index = simulation?.index ?? [];
 
   return (
@@ -108,6 +115,29 @@ export default function PricingWhatIfSimulator({
           </BarChart>
         </ResponsiveContainer>
       </div>
+
+      {simulation?.applied ? (
+        <div className="pricing-sim-metrics">
+          {SIMULATION_STRIP_METRICS.map(({ id, label, lowerIsBetter }) => {
+            const baseline = simulation.baseline?.[id] ?? 0;
+            const scenario = simulation.scenario?.[id] ?? 0;
+            const delta = scenario - baseline;
+            const improved = lowerIsBetter ? delta < 0 : delta > 0;
+            const tone = delta === 0 ? "flat" : improved ? "good" : "bad";
+            return (
+              <article key={id} className={`pricing-sim-metric is-${tone}`}>
+                <span>{t(label)}</span>
+                <strong>{stripMetricValue(id, scenario, language)}</strong>
+                <small>
+                  {delta === 0
+                    ? t("Unchanged")
+                    : `(${delta > 0 ? "+" : "−"}${stripMetricValue(id, Math.abs(delta), language)})`}
+                </small>
+              </article>
+            );
+          })}
+        </div>
+      ) : null}
     </section>
   );
 }

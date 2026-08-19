@@ -11345,6 +11345,52 @@ button.pricing-kpi:hover {
   width: 100%;
 }
 
+/* Metrics strip (#sim-metrics), A5 spec section 9c — scenario value with a
+   delta-vs-baseline badge, coloured by whether the change helps or hurts. */
+.pricing-sim-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.pricing-sim-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+
+.pricing-sim-metric span {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+}
+
+.pricing-sim-metric strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-sim-metric small {
+  font-size: var(--text-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.pricing-sim-metric.is-good small {
+  color: var(--green-500);
+}
+
+.pricing-sim-metric.is-bad small {
+  color: var(--red-500);
+}
+
+.pricing-sim-metric.is-flat small {
+  color: var(--muted);
+}
+
 /* --- applied-scenario banner and saved scenarios ------------------------- */
 
 .pricing-scenario-banner {
@@ -11472,6 +11518,10 @@ button.pricing-kpi:hover {
   .pricing-dimension-grid,
   .pricing-skeleton-panels {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .pricing-sim-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
