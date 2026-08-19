@@ -44,7 +44,11 @@ from sqlalchemy import text
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+# `scripts/` is not a package, and this file is also imported by path from
+# backend/tests, which puts neither directory on the path for us.
+sys.path.insert(0, str(REPO / "scripts"))
 
+import workbook_guard  # noqa: E402
 from src.db.db import get_engine  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
@@ -511,6 +515,11 @@ def main() -> int:
         print(f"FAIL  source not found: {SOURCE}")
         print("      run scripts/extract_workbook_schema.py first")
         return 1
+
+    # Before anything is read into memory, let alone written: this runs in
+    # whichever checkout invoked it, and a stale one holds a different
+    # workbook's figures under the same file name.
+    workbook_guard.check(SOURCE)
 
     tables = load_tables()
     required = (
