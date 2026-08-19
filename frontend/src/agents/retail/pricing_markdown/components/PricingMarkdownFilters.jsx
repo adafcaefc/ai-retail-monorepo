@@ -6,10 +6,13 @@ import { useLanguage } from "../../../../LanguageProvider.jsx";
  * free-text search across SKU, name, vendor and brand.
  *
  * `store_id` narrows `by_store`/`by_cluster`/`by_channel`
- * (selectors.js's scopeStores) -- it does not narrow `items`, since a SKU's
- * own at-risk/recoverable value is a chain-wide figure across all its
- * stores, not a per-store one. See dashboard.py's module docstring for the
- * backend side of that same rule.
+ * (selectors.js's scopeStores) AND, when the board is reading from the API
+ * (see dataSource.js), narrows `items` itself: dashboard.py's `build()`
+ * recomputes each item's state/at-risk/recoverable at that one store's
+ * grain rather than its chain-wide total, and a SKU the store does not stock
+ * drops out entirely. Running off the bundled fixture (standalone/offline
+ * builds only) still shows the chain-wide `items` regardless of store,
+ * since that path has no backend to rerun the aggregation against.
  */
 export default function PricingMarkdownFilters({
   scope,

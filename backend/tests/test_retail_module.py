@@ -201,13 +201,14 @@ def test_retail_dashboards_declare_the_filters_they_apply() -> None:
         descriptor = AGENT_REGISTRY[agent_id]
 
         expected = {"legal_entity_id", "category_group"}
-        if agent_id == "retail.demand_forecasting":
+        if agent_id in ("retail.demand_forecasting", "retail.pricing_markdown"):
             expected.add("store_id")
 
         assert descriptor.supported_filters == frozenset(expected)
-        expected_ignored = ("reorder_only",) if agent_id == "retail.demand_forecasting" else (
-            "store_id",
-            "reorder_only",
+        expected_ignored = (
+            ("reorder_only",)
+            if agent_id in ("retail.demand_forecasting", "retail.pricing_markdown")
+            else ("store_id", "reorder_only")
         )
         assert scope.ignored_by(descriptor.supported_filters) == expected_ignored
 
