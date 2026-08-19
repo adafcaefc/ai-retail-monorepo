@@ -127,7 +127,7 @@ function describeTool(tool) {
     { match: ["query", "sql", "freeform"], icon: "🔎", label: "Querying the data", pastLabel: "Queried the data" },
     { match: ["finance", "kpi", "performance", "margin", "ebitda"], icon: "📊", label: "Analyzing performance", pastLabel: "Analyzed performance" },
     { match: ["collection", "receivable", "dso", "aging"], icon: "📥", label: "Reviewing collections", pastLabel: "Reviewed collections" },
-    { match: ["cashflow", "liquidity", "treasury", "forecast"], icon: "💧", label: "Checking liquidity", pastLabel: "Checked liquidity" },
+    { match: ["cashflow", "liquidity", "treasury"], icon: "💧", label: "Checking liquidity", pastLabel: "Checked liquidity" },
     { match: ["leakage", "duplicate", "anomaly", "fraud"], icon: "🛡️", label: "Scanning for leakage", pastLabel: "Scanned for leakage" },
     { match: ["simulate", "scenario", "whatif", "recalculate"], icon: "🧮", label: "Running a scenario", pastLabel: "Ran a scenario" },
     { match: ["alert", "monitor"], icon: "🔔", label: "Checking alerts", pastLabel: "Checked alerts" }
