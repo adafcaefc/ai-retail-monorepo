@@ -13,6 +13,7 @@ from typing import Any, Literal
 import sqlglot
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import SQLAlchemyError
 from sqlglot import exp
 from sqlglot.errors import OptimizeError, ParseError
 from sqlglot.optimizer.qualify import qualify
@@ -488,51 +489,68 @@ def freeform_query(
 
     with sql_engine.connect() as connection:
         for index, raw_query in enumerate(queries):
-            validated = _validate_query(
-                raw_query,
-                allowed_types=type_allow,
-                allowed_tables=table_allow,
-                schema=schema,
-            )
-            result = connection.execute(text(validated))
-
-            if result.returns_rows:
-                mappings = result.mappings().all()
-                truncated = len(mappings) > max_rows
-                rows = [
-                    {
-                        str(key): _json_value(value)
-                        for key, value in row.items()
-                    }
-                    for row in mappings[:max_rows]
-                ]
-                results.append(
-                    {
-                        "index": index,
-                        "query": validated,
-                        "count": len(rows),
-                        "truncated": truncated,
-                        "max_rows": max_rows,
-                        "rows": rows,
-                    }
+            # A bad column/table/statement is the model's mistake to fix, not
+            # ours to crash on: raising here would escape wrap_tool's re-raise
+            # (see tool_events.py) uncaught, abort the whole agent run, and
+            # leave the model without the "call describe_*_tables()" guidance
+            # _validate_query put in the message. Every other tool in this
+            # package (formula_tools.py) returns {"error": ...} for the same
+            # reason -- so the model sees the failure and can retry.
+            try:
+                validated = _validate_query(
+                    raw_query,
+                    allowed_types=type_allow,
+                    allowed_tables=table_allow,
+                    schema=schema,
                 )
-            else:
-                if read_only:
-                    connection.rollback()
-                    raise ValueError(
-                        "Write statements are not permitted for this tool configuration."
+                result = connection.execute(text(validated))
+
+                if result.returns_rows:
+                    mappings = result.mappings().all()
+                    truncated = len(mappings) > max_rows
+                    rows = [
+                        {
+                            str(key): _json_value(value)
+                            for key, value in row.items()
+                        }
+                        for row in mappings[:max_rows]
+                    ]
+                    results.append(
+                        {
+                            "index": index,
+                            "query": validated,
+                            "count": len(rows),
+                            "truncated": truncated,
+                            "max_rows": max_rows,
+                            "rows": rows,
+                        }
                     )
-                connection.commit()
+                else:
+                    if read_only:
+                        connection.rollback()
+                        raise ValueError(
+                            "Write statements are not permitted for this tool configuration."
+                        )
+                    connection.commit()
+                    results.append(
+                        {
+                            "index": index,
+                            "query": validated,
+                            "count": result.rowcount,
+                            "truncated": False,
+                            "max_rows": max_rows,
+                            "rows": [],
+                            "rowcount": result.rowcount,
+                        }
+                    )
+            except ValueError as exc:
                 results.append(
-                    {
-                        "index": index,
-                        "query": validated,
-                        "count": result.rowcount,
-                        "truncated": False,
-                        "max_rows": max_rows,
-                        "rows": [],
-                        "rowcount": result.rowcount,
-                    }
+                    {"index": index, "query": raw_query, "error": str(exc)}
+                )
+            except SQLAlchemyError as exc:
+                connection.rollback()
+                results.append(
+                    {"index": index, "query": raw_query, "error": str(exc)}
                 )
 
     return {
