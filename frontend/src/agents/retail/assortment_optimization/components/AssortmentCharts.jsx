@@ -3,7 +3,11 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  ComposedChart,
   Legend,
+  Line,
+  Pie,
+  PieChart,
   ReferenceLine,
   ResponsiveContainer,
   Scatter,
@@ -20,6 +24,7 @@ import {
   formatGmroi,
   formatGrowth,
   formatIdr,
+  formatUnits,
 } from "../presentation.js";
 
 const VERDICTS = [
@@ -125,6 +130,174 @@ export function DelistVsGrowQuadrant({ points, thresholds, onSelectSku }) {
             />
           ))}
         </ScatterChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+/**
+ * "Margin contribution Pareto" — the mockup's `#ch-a6`, and the visual the
+ * Demo Script names for step 7 ("A6 Pareto + GMROI").
+ *
+ * Bars are the highest-contributing SKUs, coloured by the verdict they already
+ * carry, so the reader sees at a glance whether the range's earners and its
+ * delist candidates are the same lines. The line is the cumulative share over
+ * the WHOLE scope, not just the drawn bars, and the marker is the rank where
+ * it reaches 80% — the Pareto point, counted from the data rather than stored.
+ */
+export function MarginContributionPareto({ pareto, onSelectSku }) {
+  const { t, language } = useLanguage();
+  const bars = pareto?.bars ?? [];
+
+  if (!bars.length) {
+    return <p className="assortment-empty">{t("No SKUs in scope.")}</p>;
+  }
+
+  const withinChart = pareto.pareto_rank > 0 && pareto.pareto_rank <= bars.length;
+
+  return (
+    <section className="assortment-chart-block" data-testid="assortment-chart-pareto">
+      <header className="assortment-section-head">
+        <h3>{t("Margin contribution Pareto")}</h3>
+        <span className="assortment-section-note">
+          {t("Top")} {bars.length} {t("of")} {pareto.sku_count} {t("SKUs by contribution/day")} ·{" "}
+          {pareto.pareto_rank} {t("SKUs carry the first")} {pareto.pareto_share_pct}%
+        </span>
+      </header>
+      <ResponsiveContainer width="100%" height={300}>
+        <ComposedChart data={bars} margin={{ top: 12, right: 12, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="rank" tick={{ fontSize: 10 }} />
+          <YAxis
+            yAxisId="left"
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v) => formatIdr(v, language, { digits: 0 })}
+          />
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            domain={[0, 100]}
+            tick={{ fontSize: 11 }}
+            tickFormatter={(v) => `${v}%`}
+          />
+          <Tooltip content={<ParetoTooltip />} />
+          {withinChart ? (
+            <ReferenceLine
+              yAxisId="right"
+              x={bars[pareto.pareto_rank - 1].rank}
+              stroke="var(--gray-500)"
+              strokeDasharray="4 4"
+              label={{ value: `${pareto.pareto_share_pct}%`, fontSize: 10, position: "top" }}
+            />
+          ) : null}
+          <Bar
+            yAxisId="left"
+            dataKey="contribution_per_day"
+            name={t("Contribution/day")}
+            onClick={(row) => onSelectSku?.(row?.sku_id)}
+            cursor={onSelectSku ? "pointer" : undefined}
+          >
+            {bars.map((row) => (
+              <Cell key={row.sku_id} fill={classificationColor(row.classification)} />
+            ))}
+          </Bar>
+          <Line
+            yAxisId="right"
+            type="monotone"
+            dataKey="cumulative_share"
+            name={t("Cumulative share")}
+            stroke="var(--gray-700)"
+            strokeWidth={2}
+            dot={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </section>
+  );
+}
+
+function ParetoTooltip({ active, payload }) {
+  const { language, t } = useLanguage();
+  if (!active || !payload?.length) return null;
+  const p = payload[0].payload;
+  return (
+    <div className="assortment-chart-tooltip">
+      <strong>{p.sku_id} · {p.name}</strong>
+      <span>{t("Contribution/day")}: {formatIdr(p.contribution_per_day, language)}</span>
+      <span>{t("GMROI")}: {formatGmroi(p.gmroi, language)}</span>
+      <span>{t("Cumulative share")}: {p.cumulative_share}%</span>
+      <span className="assortment-tooltip-total">{t("Verdict")}: {t(p.classification)}</span>
+    </div>
+  );
+}
+
+/**
+ * "Range decision mix" — the mockup's `#ch-a6b`, the Pareto's twin card.
+ *
+ * The same three verdicts the rest of the board runs on, counted by SKU, with
+ * the range size in the middle. It answers the question the Pareto raises:
+ * having seen that a few lines carry the margin, how much of the range is
+ * actually up for a decision.
+ *
+ * Reads the KPIs rather than re-counting the items, so it cannot disagree
+ * with the tiles above it.
+ */
+export function RangeDecisionMix({ kpis }) {
+  const { t, language } = useLanguage();
+
+  const slices = [
+    { id: "grow", label: "Grow", value: Number(kpis?.grow_candidates) || 0 },
+    { id: "hold", label: "Keep", value: Number(kpis?.hold_count) || 0 },
+    { id: "delist", label: "Delist", value: Number(kpis?.delist_candidates) || 0 },
+  ].filter((s) => s.value > 0);
+
+  const total = Number(kpis?.sku_count) || 0;
+  if (!slices.length || !total) {
+    return <p className="assortment-empty">{t("No SKUs in scope.")}</p>;
+  }
+
+  return (
+    <section className="assortment-chart-block" data-testid="assortment-chart-decision-mix">
+      <h4>{t("Range decision mix")}</h4>
+      <ResponsiveContainer width="100%" height={260}>
+        <PieChart>
+          <Pie
+            data={slices}
+            dataKey="value"
+            nameKey="label"
+            innerRadius="58%"
+            outerRadius="82%"
+            paddingAngle={1}
+          >
+            {slices.map((s) => (
+              <Cell key={s.id} fill={classificationColor(s.id)} />
+            ))}
+          </Pie>
+          <Tooltip
+            formatter={(value, name) => [
+              `${formatUnits(value, language)} ${t("SKUs")} · ${((value / total) * 100).toFixed(1)}%`,
+              t(name),
+            ]}
+          />
+          <Legend formatter={(value) => t(value)} />
+          <text
+            x="50%"
+            y="46%"
+            textAnchor="middle"
+            className="assortment-donut-centre"
+          >
+            {formatUnits(total, language)}
+          </text>
+          <text
+            x="50%"
+            y="46%"
+            dy={18}
+            textAnchor="middle"
+            className="assortment-donut-centre-sub"
+          >
+            {t("SKUs in range")}
+          </text>
+        </PieChart>
       </ResponsiveContainer>
     </section>
   );

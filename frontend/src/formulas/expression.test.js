@@ -53,8 +53,9 @@ describe("the corpus itself", () => {
     const stored = store.formulas.map((formula) => formula.id);
 
     // Nineteen transcribed from the workbook's `Formulas` sheet, plus ENGINE
-    // columns I, L and N — real workbook formulas the sheet does not list.
-    expect(stored).toHaveLength(22);
+    // columns I, L and N — real workbook formulas the sheet does not list —
+    // plus f23, the gross half of the markdown pair Agent 5 split f14 into.
+    expect(stored).toHaveLength(23);
     for (const id of stored) {
       expect(covered).toContain(id);
     }

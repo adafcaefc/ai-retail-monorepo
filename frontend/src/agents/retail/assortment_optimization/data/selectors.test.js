@@ -9,8 +9,10 @@ import {
   computeByVertical,
   computeBestActions,
   computeKpis,
+  computeParetoContribution,
   computeQuadrant,
   delistOf,
+  delistShare,
   growOf,
   scopeItems,
 } from "./selectors.js";
@@ -107,6 +109,53 @@ describe("computeByCluster", () => {
   });
 });
 
+describe("computeParetoContribution", () => {
+  const pareto = computeParetoContribution(fixture.items);
+
+  it("orders every SKU by contribution/day, descending", () => {
+    const values = pareto.bars.map((b) => b.contribution_per_day);
+    expect(values).toEqual([...values].sort((a, b) => b - a));
+    expect(pareto.bars[0].rank).toBe(1);
+  });
+
+  it("counts the curve over the whole scope, not just the drawn bars", () => {
+    // The head is a rendering limit; every SKU with contribution is ranked.
+    expect(pareto.bars.length).toBeLessThan(pareto.sku_count);
+    expect(pareto.sku_count).toBe(
+      fixture.items.filter((i) => i.contribution_per_day > 0).length,
+    );
+  });
+
+  it("totals to the contribution/day KPI, which is the workbook's own figure", () => {
+    // A6's one measure a prior audit did not flag as pasted. If the Pareto
+    // disagrees with it, the chart is ranking something else.
+    expect(pareto.total_contribution).toBe(computeKpis(fixture.items).contribution_per_day);
+  });
+
+  it("reads the Pareto rank off the data rather than storing it", () => {
+    const { pareto_rank: rank, pareto_share_pct: share } = pareto;
+    expect(rank).toBeGreaterThan(0);
+    expect(rank).toBeLessThanOrEqual(pareto.sku_count);
+
+    // The rank is the FIRST SKU at or past the share: the one before it is
+    // still short. That is what makes it a count rather than a threshold.
+    const curve = computeParetoContribution(fixture.items, fixture.items.length).bars;
+    expect(curve[rank - 1].cumulative_share).toBeGreaterThanOrEqual(share);
+    expect(curve[rank - 2].cumulative_share).toBeLessThan(share);
+  });
+
+  it("closes the curve at 100%", () => {
+    const curve = computeParetoContribution(fixture.items, fixture.items.length).bars;
+    expect(curve[curve.length - 1].cumulative_share).toBeCloseTo(100, 1);
+  });
+
+  it("narrows with the scope", () => {
+    const scoped = computeParetoContribution(scopeItems(fixture.items, { legal_entity_id: "GRC" }));
+    expect(scoped.sku_count).toBeLessThan(pareto.sku_count);
+    expect(scoped.total_contribution).toBeLessThan(pareto.total_contribution);
+  });
+});
+
 describe("computeQuadrant", () => {
   it("caps its point count and carries a verdict on every point", () => {
     const points = computeQuadrant(fixture.items, 50);
@@ -150,5 +199,46 @@ describe("buildDashboardFromFixture", () => {
     const sheetTotal = fixture.reference_by_vertical.reduce((t, r) => t + r.contribution_per_day, 0);
     const drift = Math.abs(built.kpis.contribution_per_day - sheetTotal) / sheetTotal;
     expect(drift).toBeLessThan(0.005);
+  });
+});
+
+describe("best-action tabs are earned by concentration, not by a stored count", () => {
+  const tabs = assignBestActionTabs(fixture.items);
+  const count = (id) => tabs.filter((t) => t.best_action_tab === id).length;
+
+  it("fills all four tabs rather than collapsing into one", () => {
+    // The rule this replaced used an absolute count, which every vendor in
+    // this range cleared, so Vendor Review swallowed all 404 delist rows and
+    // two tabs rendered empty. A share cannot do that.
+    for (const tab of BEST_ACTION_TABS) {
+      expect(count(tab.id), `${tab.id} is empty`).toBeGreaterThan(0);
+    }
+  });
+
+  it("splits the delist population exactly once, with nothing left over", () => {
+    const delist = tabs.filter((t) => t.classification === "delist").length;
+    expect(count("delist_tail") + count("rebalance_space") + count("vendor_brand_review"))
+      .toBe(delist);
+    expect(count("grow_winners")).toBe(growOf(fixture.items).length);
+  });
+
+  it("routes a group only when it carries MORE than its share of the delist list", () => {
+    const chainRate = delistOf(fixture.items).length / fixture.items.length;
+    const vendorRate = delistShare(fixture.items, "vendor");
+    for (const row of tabs) {
+      if (row.best_action_tab !== "vendor_brand_review") continue;
+      expect(vendorRate.get(row.vendor), row.vendor).toBeGreaterThan(chainRate);
+    }
+  });
+
+  it("re-derives the cutoff for a narrower scope instead of reusing the chain's", () => {
+    const scoped = scopeItems(fixture.items, { legal_entity_id: "GRC" });
+    const scopedTabs = assignBestActionTabs(scoped);
+    const rate = delistOf(scoped).length / scoped.length;
+    const vendorRate = delistShare(scoped, "vendor");
+    for (const row of scopedTabs) {
+      if (row.best_action_tab !== "vendor_brand_review") continue;
+      expect(vendorRate.get(row.vendor)).toBeGreaterThan(rate);
+    }
   });
 });

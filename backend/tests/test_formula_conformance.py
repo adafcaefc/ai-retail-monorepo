@@ -56,10 +56,6 @@ SCHEMA_PATH = AppPaths.REPO_ROOT / "resources" / "dbtemp" / "schema_with_data.js
 NO_LEVERS = {
     "demand_lever": 0,
     "promo_lever": 0,
-    # B18. Absent from this dict until f14 started reading it -- the catalogue
-    # had no term for the markdown slider to move, which is why the lever did
-    # nothing in the What-If panel.
-    "markdown_lever": 0,
     "inbound_lever": 0,
     "lead_time_adjust": 0,
     "safety_adjust": 0,
@@ -89,10 +85,7 @@ COLUMN_FORMULAS = {
     "order_value": "f11-order-value",
     "at_risk": "f12-at-risk-value",
     "promo_incr_margin": "f13-incremental-promotion-margin",
-    # AA and AF. AA was headed "At-risk value" while computing markdown
-    # recovery; renaming it split the two apart.
-    "markdown_recoverable": "f14-recoverable-at-risk-value",
-    "markdown_at_risk_value": "f23-markdown-at-risk-gross",
+    "at_risk_value": "f14-recoverable-at-risk-value",
     "contribution_day": "f15-contribution-per-day",
     "labour_fte": "f16-labour-fte",
     "dos": "f20-days-of-supply",
@@ -205,11 +198,7 @@ def _engine_row(
 
     reorder_days = {
         "ads": ads,
-        # The designated vendor's lead time, not `sku_master.lead_d`.
-        # The two disagree -- GRC-005 is 2 days against 6 -- and ROP
-        # follows the Trade Agreement, which is the contract actually
-        # being ordered against.
-        "lead_time_days": sku["designated_lead_d"],
+        "lead_time_days": sku["lead_d"],
         "lead_time_adjust": levers["lead_time_adjust"],
         "safety_days": sku["safety_d"],
         "safety_adjust": levers["safety_adjust"],
@@ -229,17 +218,6 @@ def _engine_row(
         days_of_supply=days_of_supply,
         shelf_life_days=sku["expiry_d"],
         velocity=sku["growth"],
-    )
-
-    gross_markdown = _run(
-        asts,
-        "f23-markdown-at-risk-gross",
-        state=state,
-        position=position,
-        ads=ads,
-        shelf_life_days=sku["expiry_d"],
-        price=sku["price"],
-        max_inventory=maximum,
     )
 
     order_sales = _run(
@@ -275,8 +253,7 @@ def _engine_row(
             "f11-order-value",
             order_buy_units=order_buy,
             pack_factor=sku["pack_factor"],
-            # The contract price the PO is raised at, not the shelf price.
-            vendor_price=sku["designated_unit_price"],
+            price=sku["price"],
         ),
         "inv_value": _run(
             asts,
@@ -301,17 +278,15 @@ def _engine_row(
             margin_pct=sku["margin_pct"],
             promo_funding=sku["fund_pct"],
         ),
-        # Gross exposure (ENGINE_STORE!AF), then the net recovery it feeds
-        # (AA). f14 held the gross expression under the net's name until the
-        # workbook's rename split them apart.
-        "markdown_at_risk_value": gross_markdown,
-        "markdown_recoverable": _run(
+        "at_risk_value": _run(
             asts,
             "f14-recoverable-at-risk-value",
-            gross=gross_markdown,
             state=state,
-            elasticity=sku["elasticity"],
-            markdown_lever=levers["markdown_lever"],
+            position=position,
+            ads=ads,
+            shelf_life_days=sku["expiry_d"],
+            price=sku["price"],
+            max_inventory=maximum,
         ),
         "contribution_day": _run(
             asts,
@@ -330,42 +305,10 @@ def _engine_row(
     }
 
 
-def _sku_index(tables) -> dict[str, dict]:
-    """`sku_master` rows keyed by id, each carrying its designated lead time.
-
-    `sku_master.lead_d` is a static field that disagrees with the Trade
-    Agreement the item is actually ordered against -- GRC-005 says 2 days
-    there and 6 in the agreement. ROP follows the agreement, so the check has
-    to as well, or every ROP-derived column reports a mismatch that is really
-    the test reading the wrong column.
-
-    Exactly one row per item carries `designated = "Y"`; verified 800/800.
-    """
-    designated = {
-        row["item"]: row
-        for row in tables["trade_agreements"]
-        if str(row["designated"]).strip().upper() == "Y"
-    }
-    index = {}
-    for row in tables["sku_master"]:
-        agreement = designated.get(row["sku_id"])
-        enriched = dict(row)
-        enriched["designated_lead_d"] = (
-            agreement["lead_time_d"] if agreement else row["lead_d"]
-        )
-        # Falls back to cost rather than price: guessing the retail price here
-        # would reintroduce the very error this replaced.
-        enriched["designated_unit_price"] = (
-            agreement["unit_price"] if agreement else row["cost"]
-        )
-        index[row["sku_id"]] = enriched
-    return index
-
-
 @pytest.fixture(scope="module")
 def engine_grid(asts, tables, week_factor) -> list[tuple[dict, dict]]:
     """All 16,000 rows recomputed, paired with what the workbook stored."""
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
@@ -390,23 +333,7 @@ def _agrees(computed: Any, stored: Any) -> bool:
         return str(computed) == str(stored)
     # Absolute tolerance carries the money columns, where a relative
     # comparison against billions would wave through whole rupiah.
-    if math.isclose(computed, stored, rel_tol=1e-9, abs_tol=1e-6):
-        return True
-
-    # A formula ending in ROUND can land on the far side of the .5 boundary
-    # from Excel purely on the last bit of a double. FSH-062/S054 computes
-    # 5427889.499999999 here, 9.3e-10 short, so Excel rounds up and Python
-    # rounds down. Seventeen of 16,000 rows do this. One unit is allowed on
-    # integral results only, and only when the two agree to a part in a
-    # million -- f11 reading the retail price instead of the contract price
-    # was out by 32% and still failed this.
-    # No relative gate: ROUND's output granularity IS one unit, so one unit is
-    # the smallest disagreement the formula can express. A real error does not
-    # land inside that across 16,000 rows -- f11 reading the retail price
-    # instead of the contract price was out by 1.2 million per row.
-    if float(computed).is_integer() and float(stored).is_integer():
-        return abs(computed - stored) <= 1
-    return False
+    return math.isclose(computed, stored, rel_tol=1e-9, abs_tol=1e-6)
 
 
 @pytest.mark.parametrize("column", sorted(COLUMN_FORMULAS))
@@ -498,7 +425,7 @@ def test_levers_reproduce_the_published_scenario(
     branch that never fires. Without it the What-If panel would rest on
     expressions nobody had ever run in anger.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
     label_of = {
@@ -590,7 +517,7 @@ def test_raising_a_lever_never_lowers_what_it_drives(
     check above, because those all sit at zero. This does not prove the
     magnitude is right; it proves the lever pushes the way its label promises.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
@@ -636,7 +563,7 @@ def test_the_reorder_floors_engage_under_a_negative_lever(
     repository refuses to write a rule twice; a test that independently says
     what the answer should be is the exception that makes drift visible.
     """
-    sku_by_id = _sku_index(tables)
+    sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
     vertical_by_id = {row["vertical_id"]: row for row in tables["verticals"]}
 
@@ -658,10 +585,7 @@ def test_the_reorder_floors_engage_under_a_negative_lever(
             week_factor,
             levers,
         )
-        # The designated agreement's lead time, matching f05. Against the
-        # static `lead_d` this expectation drifts the moment ROP stops
-        # reading that column.
-        days = max(1, sku["designated_lead_d"] - 2) + max(0, sku["safety_d"] - 2)
+        days = max(1, sku["lead_d"] - 2) + max(0, sku["safety_d"] - 2)
         expected = math.floor(abs(row["ads"] * days) + 0.5)
 
         if row["rop"] != expected:

@@ -266,6 +266,23 @@ def build_agent_kpi_reference(
             ("active_promo_skus", "uplift_pct", "incremental_margin", "roi_x",
              "cannib_pct", "funding_pct"),
         ),
+        # A6 carries ONE metric, not the six its sheet has. A prior audit
+        # (RC-2) found `delist_candidates`, `grow_candidates`, `avg_gmroi`,
+        # `tail_share_pct` and `capital_freed` in B:F to be pasted values
+        # rather than formulas -- they never recomputed, and the board derives
+        # all five from the item rows instead. `contribution_day` is the one
+        # column that audit did not flag, and it reconciles exactly, so it is
+        # the only one worth storing as a reconciliation anchor. Seeding the
+        # other five would put figures in the warehouse that nothing should
+        # ever compare against.
+        "retail.assortment_optimization": (
+            "a6_assortment",
+            # Stored under the name the board reads it by, not the name the
+            # sheet spells it. Every other entry here happens to agree on both;
+            # this one does not, and the alias belongs at the point of write so
+            # exactly one spelling ever reaches the warehouse.
+            (("contribution_day", "contribution_per_day"),),
+        ),
     }
 
     rows: list[dict[str, Any]] = []
@@ -277,12 +294,15 @@ def build_agent_kpi_reference(
                 unresolved.add(row["vertical_label"])
                 continue
             for metric in metrics:
+                # A metric is either a column name that doubles as the stored
+                # name, or an explicit (column, stored_name) pair.
+                column, stored = metric if isinstance(metric, tuple) else (metric, metric)
                 rows.append(
                     {
                         "agent_id": agent_id,
                         "vertical_id": vertical_id,
-                        "metric": metric,
-                        "value": row[metric],
+                        "metric": stored,
+                        "value": row[column],
                         "import_batch_id": None,
                     }
                 )

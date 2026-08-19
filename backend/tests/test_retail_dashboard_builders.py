@@ -53,6 +53,13 @@ AGENTS = [
         [("items", "sku_id"), ("campaigns", "promo_id"), ("stores", "store_id"),
          ("reference_by_vertical", "legal_entity_id")],
     ),
+    (
+        "assortment_optimization",
+        "src.llm.agents.retail.assortment_optimization.dashboard",
+        [("items", "sku_id"), ("stores", "store_id"),
+         ("by_state_value", "state"),
+         ("reference_by_vertical", "legal_entity_id")],
+    ),
 ]
 
 # Metadata that describes the load rather than the data, and one block the

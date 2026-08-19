@@ -76,13 +76,6 @@ def test_corpus_covers_every_documented_example() -> None:
     twenty-two are ENGINE columns I, L and N -- real workbook formulas the
     sheet simply does not list, added when the Inventory Risk What-If panel
     needed to recompute them and found no catalogue entry to run.
-
-    Twenty-three is `f23-markdown-at-risk-gross`. It is not new arithmetic:
-    f14 used to hold that expression under the name "Recoverable at-risk
-    value" while the workbook's AA column had already moved on to the net
-    figure. Splitting them gave the gross one a home and let f14 hold what
-    its name claims -- which is also what gave the markdown lever a term to
-    move.
     """
     formulas = load_formulas()
     examples = load_examples()
@@ -508,5 +501,4 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
         assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
         split[grain] = split.get(grain, 0) + 1
 
-    # 17, not 16: f23-markdown-at-risk-gross is a store-grain formula.
     assert split == {"store_sku": 17, "chain_sku": 3, "store_roster": 3}
