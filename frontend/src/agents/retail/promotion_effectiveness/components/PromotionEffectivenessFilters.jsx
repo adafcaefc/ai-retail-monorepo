@@ -21,6 +21,7 @@ export default function PromotionEffectivenessFilters({
     scope.legal_entity_id !== ALL ||
     scope.category_group !== ALL ||
     scope.store_id !== ALL ||
+    scope.horizon_weeks !== 16 ||
     (scope.sku && scope.sku.trim());
 
   return (
@@ -55,6 +56,23 @@ export default function PromotionEffectivenessFilters({
         }
         onChange={(value) => onPatch({ store_id: value })}
       />
+      <fieldset className="promo-horizon">
+        <legend>{t("Horizon")}</legend>
+        <div className="promo-segmented">
+          {(options.horizons_weeks ?? []).map((weeks) => (
+            <button
+              key={weeks}
+              type="button"
+              aria-pressed={scope.horizon_weeks === weeks}
+              disabled={busy}
+              onClick={() => onPatch({ horizon_weeks: weeks })}
+            >
+              {weeks}w
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
       <label className="promo-search">
         <span className="promo-search-label">{t("Search")}</span>
         <input

@@ -10,6 +10,15 @@ import {
 } from "recharts";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { LEVER_DEFINITIONS } from "../data/contract.js";
+import PromoMetricsStrip from "./PromoMetricsStrip.jsx";
+
+/** A4 spec section 9c's #sim-metrics: incr margin / ROI / cannib / funding, each with its delta vs baseline. */
+const SIM_METRICS_STRIP = [
+  { id: "incremental_margin", label: "Incr margin", format: "idr", lowerIsBetter: false },
+  { id: "roi_x", label: "ROI", format: "roi", lowerIsBetter: false },
+  { id: "cannib_pct", label: "Cannib %", format: "percent", lowerIsBetter: true },
+  { id: "funding_pct", label: "Funding %", format: "percent", lowerIsBetter: false },
+];
 
 /**
  * The What-If simulator — A4 spec section 9c. Six levers from the workbook's
@@ -34,6 +43,13 @@ export default function PromoWhatIfSimulator({
 }) {
   const { t } = useLanguage();
   const index = simulation?.index ?? [];
+  const { baseline, scenario, applied } = simulation ?? {};
+
+  const simMetricsItems = SIM_METRICS_STRIP.map((m) => ({
+    ...m,
+    value: applied ? scenario?.[m.id] ?? 0 : baseline?.[m.id] ?? 0,
+    delta: applied ? (scenario?.[m.id] ?? 0) - (baseline?.[m.id] ?? 0) : null,
+  }));
 
   return (
     <section className="promo-simulator" data-testid="promo-simulator">
@@ -48,6 +64,8 @@ export default function PromoWhatIfSimulator({
           {t("Drive whole page")}
         </label>
       </header>
+
+      <PromoMetricsStrip items={simMetricsItems} testId="promo-sim-metrics" />
 
       <div className="promo-levers">
         {LEVER_DEFINITIONS.map((lever) => (

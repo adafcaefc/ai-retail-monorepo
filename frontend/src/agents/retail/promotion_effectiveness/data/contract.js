@@ -28,6 +28,15 @@ export const SCHEMA_VERSION = 1;
 export const ALL = "ALL";
 
 /**
+ * A4 spec section 8a's Horizon control (4/8/12/16 wk) — same values as
+ * `demand_forecasting`'s `DEMAND_HORIZONS`, and the same client-side-only
+ * treatment: it never reaches the backend (see `serializeScope`), it narrows
+ * `campaigns` to those whose `valid_from` falls within the window from the
+ * snapshot date (`buildDashboardFromFixture`'s `filterCampaignsByHorizon`).
+ */
+export const PROMO_HORIZONS = [4, 8, 12, 16];
+
+/**
  * What-If levers, A4 spec section 9a → `Constants` B16–B21.
  *
  * The same six levers every retail board carries, because the workbook's
@@ -131,11 +140,19 @@ export const SIMULATION_METRICS = Object.freeze([
  * @property {string} sku               Free-text SKU / promo-name search.
  */
 
+/**
+ * Defaults to the WIDEST horizon (16wk), not demand_forecasting's 8wk.
+ * Every one of the 48 campaigns has `valid_from` clustered at 2026-09-01 or
+ * 2026-10-01, 9-13 weeks past the 2026-07-01 snapshot — an 8wk default would
+ * hide every campaign on first load. Narrower values are for the reader to
+ * choose deliberately ("what's starting soon"), not a trap sprung by default.
+ */
 export const DEFAULT_SCOPE = Object.freeze({
   legal_entity_id: ALL,
   category_group: ALL,
   store_id: ALL,
   sku: "",
+  horizon_weeks: 16,
 });
 
 /** The headline caveat the board prints beneath the charts. */
@@ -216,6 +233,9 @@ export function normalizePromotionDashboard(payload) {
       legal_entities: payload.filter_options?.legal_entities ?? [],
       categories: payload.filter_options?.categories ?? [],
       stores: payload.filter_options?.stores ?? [],
+      horizons_weeks: (payload.filter_options?.horizons_weeks ?? PROMO_HORIZONS)
+        .map(Number)
+        .filter((horizon) => PROMO_HORIZONS.includes(horizon)),
     },
     thresholds: {
       roi_target: 2,

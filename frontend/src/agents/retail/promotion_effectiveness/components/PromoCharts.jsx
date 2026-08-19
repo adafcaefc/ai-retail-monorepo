@@ -3,6 +3,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  LabelList,
   Legend,
   Line,
   LineChart,
@@ -26,8 +27,21 @@ function cellOpacity(key, activeKey) {
  * charts — the only two clicked-to-filter charts on this board are this one
  * and the by-category chart below, both of which already have a dropdown
  * filter for the same field.
+ *
+ * `title`/`testId` are overridable because this same chart is reused in the
+ * dimension row as the A4 spec's separate "by legal entity" chart (section
+ * 6, #ch-dim-le): `vertical_id` and `legal_entity_id` are literally the same
+ * 8-value dimension in this data model (confirmed against `filter_options`),
+ * so a second computation would just recompute the same numbers — this
+ * reuses the one already on the page rather than fake a distinct dimension.
  */
-export function MarginByVerticalChart({ rows, onSelect, activeKey }) {
+export function MarginByVerticalChart({
+  rows,
+  onSelect,
+  activeKey,
+  title = "Incremental margin by vertical",
+  testId = "promo-chart-vertical",
+}) {
   const { t, language } = useLanguage();
   const data = [...rows]
     .filter((r) => r.incremental_margin > 0)
@@ -41,10 +55,10 @@ export function MarginByVerticalChart({ rows, onSelect, activeKey }) {
   if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
 
   return (
-    <section className="promo-chart-block" data-testid="promo-chart-vertical">
-      <h4>{t("Incremental margin by vertical")}</h4>
+    <section className="promo-chart-block" data-testid={testId}>
+      <h4>{t(title)}</h4>
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+        <BarChart data={data} margin={{ top: 20, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="label" tick={{ fontSize: 11 }} />
           <YAxis tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
@@ -55,6 +69,12 @@ export function MarginByVerticalChart({ rows, onSelect, activeKey }) {
             onClick={onSelect ? (point) => onSelect(point.selection_key) : undefined}
             cursor={onSelect ? "pointer" : undefined}
           >
+            <LabelList
+              dataKey="value"
+              position="top"
+              fontSize={10}
+              formatter={(v) => formatIdr(v, language)}
+            />
             {data.map((row, i) => (
               <Cell
                 key={row.selection_key}
@@ -70,7 +90,7 @@ export function MarginByVerticalChart({ rows, onSelect, activeKey }) {
 }
 
 /**
- * Incremental margin by category (horizontal bars) — the by-category dimension
+ * Incremental margin by category (vertical bars) — the by-category dimension
  * chart from the A4 spec section 6. Click a bar to scope the board to that
  * category.
  */
@@ -87,10 +107,10 @@ export function MarginByCategoryChart({ rows, onSelect, activeKey }) {
     <section className="promo-chart-block" data-testid="promo-chart-category">
       <h4>{t("Incremental margin by category")}</h4>
       <ResponsiveContainer width="100%" height={260}>
-        <BarChart layout="vertical" data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
-          <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-          <XAxis type="number" tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
-          <YAxis type="category" dataKey="label" width={140} tick={{ fontSize: 11 }} />
+        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" vertical={false} />
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={50} />
+          <YAxis tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
           <Tooltip formatter={(v) => formatIdr(v, language)} />
           <Bar
             dataKey="value"
@@ -290,9 +310,12 @@ export function SeasonMixChart({ rows }) {
 }
 
 /**
- * The "uplift vs margin quality" main chart — incremental margin as bars with
- * modeled uplift as an overlaid line. A simplified combo view of the A4 spec
- * section 4 main chart, per-vertical.
+ * The "uplift vs margin quality" main chart — incremental margin as bars,
+ * modeled uplift as a solid line, cannibalization drag as an optional dashed
+ * line (A4 spec section 4: "Cannibalization drag as optional dashed line").
+ * Cannib and uplift share the right-hand axis — both are percentages, and
+ * putting cannib on its own third axis would crowd the chart for a series
+ * that's a drag annotation, not a headline metric.
  */
 export function UpliftVsMarginChart({ rows }) {
   const { t, language } = useLanguage();
@@ -303,6 +326,7 @@ export function UpliftVsMarginChart({ rows }) {
       label: r.label ?? r.vertical_id,
       margin: r.incremental_margin,
       uplift: r.uplift_pct,
+      cannib: r.cannib_pct,
     }));
 
   if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
@@ -318,9 +342,9 @@ export function UpliftVsMarginChart({ rows }) {
           <YAxis yAxisId="uplift" orientation="right" tickFormatter={(v) => formatPercent(v / 100, language)} tick={{ fontSize: 11 }} />
           <Tooltip
             formatter={(value, name) =>
-              name === t("Modeled uplift")
-                ? formatPercent(value / 100, language)
-                : formatIdr(value, language)
+              name === t("Incremental margin")
+                ? formatIdr(value, language)
+                : formatPercent(value / 100, language)
             }
           />
           <Legend />
@@ -336,6 +360,16 @@ export function UpliftVsMarginChart({ rows }) {
             name={t("Modeled uplift")}
             stroke="var(--gray-700)"
             strokeWidth={2}
+          />
+          <Line
+            yAxisId="uplift"
+            type="monotone"
+            dataKey="cannib"
+            name={t("Cannibalization drag")}
+            stroke="var(--red-500)"
+            strokeWidth={1.5}
+            strokeDasharray="4 3"
+            dot={false}
           />
         </BarChart>
       </ResponsiveContainer>

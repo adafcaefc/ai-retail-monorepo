@@ -18,6 +18,7 @@ import PromoEffectivenessFilters from "./components/PromotionEffectivenessFilter
 import PromoEffectivenessSkeleton from "./components/PromotionEffectivenessSkeleton.jsx";
 import PromoKpiDrilldown from "./components/PromoKpiDrilldown.jsx";
 import PromoKpiGrid from "./components/PromoKpiGrid.jsx";
+import PromoMetricsStrip from "./components/PromoMetricsStrip.jsx";
 import PromoScenarioComparison from "./components/PromoScenarioComparison.jsx";
 import PromoWhatIfSimulator from "./components/PromoWhatIfSimulator.jsx";
 import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
@@ -247,6 +248,17 @@ export default function PromotionEffectivenessDashboard() {
         onSelectSku={(sku) => patchScope({ sku })}
       />
 
+      {/* #main-stats (A4 spec section 4): a snapshot strip beside the main chart. */}
+      <PromoMetricsStrip
+        testId="promo-main-stats"
+        items={[
+          { id: "active_promo_skus", label: "Promo SKUs", format: "units", value: dashboard.kpis.active_promo_skus },
+          { id: "uplift_pct", label: "Uplift", format: "percent", value: dashboard.kpis.uplift_pct },
+          { id: "incremental_margin", label: "Incr margin", format: "idr", value: dashboard.kpis.incremental_margin },
+          { id: "roi_x", label: "ROI", format: "roi", value: dashboard.kpis.roi_x },
+        ]}
+      />
+
       <UpliftVsMarginChart rows={dashboard.by_vertical} />
 
       <p className="promo-footnote">{t(UPLIFT_NOTE)}</p>
@@ -273,7 +285,14 @@ export default function PromotionEffectivenessDashboard() {
         onSelect={(promoId) => patchScope({ sku: promoId })}
       />
 
-      {/* Dimension row — A4 spec section 6. */}
+      {/* Dimension row — A4 spec section 6 (7 charts: category, store,
+          cluster, season/type, channel, inventory state, legal entity).
+          Channel and legal-entity reuse the same components/data already
+          shown in mainHTML above (5a/5b) — the spec lists them again here
+          as distinct dimension-row entries, and vertical_id IS
+          legal_entity_id in this data model (see MarginByVerticalChart's
+          own doc comment), so this is the same chart in a second slot, not
+          a second computation. */}
       <div className="promo-dimension-grid">
         <MarginByCategoryChart
           rows={dashboard.by_category}
@@ -287,7 +306,21 @@ export default function PromotionEffectivenessDashboard() {
         <MarginByStoreChart rows={dashboard.by_store} />
         <MarginByClusterChart rows={dashboard.by_cluster} />
         <SeasonMixChart rows={dashboard.by_season} />
+        <MarginByChannelChart rows={dashboard.by_channel} />
         <InventoryStateChart rows={dashboard.by_state} />
+        <MarginByVerticalChart
+          rows={dashboard.by_vertical}
+          title="Incremental margin by legal entity"
+          testId="promo-chart-legal-entity"
+          activeKey={scope.legal_entity_id !== ALL ? scope.legal_entity_id : null}
+          onSelect={(verticalId) =>
+            patchScope({
+              legal_entity_id: scope.legal_entity_id === verticalId ? ALL : verticalId,
+              category_group: ALL,
+              store_id: ALL,
+            })
+          }
+        />
       </div>
 
       <p className="promo-footnote">{t(STORE_GRAIN_NOTE)}</p>
@@ -296,6 +329,7 @@ export default function PromotionEffectivenessDashboard() {
         groups={dashboard.best_actions}
         allCampaigns={dashboard.campaigns}
         asOf={dashboard.as_of}
+        referenceByVertical={dashboard.reference_by_vertical}
         onSelect={(promoId) => patchScope({ sku: promoId })}
       />
 
@@ -324,6 +358,7 @@ export default function PromotionEffectivenessDashboard() {
       <PromoScenarioComparison
         baseline={dashboard.simulation.baseline}
         scenarios={scenarios}
+        asOf={dashboard.as_of}
         onRemove={(id) =>
           setScenarios((current) => current.filter((entry) => entry.id !== id))
         }

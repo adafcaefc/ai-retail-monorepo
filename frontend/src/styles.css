@@ -10201,9 +10201,52 @@ button.po-kpi {
 
 .promo-select select:focus-visible,
 .promo-search input:focus-visible,
-.promo-button:focus-visible {
+.promo-button:focus-visible,
+.promo-segmented button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+.promo-horizon {
+  min-width: max-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.promo-horizon legend {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-1);
+}
+
+.promo-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
+}
+
+.promo-segmented button {
+  min-width: 34px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.promo-segmented button[aria-pressed="true"] {
+  background: var(--surface-strong);
+  color: var(--primary-deep);
+  box-shadow: var(--shadow-sm);
 }
 
 .promo-button {
@@ -10399,6 +10442,51 @@ button.po-kpi {
   font-size: 13px;
   font-weight: 600;
   color: var(--ink);
+}
+
+.promo-metrics-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.promo-metrics-strip-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: max-content;
+}
+
+.promo-metrics-strip-label {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.promo-metrics-strip-value {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.promo-metrics-strip-delta {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.promo-metrics-strip-delta.is-good {
+  color: var(--green-600);
+}
+
+.promo-metrics-strip-delta.is-bad {
+  color: var(--red-600);
 }
 
 .promo-empty {

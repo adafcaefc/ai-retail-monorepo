@@ -73,7 +73,11 @@ describe("PromotionEffectivenessDashboard", () => {
     expect(document.querySelectorAll(".promo-kpi")).toHaveLength(6);
     expect(screen.getByText("Promotion uplift vs margin quality")).toBeInTheDocument();
     expect(screen.getByText("Incremental margin by vertical")).toBeInTheDocument();
-    expect(screen.getByText("Incremental margin by channel")).toBeInTheDocument();
+    // Rendered twice on purpose: mainHTML (5b) and the dimension row (6) both
+    // list "by channel" per the A4 spec — see PromotionEffectivenessDashboard.jsx's
+    // dimension-grid comment for why that's the same chart, not a duplicate bug.
+    expect(screen.getAllByText("Incremental margin by channel")).toHaveLength(2);
+    expect(screen.getByText("Incremental margin by legal entity")).toBeInTheDocument();
     expect(screen.getByText("Promotion calendar preview")).toBeInTheDocument();
     expect(screen.getByText("Incremental margin by category")).toBeInTheDocument();
     expect(screen.getByText("Incremental margin by store")).toBeInTheDocument();
@@ -83,6 +87,8 @@ describe("PromotionEffectivenessDashboard", () => {
     expect(screen.getByText("Suggested best action")).toBeInTheDocument();
     expect(screen.getByText("Promo margin leaders")).toBeInTheDocument();
     expect(screen.getByText("What-If simulator")).toBeInTheDocument();
+    expect(screen.getByTestId("promo-main-stats")).toBeInTheDocument();
+    expect(screen.getByTestId("promo-sim-metrics")).toBeInTheDocument();
   });
 
   it("labels the source rather than presenting workbook figures as live", async () => {

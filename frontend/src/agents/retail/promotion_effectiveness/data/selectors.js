@@ -79,6 +79,32 @@ export function scopeCampaigns(campaigns, scope) {
 }
 
 /**
+ * A4 spec section 8a's Horizon control: narrow campaigns to those whose
+ * `valid_from` falls within `horizonWeeks` of the snapshot date — "affects
+ * promo window, pre-buy horizon, uplift projection." Client-side only, like
+ * `demand_forecasting`'s horizon (never reaches the backend): the workbook
+ * carries no weekly campaign series to project, only a `valid_from`/`valid_to`
+ * pair per campaign, so "horizon" here means "campaigns starting soon," not a
+ * re-run forecast.
+ *
+ * A campaign with no `valid_from` (data gap, not "always active") is dropped
+ * rather than assumed in-window — showing it regardless of horizon would
+ * silently misrepresent it as always in scope.
+ */
+export function filterCampaignsByHorizon(campaigns, asOf, horizonWeeks) {
+  const anchor = asOf ? new Date(asOf) : null;
+  if (!anchor || Number.isNaN(anchor.getTime()) || !horizonWeeks) return campaigns;
+
+  const windowEnd = new Date(anchor.getTime() + horizonWeeks * 7 * 24 * 60 * 60 * 1000);
+  return campaigns.filter((c) => {
+    if (!c.valid_from) return false;
+    const from = new Date(c.valid_from);
+    if (Number.isNaN(from.getTime())) return false;
+    return from >= anchor && from <= windowEnd;
+  });
+}
+
+/**
  * Narrow the store dimension list: one store narrows to itself, else a
  * vertical narrows to its stores, else every store. Mirrors `inventory_risk`'s
  * `scopeStores`.
@@ -390,17 +416,24 @@ export function computeSimulation(items, levers, applyLevers, reference) {
     ? (scenarioMargin / baselineMargin) * baselineRoi
     : 0;
 
+  // Cannib/funding for the #sim-metrics strip (A4 spec section 9c) — means
+  // over the same baseline/scenario item populations the margin figures use,
+  // not re-derived from anything else.
   const baseline = {
     active_promo_skus: baselineItems.length,
     uplift_pct: round(baselineUplift, 2),
     incremental_margin: round(baselineMargin),
     roi_x: round(baselineRoi, 2),
+    cannib_pct: round(mean(baselineItems.map((i) => i.cannibalisation_pct)), 2),
+    funding_pct: round(mean(baselineItems.map((i) => i.supplier_funding_pct ?? 0)), 2),
   };
   const scenario = {
     active_promo_skus: scenarioItems.length,
     uplift_pct: scenarioUplift,
     incremental_margin: round(scenarioMargin),
     roi_x: round(scenarioRoi, 2),
+    cannib_pct: round(mean(scenarioItems.map((i) => i.cannibalisation_pct)), 2),
+    funding_pct: round(mean(scenarioItems.map((i) => i.supplier_funding_pct ?? 0)), 2),
   };
 
   const index = SIMULATION_METRICS.map((m) => {
@@ -497,7 +530,12 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
   }
 
-  const campaigns = scopeCampaigns(fixture.campaigns ?? [], scope);
+  const asOf = fixture.generated_at ?? fixture.as_of ?? "";
+  const campaigns = filterCampaignsByHorizon(
+    scopeCampaigns(fixture.campaigns ?? [], scope),
+    asOf,
+    Number(scope?.horizon_weeks) || 0,
+  );
   const reference = fixture.reference_by_vertical ?? [];
 
   // Drive the items through the engine so a scenario reaches the cards and
@@ -540,6 +578,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       category_group: scope?.category_group ?? ALL,
       store_id: scope?.store_id ?? ALL,
       sku: scope?.sku ?? "",
+      horizon_weeks: Number(scope?.horizon_weeks) || 16,
     },
     thresholds: fixture.thresholds ?? {
       roi_target: 2,
@@ -549,7 +588,13 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       pre_buy_material_units: 2000,
     },
     formulas: fixture.formulas ?? {},
-    filter_options: fixture.filter_options ?? { legal_entities: [], categories: [], stores: [] },
+    filter_options: {
+      legal_entities: [],
+      categories: [],
+      stores: [],
+      ...(fixture.filter_options ?? {}),
+      horizons_weeks: fixture.filter_options?.horizons_weeks ?? [4, 8, 12, 16],
+    },
     kpi_sparklines: computeKpiSparklines(drivenItems, campaigns),
     kpis,
     by_vertical: byVertical,

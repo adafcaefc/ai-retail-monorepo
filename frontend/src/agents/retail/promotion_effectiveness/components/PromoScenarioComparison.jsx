@@ -9,16 +9,38 @@ import {
   YAxis,
 } from "recharts";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
+import { buildScenariosCsv, scenariosFilename } from "../data/csv.js";
 
 const SERIES_COLOURS = ["var(--blue-500)", "var(--green-500)", "var(--amber-500)", "var(--red-500)"];
+
+/**
+ * Hand a CSV to the browser — same guard as `SuggestedBestAction.jsx`'s
+ * `download()`: `createObjectURL` is absent under jsdom.
+ */
+function download(filename, text) {
+  if (typeof URL?.createObjectURL !== "function") return false;
+
+  const url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+  return true;
+}
 
 /**
  * Compare Scenarios — A4 spec section 9d. Overlays the baseline plus up to four
  * saved scenarios, one line each. The baseline is the workbook's own curve
  * (simulation.baseline), never the currently-applied levers, so a comparison
  * whose reference moves with the sliders compares nothing.
+ *
+ * `exportScenarios()` (spec section 9d): downloads the same baseline +
+ * scenario figures the chart plots, one row per metric.
  */
-export default function PromoScenarioComparison({ baseline, scenarios, onRemove }) {
+export default function PromoScenarioComparison({ baseline, scenarios, asOf, onRemove }) {
   const { t } = useLanguage();
   if (!scenarios || scenarios.length === 0) return null;
 
@@ -40,6 +62,13 @@ export default function PromoScenarioComparison({ baseline, scenarios, onRemove 
     <section className="promo-scenario-comparison" data-testid="promo-scenario-comparison">
       <header className="promo-section-head">
         <h3>{t("Compare scenarios")}</h3>
+        <button
+          type="button"
+          className="promo-button promo-button--quiet"
+          onClick={() => download(scenariosFilename(asOf), buildScenariosCsv(baseline, scenarios))}
+        >
+          {t("Export scenarios")}
+        </button>
       </header>
       <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>

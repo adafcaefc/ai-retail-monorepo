@@ -42,10 +42,15 @@ export default function PromoCalendarTable({ campaigns, onSelect }) {
                   <th>{t("Promo ID")}</th>
                   <th>{t("Name")}</th>
                   <th>{t("Type")}</th>
+                  <th>{t("Scope")}</th>
                   <th>{t("Vertical")}</th>
                   <th>{t("Category")}</th>
                   <th>{t("Season")}</th>
+                  <th>{t("Peak month")}</th>
+                  <th>{t("Mechanism")}</th>
                   <th>{t("Disc %")}</th>
+                  <th>{t("Value/rule")}</th>
+                  <th>{t("Min qty/threshold")}</th>
                   <th>{t("Funding %")}</th>
                   <th>{t("Uplift %")}</th>
                   <th>{t("Pre-buy")}</th>
@@ -63,10 +68,15 @@ export default function PromoCalendarTable({ campaigns, onSelect }) {
                     <td>{c.promo_id}</td>
                     <td className="promo-cell-name">{c.promo_name}</td>
                     <td>{c.discount_type}</td>
+                    <td>{c.scope}</td>
                     <td>{c.vertical_label ?? c.vertical_id}</td>
                     <td>{c.target_category}</td>
                     <td>{c.season}</td>
+                    <td>{c.peak_month}</td>
+                    <td>{c.mechanism}</td>
                     <td>{c.discount_pct == null ? "—" : formatPercent(c.discount_pct / 100, "en", { digits: 0 })}</td>
+                    <td>{c.value_rule}</td>
+                    <td>{c.min_qty_threshold}</td>
                     <td>{formatPercent(c.supplier_funding_pct / 100, "en", { digits: 0 })}</td>
                     <td>{formatPercent(c.expected_uplift_pct / 100, "en", { digits: 0 })}</td>
                     <td>{formatUnits(c.pre_buy_uplift_units, "en")}</td>

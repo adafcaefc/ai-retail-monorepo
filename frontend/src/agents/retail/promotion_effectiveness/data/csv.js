@@ -71,3 +71,35 @@ export function campaignsFilename(scopeId, asOf) {
   const day = String(asOf || "").slice(0, 10) || "export";
   return `promo-plan-${scopeId || "all"}-${day}.csv`;
 }
+
+const SCENARIO_METRICS = [
+  ["active_promo_skus", "Promo SKUs"],
+  ["uplift_pct", "Uplift %"],
+  ["incremental_margin", "Incremental margin"],
+  ["roi_x", "ROI (x)"],
+];
+
+/**
+ * Compare Scenarios as CSV — A4 spec section 9d's `exportScenarios()`. One
+ * row per metric, one column per series (Baseline + each saved scenario),
+ * matching the chart's own shape rather than one row per scenario.
+ */
+export function buildScenariosCsv(baseline, scenarios) {
+  const seriesNames = ["Baseline", ...(scenarios ?? []).map((s) => s.name)];
+  const header = ["Metric", ...seriesNames].map(field).join(",");
+  const body = SCENARIO_METRICS.map(([key, label]) => {
+    const values = seriesNames.map((name) => {
+      if (name === "Baseline") return baseline?.[key] ?? "";
+      const scenario = scenarios.find((s) => s.name === name);
+      return scenario?.kpis?.[key] ?? "";
+    });
+    return [field(label), ...values.map(field)].join(",");
+  });
+  return [header, ...body].join("\r\n") + "\r\n";
+}
+
+/** `promo-scenarios-2026-08-12.csv` */
+export function scenariosFilename(asOf) {
+  const day = String(asOf || "").slice(0, 10) || "export";
+  return `promo-scenarios-${day}.csv`;
+}
