@@ -2,8 +2,8 @@
  * The only place Demand Forecasting chooses where its data comes from.
  *
  * Components import `loadDemandForecastingDashboard` and never touch the
- * fixture, the selectors, or `fetch` directly. When the backend builder is
- * ready, flipping `DATA_SOURCE` to "api" is the whole cutover.
+ * fixture, the selectors, or `fetch` directly. `DATA_SOURCE` selects either
+ * the checked-in fixture or the backend row payload; both use these selectors.
  *
  * This used to read `mockDataset.js`, which invented four legal entities, a
  * dozen categories and four hundred SKUs from a hash of the row index. It now
@@ -69,11 +69,11 @@ export async function loadDemandForecastingDashboard(
  * Scenario preview: the same board under different levers, without applying
  * them to the page.
  *
- * No backend route, and none is needed. A lever moves the arithmetic, not the
- * rows — `buildDashboardFromFixture` already applies levers, and the board
- * above already passes them through in "api" mode. So the scenario is the same
- * rows under a different set of levers, and the source of the rows is the only
- * thing that varies here.
+ * There is no dedicated scenario backend route. In fixture builds this is
+ * fully local; in API builds it first fetches the current dashboard rows, then
+ * applies the same browser-side selectors and formulas. A lever moves the
+ * arithmetic, not the rows — the source of the rows is the only network
+ * dependency that varies here.
  *
  * This used to throw "backend integration is pending" whenever DATA_SOURCE was
  * "api", which is every run outside the test suite. The board caught it and

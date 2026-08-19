@@ -11,13 +11,11 @@ import {
 
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-
-const METRICS = [
-  ["forecast_next_7d", "Forecast 7d", "number"],
-  ["stockout_risk_skus", "Stockout SKUs", "number"],
-  ["forecast_accuracy_pct", "Accuracy %", "percent"],
-  ["predicted_to_trend", "Trending", "number"],
-];
+import {
+  buildDemandComparisonChartData,
+  DEMAND_SIMULATION_METRICS,
+  getDemandComparisonYAxisDomain,
+} from "../data/simulation.js";
 
 function metricValue(value, kind, language) {
   return `${formatNumber(value, language, { maximumFractionDigits: kind === "percent" ? 1 : 0 })}${kind === "percent" ? "%" : ""}`;
@@ -38,22 +36,18 @@ export default function DemandWhatIfSimulator({
   canSave,
 }) {
   const { language, t } = useLanguage();
-  const chartData = METRICS.map(([id, label]) => ({
-    id,
-    label: t(label),
-    baseline: 100,
-    scenario: simulation.baseline[id]
-      ? Math.max(0, (simulation.scenario[id] / simulation.baseline[id]) * 100)
-      : 100,
-  }));
+  const chartData = buildDemandComparisonChartData(simulation, t);
+  const axisDomain = getDemandComparisonYAxisDomain(
+    chartData.flatMap(({ baseline, scenario }) => [baseline, scenario]),
+  );
 
   return (
     <section className="demand-panel demand-simulator" aria-labelledby="demand-simulator-title">
       <header className="demand-panel-head demand-simulator-head">
         <div>
-          <p>{t("Frontend mock scenario")}</p>
+          <p>{t("Frontend scenario calculation")}</p>
           <h2 id="demand-simulator-title">{t("What-If Simulator")}</h2>
-          <span>{t("Baseline versus scenario · no backend calls")}</span>
+          <span>{t("Baseline versus scenario · browser calculation over dashboard data")}</span>
         </div>
         <div className="demand-simulator-actions">
           <button type="button" className="demand-button" onClick={onRun} disabled={busy}>{busy ? t("Running…") : t("Run")}</button>
@@ -92,7 +86,7 @@ export default function DemandWhatIfSimulator({
             <BarChart data={chartData} margin={{ top: 12, right: 12, bottom: 8, left: 0 }}>
               <CartesianGrid stroke="var(--gray-100)" strokeDasharray="3 3" vertical={false} />
               <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={{ stroke: "var(--line)" }} />
-              <YAxis domain={[0, "auto"]} tick={{ fontSize: 9, fill: "var(--muted)" }} tickFormatter={(value) => `${Math.round(value)}`} tickLine={false} axisLine={false} />
+              <YAxis domain={axisDomain} tick={{ fontSize: 9, fill: "var(--muted)" }} tickFormatter={(value) => `${Math.round(value)}`} tickLine={false} axisLine={false} />
               <Tooltip formatter={(value) => `${formatNumber(value, language, { maximumFractionDigits: 1 })} index`} />
               <Legend wrapperStyle={{ fontSize: 10 }} />
               <Bar dataKey="baseline" name={t("Baseline")} fill="var(--demand-baseline)" radius={[4, 4, 0, 0]} isAnimationActive={false} />
@@ -101,7 +95,7 @@ export default function DemandWhatIfSimulator({
           </ResponsiveContainer>
         </div>
         <div className="demand-scenario-metrics">
-          {METRICS.map(([id, label, kind]) => (
+          {DEMAND_SIMULATION_METRICS.map(([id, label, kind]) => (
             <article key={id}>
               <span>{t(label)}</span>
               <strong>{metricValue(simulation.scenario[id], kind, language)}</strong>
@@ -113,4 +107,3 @@ export default function DemandWhatIfSimulator({
     </section>
   );
 }
-

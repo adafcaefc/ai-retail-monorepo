@@ -25,7 +25,7 @@
  */
 
 import { evaluate, parse } from "../../../../formulas/expression.js";
-import { DEFAULT_DEMAND_LEVERS } from "./contract.js";
+import { DEFAULT_DEMAND_LEVERS, normalizeDemandLevers } from "./contract.js";
 
 const REQUIRED_FORMULAS = [
   "f01-ads-per-store",
@@ -40,6 +40,27 @@ export function isDemandBaseline(levers) {
   return Object.keys(DEFAULT_DEMAND_LEVERS).every(
     (key) => Number(levers?.[key] ?? 0) === DEFAULT_DEMAND_LEVERS[key],
   );
+}
+
+/**
+ * The dashboard contract currently carries the ROP calculated from the
+ * designated Trade Agreement lead time, while its `lead_days` field comes
+ * from the SKU master. Those are different workbook inputs. Prefer an
+ * explicit designated value when a future payload supplies one; otherwise
+ * recover the baseline lead term from the already-loaded baseline ROP so a
+ * zero-lever re-run remains the same scenario as the displayed baseline.
+ */
+export function baselineLeadTimeDays(item) {
+  const explicit = Number(item?.designated_lead_days);
+  if (Number.isFinite(explicit)) return explicit;
+
+  const ads = Number(item?.ads);
+  const rop = Number(item?.rop);
+  const safety = Number(item?.safety_days);
+  const inferred = rop / ads - safety;
+  if (Number.isFinite(inferred) && inferred >= 0) return inferred;
+
+  return Number(item?.lead_days) || 0;
 }
 
 export function createDemandEngine(formulas, weekFactor) {
@@ -57,7 +78,7 @@ export function createDemandEngine(formulas, weekFactor) {
   const run = (id, values) => evaluate(ast[id], values);
 
   return function applyLevers(item, levers = DEFAULT_DEMAND_LEVERS) {
-    const lever = { ...DEFAULT_DEMAND_LEVERS, ...levers };
+    const lever = normalizeDemandLevers(levers);
 
     const ads = run("f01-ads-per-store", {
       base_ads: item.base_ads,
@@ -83,7 +104,7 @@ export function createDemandEngine(formulas, weekFactor) {
 
     const rop = run("f05-rop", {
       ads,
-      lead_time_days: item.lead_days,
+      lead_time_days: baselineLeadTimeDays(item),
       lead_time_adjust: lever.lead,
       safety_days: item.safety_days,
       safety_adjust: lever.safety,

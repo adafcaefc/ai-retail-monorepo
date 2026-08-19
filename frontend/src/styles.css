@@ -6949,14 +6949,28 @@ img.ey-logo {
 .demand-trend-list b { color: var(--accent-success-strong); font-size: var(--text-xs); }
 
 .demand-detail-panel {
+  display: flex;
+  flex: 0 0 320px;
+  flex-direction: column;
+  height: 320px;
   min-height: 320px;
 }
 
+.demand-detail-panel > .demand-panel-head {
+  flex: 0 0 auto;
+}
+
 .demand-detail-scroll {
-  max-height: 430px;
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
   margin-top: var(--space-3);
-  overflow: auto;
   border-top: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .demand-detail-scroll table {
@@ -6983,6 +6997,55 @@ img.ey-logo {
   font-size: 0.62rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.demand-detail-sort-button {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.demand-detail-sort-button:hover {
+  color: var(--ink);
+}
+
+.demand-detail-sort-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.demand-detail-scroll th.num .demand-detail-sort-button {
+  justify-content: flex-end;
+}
+
+.demand-detail-sort-indicator {
+  display: inline-block;
+  min-width: 0.8em;
+  color: var(--primary);
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+.demand-detail-sort-direction {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .demand-detail-scroll .num {
