@@ -8380,6 +8380,26 @@ img.ey-logo {
   color: var(--primary-deep);
 }
 
+.demand-panel-reset {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.demand-panel-reset:hover,
+.demand-panel-reset:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
+}
+
 .demand-legal-entity-panel {
   min-height: 350px;
 }

@@ -16,7 +16,11 @@
  * the Python side before the fixture is written.
  */
 
-import { evaluate, parse } from "../../../../formulas/expression.js";
+import {
+  evaluate,
+  parse,
+  referencedNames,
+} from "../../../../formulas/expression.js";
 import { BASELINE_LEVERS } from "./contract.js";
 
 export { BASELINE_LEVERS };
@@ -53,7 +57,33 @@ export function createEngine(formulas) {
   const ast = Object.fromEntries(
     REQUIRED_FORMULAS.map((id) => [id, parse(formulas[id])]),
   );
-  const run = (id, values) => evaluate(ast[id], values);
+  // Names each formula's live text reads, so a parameter added to the catalog
+  // (e.g. via the Formula Manager) after this engine was written doesn't
+  // crash the board — see `run` below.
+  const names = Object.fromEntries(
+    REQUIRED_FORMULAS.map((id) => [id, referencedNames(ast[id])]),
+  );
+
+  // Defaults any parameter the formula text references but the caller didn't
+  // supply to 1 (a neutral multiplicative factor) instead of letting
+  // `evaluate` throw. A live formula edit can add a parameter this engine has
+  // no way to know about ahead of time; better to keep the board usable and
+  // warn than to hard-crash every view that re-runs the formula.
+  const run = (id, values) => {
+    let safeValues = values;
+    for (const name of names[id]) {
+      if (!(name in safeValues)) {
+        if (safeValues === values) safeValues = { ...values };
+        safeValues[name] = 1;
+        console.warn(
+          `${id} references '${name}', which this engine does not supply. ` +
+            "Defaulting to 1 (no-op). The formula catalog likely changed " +
+            "without a matching code update.",
+        );
+      }
+    }
+    return evaluate(ast[id], safeValues);
+  };
 
   return function applyLevers(item, levers = BASELINE_LEVERS) {
     const lever = { ...BASELINE_LEVERS, ...levers };

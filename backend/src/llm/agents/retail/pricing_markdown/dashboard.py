@@ -129,11 +129,23 @@ NOTE = (
 # legal_entity_id and category_group narrow the returned `items` by row;
 # store_id narrows it by row AND recomputes each item's state/candidacy/money
 # at that one store's grain (see `build()` and the module docstring). `state`
-# stays client-side only (frontend/.../data/selectors.js's scopeItems), since
-# it labels a row post-hoc rather than selecting which stores feed its money.
+# stays client-side only for `items` (frontend/.../data/selectors.js's
+# scopeItems), since it labels a row post-hoc rather than selecting which
+# stores feed its money.
 # promotion_effectiveness still treats store_id as client-side-only -- this
 # agent is the one exception, hence the local SUPPORTED_FILTERS override
 # above rather than changing the pair every Retail board shares.
+#
+# The `stores` rollup (by_store/by_cluster/by_channel/by_legal_entity) is a
+# separate concern from `items` above: category_group and state ALSO narrow
+# it server-side, in `build()`, because those two fields have already been
+# summed away across every SKU at a store by the time a per-store row exists
+# -- unlike store_id, which matches an intrinsic field on the pre-aggregated
+# row and so can still be (and is) filtered client-side by scopeStores().
+# This only applies when reading from the live API; the bundled fixture
+# (offline/standalone builds) has no request-time recompute step, so it keeps
+# showing each store's full all-category/all-state total for those four
+# charts -- the same documented gap store_id already has on that path.
 
 _MONEY_FORMULA_IDS = (
     "f12-at-risk-value",
@@ -430,6 +442,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             SELECT f.item_key, f.store_key, f.state, f.position_qty, f.max_qty,
                    f.ads, f.open_po_qty,
                    i.price AS price, i.shelf_life_days, i.elasticity,
+                   i.category_id, i.category_name,
                    s.name AS store_name, s.vertical_id AS store_vertical_id,
                    s.cluster, s.channel
             FROM {STORE_FACT} f
@@ -441,7 +454,18 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         )
         store_money_rows = [{**row, **_store_money(row)} for row in store_rows]
         markdown_by_sku = aggregate_markdown_by_sku(store_money_rows)
-        stores_rollup = build_stores(store_money_rows)
+        # `category_group`/`state` narrow the store rollup here, not in
+        # scopeStores() client-side: by the time a row reaches `stores_rollup`
+        # it has already been summed across every category/state at that
+        # store, so there's nothing left for a client-side filter to key on
+        # (unlike `store_id`, which matches an intrinsic field on the
+        # pre-aggregated row and stays client-side, untouched by this).
+        stores_scoped_rows = store_money_rows
+        if scope.category_group:
+            stores_scoped_rows = [r for r in stores_scoped_rows if r["category_id"] == scope.category_group]
+        if scope.state:
+            stores_scoped_rows = [r for r in stores_scoped_rows if r["state"] == scope.state]
+        stores_rollup = build_stores(stores_scoped_rows)
 
         # UNSCOPED too -- the reference block and the depth-by-vertical
         # weighting need the full population, same as agent_kpi_reference is

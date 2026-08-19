@@ -45,15 +45,16 @@ function SeasonalityTooltip({ active, payload }) {
   );
 }
 
-function PanelHeader({ eyebrow, title, hint }) {
+function PanelHeader({ eyebrow, title, hint, action }) {
   const { t } = useLanguage();
   return (
-    <header className="demand-panel-head">
+    <header className={action ? "demand-panel-head demand-panel-head--wrap" : "demand-panel-head"}>
       <div>
         <p>{t(eyebrow)}</p>
         <h2>{t(title)}</h2>
         {hint ? <span>{t(hint)}</span> : null}
       </div>
+      {action || null}
     </header>
   );
 }
@@ -113,7 +114,7 @@ function DrilldownButtons({ rows, onSelect, label, limit = 12 }) {
   );
 }
 
-export default function DemandDimensionPanels({ dimensions, onCategory, onStore, onLegalEntity }) {
+export default function DemandDimensionPanels({ dimensions, selectedCategory, selectedStore, selectedLegalEntity, onCategory, onStore, onLegalEntity }) {
   const { language, t } = useLanguage();
   const categoryRows = useMemo(
     () => takeTopForecastDimensions(dimensions.categories),
@@ -123,17 +124,38 @@ export default function DemandDimensionPanels({ dimensions, onCategory, onStore,
     () => takeTopForecastDimensions(dimensions.stores),
     [dimensions.stores],
   );
+  const hasCategorySelection = Boolean(selectedCategory) && selectedCategory !== "ALL";
+  const hasStoreSelection = Boolean(selectedStore) && selectedStore !== "ALL";
+  const hasLegalEntitySelection = Boolean(selectedLegalEntity) && selectedLegalEntity !== "ALL";
 
   return (
     <section className="demand-dimensions" aria-label={t("Demand forecast dimensions")}>
       <div className="demand-dimension-row">
         <article className="demand-panel demand-dimension-panel">
-          <PanelHeader eyebrow="Demand dimensions" title="Forecast by category" hint="Next 7d forecast · Top 20 · Select a category to update the Demand scope" />
+          <PanelHeader
+            eyebrow="Demand dimensions"
+            title="Forecast by category"
+            hint="Next 7d forecast · Top 20 · Select a category to update the Demand scope"
+            action={hasCategorySelection ? (
+              <button type="button" className="demand-panel-reset" onClick={() => onCategory("ALL")}>
+                {t("Back to all categories")}
+              </button>
+            ) : null}
+          />
           <VerticalDimensionChart rows={categoryRows} ariaLabel={t("Forecast by category chart")} onSelect={onCategory} />
           <DrilldownButtons rows={categoryRows} onSelect={onCategory} limit={TOP_FORECAST_DIMENSION_LIMIT} label="Category filter shortcuts" />
         </article>
         <article className="demand-panel demand-dimension-panel">
-          <PanelHeader eyebrow="Demand dimensions" title="Forecast by store" hint="Next 7d forecast · Top 20 highest forecast" />
+          <PanelHeader
+            eyebrow="Demand dimensions"
+            title="Forecast by store"
+            hint="Next 7d forecast · Top 20 highest forecast"
+            action={hasStoreSelection ? (
+              <button type="button" className="demand-panel-reset" onClick={() => onStore("ALL")}>
+                {t("Back to all stores")}
+              </button>
+            ) : null}
+          />
           <RankedStoreChart rows={storeRows} onSelect={onStore} />
           <DrilldownButtons rows={storeRows} onSelect={onStore} limit={TOP_FORECAST_DIMENSION_LIMIT} label="Store filter shortcuts" />
         </article>
@@ -151,7 +173,16 @@ export default function DemandDimensionPanels({ dimensions, onCategory, onStore,
       </div>
 
       <article className="demand-panel demand-dimension-panel demand-legal-entity-panel">
-        <PanelHeader eyebrow="Store → Legal Entity → Chain" title="By legal entity" hint="Next 7d forecast · Current Demand scope" />
+        <PanelHeader
+          eyebrow="Store → Legal Entity → Chain"
+          title="By legal entity"
+          hint="Next 7d forecast · Current Demand scope"
+          action={hasLegalEntitySelection ? (
+            <button type="button" className="demand-panel-reset" onClick={() => onLegalEntity("ALL")}>
+              {t("Back to all legal entities")}
+            </button>
+          ) : null}
+        />
         <VerticalDimensionChart rows={dimensions.legal_entities} ariaLabel={t("Forecast by legal entity chart")} onSelect={onLegalEntity} />
         <DrilldownButtons rows={dimensions.legal_entities} onSelect={onLegalEntity} label="Legal entity filter shortcuts" />
         <div className="demand-chain-summary">

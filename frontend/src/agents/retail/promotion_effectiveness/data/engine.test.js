@@ -50,6 +50,33 @@ describe("with the promo lever moved", () => {
   });
 });
 
+describe("when the formula catalog references a parameter this engine doesn't supply", () => {
+  it("defaults the unknown parameter to 1 instead of throwing", () => {
+    // Mirrors a live Formula Manager edit that adds a term (e.g.
+    // arch_horizon_factor) engine.js has no way to know about ahead of time.
+    // The Store filter always re-runs f01 via `atStore`, even at baseline
+    // levers, so this must not crash the board.
+    const patched = {
+      ...fixture.formulas,
+      "f01-ads-per-store": fixture.formulas["f01-ads-per-store"].replace(
+        "store_size *",
+        "store_size * arch_horizon_factor *",
+      ),
+    };
+    const patchedApplyLevers = createEngine(patched);
+    const item = fixture.items[0];
+
+    expect(() => patchedApplyLevers(item, BASELINE_LEVERS)).not.toThrow();
+
+    // Defaulting the unknown factor to 1 is a no-op, so the result matches
+    // the unpatched formula exactly.
+    const baseline = applyLevers(item, BASELINE_LEVERS);
+    const patchedResult = patchedApplyLevers(item, BASELINE_LEVERS);
+    expect(patchedResult.ads).toBeCloseTo(baseline.ads, 9);
+    expect(patchedResult.incremental_margin).toBeCloseTo(baseline.incremental_margin, 9);
+  });
+});
+
 describe("atStore", () => {
   it("reproduces a store's proportional share of an item's incremental margin", () => {
     // f01 is purely multiplicative in store_size and f13 is linear in ads, so

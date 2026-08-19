@@ -194,7 +194,14 @@ const FAKE_HISTORY_MULTIPLIERS = [
 // signal exists to drive it instead. `phase` continues the same sine phase
 // history's FAKE_HISTORY_MULTIPLIERS implicitly ends on, so the line reads as
 // one continuous wiggle through the actual/forecast boundary, not a seam.
-function illustrativeForecastWave(grain, phase) {
+// Period 1 is left flat (no wave) on purpose: it's the same "next 7 days"
+// figure the `forecast_next_7d` KPI tile, the "Next period" summary stat, and
+// (once scoped) `dimensions.chain_total` all reconcile to -- see the data
+// contract's reconciliation note in ./README.md. A cosmetic wiggle there
+// would make the chart's first point visibly disagree with numbers shown
+// elsewhere on the same dashboard for the same quantity.
+function illustrativeForecastWave(grain, phase, period) {
+  if (period <= 1) return 1;
   if (grain === "weekly") return 1 + 0.1 * Math.sin(phase / 2.3);
   if (grain === "quarterly") return 1 + 0.08 * Math.sin(phase / 1.5);
   return 1;
@@ -263,7 +270,7 @@ export function buildForecastSeries(options) {
     for (; day < end; day += 1) {
       forecast += dailyDemand(ads, day, profile, curve, currentMonth, trendPct);
     }
-    forecast *= illustrativeForecastWave(grain, FAKE_HISTORY_MULTIPLIERS.length + period);
+    forecast *= illustrativeForecastWave(grain, FAKE_HISTORY_MULTIPLIERS.length + period, period);
 
     const band = forecast * intervalZ * relativeError * Math.sqrt(period);
     points.push({

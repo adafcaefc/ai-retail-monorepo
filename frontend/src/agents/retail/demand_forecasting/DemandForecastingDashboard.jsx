@@ -299,6 +299,9 @@ export default function DemandForecastingDashboard() {
 
       <DemandDimensionPanels
         dimensions={dashboard.dimensions}
+        selectedCategory={query.category_group}
+        selectedStore={query.store_id}
+        selectedLegalEntity={query.legal_entity_id}
         onCategory={(category_group) => patchQuery({ category_group })}
         onStore={(store_id) => patchQuery({ store_id })}
         onLegalEntity={(legal_entity_id) => patchQuery({

@@ -125,6 +125,26 @@ describe("the Demand Forecasting gateway", () => {
     expect(dashboard.details.total).toBe(800);
   });
 
+  it("keeps the chart's first forecast week reconciled with the Forecast next 7d KPI", async () => {
+    // Regression: the chart's period-1 point used to carry the same
+    // illustrativeForecastWave() cosmetic wiggle as every later period, so
+    // "next week" on the chart could read visibly off the KPI tile and the
+    // "Next period" summary stat -- both meant to be the exact same quantity.
+    const dashboard = await loadDemandForecastingDashboard();
+    const kpi = dashboard.kpis.find((row) => row.id === "forecast_next_7d").value;
+    const { points, history_count: historyCount, summary } = dashboard.forecast;
+    const [firstForecast, secondForecast, thirdForecast] = points.slice(historyCount, historyCount + 3);
+
+    expect(Math.abs(firstForecast.forecast - kpi) / kpi).toBeLessThan(0.005);
+    expect(summary.find((row) => row.id === "next_period").value).toBe(firstForecast.forecast);
+
+    // The illustrative wave still applies from period 2 onward -- the fix
+    // only exempts period 1 -- so the line still visibly wiggles rather than
+    // reading flat.
+    const laterDelta = Math.abs(thirdForecast.forecast - secondForecast.forecast) / secondForecast.forecast;
+    expect(laterDelta).toBeGreaterThan(0.01);
+  });
+
   it("emits a forecast series with a widening interval, and an illustrative history", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       horizon_weeks: 8,
