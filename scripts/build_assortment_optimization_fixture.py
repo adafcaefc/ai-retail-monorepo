@@ -65,7 +65,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "backend"))
+sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
+import workbook_guard  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
@@ -581,6 +583,11 @@ def build_filter_options(
 
 
 def main() -> int:
+    # A fixture built from the wrong workbook is committed to the repo
+    # and read by every board in standalone mode, so it needs the same
+    # check the seeders make before they touch the warehouse.
+    workbook_guard.check(SOURCE)
+
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
         return 1
