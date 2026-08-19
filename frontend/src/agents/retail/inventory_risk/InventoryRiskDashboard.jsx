@@ -18,8 +18,10 @@ import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
 import {
   ALL,
   BASELINE_LEVERS,
+  DEFAULT_HORIZON_WEEKS,
   DEFAULT_SCOPE,
   GROSS_VS_NET_NOTE,
+  PROJECTION_HORIZONS_WEEKS,
 } from "./data/contract.js";
 import {
   loadInventoryRiskDashboard,
@@ -40,6 +42,10 @@ const EMPTY_OPTIONS = Object.freeze({
   categories: [],
   stores: [],
   states: [],
+  // Empty for everything the payload supplies, but the horizons are this
+  // board's own and are known before any row arrives — an empty array here
+  // would blank the control for one frame on every load.
+  horizons_weeks: PROJECTION_HORIZONS_WEEKS,
 });
 
 /** A2 spec section 8d overlays the baseline plus at most four scenarios. */
@@ -62,6 +68,13 @@ export default function InventoryRiskDashboard() {
   const [draftLevers, setDraftLevers] = useState({ ...BASELINE_LEVERS });
   const [appliedLevers, setAppliedLevers] = useState({ ...BASELINE_LEVERS });
   const [driveWholePage, setDriveWholePage] = useState(true);
+  /*
+   * How far the projection runs (A2 spec section 7a). Held beside the levers
+   * rather than inside `scope` for the reason the filter bar records: it
+   * selects no rows. It is not cleared by Clear either — that button drops a
+   * scope, and the horizon is not one.
+   */
+  const [horizonWeeks, setHorizonWeeks] = useState(DEFAULT_HORIZON_WEEKS);
   const [scenarios, setScenarios] = useState([]);
   // The KPI tile currently broken down, or null. Built on demand — see
   // `loadInventoryRiskDrilldown` for why it is not part of the board payload.
@@ -77,6 +90,7 @@ export default function InventoryRiskDashboard() {
         const result = await loadInventoryRiskDashboard(scope, {
           levers: appliedLevers,
           driveWholePage,
+          horizonWeeks,
         });
         if (!cancelled) setDashboard(result);
       } catch (loadError) {
@@ -96,7 +110,7 @@ export default function InventoryRiskDashboard() {
     // moves — depending on the object is both correct and simpler than listing
     // its five fields. The same holds for `appliedLevers`, which only changes
     // on Run or Reset, never mid-drag.
-  }, [scope, appliedLevers, driveWholePage, refreshToken, t]);
+  }, [scope, appliedLevers, driveWholePage, horizonWeeks, refreshToken, t]);
 
   const patchScope = useCallback((patch) => {
     setScope((current) => ({ ...current, ...patch }));
@@ -115,10 +129,11 @@ export default function InventoryRiskDashboard() {
       const built = await loadInventoryRiskDrilldown(scope, metricId, {
         levers: appliedLevers,
         driveWholePage,
+        horizonWeeks,
       });
       setDrilldown(built);
     },
-    [appliedLevers, driveWholePage, scope],
+    [appliedLevers, driveWholePage, horizonWeeks, scope],
   );
 
   const resetLevers = useCallback(() => {
@@ -200,8 +215,15 @@ export default function InventoryRiskDashboard() {
       <InventoryRiskFilters
         scope={scope}
         options={options}
+        horizonWeeks={horizonWeeks}
         busy={loading}
         onPatch={patchScope}
+        /*
+         * Not routed through `patchScope`: that closes the drill-down drawer,
+         * which is correct for a filter that changes which rows exist and
+         * wrong for a horizon, which changes none of them.
+         */
+        onHorizon={setHorizonWeeks}
         onSearch={(sku) => patchScope({ sku })}
         onRefresh={() => setRefreshToken((value) => value + 1)}
         onClear={clearScope}

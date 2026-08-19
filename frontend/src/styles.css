@@ -7298,6 +7298,7 @@ img.ey-logo {
    treatment, so the two filter bars read as one control strip. */
 .risk-filter-field > span,
 .risk-state-filter legend,
+.risk-horizon-filter legend,
 .risk-search > label {
   color: var(--muted);
   font-size: var(--text-xs);
@@ -7323,14 +7324,19 @@ img.ey-logo {
   cursor: not-allowed;
 }
 
-.risk-state-filter {
+/* The horizon fieldset is the state fieldset with four options instead of
+   seven — same reset, same legend, and it reuses `.risk-segmented` for the
+   buttons so the two groups cannot drift apart visually. */
+.risk-state-filter,
+.risk-horizon-filter {
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
-.risk-state-filter legend {
+.risk-state-filter legend,
+.risk-horizon-filter legend {
   padding: 0;
 }
 

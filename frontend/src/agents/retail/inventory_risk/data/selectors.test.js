@@ -9,12 +9,22 @@
 
 import { describe, expect, it } from "vitest";
 
-import { ALL, DEFAULT_SCOPE, STATE_ORDER } from "./contract.js";
+import {
+  ALL,
+  DAYS_PER_WEEK,
+  DEFAULT_HORIZON_WEEKS,
+  DEFAULT_SCOPE,
+  PROJECTION_HORIZONS_WEEKS,
+  STATE_ORDER,
+  resolveHorizonWeeks,
+} from "./contract.js";
 import { loadInventoryRiskDashboard } from "./dashboardData.js";
 import fixture from "./fixture.json";
 import {
   buildDashboardFromFixture,
+  buildDrilldownFromFixture,
   computeKpis,
+  computeProjection,
   scopeItems,
 } from "./selectors.js";
 
@@ -146,6 +156,78 @@ describe("scoping", () => {
     // Charts follow the tiles: one store selected, one bar.
     expect(withStore.stockout_by_store).toHaveLength(1);
     expect(unscoped.stockout_by_store).toHaveLength(160);
+  });
+
+  it("narrows the store chart to the rows in scope, not the whole shelf", () => {
+    /*
+     * The defect this guards: the store, cluster and legal-entity charts read
+     * aggregates summed over a store's entire shelf, so a category filter
+     * moved the tiles and left the bars alone. Scoped to GRC-C01, the tiles
+     * described 3 at-risk SKUs in S001 while the bar still showed 46.
+     *
+     * The expected figures are `ENGINE_STORE`'s own, filtered to S001 and
+     * cat_id GRC-C01 in the workbook extract: 5 rows, 3 of them below ROP,
+     * Rp 8,262,700 at risk.
+     */
+    const payload = buildDashboardFromFixture(
+      fixture,
+      scopeOf({ legal_entity_id: "GRC", category_group: "GRC-C01" }),
+    );
+    const s001 = payload.stockout_by_store.find((row) => row.store_id === "S001");
+
+    expect(s001.sku_count).toBe(5);
+    expect(s001.stockout_risk_count).toBe(3);
+    expect(s001.at_risk_value).toBeCloseTo(8262700, 2);
+  });
+
+  it("gives the same per-store answer as the drill-down drawer", () => {
+    // Two panels, one question. The drawer already derived its split from the
+    // scoped rows; the chart used to derive nothing at all, so the board
+    // answered "at risk in S001" with two different numbers depending on where
+    // the reader looked.
+    const scope = scopeOf({
+      legal_entity_id: "GRC",
+      category_group: "GRC-C01",
+    });
+    const payload = buildDashboardFromFixture(fixture, scope);
+    const drawer = buildDrilldownFromFixture(fixture, scope, "stockout_risk_skus");
+
+    for (const bar of payload.stockout_by_store) {
+      const split = drawer.by_store.find((row) => row.id === bar.store_id);
+      // `ranked` drops zeros, so a store with none is absent from the drawer.
+      expect(split?.value ?? 0).toBe(bar.stockout_risk_count);
+    }
+  });
+
+  it("derives the same totals the workbook aggregated, when nothing narrows", () => {
+    /*
+     * The two paths have to agree or the filter changes the measurement rather
+     * than the scope. A search matching every SKU in the vertical narrows
+     * nothing real, but it does force the derivation — so this compares
+     * `atStore` against the workbook's own ENGINE_STORE aggregates across all
+     * twenty Grocery stores, without hard-coding one of them.
+     */
+    const stored = buildDashboardFromFixture(
+      fixture,
+      scopeOf({ legal_entity_id: "GRC" }),
+    );
+    const derived = buildDashboardFromFixture(
+      fixture,
+      scopeOf({ legal_entity_id: "GRC", sku: "GRC-" }),
+    );
+
+    expect(derived.stockout_by_store).toHaveLength(20);
+    for (const [index, row] of derived.stockout_by_store.entries()) {
+      const want = stored.stockout_by_store[index];
+      expect(row.store_id).toBe(want.store_id);
+      expect(row.sku_count).toBe(want.sku_count);
+      expect(row.stockout_count).toBe(want.stockout_count);
+      expect(row.low_count).toBe(want.low_count);
+      expect(row.other_at_risk_count).toBe(want.other_at_risk_count);
+      expect(row.healthy_count).toBe(want.healthy_count);
+      expect(row.stockout_risk_count).toBe(want.stockout_risk_count);
+      expect(row.at_risk_value).toBeCloseTo(want.at_risk_value, 2);
+    }
   });
 
   it("reproduces the workbook's own ENGINE_STORE figures for that store", () => {
@@ -314,7 +396,7 @@ describe("the projection", () => {
     }
   });
 
-  it("lands each open PO once, and never takes it back", () => {
+  it("lands every open PO, keeps it, and reorders on top of it", () => {
     const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const totalInbound = fixture.items.reduce(
       (running, item) => running + item.open_po,
@@ -326,8 +408,10 @@ describe("the projection", () => {
         projection.points[index - 1].inbound,
       );
     }
-    // The longest lead time in the dataset is 7 days, well inside the horizon.
-    expect(projection.points.at(-1).inbound).toBeCloseTo(totalInbound, 6);
+    // The longest lead time in the dataset is 7 days, well inside the horizon,
+    // so every opening PO has landed. The policy reorders on top of them, so
+    // the total landed is at least that — and, on this fixture, more.
+    expect(projection.points.at(-1).inbound).toBeGreaterThan(totalInbound);
   });
 
   it("reports the strip figures the panel prints under the chart", () => {
@@ -339,6 +423,213 @@ describe("the projection", () => {
     expect(projection.metrics.at_risk_value).toBeCloseTo(kpis.at_risk_value, 6);
     expect(projection.metrics.avg_dos).toBeCloseTo(kpis.avg_dos, 9);
     expect(projection.metrics.inbound).toBeGreaterThan(0);
+  });
+
+  it("runs to whichever horizon it is asked for, in whole weeks", () => {
+    for (const weeks of PROJECTION_HORIZONS_WEEKS) {
+      const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+        horizonWeeks: weeks,
+      });
+
+      expect(projection.horizon_weeks).toBe(weeks);
+      expect(projection.days).toBe(weeks * DAYS_PER_WEEK);
+      expect(projection.points).toHaveLength(weeks * DAYS_PER_WEEK + 1);
+      expect(projection.points.at(-1).label).toBe(`D+${weeks * DAYS_PER_WEEK}`);
+    }
+  });
+
+  it("opens on the default horizon and ignores one it cannot honour", () => {
+    const fallbacks = [undefined, 0, 7, "many", -4, null];
+
+    for (const requested of fallbacks) {
+      const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+        horizonWeeks: requested,
+      });
+      expect(projection.horizon_weeks).toBe(DEFAULT_HORIZON_WEEKS);
+    }
+
+    // A horizon arriving as a string is the ordinary case from a query or a
+    // stored preference, and is honoured rather than dropped to the default.
+    expect(resolveHorizonWeeks("12")).toBe(12);
+  });
+
+  it("keeps the whole day-0 position, whatever the horizon", () => {
+    const short = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      horizonWeeks: PROJECTION_HORIZONS_WEEKS[0],
+    }).projection;
+    const long = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      horizonWeeks: PROJECTION_HORIZONS_WEEKS.at(-1),
+    }).projection;
+
+    // Lengthening the look-ahead extends the curve; it must not move its
+    // opening point or the strip beneath it, which describe today.
+    expect(long.points[0].on_hand).toBeCloseTo(short.points[0].on_hand, 6);
+    expect(long.metrics.position).toBeCloseTo(short.metrics.position, 6);
+    expect(long.days_to_empty).toBe(short.days_to_empty);
+  });
+
+  it("offers the horizons through the payload, not through the control", () => {
+    const { filter_options: options } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+
+    expect(options.horizons_weeks).toEqual([...PROJECTION_HORIZONS_WEEKS]);
+  });
+
+  it("draws the scenario against a baseline of the same length", () => {
+    const weeks = PROJECTION_HORIZONS_WEEKS.at(-1);
+    const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      horizonWeeks: weeks,
+      levers: { demand: 20 },
+    });
+
+    // Compare Scenarios overlays these two. A baseline drawn over four weeks
+    // against a scenario drawn over sixteen would put two different questions
+    // on one axis.
+    expect(simulation.baseline_projection.days).toBe(weeks * DAYS_PER_WEEK);
+    expect(simulation.projection.days).toBe(weeks * DAYS_PER_WEEK);
+  });
+
+  /*
+   * The demand model, not just the stock model. These four are the reason this
+   * panel stopped burning a flat ADS: the shape has to come from the same
+   * decomposition Demand Forecasting draws, and it has to roll back up to the
+   * workbook's own weekly figure rather than quietly restating it.
+   */
+
+  it("burns a week that adds up to the workbook's forecast_7d", () => {
+    const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const week = projection.points
+      .slice(0, 7)
+      .reduce((running, point) => running + point.demand, 0);
+
+    // f08: forecast_7d = ads * dow_sum. The seven day-of-week factors sum to
+    // dow_sum by construction and seasonality is 1.0 at the current month, so
+    // the only gap is one week of compounded trend — a few tenths of a
+    // percent. A shape that reallocates a measured week, not a new week.
+    const forecast7d =
+      fixture.items.reduce((running, item) => running + item.ads, 0) *
+      fixture.constants.dow_sum;
+
+    expect(week / forecast7d).toBeGreaterThan(0.995);
+    expect(week / forecast7d).toBeLessThan(1.005);
+  });
+
+  it("moves demand across the week instead of reporting one number", () => {
+    const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const week = projection.points.slice(0, 7).map((point) => point.demand);
+
+    // The old panel published a constant here, so the line was flat by
+    // construction and a Saturday cost the same as a Tuesday.
+    expect(new Set(week).size).toBe(7);
+
+    const profile = fixture.constants.dow_profile;
+    expect(Math.max(...week) / Math.min(...week)).toBeCloseTo(
+      Math.max(...profile) / Math.min(...profile),
+      2,
+    );
+  });
+
+  it("reorders at ROP rather than landing one PO and decaying forever", () => {
+    const { projection } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      horizonWeeks: PROJECTION_HORIZONS_WEEKS.at(-1),
+    });
+    const openingPos = fixture.items.reduce(
+      (running, item) => running + item.open_po,
+      0,
+    );
+
+    // Arrivals on more than one day, and more units than the workbook's own
+    // open POs — both impossible under the single-step model this replaced.
+    const arrivalDays = projection.points.filter(
+      (point, index) =>
+        index > 0 && point.inbound > projection.points[index - 1].inbound,
+    );
+    expect(arrivalDays.length).toBeGreaterThan(1);
+    expect(projection.points.at(-1).inbound).toBeGreaterThan(openingPos);
+
+    // A chain that reorders does not run itself dry.
+    expect(projection.days_to_empty).toBeNull();
+  });
+
+  it("places one order per cycle, not one per day of the lead time", () => {
+    // The policy triggers on the inventory position, so an order already in
+    // the pipeline suppresses the next. Triggering on on-hand alone would
+    // order on all seven days of this SKU's lead time for one shortfall.
+    const item = {
+      sku_id: "TST-001",
+      vertical_id: "GRC",
+      on_hand: 100,
+      open_po: 0,
+      ads: 50,
+      rop: 350,
+      max: 550,
+      lead_days: 7,
+      dos: 2,
+      at_risk_value: 0,
+    };
+
+    const projection = computeProjection([item], 28);
+    const arrivals = projection.points.filter(
+      (point, index) =>
+        index > 0 && point.inbound > projection.points[index - 1].inbound,
+    );
+
+    // Four weeks at a seven-day lead time: a handful of cycles, nowhere near
+    // the 28 an on-hand trigger would place.
+    expect(arrivals.length).toBeGreaterThan(0);
+    expect(arrivals.length).toBeLessThanOrEqual(5);
+  });
+
+  /*
+   * The API path, which the rest of this suite cannot see.
+   *
+   * `DATA_SOURCE` is pinned to "fixture" under Vitest, so every test above
+   * reads a payload that carries the demand model. The real board defaults to
+   * "api", and a backend that omits these three blocks gets the flat fallback
+   * -- which is exactly how a straight line shipped while 309 tests were
+   * green. These two pin the contract from the consuming end.
+   */
+
+  it("names the three blocks a provider must send to get a shaped burn", () => {
+    // Fixture and API run the SAME selectors over the SAME shape, so whatever
+    // the fixture carries here is what the backend has to serve.
+    expect(fixture.constants.dow_profile).toHaveLength(7);
+    expect(
+      fixture.constants.dow_profile.reduce((a, b) => a + b, 0),
+    ).toBeCloseTo(fixture.constants.dow_sum, 9);
+    expect(Object.keys(fixture.seasonality.by_legal_entity).length).toBeGreaterThan(0);
+    for (const row of fixture.reference_by_vertical) {
+      expect(typeof row.trend_pct).toBe("number");
+    }
+  });
+
+  it("degrades to a flat burn when a payload omits them, and not silently wrong", () => {
+    // A provider built before the model existed. The projection must still
+    // render -- but flat, and identical to the straight-line burn this panel
+    // drew before, rather than throwing or inventing a shape.
+    const bare = {
+      ...fixture,
+      constants: { dow_sum: fixture.constants.dow_sum, month_index: 6 },
+      seasonality: undefined,
+      reference_by_vertical: fixture.reference_by_vertical.map(
+        ({ trend_pct: _drop, ...rest }) => rest,
+      ),
+    };
+
+    const flat = buildDashboardFromFixture(bare, DEFAULT_SCOPE).projection;
+    const shaped = buildDashboardFromFixture(fixture, DEFAULT_SCOPE).projection;
+
+    const flatDemand = flat.points.map((point) => point.demand);
+    expect(new Set(flatDemand.map((d) => Math.round(d))).size).toBe(1);
+
+    // Same measured level either way: a week of the flat burn still totals
+    // what a week of the shaped one does. Only the shape is lost.
+    const week = (points) =>
+      points.slice(0, 7).reduce((running, point) => running + point.demand, 0);
+    expect(week(flat.points) / week(shaped.points)).toBeGreaterThan(0.99);
+    expect(week(flat.points) / week(shaped.points)).toBeLessThan(1.01);
   });
 });
 

@@ -11,8 +11,26 @@ import {
 } from "recharts";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { PROJECTION_NOTE } from "../data/contract.js";
+import {
+  DAYS_PER_WEEK,
+  DEFAULT_HORIZON_WEEKS,
+  LONG_HORIZON_NOTE,
+  PROJECTION_NOTE,
+} from "../data/contract.js";
 import { formatDays, formatIdr, formatUnits } from "../presentation.js";
+
+/**
+ * How many points the axis skips between labels.
+ *
+ * Recharts counts the points it hides, so a label every N weeks is
+ * `N * 7 - 1`. N grows with the horizon to hold the label count near five:
+ * four weeks labels every week, sixteen weeks every four. A fixed spacing
+ * tuned for 28 days would crowd seventeen labels onto a sixteen-week curve.
+ */
+function labelInterval(horizonWeeks) {
+  const everyNWeeks = Math.max(1, Math.ceil(horizonWeeks / DEFAULT_HORIZON_WEEKS));
+  return everyNWeeks * DAYS_PER_WEEK - 1;
+}
 
 function ProjectionTooltip({ active, payload, label }) {
   const { language, t } = useLanguage();
@@ -26,7 +44,8 @@ function ProjectionTooltip({ active, payload, label }) {
         {t("Projected on-hand")}: {formatUnits(Math.round(point.on_hand), language)}
       </span>
       <span>
-        {t("Demand per day")}: {formatUnits(Math.round(point.demand), language)}
+        {t("Demand (modelled daily)")}:{" "}
+        {formatUnits(Math.round(point.demand), language)}
       </span>
       <span>
         {t("Inbound landed")}: {formatUnits(Math.round(point.inbound), language)}
@@ -38,11 +57,11 @@ function ProjectionTooltip({ active, payload, label }) {
 /**
  * A2 spec section 4 (`#ch-main`): projected on-hand against demand.
  *
- * The replenishment cycle in two lines — stock falling by a day's demand,
- * stepping back up as open POs land at their lead time. Both lines are read
- * from the workbook per SKU (`ads`, `open_po`, `lead_days`); the only
- * assumption is that demand is flat, which it has to be, because one ADS per
- * SKU is all the workbook holds.
+ * The replenishment cycle in two lines — stock falling by a day's demand and
+ * stepping back up as orders land at their lead time. Every figure behind them
+ * is read from the workbook per SKU (`ads`, `open_po`, `lead_days`, `rop`,
+ * `max`); what is modelled is how a measured week of demand is spread across
+ * its seven days, which is why the demand line is labelled as modelled.
  *
  * The spec draws a split line between history and forecast. There is no
  * history: the workbook stores a single on-hand reading. So the reference line
@@ -62,6 +81,8 @@ export default function ProjectedOnHandPanel({ projection }) {
       </section>
     );
   }
+
+  const horizonWeeks = projection.horizon_weeks;
 
   const metrics = [
     ["Position", formatUnits(Math.round(projection.metrics.position), language)],
@@ -87,7 +108,7 @@ export default function ProjectedOnHandPanel({ projection }) {
             <CartesianGrid stroke="var(--gray-100)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="label"
-              interval={6}
+              interval={labelInterval(horizonWeeks)}
               tick={{ fontSize: 10, fill: "var(--muted)" }}
               tickLine={false}
               axisLine={{ stroke: "var(--line)" }}
@@ -115,7 +136,7 @@ export default function ProjectedOnHandPanel({ projection }) {
             <Line
               type="monotone"
               dataKey="demand"
-              name={t("Demand per day")}
+              name={t("Demand (modelled daily)")}
               stroke="var(--risk-demand)"
               strokeWidth={2}
               strokeDasharray="5 4"
@@ -135,7 +156,10 @@ export default function ProjectedOnHandPanel({ projection }) {
         ))}
       </dl>
 
-      <p className="risk-panel-caveat">{t(PROJECTION_NOTE)}</p>
+      <p className="risk-panel-caveat">
+        {t(PROJECTION_NOTE)}
+        {horizonWeeks > DEFAULT_HORIZON_WEEKS ? ` ${t(LONG_HORIZON_NOTE)}` : ""}
+      </p>
     </section>
   );
 }

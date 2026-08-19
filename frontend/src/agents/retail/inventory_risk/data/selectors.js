@@ -21,14 +21,21 @@ import {
   EXPIRY_WATCHLIST_SIZE,
   HEALTHY_STATE,
   PROJECTION_DAYS,
+  REPLENISH_STATES,
+  PROJECTION_HORIZONS_WEEKS,
   SCHEMA_VERSION,
   STATE_ORDER,
+  horizonDays,
+  resolveHorizonWeeks,
+  resolveDemandModel,
+  FLAT_SEASONALITY,
 } from "./contract.js";
 import {
   dosHistogram,
   growthHistogram,
   topGroups,
 } from "../../common/distributions.js";
+import { dailyFactors } from "../../common/demandModel.js";
 import { buildDrilldown } from "./drilldown.js";
 import { BASELINE_LEVERS, atStore, createEngine, isBaseline } from "./engine.js";
 
@@ -322,6 +329,101 @@ export function computeAtRiskByCategory(items) {
   return groupByCategory(items, "at_risk_value");
 }
 
+/*
+ * The two state names the store chart segments separately. Taken apart from
+ * REPLENISH_STATES rather than retyped, so the reorder zone stays one
+ * definition: these are the states, that is the pair, and nothing can drift.
+ */
+const [STOCKOUT_STATE, LOW_STATE] = REPLENISH_STATES;
+
+/**
+ * Roll one store's rows into the shape `fixture.stores` carries.
+ *
+ * Same counts, same names, derived instead of read — so a caller can hand this
+ * the rows currently in scope and get a bar that describes them, rather than
+ * the store's whole shelf. The four state segments partition `sku_count` by
+ * construction here, which is the invariant `computeStockoutByStore` documents
+ * and the fixture builder enforces on the stored rows.
+ */
+function tallyStore(store, rows) {
+  const tally = {
+    store_id: store.store_id,
+    name: store.name,
+    vertical_id: store.vertical_id,
+    cluster: store.cluster,
+    channel: store.channel,
+    size_index: store.size_index,
+    health_index: store.health_index,
+    sku_count: rows.length,
+    stockout_count: 0,
+    low_count: 0,
+    other_at_risk_count: 0,
+    healthy_count: 0,
+    stockout_risk_count: 0,
+    at_risk_count: 0,
+    at_risk_value: 0,
+    inv_value: 0,
+  };
+
+  for (const row of rows) {
+    if (row.state === STOCKOUT_STATE) tally.stockout_count += 1;
+    else if (row.state === LOW_STATE) tally.low_count += 1;
+    else if (row.state === HEALTHY_STATE) tally.healthy_count += 1;
+    else tally.other_at_risk_count += 1;
+
+    if (row.is_stockout_risk) tally.stockout_risk_count += 1;
+    if (row.state !== HEALTHY_STATE) tally.at_risk_count += 1;
+    tally.at_risk_value += row.at_risk_value;
+    tally.inv_value += row.inv_value;
+  }
+
+  return tally;
+}
+
+/**
+ * Per-store rows for the SCOPE, not for the whole shelf.
+ *
+ * `fixture.stores` is aggregated per store before it reaches this module, so
+ * every figure in it covers all 100 SKUs that store carries. That is the right
+ * answer while the board is only scoped by vertical or store, and the wrong
+ * one the moment a category, a state or a search narrows the rows: the tiles
+ * would describe five SKUs while the chart beneath them still described a
+ * hundred. Filtering to `GRC-C01` put 3 at-risk SKUs in the tiles and left 46
+ * in the S001 bar.
+ *
+ * So when the scope narrows rows, each store's own position is DERIVED from
+ * the rows in scope — the same `atStore` path the drill-down drawer already
+ * uses, and the same one the fixture builder checks against every one of the
+ * 16,000 `ENGINE_STORE` rows. Both panels now answer "per store" with one
+ * number.
+ *
+ * Derived at BASELINE_LEVERS on purpose: these charts have always shown the
+ * workbook's position rather than a scenario, and a lever that moved the bars
+ * but not the aggregate they are compared against would be worse than one that
+ * moves neither.
+ *
+ * @param {object[]} items  Rows already in scope. Store-grain when a store is
+ *   selected, chain-net otherwise.
+ * @param {object[]} stores Store rows in scope.
+ * @param {object|null} storeRow The selected store, or null for the chain.
+ * @param {Function} applyLevers Bound engine, for the chain case.
+ */
+function deriveStoreRows(items, stores, storeRow, applyLevers) {
+  // A selected store's rows ARE the board's rows, already derived once by the
+  // caller. Running them through `atStore` again would re-point rows that are
+  // already pointed, so this only counts them.
+  if (storeRow !== null) return [tallyStore(storeRow, items)];
+
+  return stores.map((store) =>
+    tallyStore(
+      store,
+      items
+        .filter((item) => item.vertical_id === store.vertical_id)
+        .map((item) => applyLevers(atStore(item, store), BASELINE_LEVERS)),
+    ),
+  );
+}
+
 /**
  * Gross per-store risk breakdown, worst first (A2 spec section 6).
  *
@@ -449,39 +551,149 @@ export function computeRiskRegister(items) {
  * @returns {object} A payload matching the dashboard contract.
  */
 /**
+ * The demand shape for every vertical in scope, computed once.
+ *
+ * The factor depends only on the vertical and the day; the level only on the
+ * SKU. Splitting them means the projection multiplies rather than recomputes
+ * `(1 + trend) ** (day / 365)` eight hundred times a day.
+ *
+ * Verticals are looked up individually rather than blended: inside the
+ * projection every row already knows its own `vertical_id`, so blending the
+ * eight curves into one would only smear a distinction the data still has.
+ *
+ * @returns {(verticalId: string, day: number) => number}
+ */
+function demandShape(items, days, model) {
+  const byVertical = new Map();
+
+  for (const item of items) {
+    if (byVertical.has(item.vertical_id)) continue;
+    byVertical.set(
+      item.vertical_id,
+      dailyFactors(
+        days,
+        model.profile,
+        model.curves[item.vertical_id] ?? FLAT_SEASONALITY,
+        model.currentMonth,
+        model.trendByVertical[item.vertical_id] ?? 0,
+      ),
+    );
+  }
+
+  return (verticalId, day) => byVertical.get(verticalId)?.[day] ?? 1;
+}
+
+/**
  * Projected on-hand against demand, A2 spec section 4.
  *
- * The replenishment cycle in one line: stock falls by a day's demand each day
- * and steps back up when an open PO lands. Nothing here is a guess about the
- * future — the fall is `ads`, the step is `open_po`, and it lands after
- * `lead_days`, all three read per SKU from the workbook.
+ * The replenishment cycle in two moving parts: stock falls by a day's demand,
+ * and steps back up when an order lands `lead_days` after it was placed.
  *
- * Two honest limits, both worth saying out loud on the panel:
- * demand is flat, because the workbook carries one ADS per SKU and no
- * day-of-week or seasonal curve at this grain; and stock is floored at zero,
- * so a SKU that runs out stays out rather than going negative and quietly
- * subsidising the chain total.
+ * DEMAND — measured level, modelled shape
+ * The level is `ads`, f01, one measured number per SKU. The shape across the
+ * horizon is `common/demandModel.js` — the same day-of-week, seasonal and
+ * trend decomposition the Demand Forecasting board draws, so the two boards
+ * cost a day of stock identically. Because the seven day-of-week factors sum
+ * to the workbook's own `dow_sum`, any whole week of this burn totals exactly
+ * `ads * 7.45`, which is f08's `forecast_7d`. The shape reallocates a measured
+ * week; it does not invent one.
+ *
+ * REPLENISHMENT — the workbook's own ROP and Max
+ * A textbook (s, S) policy with s = `rop` (f05) and S = `max` (f06), both
+ * already per SKU and both already expressed in the same ADS the burn uses.
+ * The trigger is the inventory position, `stock + onOrder`, not on-hand alone:
+ * triggering on on-hand would re-order on every day of the lead time and
+ * stack a pipeline of duplicate POs for one shortfall.
+ *
+ * The workbook's existing `open_po` is seeded into that pipeline rather than
+ * special-cased, so it lands at `lead_days` exactly as it did before.
+ *
+ * TWO LIMITS WORTH SAYING OUT LOUD ON THE PANEL
+ * The day-of-week allocation is modelled, not measured — the workbook stores
+ * only its total. And stock is floored at zero per SKU, so a SKU that runs out
+ * stays out rather than going negative and quietly subsidising the chain
+ * total.
  */
-export function computeProjection(items, days = PROJECTION_DAYS) {
-  const demandPerDay = sum(items, "ads");
+export function computeProjection(
+  items,
+  days = PROJECTION_DAYS,
+  // Called without a model — a test, or a provider that ships none — the
+  // resolver's own fallback gives back the flat burn this panel used to draw.
+  model = resolveDemandModel(null),
+) {
+  const shape = demandShape(items, days, model);
   const points = [];
 
-  for (let day = 0; day <= days; day += 1) {
-    let onHand = 0;
-    let inbound = 0;
+  /*
+   * One pass per SKU rather than per day, because the policy is stateful: what
+   * a SKU orders on day 12 depends on what it ordered on day 5. The day-major
+   * loop this replaced could be closed-form only because nothing was ever
+   * reordered.
+   */
+  const onHandByDay = new Array(days + 1).fill(0);
+  const inboundByDay = new Array(days + 1).fill(0);
+  const demandByDay = new Array(days + 1).fill(0);
 
-    for (const item of items) {
-      const arrived = day >= item.lead_days ? item.open_po : 0;
-      onHand += Math.max(0, item.on_hand - item.ads * day + arrived);
-      inbound += arrived;
+  for (const item of items) {
+    let stock = item.on_hand;
+    let onOrder = item.open_po;
+    // Units landing on each day. An array, not a queue: every arrival date is
+    // known the moment its order is placed, and always lies ahead of the loop.
+    const arrivals = new Array(days + 1).fill(0);
+    // `lead_days` can exceed the horizon; such an order simply never lands.
+    if (item.lead_days <= days) arrivals[item.lead_days] += item.open_po;
+
+    // The lead time drives the policy, and a zero would let a SKU order on
+    // every single day. One is the shortest honest cycle.
+    const leadDays = Math.max(1, item.lead_days);
+
+    for (let day = 0; day <= days; day += 1) {
+      /*
+       * Receive, record, order, consume — in that order, and the order
+       * matters. Recording before consuming keeps day 0 exactly today's
+       * position, which the strip beneath the chart also reports; ordering
+       * after recording keeps an order out of the same day's stock.
+       */
+      const landed = arrivals[day];
+      if (landed) {
+        stock += landed;
+        onOrder -= landed;
+      }
+
+      onHandByDay[day] += stock;
+      inboundByDay[day] += landed;
+
+      const demand = item.ads * shape(item.vertical_id, day);
+      demandByDay[day] += demand;
+
+      if (stock + onOrder < item.rop) {
+        const order = Math.max(0, item.max - stock - onOrder);
+        if (order > 0) {
+          onOrder += order;
+          const arrivesOn = day + leadDays;
+          if (arrivesOn <= days) arrivals[arrivesOn] += order;
+        }
+      }
+
+      stock = Math.max(0, stock - demand);
     }
+  }
 
+  /*
+   * `inbound` is cumulative — everything landed up to and including this day,
+   * which is what "Inbound landed" means in the tooltip and what makes the
+   * series monotonic. Under the reorder policy it now passes the opening
+   * `open_po` total rather than stopping at it.
+   */
+  let landedToDate = 0;
+  for (let day = 0; day <= days; day += 1) {
+    landedToDate += inboundByDay[day];
     points.push({
       day,
       label: day === 0 ? "Today" : `D+${day}`,
-      on_hand: onHand,
-      inbound,
-      demand: demandPerDay,
+      on_hand: onHandByDay[day],
+      inbound: landedToDate,
+      demand: demandByDay[day],
     });
   }
 
@@ -496,9 +708,14 @@ export function computeProjection(items, days = PROJECTION_DAYS) {
       avg_dos: items.length ? sum(items, "dos") / items.length : 0,
       at_risk_value: sum(items, "at_risk_value"),
     },
-    // The first day the chain is projected to hold less than one day of cover.
+    /*
+     * The first day the chain is projected to hold less than one day of cover.
+     * Compared against that day's own demand rather than a chain average,
+     * because the demand line moves now — a Saturday and a Tuesday are not the
+     * same amount of cover.
+     */
     days_to_empty:
-      points.find((point) => point.on_hand < demandPerDay)?.day ?? null,
+      points.find((point) => point.on_hand < point.demand)?.day ?? null,
   };
 }
 
@@ -514,7 +731,13 @@ export function computeProjection(items, days = PROJECTION_DAYS) {
  * can share one axis. A baseline of zero has no index — reported as `null`
  * rather than as a fabricated 100.
  */
-export function computeSimulation(items, levers, applyLevers) {
+export function computeSimulation(
+  items,
+  levers,
+  applyLevers,
+  days = PROJECTION_DAYS,
+  model = resolveDemandModel(null),
+) {
   const merged = { ...BASELINE_LEVERS, ...levers };
   const applied = !isBaseline(merged);
   const baseline = computeKpis(items);
@@ -555,8 +778,10 @@ export function computeSimulation(items, levers, applyLevers) {
      * A scenario is only interesting as a shape over time — "does this run me
      * out before the PO lands" — which four KPI totals cannot answer.
      */
-    baseline_projection: computeProjection(items),
-    projection: applied ? computeProjection(scenarioItems) : null,
+    baseline_projection: computeProjection(items, days, model),
+    projection: applied
+      ? computeProjection(scenarioItems, days, model)
+      : null,
     index: compared.map((metric) => ({
       ...metric,
       baseline_value: baseline[metric.id],
@@ -640,7 +865,7 @@ export function buildDrilldownFromFixture(
 
 export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
-  const stores = scopeStores(fixture.stores, merged);
+  const scopedStores = scopeStores(fixture.stores, merged);
   const legalEntities = fixture.filter_options.legal_entities;
 
   const applyLevers = engineFor(fixture.formulas);
@@ -672,17 +897,69 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
           .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
 
   const baselineItems = scopeItems(sourceItems, merged);
+
+  /*
+   * Does the scope narrow rows WITHIN a store's shelf? Vertical and store do
+   * not — they choose which stores to show, and `fixture.stores` already
+   * covers each of those in full. Category, state and search do, and that is
+   * exactly when the stored aggregates stop describing the board.
+   *
+   * Reading the aggregates when nothing narrows is not just an optimisation:
+   * they are the workbook's own `ENGINE_STORE` totals, and the derivation
+   * reproduces them row for row, so the two paths agree by construction. It
+   * does save ~16,000 formula evaluations on the opening load, which is why
+   * the cheap branch is the default one.
+   */
+  const narrowsRows =
+    merged.category_group !== ALL ||
+    merged.state !== ALL ||
+    merged.sku.trim() !== "";
+
+  const stores = narrowsRows
+    ? deriveStoreRows(baselineItems, scopedStores, storeRow, applyLevers)
+    : scopedStores;
+
   const levers = { ...BASELINE_LEVERS, ...options.levers };
-  const simulation = computeSimulation(baselineItems, levers, applyLevers);
+
+  /*
+   * How far to project (A2 spec section 7a). It is not part of the scope: it
+   * narrows nothing, so `serializeScope` has no business sending it to a
+   * backend that returns rows either way. It travels with `levers` instead,
+   * because it belongs to the same family — a setting that changes what the
+   * board computes from rows it already has.
+   *
+   * Both curves in `computeSimulation` get the same horizon. A baseline drawn
+   * over four weeks against a scenario drawn over sixteen would compare two
+   * different questions on one axis.
+   */
+  const horizonWeeks = resolveHorizonWeeks(options.horizonWeeks);
+  const projectionDays = horizonDays(horizonWeeks);
+
+  /*
+   * The daily-demand model, resolved once from the fixture and handed to every
+   * projection this board draws. Resolved rather than read: a provider built
+   * before the shape existed omits these blocks and gets the flat burn back,
+   * instead of a crash — see `resolveDemandModel`.
+   */
+  const demandModel = resolveDemandModel(fixture);
+
+  const simulation = computeSimulation(
+    baselineItems,
+    levers,
+    applyLevers,
+    projectionDays,
+    demandModel,
+  );
 
   /*
    * "Levers drive whole page" (A2 spec 8b). With it on, every panel below
    * reads the re-simulated rows rather than the workbook's stored ones.
    *
    * Two things it cannot reach, and the UI has to admit as much: the store and
-   * cluster charts read `fixture.stores`, which is aggregated per store before
-   * it ever gets here, and the reference totals are the workbook's own and
-   * belong to the baseline by definition.
+   * cluster charts stay on the baseline — whether they come from
+   * `fixture.stores` or from `deriveStoreRows`, both describe the workbook's
+   * position rather than a scenario — and the reference totals are the
+   * workbook's own and belong to the baseline by definition.
    */
   const driveWholePage = options.driveWholePage !== false;
   const items =
@@ -690,13 +967,22 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       ? baselineItems.map((item) => applyLevers(item, levers))
       : baselineItems;
 
-  // Categories depend on the selected vertical, so the filter bar can reset a
-  // child selection the new parent invalidates without a second load.
+  /*
+   * Categories depend on the selected vertical, so the filter bar can reset a
+   * child selection the new parent invalidates without a second load.
+   *
+   * A selected store implies its vertical even when the entity dropdown says
+   * ALL, and the category list follows that rather than the dropdown: S001 is
+   * a Grocery store, so offering `DGT-C01` under it offered a combination that
+   * can only ever draw an empty board.
+   */
+  const optionEntity =
+    storeRow === null ? merged.legal_entity_id : storeRow.vertical_id;
   const categories =
-    merged.legal_entity_id === ALL
+    optionEntity === ALL
       ? fixture.filter_options.categories
       : fixture.filter_options.categories.filter(
-          (category) => category.legal_entity_id === merged.legal_entity_id,
+          (category) => category.legal_entity_id === optionEntity,
         );
   const storeOptions =
     merged.legal_entity_id === ALL
@@ -717,10 +1003,19 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       categories,
       stores: storeOptions,
       states: fixture.filter_options.states,
+      /*
+       * Served rather than assumed. The filter bar renders this array, so a
+       * provider that cannot honour sixteen weeks shortens it here and the
+       * control follows without a component changing.
+       */
+      horizons_weeks: [...PROJECTION_HORIZONS_WEEKS],
     },
     kpis: computeKpis(items),
     kpi_sparklines: computeKpiSparklines(items),
-    projection: computeProjection(items),
+    projection: {
+      ...computeProjection(items, projectionDays, demandModel),
+      horizon_weeks: horizonWeeks,
+    },
     simulation,
     at_risk_by_state: computeAtRiskByState(items),
     value_by_category: computeValueByCategory(items),

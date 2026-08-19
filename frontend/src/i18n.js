@@ -438,7 +438,7 @@ const CHROME = {
   // Projected on-hand vs demand (A2 spec section 4).
   "Projected on-hand vs demand": "Proyeksi stok vs permintaan",
   "Projected on-hand": "Proyeksi stok di tangan",
-  "Demand per day": "Permintaan per hari",
+  "Demand (modelled daily)": "Permintaan (model harian)",
   "Inbound landed": "Barang masuk yang tiba",
   "Nothing in scope to project.": "Tidak ada yang bisa diproyeksikan pada cakupan ini.",
   "Cover holds across the horizon": "Cakupan bertahan sepanjang horizon",
@@ -446,8 +446,11 @@ const CHROME = {
   Inbound: "Barang masuk",
   "Avg DoS": "Rata-rata hari persediaan",
   "At risk": "Berisiko",
-  "Projected forward from today's position. The workbook holds one on-hand reading per SKU and no history, so there is nothing to plot before day 0.":
-    "Diproyeksikan maju dari posisi hari ini. Workbook hanya menyimpan satu angka stok per SKU dan tidak punya riwayat, jadi tidak ada yang bisa digambar sebelum hari ke-0.",
+  "Projected forward from today's position. The workbook holds one on-hand reading per SKU and no history, so there is nothing to plot before day 0. Demand is the measured ADS spread across the week by the same day-of-week and seasonal model the Demand Forecasting board draws, and stock is reordered at ROP up to Max.":
+    "Diproyeksikan maju dari posisi hari ini. Workbook hanya menyimpan satu angka stok per SKU dan tidak punya riwayat, jadi tidak ada yang bisa digambar sebelum hari ke-0. Permintaan adalah ADS terukur yang disebar sepanjang minggu memakai model hari-dalam-minggu dan musiman yang sama dengan board Demand Forecasting, dan stok dipesan ulang di ROP sampai Max.",
+
+  "Past four weeks the curve keeps its shape from the seasonal profile and the reorder policy, but its level still rests on one measured ADS per SKU — a longer horizon adds structure, not more measurement.":
+    "Lewat empat minggu, bentuk kurvanya masih datang dari profil musiman dan kebijakan pemesanan ulang, tapi levelnya tetap bertumpu pada satu ADS terukur per SKU — horizon yang lebih panjang menambah struktur, bukan menambah pengukuran.",
 
   // What-If simulator (A2 spec section 8). The lever labels and their effects
   // are the spec's own wording; the cell references stay untranslated because

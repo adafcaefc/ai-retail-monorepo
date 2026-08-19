@@ -151,13 +151,103 @@ export const EXPIRY_BUCKETS = Object.freeze([
 export const EXPIRY_WATCHLIST_SIZE = 4;
 
 /**
- * How far the projection chart looks ahead, in days (A2 spec section 4).
+ * Horizons the projection offers, in weeks (A2 spec section 7a, `f-hz`).
  *
- * Four weeks: long enough for the longest lead time in the dataset (7 days)
- * plus a full replenishment cycle after it, short enough that a straight-line
- * demand assumption is not obviously silly.
+ * Declared once, here, and served to the board inside
+ * `filter_options.horizons_weeks` — the filter bar renders whatever the
+ * payload offers rather than a list typed into the control. A provider that
+ * can only honour a shorter look-ahead ships a shorter array and the UI
+ * follows it; nothing in a component has to change.
  */
-export const PROJECTION_DAYS = 28;
+export const PROJECTION_HORIZONS_WEEKS = Object.freeze([4, 8, 12, 16]);
+
+/**
+ * Days in a week. Exported because the chart's axis has to space its labels a
+ * week apart and would otherwise carry its own 7.
+ */
+export const DAYS_PER_WEEK = 7;
+
+/**
+ * The horizon the board opens on, in weeks.
+ *
+ * Four: long enough for the longest lead time in the dataset (7 days) plus a
+ * full replenishment cycle after it, and long enough for the reorder policy to
+ * complete a cycle. Longer horizons are offered, not recommended — `ads` is
+ * one number per SKU, so every extra week compounds further on a level the
+ * workbook measured once. The panel says so.
+ */
+export const DEFAULT_HORIZON_WEEKS = 4;
+
+/**
+ * Coerce anything into a horizon this board actually offers.
+ *
+ * A value arriving from a saved scenario, a query string or a backend is a
+ * string, a stale number, or absent. Resolving in one place means the fallback
+ * is decided once rather than at each call site that needs it.
+ *
+ * @param {unknown} weeks
+ * @returns {number} A member of `PROJECTION_HORIZONS_WEEKS`.
+ */
+export function resolveHorizonWeeks(weeks) {
+  const value = Number(weeks);
+  return PROJECTION_HORIZONS_WEEKS.includes(value)
+    ? value
+    : DEFAULT_HORIZON_WEEKS;
+}
+
+/**
+ * The horizon in days, which is the unit the projection loop counts in.
+ *
+ * @param {unknown} weeks
+ * @returns {number}
+ */
+export function horizonDays(weeks) {
+  return resolveHorizonWeeks(weeks) * DAYS_PER_WEEK;
+}
+
+/**
+ * How far the projection chart looks ahead by default, in days (A2 spec
+ * section 4). Derived, not typed: the default horizon is stated once above and
+ * this follows it.
+ */
+export const PROJECTION_DAYS = DEFAULT_HORIZON_WEEKS * DAYS_PER_WEEK;
+
+/**
+ * Resolve the daily-demand model's inputs out of a payload, with fallbacks.
+ *
+ * The projection shapes its burn with a day-of-week profile, twelve seasonal
+ * indices per vertical and A1's typed trend. All three are new to this board,
+ * so a provider built before them has to keep working rather than throw:
+ * a flat profile summing to `dow_sum`, flat seasonality and zero trend
+ * reproduce exactly the straight-line burn this panel drew before, which is
+ * the honest degradation — less shape, never a different total.
+ *
+ * @param {object} payload A fixture or a dashboard payload.
+ * @returns {{ profile: number[], curves: Record<string, number[]>,
+ *   currentMonth: number, trendByVertical: Record<string, number> }}
+ */
+export function resolveDemandModel(payload) {
+  const dowSum = payload?.constants?.dow_sum ?? DAYS_PER_WEEK;
+  const profile = payload?.constants?.dow_profile;
+
+  const trendByVertical = {};
+  for (const row of payload?.reference_by_vertical ?? []) {
+    trendByVertical[row.legal_entity_id] = row.trend_pct ?? 0;
+  }
+
+  return {
+    profile:
+      Array.isArray(profile) && profile.length === DAYS_PER_WEEK
+        ? profile
+        : new Array(DAYS_PER_WEEK).fill(dowSum / DAYS_PER_WEEK),
+    curves: payload?.seasonality?.by_legal_entity ?? {},
+    currentMonth: payload?.seasonality?.current_month_index ?? 0,
+    trendByVertical,
+  };
+}
+
+/** Twelve flat indices, for a vertical the payload carries no curve for. */
+export const FLAT_SEASONALITY = Object.freeze(new Array(12).fill(100));
 
 /**
  * The projection has no history to show, and the chart says so rather than
@@ -168,7 +258,25 @@ export const PROJECTION_DAYS = 28;
  */
 export const PROJECTION_NOTE =
   "Projected forward from today's position. The workbook holds one on-hand " +
-  "reading per SKU and no history, so there is nothing to plot before day 0.";
+  "reading per SKU and no history, so there is nothing to plot before day 0. " +
+  "Demand is the measured ADS spread across the week by the same day-of-week " +
+  "and seasonal model the Demand Forecasting board draws, and stock is " +
+  "reordered at ROP up to Max.";
+
+/**
+ * Shown only past the default horizon.
+ *
+ * Offering sixteen weeks and saying nothing would imply the curve is four
+ * times as informative as the four-week one. It is not: the same single ADS
+ * carries it, so the extra twelve weeks are extrapolation, not forecast. The
+ * control stays available — a reader comparing a long lead time against cover
+ * has a real use for it — but the panel stops short of implying more than the
+ * workbook holds.
+ */
+export const LONG_HORIZON_NOTE =
+  "Past four weeks the curve keeps its shape from the seasonal profile and " +
+  "the reorder policy, but its level still rests on one measured ADS per " +
+  "SKU — a longer horizon adds structure, not more measurement.";
 
 /**
  * @typedef {object} InventoryRiskScope
@@ -316,6 +424,19 @@ export function normalizeInventoryRiskDashboard(payload) {
     );
   }
 
+  /*
+   * A provider may offer fewer horizons than this board knows about, but never
+   * one it cannot compute — anything outside the list is dropped. Falling back
+   * to the full list when nothing survives is deliberate: an empty array would
+   * render a segmented control with no segments, which reads as a broken
+   * filter rather than as a provider that declined to offer the choice.
+   */
+  const offeredHorizons = (
+    payload.filter_options?.horizons_weeks ?? PROJECTION_HORIZONS_WEEKS
+  )
+    .map(Number)
+    .filter((weeks) => PROJECTION_HORIZONS_WEEKS.includes(weeks));
+
   return {
     schema_version: SCHEMA_VERSION,
     agent: AGENT_ID,
@@ -328,6 +449,9 @@ export function normalizeInventoryRiskDashboard(payload) {
       categories: payload.filter_options?.categories ?? [],
       stores: payload.filter_options?.stores ?? [],
       states: payload.filter_options?.states ?? [...STATE_ORDER],
+      horizons_weeks: offeredHorizons.length
+        ? offeredHorizons
+        : [...PROJECTION_HORIZONS_WEEKS],
     },
     /*
      * Declared, or it is dropped. This normalizer returns an explicit object,
@@ -358,6 +482,17 @@ export function normalizeInventoryRiskDashboard(payload) {
      */
     projection: {
       days: payload.projection?.days ?? 0,
+      /*
+       * Echoed so the chart can space its axis labels a week apart without
+       * dividing `days` by seven itself, and so a payload built at a
+       * non-default horizon still says which one. Derived from `days` when a
+       * provider omits it, rather than silently reporting the default over a
+       * curve that is plainly longer than four weeks.
+       */
+      horizon_weeks: resolveHorizonWeeks(
+        payload.projection?.horizon_weeks ??
+          (payload.projection?.days ?? 0) / DAYS_PER_WEEK,
+      ),
       points: payload.projection?.points ?? [],
       metrics: {
         position: 0,

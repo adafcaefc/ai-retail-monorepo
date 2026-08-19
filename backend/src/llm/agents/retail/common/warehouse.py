@@ -227,14 +227,99 @@ def chain_store_size(connection: Any) -> dict[str, float]:
     return {row["vertical_id"]: float(row["total"]) for row in rows}
 
 
-def constants() -> dict[str, float]:
+# Day-of-week demand profile, Monday first.
+#
+# THE CANONICAL COPY. The workbook stores only their sum -- `Constants` B7 =
+# 7.45, which is what f08 multiplies a daily rate by. These seven allocate that
+# total across the week and sum to exactly it, so any daily view rolls back up
+# to the weekly figure the sheet publishes. A modelled allocation of a measured
+# total, and every payload that ships it says so.
+#
+# Both retail dashboards and both fixture builders read this name. It lived in
+# four files before, which is the shape of bug this package keeps paying for:
+# one rule with several homes, correct until somebody edits three of them.
+DOW_PROFILE = (0.85, 0.90, 0.95, 1.00, 1.15, 1.35, 1.25)
+
+MONTH_LABELS = (
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+)
+
+# The month the workbook says it is (`Constants` B6), zero-based.
+MONTH_INDEX = 6
+
+# The sum the seven factors above must reproduce (`Constants` B7).
+DOW_SUM = 7.45
+
+
+def constants() -> dict[str, Any]:
     """Model parameters, from the catalogue's own reference rather than a table.
 
     `dow_sum` and `month_index` are inputs to `f08` and `f01`. They are not
     facts about a day, so they do not belong in a fact table — a second home
     for one number is how two numbers appear.
+
+    `dow_profile` rides along because every board that spends a day's demand
+    needs the shape, not just the total: Inventory Risk burns stock against it
+    and Demand Forecasting draws it. A board that receives the sum alone can
+    only assume a flat week, which is exactly the assumption both boards had
+    to stop making.
     """
-    return {"dow_sum": 7.45, "month_index": 6}
+    return {
+        "dow_sum": DOW_SUM,
+        "month_index": MONTH_INDEX,
+        "dow_profile": list(DOW_PROFILE),
+    }
+
+
+def seasonal_indices(gmv_by_month: dict[int, float]) -> list[float]:
+    """Twelve classical indices: month GMV over the series mean, times 100.
+
+    Rounded to four places because that is what the fixtures carry and what the
+    charts draw; the extra digits describe a profile written twice, not a
+    measurement worth more precision.
+    """
+    values = [gmv_by_month.get(month, 0.0) for month in range(12)]
+    mean = sum(values) / len(values) if values else 0.0
+    if not mean:
+        return [100.0] * 12
+    return [round(value / mean * 100, 4) for value in values]
+
+
+def seasonality(connection: Any) -> dict[str, Any]:
+    """The seasonal block, identical for every board that ships it.
+
+    One query and one shape, so Inventory Risk's projection and Demand
+    Forecasting's outlook cannot disagree about what next month looks like.
+
+    `avg(gmv)` over both years is a no-op on this dataset -- the workbook's
+    series repeats one year twice -- but it is written as an average so a real
+    second year would be handled rather than silently halved.
+    """
+    rows = _rows(
+        connection,
+        f"""
+        SELECT vertical_id, month_index, avg(gmv) AS gmv
+        FROM {SCHEMA}.fact_gmv_monthly
+        GROUP BY vertical_id, month_index
+        ORDER BY vertical_id, month_index
+        """,
+    )
+
+    by_vertical: dict[str, dict[int, float]] = {}
+    for row in rows:
+        by_vertical.setdefault(row["vertical_id"], {})[int(row["month_index"])] = (
+            float(row["gmv"]) if row["gmv"] is not None else 0.0
+        )
+
+    return {
+        "month_labels": list(MONTH_LABELS),
+        "current_month_index": MONTH_INDEX,
+        "by_legal_entity": {
+            vertical_id: seasonal_indices(months)
+            for vertical_id, months in sorted(by_vertical.items())
+        },
+    }
 
 
 def agent_reference(connection: Any, agent_id: str) -> list[dict[str, Any]]:

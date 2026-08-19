@@ -4,7 +4,7 @@ import { useLanguage } from "../../../../LanguageProvider.jsx";
 import { categoryColor, formatIdr, formatPercent } from "../presentation.js";
 
 /** Same reasoning as the stacked bar: a hundred and sixty slices is not a chart. */
-const TOP_SLICES = 7;
+const TOP_SLICES = 20;
 
 function DonutTooltip({ active, payload }) {
   const { language, t } = useLanguage();

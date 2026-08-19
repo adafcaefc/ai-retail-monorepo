@@ -363,6 +363,63 @@ describe("InventoryRiskDashboard", () => {
     expect(within(panel).getByText(/nothing to plot before day 0/)).toBeInTheDocument();
   });
 
+  it("lengthens the projection from the horizon control, and says what that costs", async () => {
+    await renderSettled();
+
+    const horizon = screen.getByRole("group", { name: "Horizon" });
+    const projectionPanel = () =>
+      screen.getByText("Projected on-hand vs demand").closest(".risk-panel");
+
+    // Opens on four weeks, and stays quiet about the flat-demand assumption
+    // while the curve is short enough for it to be reasonable.
+    expect(within(horizon).getByRole("button", { name: "4w" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      within(projectionPanel()).queryByText(/adds structure, not more measurement/),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(within(horizon).getByRole("button", { name: "16w" }));
+
+    await waitFor(() => {
+      expect(
+        within(horizon).getByRole("button", { name: "16w" }),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+
+    // Sixteen weeks of curve, and the caveat that its level is measured once.
+    await waitFor(() => {
+      expect(
+        within(projectionPanel()).getByText(/adds structure, not more measurement/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the drill-down open across a horizon change, since no row moves", async () => {
+    await renderSettled();
+
+    fireEvent.click(kpiTile("Inventory value").querySelector(".risk-kpi-open"));
+    await screen.findByRole("dialog");
+
+    fireEvent.click(
+      within(screen.getByRole("group", { name: "Horizon" })).getByRole(
+        "button",
+        { name: "12w" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("group", { name: "Horizon" })).getByRole(
+          "button",
+          { name: "12w" },
+        ),
+      ).toHaveAttribute("aria-pressed", "true");
+    });
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
   it("offers all six levers and disables the one the workbook cannot model", async () => {
     await renderSettled();
 

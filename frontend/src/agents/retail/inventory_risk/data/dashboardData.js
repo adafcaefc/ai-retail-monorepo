@@ -58,6 +58,17 @@ async function loadFromFixture(scope, options) {
  * does, so a scope means the same thing on both sides. The server narrows by
  * legal entity and category in SQL; the selectors apply the rest over the rows
  * that come back.
+ *
+ * WHY `ignored_filters` IS NOT SHOWN TO THE READER
+ * The route names `store_id`, `state` and `sku` there, because its own
+ * SUPPORTED_FILTERS covers only the two it can push into SQL. Surfacing that
+ * as "filter ignored" would be false: `scopeItems` applies all three over the
+ * returned rows, and the board on screen is narrowed exactly as asked. The
+ * field means "not narrowed IN SQL", which is a statement about where the work
+ * happened, not about whether it happened — so the contract drops it rather
+ * than letting a component turn it into a warning nobody can act on. If a
+ * filter ever appears there that the selectors also do not apply, the fix is
+ * to apply it, not to caption it.
  */
 async function loadFromApi(scope, options) {
   const rows = await fetchDashboard("retail.inventory_risk", serializeScope(scope));
@@ -69,12 +80,14 @@ async function loadFromApi(scope, options) {
  *
  * `options.levers` is a What-If position; `options.driveWholePage` decides
  * whether it reaches the rest of the board or stays inside the simulator
- * panel. Neither is part of the scope, and neither is sent to the API — the
- * server has no simulation route yet, and when it does, this is the one
- * function that has to learn about it.
+ * panel; `options.horizonWeeks` is how far the projection looks ahead. None of
+ * the three is part of the scope, and none is sent to the API — they change
+ * what is computed from the rows, not which rows come back. The server has no
+ * simulation route yet, and when it does, this is the one function that has to
+ * learn about it.
  *
  * @param {Partial<import("./contract.js").InventoryRiskScope>} [scope]
- * @param {{levers?: object, driveWholePage?: boolean}} [options]
+ * @param {{levers?: object, driveWholePage?: boolean, horizonWeeks?: number}} [options]
  * @returns {Promise<import("./contract.js").InventoryRiskDashboard>}
  */
 export async function loadInventoryRiskDashboard(scope = {}, options = {}) {

@@ -60,6 +60,11 @@ sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
 import workbook_guard  # noqa: E402
+from retail_demand_model import (  # noqa: E402
+    DOW_PROFILE,
+    check_profile,
+    seasonality_payload,
+)
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -743,6 +748,13 @@ def main() -> int:
         "a2_inventory_risk",
         "constants",
         "what_if_per_agent",
+        # The projection burns a shaped daily curve rather than a flat ADS, so
+        # this board needs the same two inputs Demand Forecasting reads: the
+        # monthly GMV profile behind the seasonal indices, and A1's typed
+        # `Trend %`. Neither changes a single stock figure below; both change
+        # how that stock is spent over the horizon.
+        "time_series_24mo",
+        "a1_demand_forecasting",
     )
     missing = [name for name in required if name not in tables]
     if missing:
@@ -756,6 +768,18 @@ def main() -> int:
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
+
+    constants = constants_from_cells(
+        tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+    )
+    check_profile(constants["dow_sum"])
+    month_index = int(constants["month_index"])
+    seasonality = seasonality_payload(tables["time_series_24mo"], month_index)
+    # A1's typed `Trend %`, keyed the way this file already keys A2's totals.
+    trend_by_label = {
+        row["vertical_label"]: row["trend_pct"]
+        for row in tables["a1_demand_forecasting"]
+    }
 
     expressions = verify_engine_chain(tables["engine"], sku_master, store_size)
     verify_store_derivation(
@@ -808,9 +832,13 @@ def main() -> int:
         # Model parameters the browser needs but must not retype. Keyed off the
         # `Constants` cell rather than its label, because a label is prose and
         # gets reworded; B6 and B7 are addresses and do not.
-        "constants": constants_from_cells(
-            tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
-        ),
+        "constants": {
+            **constants,
+            # Seven factors summing to `dow_sum`, checked above. A modelled
+            # allocation of a measured week: the total is the workbook's, the
+            # shape inside it is ours, and `derivation` says so.
+            "dow_profile": list(DOW_PROFILE),
+        },
         # The expressions the What-If engine runs, copied from formula.json
         # after `verify_engine_chain` proved they rebuild the rows below. The
         # browser evaluates these rather than importing formula.json directly,
@@ -860,6 +888,11 @@ def main() -> int:
         },
         "items": items,
         "stores": store_rows,
+        # Twelve seasonal indices per vertical and the month the workbook says
+        # it is (`Constants` B6) -- byte-for-byte what the Demand Forecasting
+        # fixture ships, from the same function, so the projection here and the
+        # outlook curve there cannot disagree about next month.
+        "seasonality": seasonality,
         # The workbook's own per-vertical totals. Kept so a test can assert the
         # UI still agrees with the sheet after any refactor, and so the chain-net
         # headline has something to be checked against.
@@ -878,6 +911,11 @@ def main() -> int:
                         "avg_dos",
                     )
                 },
+                # Not an A2 figure: A1's typed annual trend, carried because
+                # the projection compounds it over the horizon. Typed, not
+                # measured -- `derivation` on the demand board says as much and
+                # the note below repeats it.
+                "trend_pct": trend_by_label.get(label, 0.0),
             }
             for vertical_id, label in sorted(label_of.items())
             for by_label in [{row["vertical_label"]: row for row in reference}]

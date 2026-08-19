@@ -33,6 +33,7 @@ from src.llm.agents.retail.common.warehouse import (
     filter_options,
     formulas,
     get_engine,
+    seasonality,
 )
 
 AGENT_ID = "retail.inventory_risk"
@@ -222,10 +223,22 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         reference = agent_reference(connection, AGENT_ID)
         store_size = chain_store_size(connection)
 
+        # The projection burns a shaped daily curve rather than a flat ADS, so
+        # this board needs the same two inputs A1 reads. Neither moves a single
+        # stock figure above; both decide how that stock is spent over the
+        # horizon. Without them the browser falls back to a flat week, which is
+        # a straight line drawn where a measured week should be.
+        seasonal = seasonality(connection)
+        trend_by_vertical = {
+            row["legal_entity_id"]: row.get("trend_pct", 0.0)
+            for row in agent_reference(connection, "retail.demand_forecasting")
+        }
+
     return {
         **envelope(AGENT_ID, NOTE),
         "state_order": list(STATE_ORDER),
         "constants": constants(),
+        "seasonality": seasonal,
         "formulas": formulas(ENGINE_FORMULAS),
         "filter_options": options,
         "items": build_items(chain, store_size),
@@ -250,7 +263,14 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             }
             for row in stores
         ],
-        "reference_by_vertical": reference,
+        # A2's own totals, plus A1's typed annual trend. The trend is not an A2
+        # figure and is not displayed as one -- it is carried because the
+        # projection compounds it, and it belongs beside the vertical it
+        # describes rather than in a second block keyed the same way.
+        "reference_by_vertical": [
+            {**row, "trend_pct": trend_by_vertical.get(row["legal_entity_id"], 0.0)}
+            for row in reference
+        ],
     }
 
 

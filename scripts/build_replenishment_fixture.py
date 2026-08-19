@@ -96,6 +96,7 @@ sys.path.insert(0, str(REPO / "backend"))
 sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 
 import workbook_guard  # noqa: E402
+from retail_demand_model import DOW_PROFILE, check_profile  # noqa: E402
 from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
@@ -565,9 +566,17 @@ def main() -> int:
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
-    constants = constants_from_cells(
-        tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
-    )
+    constants = {
+        **constants_from_cells(
+            tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+        ),
+        # Carried by every board, because `warehouse.constants()` serves one
+        # block to all of them and the API path must equal this file. This
+        # board does not spend a shaped day yet -- when it does, the shape is
+        # already here rather than copied in for a third time.
+        "dow_profile": list(DOW_PROFILE),
+    }
+    check_profile(constants["dow_sum"])
 
     expressions = verify_order_chain(tables["engine"], sku_master, store_size)
 

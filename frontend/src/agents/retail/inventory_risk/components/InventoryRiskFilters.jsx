@@ -30,8 +30,10 @@ function SelectField({ id, label, value, options, allLabel, disabled, title, onC
 export default function InventoryRiskFilters({
   scope,
   options,
+  horizonWeeks,
   busy,
   onPatch,
+  onHorizon,
   onSearch,
   onRefresh,
   onClear,
@@ -88,7 +90,27 @@ export default function InventoryRiskFilters({
               ? t("Shows this store's own position, not the chain's share of it.")
               : t("Store scope needs the per-store dataset, not yet available.")
           }
-          onChange={(value) => onPatch({ store_id: value })}
+          onChange={(value) => {
+            /*
+             * A store implies its vertical, so a category from a different one
+             * can only draw an empty board. Same reset the entity dropdown
+             * above does, for the same reason — except the store list stays
+             * chain-wide, so the reader can still jump straight to a store in
+             * another vertical.
+             */
+            const store = options.stores.find((row) => row.value === value);
+            const category = options.categories.find(
+              (row) => row.value === scope.category_group,
+            );
+            const stale =
+              store && category && category.legal_entity_id !== store.legal_entity_id;
+
+            onPatch(
+              stale
+                ? { store_id: value, category_group: ALL }
+                : { store_id: value },
+            );
+          }}
         />
       </div>
 
@@ -111,6 +133,35 @@ export default function InventoryRiskFilters({
               onClick={() => onPatch({ state })}
             >
               {t(state)}
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
+      {/*
+        A2 spec section 7a (`f-hz`): how far the projection runs. It sits with
+        the filters because that is where the spec puts it, but it is passed
+        separately from `scope` — it narrows no rows, and folding it into the
+        scope would send it to a backend that has no use for it and would close
+        the drill-down drawer, which describes a KPI's composition and does not
+        depend on the horizon at all.
+
+        The options come from the payload. A literal list here would be a
+        second place for the board to disagree with itself about what it can
+        compute.
+      */}
+      <fieldset className="risk-horizon-filter">
+        <legend>{t("Horizon")}</legend>
+        <div className="risk-segmented">
+          {options.horizons_weeks.map((weeks) => (
+            <button
+              key={weeks}
+              type="button"
+              aria-pressed={horizonWeeks === weeks}
+              onClick={() => onHorizon(weeks)}
+            >
+              {weeks}
+              {t("w")}
             </button>
           ))}
         </div>
