@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LanguageProvider } from "../../../LanguageProvider.jsx";
@@ -301,5 +303,79 @@ describe("ReplenishmentDetailDashboard", () => {
     // Silently substituting a fixture would render a grid here, and the board
     // would look like it was working.
     expect(screen.queryByTestId("replenishment-detail-grid")).toBeNull();
+  });
+});
+
+describe("the frozen identifier columns", () => {
+  /*
+   * REGRESSION. The sticky offsets were hardcoded guesses at the columns'
+   * rendered widths, and auto table layout sizes to content -- so they were
+   * wrong, and the gap between a frozen column and the next showed the
+   * scrolled row through it. On screen that reads as a value in the frozen
+   * column: "MN" appeared under a heading that said OMN.
+   *
+   * jsdom does no layout, so the rendered geometry cannot be asserted. What
+   * CAN be asserted is the invariant the pixels depend on: each offset is the
+   * running total of the widths before it, plus the cell padding. If someone
+   * retunes a width and forgets the offset, this fails.
+   */
+  const CELL_PADDING_X = 20; // 10px each side, from .rdet-table td
+
+  function stickyRules() {
+    // Vitest runs from the frontend root, so the stylesheet is one
+    // predictable path away. import.meta.url is not a file URL here.
+    const css = readFileSync(resolve(process.cwd(), "src/styles.css"), "utf8");
+    const rules = [];
+
+    for (const index of [1, 2, 3]) {
+      // Plain string scanning rather than a constructed RegExp: a backslash in
+      // a template literal collapses before RegExp ever sees it, which is how
+      // the first version of this test silently matched nothing.
+      const selector = `.rdet-table td.sticky:nth-child(${index})`;
+      const at = css.indexOf(selector);
+      expect(at, `no sticky rule for column ${index}`).toBeGreaterThan(-1);
+
+      const open = css.indexOf("{", at);
+      const body = css.slice(open + 1, css.indexOf("}", open));
+      const left = /left:\s*(\d+)px/.exec(body);
+      const width = /--rdet-clip-w:\s*(\d+)px/.exec(body);
+
+      expect(width, `column ${index} declares no width`).toBeTruthy();
+      rules.push({ left: left ? Number(left[1]) : 0, width: Number(width[1]) });
+    }
+    return rules;
+  }
+
+  it("offsets each frozen column by the running total of the ones before it", () => {
+    const rules = stickyRules();
+    let running = 0;
+
+    rules.forEach((rule, index) => {
+      expect(rule.left, `column ${index + 1} sits at the wrong offset`).toBe(
+        running,
+      );
+      running += rule.width + CELL_PADDING_X;
+    });
+  });
+
+  it("wraps frozen cell content, which is what the width applies to", async () => {
+    // A `td` in an auto-layout table may ignore a width outright, so the
+    // constraint has to land on an inner element. No span, no width, and the
+    // offsets stop meaning anything again.
+    await renderSettled();
+    const row = screen.getByRole("button", { name: "GRC-001 Fruit 1" });
+    const sticky = row.querySelectorAll("td.sticky");
+
+    expect(sticky).toHaveLength(3);
+    for (const cell of sticky) {
+      expect(cell.querySelector(".rdet-clip")).not.toBeNull();
+    }
+  });
+
+  it("keeps the full item name reachable once the column truncates it", async () => {
+    await renderSettled();
+    const row = screen.getByRole("button", { name: "GRC-001 Fruit 1" });
+
+    expect(row.querySelectorAll("td")[1]).toHaveAttribute("title", "Fruit 1");
   });
 });

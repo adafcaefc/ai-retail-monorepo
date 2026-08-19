@@ -12556,9 +12556,23 @@ button.assortment-kpi:hover {
 }
 
 /*
- * The frozen identifier columns of spec 8.1. Each needs its own offset
- * because sticky positions against the scroll container, not against its
- * neighbour.
+ * The frozen identifier columns of spec 8.1.
+ *
+ * A sticky cell positions against the SCROLL CONTAINER, not against the cell
+ * to its left, so each offset has to be the running total of the widths before
+ * it. Auto table layout sizes columns to their content, which means those
+ * widths are not knowable from here -- and an offset that misses by even a few
+ * pixels leaves a gap with the scrolled row visible through it. That is not a
+ * cosmetic flaw: the fragment showing through reads as a value in the frozen
+ * column, so the reader sees "MN" under a Vertical heading that says OMN.
+ *
+ * So the widths are pinned rather than guessed, and the offsets below are
+ * their running total: 0, 72+20, 72+20+168+20. The +20 is the cell padding,
+ * which counts because `* { box-sizing: border-box }` is global.
+ *
+ * The width lands on an inner element rather than the cell, because a `td` in
+ * an auto-layout table may ignore `width`/`max-width` outright -- constraining
+ * the content is the only thing the layout algorithm has to honour.
  */
 .rdet-table th.sticky,
 .rdet-table td.sticky {
@@ -12575,17 +12589,35 @@ button.assortment-kpi:hover {
 .rdet-table th.sticky:nth-child(1),
 .rdet-table td.sticky:nth-child(1) {
   left: 0;
+  --rdet-clip-w: 72px;
 }
 
 .rdet-table th.sticky:nth-child(2),
 .rdet-table td.sticky:nth-child(2) {
-  left: 96px;
+  left: 92px;
+  --rdet-clip-w: 168px;
 }
 
 .rdet-table th.sticky:nth-child(3),
 .rdet-table td.sticky:nth-child(3) {
-  left: 276px;
+  left: 280px;
+  --rdet-clip-w: 56px;
   box-shadow: 1px 0 0 var(--line);
+}
+
+/*
+ * Item name truncates with a full tooltip, which spec 5 asks for directly.
+ * The other two frozen columns hold an id and a three-letter pill, so the clamp
+ * never bites there -- it is what keeps their width honest.
+ */
+.rdet-table th.sticky > button,
+.rdet-table td.sticky > .rdet-clip {
+  display: block;
+  width: var(--rdet-clip-w);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 .rdet-table tbody tr {

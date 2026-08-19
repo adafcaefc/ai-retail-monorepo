@@ -190,7 +190,19 @@ export default function ReplenishmentDetailGrid({
                       .join(" ")}
                     title={cellTitle(column, line, language)}
                   >
-                    {cell(column, line, language, t)}
+                    {/*
+                      Frozen cells wrap their content: the column width lives on
+                      this span, because a `td` in an auto-layout table may
+                      ignore a width outright and the sticky offsets depend on
+                      those widths being exact.
+                    */}
+                    {column.sticky ? (
+                      <span className="rdet-clip">
+                        {cell(column, line, language, t)}
+                      </span>
+                    ) : (
+                      cell(column, line, language, t)
+                    )}
                   </td>
                 ))}
               </tr>
@@ -258,6 +270,9 @@ function cell(column, line, language, t) {
 
 /** Exact figures on hover, because an abbreviated one cannot be reconciled. */
 function cellTitle(column, line, language) {
+  // The frozen name column is clamped to 168px, so the tooltip is the only
+  // place a long product name is readable in full.
+  if (column.id === "name") return line.name || "";
   if (column.kind === "idr") return formatIdrExact(line[column.id], language);
   if (column.id === "order_qty_buy") {
     return `${formatUnits(line.order_qty_buy, language)} × ${formatUnits(line.pack_factor, language)} = ${formatUnits(line.ordered_sales_units, language)} sales units`;
