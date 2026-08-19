@@ -105,6 +105,13 @@ CANDIDATE_STATES = ("Expiry", "Overstock", "Slow-mover")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
 CANDIDATE_PRIORITY = {"Expiry": 0, "Overstock": 1, "Slow-mover": 2}
 
+# f14's own baseline depth constants at markdown_lever=0 (see
+# resources/dbtemp/formula.json's f14-recoverable-at-risk-value expression).
+# build_reference() below weights these by candidate at-risk value, the same
+# computation backend/src/llm/agents/retail/pricing_markdown/dashboard.py's
+# build_reference() runs for the live path.
+DEPTH_BY_STATE = {"Expiry": 0.4, "Overstock": 0.25, "Slow-mover": 0.3}
+
 # Formulas the browser What-If engine re-evaluates (f12/f23/f14 included for
 # that purpose only -- see the module docstring). Not evaluated in this
 # script. f14 takes {gross, state, elasticity, markdown_lever}; `gross` is
@@ -457,29 +464,48 @@ def build_store_rows(
 
 
 def build_reference(
-    a5: list[dict[str, Any]],
+    items: list[dict[str, Any]],
     verticals: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Vertical labels plus the two fields with no live per-SKU source
-    (avg_depth_pct, comp_idx-as-fallback). `markdown_candidates`,
-    `at_risk_state_value`, `recoverable` and `write_off` from this sheet are
-    NOT carried through -- AUDIT Root Cause RC-2 flags them as stale
-    hardcodes; the live equivalents are computed from items in selectors.js.
+    """Avg markdown depth per vertical, weighted by candidate at-risk value.
+
+    Previously this read avg_depth_pct verbatim off the workbook's "A5
+    Pricing & Markdown" sheet -- the same stale-hardcode issue AUDIT Root
+    Cause RC-2 flags, and the reason `markdown_candidates`,
+    `at_risk_state_value`, `recoverable` and `write_off` from that sheet were
+    already dropped from this function. avg_depth_pct was left as an
+    apparent oversight rather than a deliberate exception: nothing about it
+    needs the sheet -- it is computed here the same way
+    backend/src/llm/agents/retail/pricing_markdown/dashboard.py's own
+    build_reference() already does for the live path, weighting f14's
+    baseline depth constants (DEPTH_BY_STATE) by each candidate SKU's
+    at_risk_value.
     """
-    label_to_id = {row["dashboard_label"]: row["vertical_id"] for row in verticals}
-    reference = []
-    for row in a5:
-        vertical_id = label_to_id.get(row["vertical_label"], row["vertical_label"])
-        reference.append(
-            {
-                "legal_entity_id": vertical_id,
-                "vertical_label": row["vertical_label"],
-                # Vertical-level only; no per-SKU depth exists in the engine.
-                # Carried as reference context, not reconciled -- see spec
-                # section 11 and this script's module docstring.
-                "avg_depth_pct": _num(row["avg_depth_pct"]),
-            }
-        )
+    label_by_vertical = {
+        row["vertical_id"]: row.get("dashboard_label") or row.get("vertical") or row["vertical_id"]
+        for row in verticals
+    }
+
+    totals: dict[str, list[float]] = {}
+    for item in items:
+        if not item["is_markdown_candidate"]:
+            continue
+        weight = item["at_risk_value"]
+        depth = DEPTH_BY_STATE.get(item["state"])
+        if depth is None or weight <= 0:
+            continue
+        bucket = totals.setdefault(item["vertical_id"], [0.0, 0.0])
+        bucket[0] += depth * weight
+        bucket[1] += weight
+
+    reference = [
+        {
+            "legal_entity_id": vertical_id,
+            "vertical_label": label_by_vertical.get(vertical_id, vertical_id),
+            "avg_depth_pct": round((weighted / total) * 100, 2) if total else 0.0,
+        }
+        for vertical_id, (weighted, total) in totals.items()
+    ]
     reference.sort(key=lambda r: r["legal_entity_id"])
     return reference
 
@@ -573,7 +599,7 @@ def main() -> int:
         item["recommendation"] = RECOMMENDATION_BY_TAB.get(item["best_action_tab"], "Hold price")
 
     stores_rollup = build_store_rows(tables["engine_store"], stores_by_id)
-    reference = build_reference(tables["a5_pricing_markdown"], tables["verticals"])
+    reference = build_reference(items, tables["verticals"])
     filter_options = build_filter_options(tables["verticals"], tables["sku_master"], tables["stores"])
 
     candidates = [i for i in items if i["is_markdown_candidate"]]

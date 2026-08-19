@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "agent": "retail.pricing_markdown",
-  "generated_at": "2026-08-19T04:06:15+00:00",
+  "generated_at": "2026-08-19T09:11:13+00:00",
   "source_workbook": "Copy of AI_360_Retail_Dataset_v8.2_General_20260806.xlsx",
   "is_mock": true,
   "note": "Workbook demonstration data, not a live ERP position. At-risk and recoverable value are summed from ENGINE_STORE (store grain) per AUDIT Fix Register F-05, not read from the A5 sheet's own cells, which a prior audit found to hold stale hardcoded values. Store/cluster/channel charts are gross and will not reconcile 1:1 with the chain-net headline.",
@@ -37675,42 +37675,42 @@
     {
       "legal_entity_id": "DGT",
       "vertical_label": "Digital/Online",
-      "avg_depth_pct": 30.0
+      "avg_depth_pct": 28.32
     },
     {
       "legal_entity_id": "ELC",
       "vertical_label": "Electronics",
-      "avg_depth_pct": 30.0
+      "avg_depth_pct": 27.26
     },
     {
       "legal_entity_id": "FSH",
       "vertical_label": "Fashion",
-      "avg_depth_pct": 26.0
+      "avg_depth_pct": 25.67
     },
     {
       "legal_entity_id": "GMR",
       "vertical_label": "General Merch",
-      "avg_depth_pct": 26.0
+      "avg_depth_pct": 26.97
     },
     {
       "legal_entity_id": "GRC",
       "vertical_label": "Grocery",
-      "avg_depth_pct": 35.0
+      "avg_depth_pct": 33.17
     },
     {
       "legal_entity_id": "HNB",
       "vertical_label": "Health & Beauty",
-      "avg_depth_pct": 30.0
+      "avg_depth_pct": 28.31
     },
     {
       "legal_entity_id": "HNL",
       "vertical_label": "Home & Living",
-      "avg_depth_pct": 28.0
+      "avg_depth_pct": 27.16
     },
     {
       "legal_entity_id": "OMN",
       "vertical_label": "Omnichannel",
-      "avg_depth_pct": 30.0
+      "avg_depth_pct": 28.51
     }
   ]
 }
