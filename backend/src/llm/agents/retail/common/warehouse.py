@@ -256,6 +256,12 @@ DOW_SUM = 7.45
 # `Constants` B23: that cell is referenced by no formula in the workbook, so
 # driving hzCov off a horizon the reader can change would move every Max level
 # away from the sheet it is supposed to reconcile against.
+#
+# Deliberately NOT returned by `constants()` below: only Agent 2 evaluates f06,
+# and only its fixture carries `hz_cov`. A board layers its own constants onto
+# the shared set at the point it builds its payload -- the same way Agent 1
+# adds `interval_z` -- so a value one board needs does not silently widen the
+# contract of five that do not.
 HORIZON_COVERAGE = 4.0
 
 
@@ -417,6 +423,7 @@ def envelope(agent: str, note: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "HORIZON_COVERAGE",
     "REPLENISH_STATES",
     "SCHEMA",
     "SNAPSHOT_DATE",
