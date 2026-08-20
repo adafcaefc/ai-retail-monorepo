@@ -275,7 +275,18 @@ class TestReconciliation:
                 )
             ).scalar_one()
 
-        assert at_risk == sum(1 for item in a2_fixture["items"] if item["is_stockout_risk"])
+        # The fixture is ENGINE_STORE grain (16,000 SKU x store rows), so it is
+        # rolled up the same way the SQL above rolls up before comparing:
+        # netted per SKU, not counted per row. Counting `is_stockout_risk` rows
+        # answers a different question (7,090 rows below ROP somewhere, over
+        # 524 distinct SKUs) and is asserted in the A2 baseline suite instead.
+        netted: dict[str, list[float]] = {}
+        for item in a2_fixture["items"]:
+            bucket = netted.setdefault(item["sku_id"], [0.0, 0.0])
+            bucket[0] += item["position"]
+            bucket[1] += item["rop"]
+
+        assert at_risk == sum(1 for position, rop in netted.values() if position < rop)
         assert at_risk == 345
 
     def test_every_foreign_key_resolves(self, engine) -> None:

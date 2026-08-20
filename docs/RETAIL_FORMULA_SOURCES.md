@@ -136,17 +136,22 @@ verticals before writing.
 The A2 spec gives two different rules for the same KPI in adjacent columns, and
 presents them as one:
 
-| KPI | Spec "Formula" column | Spec "Data di workbook" column | Count |
-|---|---|---|---|
-| Overstock SKUs | `count(DoS > 15)` | `COUNTIFS(ENGINE!J, "Overstock")` | 40 / 40 |
-| Slow-moving SKUs | `count(growth<1 AND DoS>10)` | `ENGINE!J = "Slow-mover"` | **62 / 51** |
+| KPI | Spec "Formula" column | Spec "Data di workbook" column |
+|---|---|---|
+| Overstock SKUs | `count(DoS > 15)` | `COUNTIFS(ENGINE_STORE!State, "Overstock")` |
+| Slow-moving SKUs | `count(growth<1 AND DoS>10)` | `ENGINE_STORE!State = "Slow-mover"` |
 
 Overstock agreed by luck of this dataset — no perishable SKU sits above 15 days
-without being Expiry first. Slow-mover never agreed: 11 SKUs satisfy the raw
-predicate but were already claimed by a more urgent state, so the card read 62
-while the state chart directly beneath it read 51.
+without being Expiry first. Slow-mover never agreed: some SKUs satisfy the raw
+predicate but were already claimed by a more urgent state, so the card
+contradicted the state chart directly beneath it.
 
-**Both now follow the workbook.** The card reads 51.
+**Both now follow the workbook**, and both read the `ENGINE_STORE` grid rather
+than the chain rollup. On the current extract that is **104 overstock SKUs and
+75 slow-moving SKUs** — distinct SKUs over 730 and 755 rows respectively. The
+figures quoted here were 40 and 51 while A2 read `ENGINE`, the 800-row
+chain-net sheet; see [A2_ENGINE_STORE_GRAIN.md](./A2_ENGINE_STORE_GRAIN.md) for
+why the grain moved and what else it changed.
 
 ### The What-If engine
 

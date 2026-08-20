@@ -12,6 +12,13 @@
  * there: dimension values are join keys, and a future cross-agent feature
  * ("this SKU is trending AND at stockout risk") is only possible while the
  * codes mean the same thing on both sides.
+ *
+ * THE TWO BOARDS ARE NO LONGER AT THE SAME GRAIN. Inventory Risk moved to the
+ * workbook's ENGINE_STORE grid (16,000 SKU x store rows) so its cards count
+ * the population the workbook's own dropdown shows; Demand Forecasting is
+ * still chain-net, one row per SKU. So the comparisons below roll A2 up per
+ * SKU first, which is the only honest way to ask whether they agree -- and
+ * they do, on every flag and every shared parameter.
  */
 
 import { describe, expect, it } from "vitest";
@@ -22,12 +29,49 @@ import riskFixture from "./inventory_risk/data/fixture.json";
 const demandItems = new Map(
   demandFixture.items.map((item) => [item.sku_id, item]),
 );
-const riskItems = new Map(riskFixture.items.map((item) => [item.sku_id, item]));
+/*
+ * A2 is store grain, so a plain `new Map(items.map(...))` would silently keep
+ * whichever store came last and compare 5% of the board. These two are built
+ * deliberately instead:
+ *
+ *   riskAttributes -- one row per SKU, for fields that cannot vary by store
+ *                     (name, category, vertical).
+ *   riskChain      -- every store row summed back to the chain, for the
+ *                     quantities A1 holds netted.
+ */
+const riskAttributes = new Map();
+const riskChain = new Map();
+for (const item of riskFixture.items) {
+  if (!riskAttributes.has(item.sku_id)) riskAttributes.set(item.sku_id, item);
+
+  const netted = riskChain.get(item.sku_id);
+  if (netted) {
+    netted.position += item.position;
+    netted.rop += item.rop;
+    netted.on_hand += item.on_hand;
+    netted.open_po += item.open_po;
+    netted.ads += item.ads;
+    netted.rows += 1;
+  } else {
+    riskChain.set(item.sku_id, {
+      position: item.position,
+      rop: item.rop,
+      on_hand: item.on_hand,
+      open_po: item.open_po,
+      ads: item.ads,
+      rows: 1,
+    });
+  }
+}
+const riskItems = riskAttributes;
 
 describe("the two boards share one dataset", () => {
   it("stocks the same 800 SKUs under the same codes", () => {
     expect(demandItems.size).toBe(800);
     expect(riskItems.size).toBe(800);
+    // A2 carries each of them once per store it is stocked in.
+    expect(riskFixture.items).toHaveLength(16000);
+    for (const netted of riskChain.values()) expect(netted.rows).toBe(20);
     expect([...demandItems.keys()].sort()).toEqual([...riskItems.keys()].sort());
   });
 
@@ -64,10 +108,18 @@ describe("the two boards share one dataset", () => {
 });
 
 describe("the KPI both boards display", () => {
-  it("agrees on stockout-risk, SKU for SKU", () => {
+  /*
+   * Rolled back to the chain, A2's rows put every one of the 800 SKUs on the
+   * same side of its reorder point as A1 does. That is the claim worth
+   * keeping: the boards disagree about how many ROWS are in trouble, because
+   * they are counting different things, but never about whether a given SKU
+   * is.
+   */
+  it("agrees on stockout-risk, SKU for SKU, once A2 is netted", () => {
     const disagreed = [];
     for (const [sku, demand] of demandItems) {
-      if (demand.is_stockout_risk !== riskItems.get(sku).is_stockout_risk) {
+      const netted = riskChain.get(sku);
+      if (demand.is_stockout_risk !== netted.position < netted.rop) {
         disagreed.push(sku);
       }
     }
@@ -78,11 +130,12 @@ describe("the KPI both boards display", () => {
     const demandCount = demandFixture.items.filter(
       (item) => item.is_stockout_risk,
     ).length;
-    const riskCount = riskFixture.items.filter(
-      (item) => item.is_stockout_risk,
+    const riskCount = [...riskChain.values()].filter(
+      (netted) => netted.position < netted.rop,
     ).length;
 
     expect(demandCount).toBe(riskCount);
+    expect(riskCount).toBe(345);
 
     // And both match what the workbook's own A1 sheet types per vertical.
     const workbook = demandFixture.reference_by_vertical.reduce(
@@ -94,14 +147,18 @@ describe("the KPI both boards display", () => {
 
   it("agrees per legal entity, not only in total", () => {
     for (const row of demandFixture.reference_by_vertical) {
-      const scoped = (fixture) =>
-        fixture.items.filter(
-          (item) =>
-            item.vertical_id === row.legal_entity_id && item.is_stockout_risk,
-        ).length;
+      const demandScoped = demandFixture.items.filter(
+        (item) =>
+          item.vertical_id === row.legal_entity_id && item.is_stockout_risk,
+      ).length;
+      const riskScoped = [...riskChain.entries()].filter(
+        ([sku, netted]) =>
+          riskAttributes.get(sku).vertical_id === row.legal_entity_id &&
+          netted.position < netted.rop,
+      ).length;
 
-      expect(scoped(demandFixture)).toBe(row.stockout_risk_skus);
-      expect(scoped(riskFixture)).toBe(row.stockout_risk_skus);
+      expect(demandScoped).toBe(row.stockout_risk_skus);
+      expect(riskScoped).toBe(row.stockout_risk_skus);
     }
   });
 });
@@ -110,20 +167,54 @@ describe("the shared model inputs", () => {
   it("gives every SKU the same reorder parameters on both boards", () => {
     for (const [sku, demand] of demandItems) {
       const risk = riskItems.get(sku);
+      // Per-SKU inputs cannot vary by store, so these compare row to row.
+      // `store_size` is NOT among them any more: A1 carries the vertical's
+      // total, A2 carries the individual store's index, and that difference
+      // is the grain rather than a disagreement.
       for (const field of [
         "base_ads",
         "seasonality",
-        "store_size",
         "lead_days",
         "safety_days",
         "promo_eligible",
-        "on_hand",
-        "open_po",
-        "position",
-        "rop",
       ]) {
         expect(risk[field]).toBe(demand[field]);
       }
+
+      // Quantities compare only after A2 is summed back to the chain. ADS,
+      // on-hand and open PO reconcile exactly; `position` and `rop` do not,
+      // because f04 and f05 ROUND per row and twenty roundings do not add up
+      // to one. The drift is well under a unit per store and never crosses a
+      // reorder point -- the SKU-for-SKU test above is what proves that.
+      const netted = riskChain.get(sku);
+      // ADS is carried on both sides and reconciles exactly.
+      expect(netted.ads).toBeCloseTo(demand.ads, 6);
+
+      /*
+       * The rest reconcile to a ROUNDING bound, not an exact one, and the
+       * bound is derived rather than fitted. Summing twenty ROUNDed rows can
+       * differ from rounding the chain once by at most
+       * `0.5 x 20 + 0.5 = 10.5` units:
+       *
+       *   position  f04 ROUNDs per row (observed worst drift: 4 units)
+       *   rop       f05 the same, through the per-store ADS (worst: 5)
+       *   on_hand   A1 has no on-hand column and derives it as
+       *             `position - open_po` off an already-ROUNDed position, so
+       *             it is one rounding out, not twenty (worst: 0.4993)
+       *   open_po   allocated by size share and stored rounded (worst: 0.0017)
+       *
+       * What matters is not the drift but that it never crosses a reorder
+       * point, and the SKU-for-SKU test above is what proves that on all 800.
+       */
+      const near = (got, want, bound, label) => {
+        expect(`${label}: ${Math.abs(got - want) <= bound}`).toBe(
+          `${label}: true`,
+        );
+      };
+      near(netted.open_po, demand.open_po, 0.01, `${sku}.open_po`);
+      near(netted.on_hand, demand.on_hand, 0.5, `${sku}.on_hand`);
+      near(netted.position, demand.position, 10.5, `${sku}.position`);
+      near(netted.rop, demand.rop, 10.5, `${sku}.rop`);
     }
   });
 

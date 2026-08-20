@@ -40,34 +40,41 @@ import { buildDrilldown } from "./drilldown.js";
 import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
 
 /**
- * STORE SCOPING IS SUPPORTED, WITHOUT SHIPPING THE GRID.
+ * STORE SCOPING IS SUPPORTED, AND THE GRID IS NOW WHAT WE SHIP.
  *
- * This used to be `false`, on the grounds that scoping to one store needed the
- * 16,000-row SKU x store grid and ~163 KB of payload with it. That was true of
- * the dataset and false of the arithmetic: `ENGINE_STORE` is not an
- * independent measurement, it is the SKU attributes crossed with the store
- * attributes, and `atStore` in `engine.js` regenerates any row of it from four
- * numbers the fixture now carries (`onhand_days` and `stock_factor` per SKU,
- * `size_index` and `health_index` per store). About 960 values, not 16,000
- * rows — and the fixture builder proves the reconstruction against every one
- * of those rows before writing.
+ * `items` is ENGINE_STORE grain: one row per SKU x store, 16,000 of them. It
+ * used to be the 800-row chain-net rollup, with a store view reconstructed on
+ * demand by `atStore` from four carried numbers — clever, proven against every
+ * grid row, and answering the wrong question. The cards counted a population
+ * the workbook's own dropdown never shows: 37 slow movers where the grid holds
+ * 75 distinct SKUs across 755 rows.
  *
- * WHAT THE HEADLINE MEANS AT EACH SETTING, because they are different
- * questions and both are right:
+ * So selecting a store now NARROWS the rows rather than replacing the
+ * measurement with a derived one. `scopeItems` filters on `store_id` like any
+ * other field.
  *
- *   store = ALL      chain-net. One row per SKU for the whole chain, which is
- *                    what the `A2 Inventory Risk` sheet totals and what every
- *                    reconciliation test asserts. Surplus in one store nets
- *                    off shortage in another.
- *   store = S001     that store's own position, derived per the above. A SKU
- *                    healthy across the chain can be Stockout here, which is
- *                    the entire point of asking.
+ * THE ONE RULE THIS GRAIN IMPOSES, and it is easy to get wrong:
  *
- * So selecting a store does not narrow the chain-net figure — it replaces it
- * with a different measurement. Summing all stores will not return the
- * chain-net total, for the reason GROSS_VS_NET_NOTE already states.
+ *   counts  -> DISTINCT sku_id. A SKU sits in ~20 stores and can be Slow-mover
+ *              in several, so `.length` reports rows (755) where the card must
+ *              report SKUs (75).
+ *   money   -> sum every row. Each row's exposure is real and additive.
+ *
+ * `reference_by_vertical` still carries the `A2 Inventory Risk` sheet's
+ * figures, which are CHAIN-NET (overstock 26, stockout-risk 345). They are a
+ * benchmark from the other grain, not a target these tiles are expected to
+ * hit — see GROSS_VS_NET_NOTE.
  */
 export const SUPPORTS_STORE_SCOPE = true;
+
+/** Distinct SKUs among the rows a predicate accepts. See the rule above. */
+function distinctSkus(items, predicate) {
+  const seen = new Set();
+  for (const item of items) {
+    if (predicate(item)) seen.add(item.sku_id);
+  }
+  return seen.size;
+}
 
 function matchesSearch(item, term) {
   const needle = term.trim().toLowerCase();
@@ -96,6 +103,13 @@ export function scopeItems(items, scope) {
     if (scope.state !== ALL && item.state !== scope.state) {
       return false;
     }
+    // Store is an intrinsic field on the row now, not a re-derivation. This
+    // clause did not exist while `items` was chain-net — there was nothing to
+    // filter — and its absence would silently leave every store's rows in the
+    // set at this grain.
+    if (scope.store_id !== ALL && item.store_id !== scope.store_id) {
+      return false;
+    }
     return matchesSearch(item, scope.sku);
   });
 }
@@ -115,45 +129,59 @@ function sum(rows, key) {
 }
 
 /**
- * The six A2 KPIs plus slow-mover, from pre-resolved flags only.
+ * The A2 KPIs at ENGINE_STORE grain.
  *
- * Two of the tiles carry a money figure under their count, and both now sum
+ * COUNTS ARE DISTINCT SKUs, VALUES ARE ROW SUMS — the rule stated at the top
+ * of this file. Every count below went through `.length` when `items` was
+ * chain-net and one row meant one SKU; at this grain that same `.length`
+ * reports 755 slow-moving rows for 75 slow-moving SKUs.
+ *
+ * `stockout_skus` counts the Stockout state alone (247), which is what the
+ * workbook's card shows. `stockout_risk_skus` is the wider below-ROP measure
+ * (Stockout + Low, 524) and is kept because Agent 3 routing and the store
+ * segments both read it — the two answer different questions and are
+ * deliberately not folded together. `low_skus` (457) completes the split.
+ *
+ * Two tiles carry a money figure under their count, and both sum
  * `markdown_at_risk_gross` — `f23-markdown-at-risk-gross`, evaluated per item
  * in `dashboard.py`'s `build_items()` / `engine.js`'s `applyLevers()` — rather
  * than re-deriving the arithmetic here. `overstock_excess_value` scopes to
  * Overstock-state rows only, not Slow-mover, matching this tile's existing
  * name even though f23 shares one branch across both states.
  *
- * f23's Overstock/Slow-mover branch has a fallback this tile used to drop:
- * a row already overstocked but with `position <= max` still carries 30% of
- * its position as at-risk, not zero. Both tiles now include it.
- *
- * `expiry_value` prices the units already past their shelf-life cover; f23's
- * Expiry branch and `expiry_units * price` agree exactly, so this tile's
- * number is unchanged by the switch.
+ * `expiry_units` scopes to Expiry-state rows, not every perishable row, so it
+ * describes the same rows as `expiry_value` beside it. Note the two do not
+ * divide into each other exactly: f22 ROUNDs per row and f23 does not. That is
+ * the catalogue's inconsistency, not this function's.
  */
 export function computeKpis(items) {
   const count = items.length;
+  const expiryRows = items.filter((item) => item.state === "Expiry");
   return {
-    stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
-    overstock_skus: items.filter((item) => item.is_overstock).length,
+    stockout_skus: distinctSkus(items, (item) => item.state === "Stockout"),
+    stockout_value: items.reduce(
+      (total, item) =>
+        item.state === "Stockout" ? total + item.at_risk_value : total,
+      0,
+    ),
+    low_skus: distinctSkus(items, (item) => item.state === "Low"),
+    stockout_risk_skus: distinctSkus(items, (item) => item.is_stockout_risk),
+    overstock_skus: distinctSkus(items, (item) => item.is_overstock),
     overstock_excess_value: items.reduce(
       (total, item) =>
         item.is_overstock ? total + item.markdown_at_risk_gross : total,
       0,
     ),
-    expiry_units: sum(items, "expiry_units"),
-    expiry_value: items.reduce(
-      (total, item) =>
-        item.state === "Expiry" ? total + item.markdown_at_risk_gross : total,
-      0,
-    ),
-    slow_mover_skus: items.filter((item) => item.is_slow_mover).length,
+    expiry_skus: distinctSkus(items, (item) => item.state === "Expiry"),
+    expiry_units: sum(expiryRows, "expiry_units"),
+    expiry_value: sum(expiryRows, "markdown_at_risk_gross"),
+    slow_mover_skus: distinctSkus(items, (item) => item.is_slow_mover),
     avg_dos: count ? sum(items, "dos") / count : 0,
     inventory_value: sum(items, "inv_value"),
     at_risk_value: sum(items, "at_risk_value"),
-    healthy_skus: items.filter((item) => item.state === HEALTHY_STATE).length,
-    sku_count: count,
+    healthy_skus: distinctSkus(items, (item) => item.state === HEALTHY_STATE),
+    sku_count: distinctSkus(items, () => true),
+    row_count: count,
   };
 }
 
@@ -175,8 +203,11 @@ export function computeKpis(items) {
  */
 export function computeKpiSparklines(items) {
   return {
-    // Where the reorder zone actually sits on the cover axis.
-    stockout_risk_skus: {
+    // Keyed to the tile it sits on, which shows the Stockout state rather than
+    // the wider below-ROP zone. The histogram still spans the whole reorder
+    // zone: a tile showing the severe end is best read against the shape of
+    // the population it was cut from.
+    stockout_skus: {
       kind: "distribution",
       caption: "Days of cover, at-risk SKUs",
       values: dosHistogram(items.filter((item) => item.is_stockout_risk)),
@@ -234,34 +265,56 @@ export function computeBestActions(items) {
     if (!route) {
       route = routes.set(item.next_agent, {
         next_agent: item.next_agent,
-        sku_count: 0,
+        skus: new Set(),
         value: 0,
         states: new Set(),
-        top_skus: [],
+        // Keyed by SKU, not pushed per row: a SKU in trouble at twenty stores
+        // is one call to make, and ranking rows would fill all three slots
+        // with a single product's worst branches.
+        bySku: new Map(),
       }).get(item.next_agent);
     }
-    route.sku_count += 1;
+    route.skus.add(item.sku_id);
     route.value += item.at_risk_value;
     route.states.add(item.state);
-    route.top_skus.push(item);
+
+    const existing = route.bySku.get(item.sku_id);
+    if (existing) {
+      existing.value += item.at_risk_value;
+      existing.store_count += 1;
+      // Keep the worst state the SKU reaches anywhere, so the chip beside it
+      // is not decided by whichever store happened to be read first.
+      if (item.severity_rank < existing.severity_rank) {
+        existing.severity_rank = item.severity_rank;
+        existing.state = item.state;
+      }
+    } else {
+      route.bySku.set(item.sku_id, {
+        sku_id: item.sku_id,
+        name: item.name,
+        state: item.state,
+        severity_rank: item.severity_rank,
+        value: item.at_risk_value,
+        store_count: 1,
+      });
+    }
   }
 
   return [...routes.values()]
     .map((route) => ({
       next_agent: route.next_agent,
-      sku_count: route.sku_count,
+      sku_count: route.skus.size,
       value: route.value,
       states: STATE_ORDER.filter((state) => route.states.has(state)),
-      top_skus: route.top_skus
-        .sort(
-          (a, b) => a.severity_rank - b.severity_rank || b.at_risk_value - a.at_risk_value,
-        )
+      top_skus: [...route.bySku.values()]
+        .sort((a, b) => a.severity_rank - b.severity_rank || b.value - a.value)
         .slice(0, 3)
-        .map((item) => ({
-          sku_id: item.sku_id,
-          name: item.name,
-          state: item.state,
-          value: item.at_risk_value,
+        .map(({ sku_id, name, state, value, store_count }) => ({
+          sku_id,
+          name,
+          state,
+          value,
+          store_count,
         })),
     }))
     .sort((a, b) => b.value - a.value);
@@ -399,42 +452,40 @@ function tallyStore(store, rows) {
  * hundred. Filtering to `GRC-C01` put 3 at-risk SKUs in the tiles and left 46
  * in the S001 bar.
  *
- * So when the scope narrows rows, each store's own position is DERIVED from
- * the rows in scope — the same `atStore` path the drill-down drawer already
- * uses, and the same one the fixture builder checks against every one of the
- * 16,000 `ENGINE_STORE` rows. Both panels now answer "per store" with one
- * number.
+ * So when the scope narrows rows, each store's own position is taken from the
+ * rows in scope. At ENGINE_STORE grain that is a plain `store_id` grouping —
+ * no derivation, no `atStore`. The rows already ARE the grid the fixture
+ * builder used to check the reconstruction against.
  *
- * Derived at BASELINE_LEVERS on purpose: these charts have always shown the
+ * Tallied at BASELINE_LEVERS on purpose: these charts have always shown the
  * workbook's position rather than a scenario, and a lever that moved the bars
  * but not the aggregate they are compared against would be worse than one that
  * moves neither.
  *
- * @param {object[]} items  Rows already in scope. Store-grain when a store is
- *   selected, chain-net otherwise.
+ * @param {object[]} items  Rows already in scope, store grain throughout.
  * @param {object[]} stores Store rows in scope.
  * @param {object|null} storeRow The selected store, or null for the chain.
- * @param {Function} applyLevers Bound engine, for the chain case.
- * @param {Function} atStore Bound store-pointer, from the same engine.
+ * @param {Function} applyLevers Bound engine, for the scenario case.
  */
-function deriveStoreRows(items, stores, storeRow, applyLevers, atStore, levers = BASELINE_LEVERS) {
-  // A selected store's rows ARE the board's rows, already derived once by the
-  // caller. Running them through `atStore` again would re-point rows that are
-  // already pointed, so this only counts them.
+function deriveStoreRows(items, stores, storeRow, applyLevers, levers = BASELINE_LEVERS) {
+  const priced = isBaseline(levers)
+    ? items
+    : items.map((item) => applyLevers(item, levers));
+
   if (storeRow !== null) {
-    const storeItems = isBaseline(levers)
-      ? items
-      : items.map((item) => applyLevers(item, levers));
-    return [tallyStore(storeRow, storeItems)];
+    return [tallyStore(storeRow, priced)];
   }
 
+  // Group once rather than filtering per store: this is 16,000 rows against
+  // ~160 stores, and the nested filter it replaces was O(rows x stores).
+  const byStore = new Map();
+  for (const item of priced) {
+    const bucket = byStore.get(item.store_id);
+    if (bucket) bucket.push(item);
+    else byStore.set(item.store_id, [item]);
+  }
   return stores.map((store) =>
-    tallyStore(
-      store,
-      items
-        .filter((item) => item.vertical_id === store.vertical_id)
-        .map((item) => applyLevers(atStore(item, store), levers)),
-    ),
+    tallyStore(store, byStore.get(store.store_id) ?? []),
   );
 }
 
@@ -449,8 +500,8 @@ function deriveStoreRows(items, stores, storeRow, applyLevers, atStore, levers =
  * `stockout_count + low_count === stockout_risk_count`, verified across all
  * 16,000 source rows, so the reorder zone is the first two segments.
  *
- * See GROSS_VS_NET_NOTE in the contract: these totals exceed the chain-net
- * headline on purpose.
+ * See GROSS_VS_NET_NOTE in the contract: these are row counts, so they total
+ * higher than a tile that counts each SKU once. The money reconciles exactly.
  */
 export function computeStockoutByStore(stores) {
   return [...stores]
@@ -533,19 +584,33 @@ export function computeExpiryTimeline(items) {
     buckets[index === -1 ? buckets.length - 1 : index].units += item.expiry_units;
   }
 
-  const watchlist = [...atRisk]
+  // One entry per SKU, units summed across its stores. Ranking rows would
+  // spend all twelve slots on a handful of products repeated store by store,
+  // since shelf life is a SKU attribute and ties across every one of its rows.
+  const bySku = new Map();
+  for (const item of atRisk) {
+    const existing = bySku.get(item.sku_id);
+    if (existing) {
+      existing.units += item.expiry_units;
+      existing.store_count += 1;
+    } else {
+      bySku.set(item.sku_id, {
+        sku_id: item.sku_id,
+        name: item.name,
+        shelf_life_days: item.shelf_life_days,
+        units: item.expiry_units,
+        store_count: 1,
+      });
+    }
+  }
+
+  const watchlist = [...bySku.values()]
     .sort(
       (a, b) =>
         (a.shelf_life_days ?? 0) - (b.shelf_life_days ?? 0) ||
-        b.expiry_units - a.expiry_units,
+        b.units - a.units,
     )
-    .slice(0, EXPIRY_WATCHLIST_SIZE)
-    .map((item) => ({
-      sku_id: item.sku_id,
-      name: item.name,
-      shelf_life_days: item.shelf_life_days,
-      units: item.expiry_units,
-    }));
+    .slice(0, EXPIRY_WATCHLIST_SIZE);
 
   return { buckets, watchlist };
 }
@@ -847,30 +912,18 @@ export function buildDrilldownFromFixture(
   options = {},
 ) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
-  const { applyLevers, atStore } = engineFor(fixture.formulas);
+  const { applyLevers } = engineFor(fixture.formulas);
   const levers = { ...BASELINE_LEVERS, ...options.levers };
   const simulating = !isBaseline(levers) && options.driveWholePage !== false;
 
-  const storeRow =
-    merged.store_id === ALL
-      ? null
-      : fixture.stores.find((row) => row.store_id === merged.store_id);
-
-  const sourceItems =
-    storeRow === null
-      ? fixture.items
-      : fixture.items
-          .filter((item) => item.vertical_id === storeRow.vertical_id)
-          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
-
-  const scoped = scopeItems(sourceItems, merged);
+  // `scopeItems` honours `store_id` directly now, so there is no separate
+  // store branch to take: the rows are already this store's own.
+  const scoped = scopeItems(fixture.items, merged);
   const items = simulating
     ? scoped.map((item) => applyLevers(item, levers))
     : scoped;
 
   return buildDrilldown(metricId, items, scopeStores(fixture.stores, merged), {
-    applyLevers,
-    atStore,
     // The store split reads the same filtered set the headline does, so a
     // board scoped to one category shows that category across stores rather
     // than quietly widening back to the whole shelf.
@@ -887,39 +940,28 @@ export function buildDrilldownFromFixture(
  * tick — can get to `computeSimulation` without paying for every chart this
  * function also builds.
  *
- * A named store replaces the chain-net rows with that store's own, derived
- * through `atStore` and then run through the ordinary engine at rest.
+ * A named store simply narrows the rows. The stored `state`, `rop` and `dos`
+ * on a fixture row already describe that SKU AT THAT STORE, so there is
+ * nothing to re-derive — which is what this function used to spend an
+ * `atStore` pass and a full engine run doing on every store selection.
+ * `computeSimulation` treats these as its baseline, which is correct: the
+ * scenario is measured against the store you are looking at.
  *
- * Running the engine at BASELINE_LEVERS here rather than skipping it is the
- * point: the stored `state`, `rop` and `dos` on a fixture row describe the
- * chain, so for one store they have to be re-derived even though no lever has
- * moved. `computeSimulation` then treats these as its baseline, which is
- * correct — the scenario is measured against the store you are looking at.
- *
- * The vertical filter is implicit: a store belongs to one vertical, so
- * `scopeItems` narrowing on `legal_entity_id` would be redundant here, and
- * items from other verticals are dropped by the store's own vertical.
+ * The vertical filter is implicit: a store belongs to one vertical, so rows
+ * from other verticals cannot survive the `store_id` clause anyway.
  */
 function resolveBaselineItems(fixture, merged) {
-  const { applyLevers, atStore } = engineFor(fixture.formulas);
+  const { applyLevers } = engineFor(fixture.formulas);
 
   const storeRow =
     merged.store_id === ALL
       ? null
       : fixture.stores.find((row) => row.store_id === merged.store_id);
 
-  const sourceItems =
-    storeRow === null
-      ? fixture.items
-      : fixture.items
-          .filter((item) => item.vertical_id === storeRow.vertical_id)
-          .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
-
   return {
-    baselineItems: scopeItems(sourceItems, merged),
+    baselineItems: scopeItems(fixture.items, merged),
     storeRow,
     applyLevers,
-    atStore,
   };
 }
 
@@ -960,7 +1002,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const scopedStores = scopeStores(fixture.stores, merged);
   const legalEntities = fixture.filter_options.legal_entities;
 
-  const { baselineItems, storeRow, applyLevers, atStore } = resolveBaselineItems(
+  const { baselineItems, storeRow, applyLevers } = resolveBaselineItems(
     fixture,
     merged,
   );
@@ -991,7 +1033,6 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
           scopedStores,
           storeRow,
           applyLevers,
-          atStore,
           hasLevers ? levers : BASELINE_LEVERS,
         )
       : scopedStores;

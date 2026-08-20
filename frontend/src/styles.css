@@ -7286,6 +7286,9 @@ img.ey-logo {
   /* One accent per KPI tile, matching the mockup's six-colour strip. Two hues
      have no existing token because nothing else in the app uses them; they are
      declared here rather than as globals so they stay this board's business. */
+  --risk-kpi-stockout-skus: var(--red-500);
+  /* Kept alongside: the drill-through and the simulator still address the
+     wider below-ROP measure by its own id. */
   --risk-kpi-stockout-risk-skus: var(--red-500);
   --risk-kpi-overstock-skus: #5c2d91;
   --risk-kpi-expiry-units: var(--amber-600);

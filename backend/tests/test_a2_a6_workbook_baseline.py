@@ -291,10 +291,22 @@ class TestAgent2SnapshotMatchesTheWorkbook:
     """
 
     def test_the_seven_headline_totals(self, a2_snapshot, a2_fixture) -> None:
+        """Counts are DISTINCT SKUs; money and units sum every store row.
+
+        Both sides are ENGINE_STORE grain now (16,000 SKU x store rows over
+        800 SKUs). The counts below deliberately do NOT use `len(items)`: a
+        SKU sits in ~20 stores, so row counts and SKU counts differ by ~20x
+        and the tool has to answer the same question the KPI card does.
+        """
         items = a2_fixture["items"]
         totals = a2_snapshot["totals"]
 
-        assert totals["skus"] == len(items) == 800
+        def skus(predicate) -> int:
+            return len({i["sku_id"] for i in items if predicate(i)})
+
+        assert len(items) == 16000
+        assert totals["rows_at_store_grain"] == len(items)
+        assert totals["skus"] == skus(lambda i: True) == 800
         assert float(totals["inventory_value"]) == pytest.approx(
             sum(i["inv_value"] for i in items), abs=RUPIAH
         )
@@ -304,21 +316,23 @@ class TestAgent2SnapshotMatchesTheWorkbook:
         assert float(totals["expiry_units"]) == pytest.approx(
             sum(i["expiry_units"] for i in items), abs=0.5
         )
-        assert totals["overstock_skus"] == sum(1 for i in items if i["is_overstock"])
-        assert totals["slow_mover_skus"] == sum(1 for i in items if i["is_slow_mover"])
-        assert totals["stockout_risk_skus"] == sum(
-            1 for i in items if i["is_stockout_risk"]
-        )
+        assert totals["overstock_skus"] == skus(lambda i: i["is_overstock"]) == 104
+        assert totals["slow_mover_skus"] == skus(lambda i: i["is_slow_mover"]) == 75
+        assert totals["stockout_skus"] == skus(lambda i: i["state"] == "Stockout") == 247
+        assert totals["stockout_risk_skus"] == skus(
+            lambda i: i["is_stockout_risk"]
+        ) == 524
 
-    def test_stockout_risk_is_the_cross_agent_302(self, a2_snapshot) -> None:
+    def test_stockout_risk_is_the_cross_agent_number(self, a2_snapshot) -> None:
         """A2 calls it stockout-risk, A3 calls it lines to reorder.
 
-        Both mean `Position < ROP`. `test_retail_fact_seed.py` pins 302 at the
-        per-store grain through a roll-up; this pins the same 302 arriving from
-        the chain table through the tool. Two boards and a chat answer that
-        disagree on this number is the discrepancy a reader notices first.
+        Both mean `Position < ROP`. This used to pin 302, the count arriving
+        from the chain table; at ENGINE_STORE grain the same predicate covers
+        524 distinct SKUs over 7,090 rows. Two boards and a chat answer that
+        disagree on this number is the discrepancy a reader notices first, so
+        it stays pinned -- at the grain the cards now use.
         """
-        assert a2_snapshot["totals"]["stockout_risk_skus"] == 302
+        assert a2_snapshot["totals"]["stockout_risk_skus"] == 524
 
     def test_below_rop_is_counted_not_inferred_from_the_label(
         self, a2_snapshot
@@ -348,10 +362,18 @@ class TestAgent2SnapshotMatchesTheWorkbook:
         for item in items:
             value[item["state"]] += item["at_risk_value"]
 
+        skus_by_state = {
+            state: len({i["sku_id"] for i in items if i["state"] == state})
+            for state in counts
+        }
+
         got = {r["state"]: r for r in a2_snapshot["by_state"]}
         assert set(got) == set(counts)
         for state, expected in counts.items():
-            assert got[state]["skus"] == expected, state
+            # Rows on one side, distinct SKUs on the other -- the tool reports
+            # SKUs, so the fixture is aggregated the same way before comparing.
+            assert got[state]["rows_at_store_grain"] == expected, state
+            assert got[state]["skus"] == skus_by_state[state], state
             assert float(got[state]["at_risk_value"]) == pytest.approx(
                 value[state], abs=RUPIAH
             ), state
@@ -371,6 +393,11 @@ class TestAgent2SnapshotMatchesTheWorkbook:
         actually the sheet — a reference that has drifted into a second
         computation is worse than no reference, because it agrees for the
         wrong reason.
+
+        NOTE the sheet is CHAIN-NET and the totals above are ENGINE_STORE, so
+        the two deliberately disagree: the sheet totals 345 stockout-risk and
+        26 overstock SKUs where the grid holds 524 and 104. It is a benchmark
+        from the other grain, carried and labelled, not a target.
         """
         sheet = {r["vertical_label"]: r for r in book["a2_inventory_risk"]}
         got = {r["vertical_label"]: r for r in a2_snapshot["reference_by_vertical"]}
@@ -387,20 +414,21 @@ class TestAgent2SnapshotMatchesTheWorkbook:
             ), label
 
     def test_expiry_is_grocery_and_only_grocery(self, a2_snapshot, book) -> None:
-        """6,252 units, all of it perishable, all of it in Grocery.
+        """All of it perishable, all of it in Grocery.
 
-        The A2 sheet states 6,251.89 for Grocery and zero everywhere else. The
-        snapshot rounds to units, so the two agree to within the rounding and
-        nothing else in the chain contributes.
+        The A2 sheet states 5,562 for Grocery and zero everywhere else. It said
+        6,251.89 until the workbook was re-extracted; the assertion is on the
+        shape (one vertical carries every expiring unit), and the figure is
+        pinned so a change to it has to be noticed rather than absorbed.
+
+        The sheet is CHAIN-NET, so it is deliberately NOT compared with the
+        snapshot's own total here -- that total is the ENGINE_STORE grid's.
         """
         sheet = {r["vertical_label"]: r["expiry_units"] for r in book["a2_inventory_risk"]}
-        assert sheet["Grocery"] == pytest.approx(6251.89, abs=0.01)
+        assert sheet["Grocery"] == pytest.approx(5562, abs=0.01)
         assert all(v == 0 for k, v in sheet.items() if k != "Grocery")
 
         by_vertical = {r["vertical_id"]: r for r in a2_snapshot["by_vertical"]}
-        assert float(a2_snapshot["totals"]["expiry_units"]) == pytest.approx(
-            sheet["Grocery"], abs=0.5
-        )
         assert by_vertical["GRC"]["skus"] == 100
 
 
@@ -656,25 +684,35 @@ class TestAgent6SnapshotMatchesTheWorkbook:
         # pinning the exact ratio would just restate the dataset.
         assert freed[0] > 0.5 * freed[2]
 
-    def test_the_state_split_agrees_with_a2_at_the_same_grain(
+    def test_the_state_split_is_a_different_grain_from_a2(
         self, a6_snapshot, a2_snapshot
     ) -> None:
-        """Two agents, one chain table. The states cannot differ.
+        """Two agents, two grains. The states MUST differ, and by how much.
 
-        A6 reads the chain through its CTE at `cal_date = SNAPSHOT_DATE`; A2
-        reads it with no date filter at all, which is the same 800 rows only
-        while the workbook stays single-dated. If a second date ever lands,
-        this test is the one that says so.
+        This asserted the two agreed exactly, back when both read
+        `fact_inventory_chain_daily`. A2 moved to the ENGINE_STORE grid so its
+        cards would count the population the workbook's own dropdown shows;
+        A6 is still chain-net, and rightly so -- a delist decision is about a
+        SKU across the chain, not about one store's shelf.
+
+        So the two now answer different questions, and the test says which:
+        the same state vocabulary, A2 covering at least as many SKUs (a SKU
+        Healthy chain-net can be Stockout in one store, never the reverse),
+        and strictly more inventory value because gross does not net.
         """
         a6 = {r["state"]: r for r in a6_snapshot["by_state"]}
         a2 = {r["state"]: r for r in a2_snapshot["by_state"]}
 
         assert set(a6) == set(a2)
-        for state in a6:
-            assert a6[state]["sku_count"] == a2[state]["skus"], state
-            assert float(a6[state]["inventory_value"]) == pytest.approx(
-                float(a2[state]["inventory_value"]), abs=RUPIAH
-            ), state
+
+        a6_value = sum(float(r["inventory_value"]) for r in a6.values())
+        a2_value = sum(float(r["inventory_value"]) for r in a2.values())
+        assert a2_value > a6_value
+
+        # Every non-Healthy state reaches more SKUs once stores are counted
+        # separately, because a local pocket of risk no longer nets away.
+        for state in ("Stockout", "Low", "Overstock", "Slow-mover", "Expiry"):
+            assert a2[state]["skus"] >= a6[state]["sku_count"], state
 
 
 # ------------------------------------------------------------- layer 3: grain
