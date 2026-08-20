@@ -49,8 +49,18 @@ export default function ReplenishmentScenarioComparison({
 
   if (!baseline?.points?.length) return null;
 
-  // One row per week, one column per series — the shape Recharts wants.
-  const data = baseline.points.map((point, index) => {
+  /*
+   * One row per week, one column per series — the shape Recharts wants.
+   *
+   * Today forward only. `cover` is null across the 16 history weeks (no table
+   * records what was on the shelf then), and mapping the full 33 points would
+   * open every line here with 16 empty slots — the same divider gap the main
+   * chart was fixed for. A scenario is a forward statement anyway.
+   */
+  const forward = baseline.points
+    .map((point, index) => ({ point, index }))
+    .filter(({ point }) => point.week >= 0);
+  const data = forward.map(({ point, index }) => {
     const row = { label: point.label, baseline: point.cover };
     for (const [position, scenario] of scenarios.entries()) {
       row[`s${position}`] = scenario.requirement.points[index]?.cover ?? null;

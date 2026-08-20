@@ -119,6 +119,12 @@ TARGET = (
 DEMAND_CSV = REPO / "resources" / "demand_store_sku_32w_poc_v1.csv"
 DEMAND_HISTORY_COLUMNS = [f"actual_w{n}" for n in range(16, 0, -1)]
 DEMAND_FORECAST_COLUMNS = [f"forecast_w{n}" for n in range(1, 17)]
+# Same CSV `scripts/seed_synthetic_inbound_16w.py` loads into
+# `synthetic.inbound_store_sku_16w`, read directly here for the same reason the
+# demand curve is: the fixture has no database, and an offline approximation of
+# the arrival calendar would drift from the one the API path serves.
+INBOUND_CSV = REPO / "resources" / "inbound_store_sku_16w_v1.csv"
+INBOUND_COLUMNS = [f"arrival_w{n}" for n in range(1, 17)]
 
 SCHEMA_VERSION = 1
 AGENT_ID = "retail.replenishment"
@@ -412,7 +418,55 @@ def verify_demand_curves(
     print(f"  ok  forecast_w1 reproduces ads x week_factor for all {len(engine)} SKUs")
 
 
-def build_lines(engine, sku_master, detail, store_size, hz_cov, demand_by_sku):
+def load_inbound_schedule() -> dict[str, list[float]]:
+    """Chain-net weekly arrivals per SKU, summed across every store it ships to.
+
+    Same reshape `load_demand_curves` does, and for the same reason: the CSV is
+    store x SKU (16,000 rows) and this board is chain-net. Nearest-first --
+    index 0 is next week, matching `demand_forecast`, so the two line up week
+    for week without an offset anywhere downstream.
+    """
+    totals: dict[str, list[float]] = {}
+    with INBOUND_CSV.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            bucket = totals.setdefault(row["sku_id"], [0.0] * len(INBOUND_COLUMNS))
+            for index, column in enumerate(INBOUND_COLUMNS):
+                bucket[index] += float(row[column])
+    return totals
+
+
+def verify_inbound_schedule(
+    inbound_by_sku: dict[str, list[float]],
+    demand_by_sku: dict[str, dict[str, list[float]]],
+) -> None:
+    """Total inbound must still reproduce total demand across the horizon.
+
+    This is the no-creep gate, re-checked at the grain the board actually
+    draws. `generate_synthetic_inbound_16w.py` enforces the same bound before
+    it writes the CSV; repeating it here means a hand-edited or stale CSV fails
+    the build rather than quietly restoring the runaway cover gap the schedule
+    exists to close.
+    """
+    arrivals = sum(sum(values) for values in inbound_by_sku.values())
+    demand = sum(sum(curve["demand_forecast"]) for curve in demand_by_sku.values())
+    ratio = arrivals / demand if demand else 0.0
+    if not 0.98 <= ratio <= 1.02:
+        print(f"FAIL  inbound/demand ratio {ratio:.4f} outside [0.98, 1.02]")
+        print(f"      arrivals {arrivals:,.0f}, forecast demand {demand:,.0f}")
+        print("      re-run scripts/generate_synthetic_inbound_16w.py")
+        raise SystemExit(1)
+
+    missing = sorted(set(demand_by_sku) - set(inbound_by_sku))[:5]
+    if missing:
+        print(f"FAIL  {len(missing)} SKU(s) have demand but no arrivals: {missing}")
+        raise SystemExit(1)
+
+    print(f"  ok  inbound reproduces forecast demand within 2% (ratio {ratio:.4f})")
+
+
+def build_lines(
+    engine, sku_master, detail, store_size, hz_cov, demand_by_sku, inbound_by_sku
+):
     """One requisition line per SKU, at chain-net level."""
     by_sku = {row["item"]: row for row in detail}
     lines = []
@@ -475,6 +529,11 @@ def build_lines(engine, sku_master, detail, store_size, hz_cov, demand_by_sku):
                 # 16 real weeks each way, chain-net -- see load_demand_curves.
                 "demand_history": demand_by_sku[row["sku_id"]]["demand_history"],
                 "demand_forecast": demand_by_sku[row["sku_id"]]["demand_forecast"],
+                # 16 forward weeks of arrivals, chain-net -- see
+                # load_inbound_schedule. Synthetic: no table records when an
+                # inbound order lands, so this schedule is invented and
+                # labelled as such wherever it surfaces.
+                "inbound_schedule": inbound_by_sku[row["sku_id"]],
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
             }
@@ -754,6 +813,9 @@ def main() -> int:
     demand_by_sku = load_demand_curves()
     verify_demand_curves(tables["engine"], demand_by_sku, constants["dow_sum"])
 
+    inbound_by_sku = load_inbound_schedule()
+    verify_inbound_schedule(inbound_by_sku, demand_by_sku)
+
     lines = build_lines(
         tables["engine"],
         sku_master,
@@ -761,6 +823,7 @@ def main() -> int:
         store_size,
         constants["hz_cov"],
         demand_by_sku,
+        inbound_by_sku,
     )
     store_rows = build_stores(tables["engine_store"], stores, sku_master)
 

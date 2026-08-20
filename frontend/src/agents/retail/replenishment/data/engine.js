@@ -94,6 +94,16 @@ export function createEngine(formulas) {
     const demandRatio = line.ads ? ads / line.ads : 1;
     const demandForecast = (line.demand_forecast ?? []).map((value) => value * demandRatio);
 
+    /*
+     * `inbound_schedule` is deliberately NOT scaled, and rides through on the
+     * spread below untouched. Deciding to sell more does not cause more stock
+     * to arrive: the deliveries are already committed, and a lever that moved
+     * supply in step with demand would hold the gap constant and make the
+     * What-If say nothing. Demand rising against a fixed calendar opening a
+     * shortfall IS the answer the simulator exists to give. Same reasoning as
+     * `demand_history` — neither is a formula the catalogue can re-run.
+     */
+
     const openPo = run("f03-open-po-per-store", {
       // A chain-net line already covers every store, so there is no allocation
       // left to do and the size ratio is one.

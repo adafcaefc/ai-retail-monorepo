@@ -136,15 +136,27 @@ export const REQUIREMENT_WEEKS_FORWARD = 16;
 /**
  * The assumption behind the requirement-versus-inbound chart, A3 spec 4.
  *
- * The workbook stores how much is on order per SKU, and never when it lands.
- * There is no arrival date in any of the 30 tables. So the inbound line places
- * each SKU's whole open PO on its own lead day — 2, 4 or 7, by route — which is
- * the earliest it could arrive and therefore the most optimistic reading of
- * cover. A real receiving calendar would spread it; this one steps.
+ * The workbook stores how much is on order per SKU and never when it lands.
+ * There is no arrival date in any of the 30 tables, so an arrival calendar was
+ * generated instead: `synthetic.inbound_store_sku_16w`, batched on each
+ * route's own cadence (direct weekly, flow every 2 weeks, cross every 3) and
+ * anchored to the demand curve, so total inbound across the horizon reproduces
+ * total forecast demand. That anchoring is what keeps cover tracking
+ * requirement rather than falling behind it for ever.
+ *
+ * It is synthetic and the board says so. What it replaced was not more honest,
+ * only less visible: with no calendar at all the chart placed every SKU's
+ * whole open PO on its lead day, and since all three routes lead under a week,
+ * cover was one step at W+1 and a flat line thereafter.
  */
 export const REQUIREMENT_NOTE =
-  "Inbound is placed on each SKU's lead day because the workbook records how " +
+  "Inbound follows a generated delivery calendar — the workbook records how " +
   "much is on order but never when it arrives.";
+
+/** Shown instead when no arrival schedule reached the browser. */
+export const REQUIREMENT_FALLBACK_NOTE =
+  "No delivery schedule in scope, so each SKU's whole open PO is placed in " +
+  "the week its lead day falls.";
 
 /** @typedef {object} ReplenishmentScope */
 export const DEFAULT_SCOPE = Object.freeze({
@@ -263,6 +275,9 @@ export function normalizeReplenishmentDashboard(payload) {
       weeks_back: payload.requirement?.weeks_back ?? 0,
       weeks_forward: payload.requirement?.weeks_forward ?? 0,
       points: payload.requirement?.points ?? [],
+      // False when no arrival schedule reached the browser, which switches the
+      // panel's caveat to the one that describes what it actually drew.
+      inbound_scheduled: payload.requirement?.inbound_scheduled ?? false,
       demand_per_week: payload.requirement?.demand_per_week ?? 0,
       cover_runs_out: payload.requirement?.cover_runs_out ?? null,
       gap_at_horizon: payload.requirement?.gap_at_horizon ?? 0,

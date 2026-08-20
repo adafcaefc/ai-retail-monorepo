@@ -11,7 +11,10 @@ import {
 } from "recharts";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { REQUIREMENT_NOTE } from "../data/contract.js";
+import {
+  REQUIREMENT_FALLBACK_NOTE,
+  REQUIREMENT_NOTE,
+} from "../data/contract.js";
 import { formatIdr, formatPercent, formatUnits } from "../presentation.js";
 
 function RequirementTooltip({ active, payload, label }) {
@@ -21,9 +24,9 @@ function RequirementTooltip({ active, payload, label }) {
   const point = payload[0].payload;
 
   // History points (W-16..W-1) carry actual_demand only — requirement/cover
-  // are null there, not zero, because there is nothing behind them to
-  // accumulate against. Showing a gap reading on a week that predates any
-  // "today" would answer a question this chart never asked.
+  // are null there, not zero, because no table records what was on the shelf
+  // 16 weeks ago. Today is deliberately NOT one of these: it carries both
+  // series, which is what joins the history line to the forecast line.
   if (point.requirement === null) {
     return (
       <div className="po-chart-tooltip">
@@ -58,17 +61,21 @@ function RequirementTooltip({ active, payload, label }) {
 /**
  * A3 spec section 4 (`#ch-main`): what the chain needs against what is coming.
  *
- * 33 real weekly points, W-16 through Today through W+16 — see
- * `computeRequirement` in `data/selectors.js` for where the curve comes from
- * (`synthetic.demand_store_sku_32w`). Three series: *Actual demand* (a rate,
- * W-16..W-1 only — there is nothing before "16 weeks ago" to accumulate
- * against); *Requirement*, cumulative demand from Today; *Cover*, today's
- * on-hand plus each SKU's open PO once it lands on its lead day — it steps
- * rather than slopes, because a delivery is an event, not a trickle, and every
- * route lands within the first week.
+ * 33 weekly points, W-16 through Today through W+16, every series in units per
+ * week — see `computeRequirement` in `data/selectors.js` for where the curve
+ * comes from and why the shape changed. Three series: *Actual demand*
+ * (W-16..Today) and *Requirement* (Today..W+16), which are one continuous
+ * demand backbone measured either side of now; and *Cover*, a running position
+ * of last week's leftover plus this week's arrivals.
  *
- * Where requirement crosses cover is the gap a purchase order exists to close,
- * and `gap = requirement − cover → PO` is the spec's own reading of it.
+ * The three `<Line>`s keep `connectNulls={false}` on purpose. The chart used to
+ * show a gap at the divider, and the fix is not to bridge two series across a
+ * null — that would draw a line between a rate and a cumulative total, which
+ * is what the old shape actually put on this axis. Today simply carries a real
+ * value in both series now, so they meet at a point they genuinely share.
+ *
+ * Where cover dips under requirement is a week the shelf cannot serve, and
+ * `gap = requirement − cover → PO` is the spec's own reading of it.
  *
  * The mockup lifts requirement by 1.02. That factor is in no workbook cell and
  * stands for nothing, so it is not reproduced here — reproduced, it would read
@@ -193,7 +200,9 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
         ))}
       </dl>
 
-      <p className="po-panel-caveat">{t(REQUIREMENT_NOTE)}</p>
+      <p className="po-panel-caveat">
+        {t(requirement.inbound_scheduled ? REQUIREMENT_NOTE : REQUIREMENT_FALLBACK_NOTE)}
+      </p>
     </section>
   );
 }

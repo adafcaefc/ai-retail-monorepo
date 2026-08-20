@@ -14,7 +14,10 @@ and hiding the other is how a board gets used to argue for the wrong decision.
 
 from __future__ import annotations
 
+import os
 from typing import Any
+
+from sqlalchemy import text
 
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
@@ -35,6 +38,23 @@ from src.llm.agents.retail.common.warehouse import (
 )
 
 AGENT_ID = "retail.replenishment"
+
+# The synthetic arrival calendar is on by default -- it is what stops A3's
+# cover line being flat, so a board that quietly ran without it would show the
+# defect this was built to remove. Set REPLENISHMENT_SYNTHETIC_INBOUND=0 to
+# force the old reading (each open PO on its lead day) without dropping the
+# table. A missing table has the same effect on its own, so this switch exists
+# for the case where the table IS there and someone wants the comparison.
+SYNTHETIC_INBOUND_ENV = "REPLENISHMENT_SYNTHETIC_INBOUND"
+
+
+def synthetic_inbound_enabled() -> bool:
+    return os.environ.get(SYNTHETIC_INBOUND_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
 
 # f01 through f11: the chain from a demand rate to a priced purchase order.
 #
@@ -99,6 +119,8 @@ DERIVATION = {
     "fill_rate_pct": "measured",
     "avg_cover_days": "measured",
     "route": "modelled-from-lead-time",
+    "demand_curve": "measured-32w",
+    "inbound_schedule": "synthetic-route-cadence",
 }
 
 
@@ -117,6 +139,7 @@ def build_lines(
     rows: list[dict],
     asts: dict[str, tuple],
     demand_by_sku: dict[str, dict[str, list[float]]],
+    inbound_by_sku: dict[str, list[float]],
 ) -> list[dict]:
     """One order line per SKU, chain level, every figure from the catalogue.
 
@@ -327,6 +350,11 @@ def build_lines(
                 # does.
                 "demand_history": demand["demand_history"],
                 "demand_forecast": demand["demand_forecast"],
+                # 16 forward weeks of arrivals, chain-net. Synthetic and
+                # labelled so in DERIVATION: no table records when an inbound
+                # order lands. Empty when the schedule is absent or switched
+                # off, which the browser reads as "fall back to the lead day".
+                "inbound_schedule": inbound_by_sku.get(row["item_key"], []),
                 "promo_eligible": promo_eligible,
                 "promo_depth": promo_depth,
                 "safety_days": safety_days,
@@ -493,6 +521,37 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             for row in demand_rows
         }
 
+        # 16 forward weeks of arrivals, same store x SKU grain summed to
+        # chain-net, scoped through dim_item exactly as the demand curve is.
+        # Guarded twice: an environment that has not run migration 011 has no
+        # table to read, and an operator can switch it off with the table in
+        # place. Either way `inbound_by_sku` stays empty and the browser falls
+        # back to placing each open PO on its lead day.
+        inbound_by_sku: dict[str, list[float]] = {}
+        has_inbound = connection.execute(
+            text("SELECT OBJECT_ID(N'synthetic.inbound_store_sku_16w', N'U')")
+        ).scalar()
+        if has_inbound is not None and synthetic_inbound_enabled():
+            inbound_where, inbound_params = _scope_clause(
+                scope, "i.vertical_id", "i.category_id"
+            )
+            inbound_rows = _rows(
+                connection,
+                f"""
+                SELECT b.sku_id,
+                       {", ".join(f"sum(b.arrival_w{n}) AS arrival_w{n}" for n in range(1, 17))}
+                FROM synthetic.inbound_store_sku_16w b
+                JOIN {SCHEMA}.dim_item i ON i.item_id = b.sku_id
+                WHERE 1 = 1{inbound_where}
+                GROUP BY b.sku_id
+                """,
+                inbound_params,
+            )
+            inbound_by_sku = {
+                row["sku_id"]: [_float(row[f"arrival_w{n}"]) for n in range(1, 17)]
+                for row in inbound_rows
+            }
+
     # A3 filters by route, not by inventory state — that is A2's control.
     options.pop("states", None)
     options["routes"] = [
@@ -517,7 +576,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "derivation": DERIVATION,
         "routes": [dict(route) for route in ROUTES],
         "filter_options": options,
-        "lines": build_lines(rows, asts, demand_by_sku),
+        "lines": build_lines(rows, asts, demand_by_sku, inbound_by_sku),
         "quote_terms": {
             "currency": terms[0]["currency"],
             "lead_time_days": terms[0]["lead_time_days"],

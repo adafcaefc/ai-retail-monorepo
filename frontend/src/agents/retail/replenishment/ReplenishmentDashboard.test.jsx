@@ -324,12 +324,15 @@ describe("requirement versus inbound supply (spec 4)", () => {
     }
   });
 
-  it("says the inbound date is assumed, because the workbook has none", async () => {
+  it("says the delivery calendar is generated, because the workbook has none", async () => {
     await renderSettled();
     // The one modelled step on an otherwise measured board. If this caveat ever
-    // disappears the chart starts reading as a delivery schedule.
+    // disappears the chart starts reading as a real delivery schedule.
     expect(
       screen.getByText(/records how much is on order but never when it arrives/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/generated delivery calendar/),
     ).toBeInTheDocument();
   });
 
@@ -351,26 +354,68 @@ describe("requirement versus inbound supply (spec 4)", () => {
       expect(point.actual_demand).toBeGreaterThan(0);
     }
 
-    expect(requirement.points[16].requirement).toBe(0);
-
-    for (let index = 1; index < forward.length; index += 1) {
-      const previous = forward[index - 1];
-      const point = forward[index];
-      // Demand only accumulates; cover only ever gains an arrival.
-      expect(point.requirement).toBeGreaterThan(previous.requirement);
-      expect(point.cover).toBeGreaterThanOrEqual(previous.cover);
-    }
-
     /*
-     * Over every line in scope, not only the 345 being ordered. The chart
-     * answers "can the chain cover its demand", which the reorder subset
-     * cannot: those are by definition the lines that cannot.
+     * Today is the bridge, and the reason the chart no longer breaks at the
+     * divider: it carries W-1's measured demand in BOTH series, so the history
+     * line and the requirement line pass through one point they share. It is
+     * the same number written twice, not an interpolation.
      */
-    const last = forward[forward.length - 1];
-    expect(last.cover).toBeCloseTo(
-      fixture.lines.reduce((total, line) => total + line.on_hand + line.open_po, 0),
+    const today = requirement.points[16];
+    const lastActual = requirement.points[15];
+    expect(today.label).toBe("Today");
+    expect(today.actual_demand).toBe(lastActual.actual_demand);
+    expect(today.requirement).toBe(lastActual.actual_demand);
+    expect(today.cover).toBeCloseTo(
+      fixture.lines.reduce((total, line) => total + line.on_hand, 0),
       6,
     );
+
+    // Every forward point is a weekly rate now, not a running total. Nothing
+    // accumulates, so requirement stays the same order of magnitude as the
+    // history beside it instead of climbing away from it.
+    for (const point of forward) {
+      expect(point.requirement).toBeGreaterThan(0);
+      expect(point.requirement).toBeLessThan(lastActual.actual_demand * 2);
+      expect(point.actual_demand).toBeNull();
+    }
+  });
+
+  it("draws a cover line that both rises and falls", () => {
+    /*
+     * The point of the synthetic arrival calendar. Cover is a running position
+     * -- last week's leftover plus this week's arrivals -- and the routes
+     * deliver on a cadence, so it sawtooths. The curve it replaced was flat
+     * from W+1 onward, because every open PO landed inside the first week and
+     * nothing ever arrived again.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    expect(requirement.inbound_scheduled).toBe(true);
+
+    const forward = requirement.points.slice(17);
+    const rises = forward.some((point, index) => index > 0 && point.cover > forward[index - 1].cover);
+    const falls = forward.some((point, index) => index > 0 && point.cover < forward[index - 1].cover);
+    expect(rises).toBe(true);
+    expect(falls).toBe(true);
+
+    // And it moves by a visible amount, not by float noise. The generator
+    // enforces the same floor before it will write the CSV.
+    const covers = forward.map((point) => point.cover);
+    expect(Math.max(...covers) / Math.min(...covers)).toBeGreaterThan(1.15);
+  });
+
+  it("keeps total inbound anchored to total demand, so no gap runs away", () => {
+    /*
+     * The no-creep gate, re-checked from the shipped fixture. Requirement used
+     * to accumulate against a flat cover line and diverge without bound, which
+     * is why the panel reported "Cover runs out at W+1" for every scope.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const forward = requirement.points.slice(17);
+
+    const demand = forward.reduce((total, point) => total + point.requirement, 0);
+    const arrivals = forward.reduce((total, point) => total + point.inbound_landed, 0);
+    expect(arrivals / demand).toBeGreaterThan(0.98);
+    expect(arrivals / demand).toBeLessThan(1.02);
   });
 
   it("reconciles the first forecast week's chain total against ads x week_factor", () => {
@@ -380,8 +425,9 @@ describe("requirement versus inbound supply (spec 4)", () => {
     const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const week1 = requirement.points[17];
     expect(week1.label).toBe("W+1");
-    // requirement at W+1 is the cumulative total through week 1, i.e. week 1
-    // alone since Today's requirement is 0.
+    // requirement at W+1 is that week's demand on its own. It survived the
+    // move from cumulative to weekly untouched: under the old shape W+1 was
+    // the running total through week one, which is the same figure.
     const totalAds = fixture.lines.reduce((total, line) => total + line.ads, 0);
     expect(week1.requirement).toBeCloseTo(totalAds * fixture.constants.dow_sum, -1);
   });

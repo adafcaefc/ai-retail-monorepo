@@ -1,0 +1,146 @@
+{
+  "generation_name": "inbound_store_sku_16w_v1",
+  "generator_version": "inbound-store-sku-16w-generator-v1.0.0",
+  "generated_at": "2026-08-20T12:34:38.495534+00:00",
+  "business_timezone": "Asia/Jakarta",
+  "output_row_count": 16000,
+  "quantity_precision": 6,
+  "input_fingerprint": "b59a1024ed3e8a599638f3b0d68b63bfa552e97486a122ec4327073036fb4124",
+  "output_fingerprint": "e743297ef0483e4145b97b23e54f93cd25f4a77c63d952edabee6cf1c4c85cfe",
+  "column_contract": {
+    "columns": [
+      "sku_id",
+      "store_id",
+      "route",
+      "arrival_w1",
+      "arrival_w2",
+      "arrival_w3",
+      "arrival_w4",
+      "arrival_w5",
+      "arrival_w6",
+      "arrival_w7",
+      "arrival_w8",
+      "arrival_w9",
+      "arrival_w10",
+      "arrival_w11",
+      "arrival_w12",
+      "arrival_w13",
+      "arrival_w14",
+      "arrival_w15",
+      "arrival_w16"
+    ],
+    "identifier_columns": [
+      "sku_id",
+      "store_id",
+      "route"
+    ],
+    "arrival_columns": [
+      "arrival_w1",
+      "arrival_w2",
+      "arrival_w3",
+      "arrival_w4",
+      "arrival_w5",
+      "arrival_w6",
+      "arrival_w7",
+      "arrival_w8",
+      "arrival_w9",
+      "arrival_w10",
+      "arrival_w11",
+      "arrival_w12",
+      "arrival_w13",
+      "arrival_w14",
+      "arrival_w15",
+      "arrival_w16"
+    ],
+    "canonical_sort": [
+      "sku_id",
+      "store_id"
+    ],
+    "numeric_precision": 6
+  },
+  "provenance": {
+    "arrival_w1_to_arrival_w16": "synthetic. No table in this warehouse records an inbound arrival date; this schedule is invented to supply one.",
+    "quantities": "demand-anchored: each delivery carries forecast_w* demand from its own week until the next delivery, rounded to whole pack_factor cases.",
+    "timing": "route cadence, phase shared within a route -- direct weekly, flow every 2 weeks, cross every 3 weeks.",
+    "lead_d_and_pack_factor": "resources/dbtemp/schema_with_data.json sku_master"
+  },
+  "determinism": {
+    "seed": null,
+    "note": "No random component. The schedule is a function of the demand curve and the SKU's route, so a rerun is byte-identical."
+  },
+  "plausibility": {
+    "inbound_demand_ratio": 1.0000588399710115,
+    "inbound_demand_ratio_bounds": [
+      0.98,
+      1.02
+    ],
+    "chain_cover_peak_to_trough": 0.531448333898729,
+    "chain_cover_peak_to_trough_floor": 0.15,
+    "chain_cover_by_week": [
+      5171621.0,
+      3647541.776912004,
+      4871717.892184011,
+      3783565.96670401,
+      5007249.64842301,
+      3493440.9679149976,
+      5174072.593661005,
+      3656360.935825998,
+      4933579.447789989,
+      3843263.448387987,
+      5148002.190664983,
+      3578237.826212991,
+      5350024.349886986,
+      3753952.863222993,
+      5065482.870302986,
+      3608852.398004993
+    ],
+    "rows_by_route": {
+      "flow": 12500,
+      "direct": 1500,
+      "cross": 2000
+    },
+    "cadence_weeks": {
+      "direct": 1,
+      "flow": 2,
+      "cross": 3
+    },
+    "delivery_weeks": {
+      "direct": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16
+      ],
+      "flow": [
+        1,
+        3,
+        5,
+        7,
+        9,
+        11,
+        13,
+        15
+      ],
+      "cross": [
+        1,
+        4,
+        7,
+        10,
+        13,
+        16
+      ]
+    }
+  }
+}
