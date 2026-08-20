@@ -36,33 +36,39 @@ to sell, so arrivals oscillate ABOUT the demand line instead of drifting away
 from it. That is the whole point -- an inbound stream that under-delivers by
 construction would reproduce the runaway gap this replaces.
 
-Batched, not trickled. Each route receives on its own cadence:
+Batched, not trickled -- but only just. Delivery frequency follows store
+volume, which is how it works: a store that turns over enough to fill a truck
+every week gets one, and the smallest stores are folded into a fortnightly
+consolidation run.
 
-    direct (lead 2d)  every week      -- fresh, store-direct
-    flow   (lead 4d)  every week      -- DC pick and pass, fast movers
-    cross  (lead 7d)  every 2 weeks   -- DC consolidation across vendors
+    the smallest 10% of stores by volume   every 2 weeks   (16 of 160)
+    every other store                      every week
 
-Cadence is a modelling choice: no workbook cell states a delivery interval, so
-any set of intervals here is invented. Lead time bounds the fastest possible
-reorder and nothing bounds the slowest. These were chosen so that arrivals per
-week stay near demand per week -- close enough that the chart reads as supply
-against demand rather than as two unrelated magnitudes sharing an axis. An
-earlier 1/2/3 set put 12,500 of the 16,000 rows on the same fortnightly beat,
-which made chain arrivals swing 13x between alternating weeks.
+All of a store's SKUs travel on that store's calendar, whatever route they
+came in on -- one truck carries the lot. `route` is still written on every row
+because it is what the board filters by, but it no longer decides timing.
+
+WHY THE RIPPLE IS SMALL, AND WHY IT IS NOT ZERO
+-----------------------------------------------
+The share on the fortnightly run is the one dial here, and it is a business
+parameter -- where you draw the line between a store worth a weekly truck and
+one worth half of one -- rather than a cosmetic one. It does set how far the
+inbound line swings from the demand line beside it, so the number is stated
+rather than buried:
+
+    30% of stores fortnightly  ->  arrivals stray 8.96% from weekly demand
+    20%                        ->  4.81%
+    10%                        ->  1.89%   <- chosen
+
+Earlier revisions batched by route instead. Putting all 2,000 cross-dock rows
+on one fortnightly beat made arrivals swing 8.1% either side of demand, and an
+earlier set that also batched the 12,500 flow rows swung them 13x between
+alternating weeks. Staggering the phase so the runs load evenly collapses the
+ripple to about 0.3%, which draws the inbound line straight on top of the
+demand line and says nothing. Ten percent sits between the two.
 
 A delivery covers demand from its own week until the next one, rounded to
 whole cases (`pack_factor`) because a purchase order buys cases, not units.
-
-THE PHASE IS SHARED WITHIN A ROUTE, AND THAT IS DELIBERATE
-----------------------------------------------------------
-Every SKU on a route receives in the same weeks. Staggering the phase per SKU
-would be equally defensible in isolation, but 16,000 independently-phased rows
-average each other out completely: chain arrivals would come back flat and the
-line would sit on top of demand saying nothing a single number could not.
-Synchronising by route is also the more realistic of the two -- a DC
-consolidation run ships on a fixed calendar, it does not re-randomise per item.
-Here it is the cross route alone that batches, which is what puts the visible
-rise and fall into an otherwise weekly stream.
 
 There is no random component anywhere in this generator. The schedule is a
 function of the demand curve and the route, so a rerun reproduces the file
@@ -96,26 +102,52 @@ ARRIVAL_COLUMNS = [f"arrival_w{n}" for n in range(1, WEEKS + 1)]
 COLUMNS = ["sku_id", "store_id", "route"] + ARRIVAL_COLUMNS
 
 # Route selection is `route_for` from the dashboards, restated: the first route
-# whose lead time the SKU does not exceed. Cadence is this file's own addition.
-ROUTE_CADENCE: tuple[tuple[str, int, int], ...] = (
-    # (route id, max lead days, weeks between deliveries)
-    ("direct", 2, 1),
-    ("flow", 4, 1),
-    ("cross", 7, 2),
+# whose lead time the SKU does not exceed. Written on every row because the
+# board filters by it; it does not decide delivery timing.
+ROUTES: tuple[tuple[str, int], ...] = (
+    ("direct", 2),
+    ("flow", 4),
+    ("cross", 7),
 )
+
+# Timing. The smallest stores share a fortnightly consolidation run; everyone
+# else gets a weekly truck. See the module docstring for what this share does
+# to the drawn line, and why it is 10% rather than 30% or 0%.
+FORTNIGHTLY_STORE_SHARE = 0.10
+FORTNIGHTLY_CADENCE = 2
 
 # The three gates this generator refuses to write a file without.
 RATIO_BOUNDS = (0.98, 1.02)
-MIN_COVER_AMPLITUDE = 0.15
-MAX_DEMAND_SPREAD = 0.35
+# Arrivals are plotted against demand on one axis, so the gap between them has
+# to be large enough to see and small enough to read as one comparison.
+GAP_BOUNDS = (0.005, 0.04)
 
 
-def route_and_cadence(lead_days: float) -> tuple[str, int]:
-    for route, max_lead, cadence in ROUTE_CADENCE:
+def route_for(lead_days: float) -> str:
+    for route, max_lead in ROUTES:
         if lead_days <= max_lead:
-            return route, cadence
-    route, _, cadence = ROUTE_CADENCE[-1]
-    return route, cadence
+            return route
+    return ROUTES[-1][0]
+
+
+def store_cadence(demand: list[dict[str, Any]]) -> dict[str, int]:
+    """Weeks between deliveries for each store, by its share of chain volume.
+
+    The smallest `FORTNIGHTLY_STORE_SHARE` of stores are folded into one
+    fortnightly consolidation run -- one run, not staggered, because that is
+    what makes the ripple visible at all. Everyone else receives weekly.
+    """
+    volume: dict[str, float] = {}
+    for record in demand:
+        volume[record["store_id"]] = volume.get(record["store_id"], 0.0) + sum(
+            record["forecast"]
+        )
+    smallest_first = sorted(volume, key=lambda store: volume[store])
+    cutoff = int(len(smallest_first) * FORTNIGHTLY_STORE_SHARE)
+    fortnightly = set(smallest_first[:cutoff])
+    return {
+        store: (FORTNIGHTLY_CADENCE if store in fortnightly else 1) for store in volume
+    }
 
 
 def delivery_weeks(cadence: int) -> list[int]:
@@ -156,12 +188,13 @@ def load_workbook() -> tuple[dict[str, dict[str, Any]], float]:
 def build_rows(
     demand: list[dict[str, Any]], sku_master: dict[str, dict[str, Any]]
 ) -> list[dict[str, Any]]:
+    cadences = store_cadence(demand)
     rows = []
     for record in demand:
         sku = sku_master[record["sku_id"]]
-        route, cadence = route_and_cadence(float(sku["lead_d"]))
+        route = route_for(float(sku["lead_d"]))
         pack = float(sku["pack_factor"]) or 1.0
-        weeks = delivery_weeks(cadence)
+        weeks = delivery_weeks(cadences[record["store_id"]])
         forecast = record["forecast"]
 
         arrivals = [0.0] * WEEKS
@@ -276,13 +309,14 @@ def main() -> int:
     ratio = total_arrivals / total_forecast if total_forecast else 0.0
     weekly_arrivals, weekly_demand = weekly_totals(rows, demand)
     position = running_position(weekly_arrivals, weekly_demand, on_hand)
-    low, high = min(weekly_arrivals), max(weekly_arrivals)
-    amplitude = (high / low - 1.0) if low else 0.0
-    # How far the drawn line strays from the line beside it. This is what
-    # decides whether the chart reads as one comparison or as two unrelated
-    # magnitudes stacked on one axis.
-    mean_demand = sum(weekly_demand) / WEEKS
-    spread = max(abs(high / mean_demand - 1.0), abs(low / mean_demand - 1.0))
+    # The gap between the two plotted lines, week by week. This is the thing a
+    # reader actually sees, so it is the thing that gets gated.
+    gaps = [
+        abs(weekly_arrivals[index] - weekly_demand[index]) / weekly_demand[index]
+        for index in range(WEEKS)
+        if weekly_demand[index]
+    ]
+    gap = max(gaps) if gaps else 0.0
 
     print(f"  ..  {len(rows):,} rows, chain on-hand {on_hand:,.0f}")
     print(f"  ..  inbound {total_arrivals:,.0f} against demand {total_forecast:,.0f}")
@@ -295,27 +329,21 @@ def main() -> int:
         return 1
     print(f"  ok  inbound/demand ratio {ratio:.4f} within [{low}, {high}]")
 
-    # GATE 2: the line moves. A schedule arriving in equal weekly instalments
-    # would satisfy gate 1 and draw a flat line on top of demand, which says
-    # nothing a single number could not.
-    if amplitude < MIN_COVER_AMPLITUDE:
-        print(
-            f"FAIL  arrivals peak-to-trough {amplitude:.1%}"
-            f" below {MIN_COVER_AMPLITUDE:.0%}"
-        )
+    # GATE 2: the line moves. Arrivals in equal weekly instalments satisfy gate
+    # 1 and then draw straight on top of demand, saying nothing a single number
+    # could not.
+    floor, ceiling = GAP_BOUNDS
+    if gap < floor:
+        print(f"FAIL  arrivals stray only {gap:.2%} from demand, under {floor:.1%}")
+        print("      the two lines would sit on top of each other")
         return 1
-    print(f"  ok  arrivals peak-to-trough {amplitude:.1%}")
 
-    # GATE 3: and it stays beside demand. Arrivals share an axis with demand
-    # now, so a schedule that towers over it is unreadable however well it
-    # satisfies the other two.
-    if spread > MAX_DEMAND_SPREAD:
-        print(
-            f"FAIL  arrivals stray {spread:.1%} from weekly demand,"
-            f" past {MAX_DEMAND_SPREAD:.0%}"
-        )
+    # GATE 3: and it stays beside demand. The two share one axis, so a schedule
+    # that towers over it is unreadable however well it satisfies the others.
+    if gap > ceiling:
+        print(f"FAIL  arrivals stray {gap:.2%} from demand, past {ceiling:.1%}")
         return 1
-    print(f"  ok  arrivals stay within {spread:.1%} of weekly demand")
+    print(f"  ok  arrivals stay within {gap:.2%} of weekly demand")
 
     empty = [index + 1 for index, value in enumerate(position) if value <= 0]
     print(
@@ -360,9 +388,10 @@ def main() -> int:
                 " pack_factor cases."
             ),
             "timing": (
-                "route cadence, phase shared within a route -- direct and flow"
-                " weekly, cross every 2 weeks. Invented: no workbook cell"
-                " states a delivery interval."
+                "store cadence by volume -- the smallest"
+                f" {FORTNIGHTLY_STORE_SHARE:.0%} of stores share one fortnightly"
+                " consolidation run, every other store receives weekly."
+                " Invented: no workbook cell states a delivery interval."
             ),
             "lead_d_and_pack_factor": (
                 "resources/dbtemp/schema_with_data.json sku_master"
@@ -378,17 +407,17 @@ def main() -> int:
         "plausibility": {
             "inbound_demand_ratio": ratio,
             "inbound_demand_ratio_bounds": list(RATIO_BOUNDS),
-            "arrivals_peak_to_trough": amplitude,
-            "arrivals_peak_to_trough_floor": MIN_COVER_AMPLITUDE,
-            "arrivals_spread_from_demand": spread,
-            "arrivals_spread_ceiling": MAX_DEMAND_SPREAD,
+            "max_gap_from_weekly_demand": gap,
+            "max_gap_bounds": list(GAP_BOUNDS),
+            "fortnightly_store_share": FORTNIGHTLY_STORE_SHARE,
             "chain_arrivals_by_week": weekly_arrivals,
             "chain_demand_by_week": weekly_demand,
             "chain_position_by_week": position,
             "rows_by_route": by_route,
-            "cadence_weeks": {route: cadence for route, _, cadence in ROUTE_CADENCE},
+            "cadence_weeks": {"large stores": 1, "smallest stores": FORTNIGHTLY_CADENCE},
             "delivery_weeks": {
-                route: delivery_weeks(cadence) for route, _, cadence in ROUTE_CADENCE
+                "large stores": delivery_weeks(1),
+                "smallest stores": delivery_weeks(FORTNIGHTLY_CADENCE),
             },
         },
     }

@@ -404,10 +404,18 @@ describe("requirement versus inbound supply (spec 4)", () => {
     expect(rises).toBe(true);
     expect(falls).toBe(true);
 
-    // And it moves by a visible amount, not by float noise. The generator
-    // enforces the same floor before it will write the CSV.
-    const arrivals = forward.map((point) => point.inbound);
-    expect(Math.max(...arrivals) / Math.min(...arrivals)).toBeGreaterThan(1.15);
+    /*
+     * And it moves by a readable amount -- far enough off demand to see, near
+     * enough to read as one comparison. Both bounds matter: the schedule was
+     * once batched hard enough to stray 8% either side, and staggering it to
+     * load evenly collapsed it to 0.3%, which draws inbound straight on top of
+     * demand. The generator gates the same band before it writes the CSV.
+     */
+    const gaps = forward.map(
+      (point) => Math.abs(point.inbound - point.requirement) / point.requirement,
+    );
+    expect(Math.max(...gaps)).toBeGreaterThan(0.005);
+    expect(Math.max(...gaps)).toBeLessThan(0.04);
   });
 
   it("keeps inbound beside demand, not towering over it", () => {
