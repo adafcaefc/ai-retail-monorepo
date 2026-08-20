@@ -50,6 +50,20 @@ def load_formulas() -> list[dict[str, Any]]:
     return payload["formulas"]
 
 
+CUSTOM_FORMULA_STORE = REPO_ROOT / "resources" / "custom_formulas.json"
+
+
+def load_custom_formulas() -> list[dict[str, Any]]:
+    """The second source `scripts/import_formulas_to_db.py` seeds from.
+
+    Kept separate from `load_formulas()` on purpose: the worked-example
+    corpus below covers the workbook transcript only, and these rules have
+    no verification-pack entries to replay.
+    """
+    payload = json.loads(CUSTOM_FORMULA_STORE.read_text(encoding="utf-8"))
+    return payload["formulas"]
+
+
 def load_examples() -> dict[str, list[dict[str, Any]]]:
     return json.loads(WORKED_EXAMPLES.read_text(encoding="utf-8"))
 
@@ -460,18 +474,24 @@ def _catalogue_or_skip() -> list[dict[str, Any]]:
 
 
 def test_formula_table_matches_the_workbook_transcript() -> None:
-    """The imported table equals `formula.json` field for field.
+    """The imported table equals its JSON sources, field for field.
 
     This is what makes the migration auditable. `formula.json` stays in the
     tree as the transcript `test_formula_conformance.py` checks against the
     workbook; the table is what runs. If the two drift, the conformance suite
     is answering a question about a file nobody evaluates any more.
 
-    `grain` is excluded because the file has no such field -- it is derived
-    once, on import, and asserted separately below.
+    Both sources count, not just `formula.json`: `import_formulas_to_db.py`
+    seeds `custom_formulas.json` too, so comparing against the workbook
+    transcript alone reports every `fc*` rule as an extra row in the table.
+
+    `grain` is excluded because `formula.json` has no such field -- it is
+    derived once, on import, and asserted separately below.
     """
     stored = {row["id"]: row for row in _catalogue_or_skip()}
-    transcript = {row["id"]: row for row in load_formulas()}
+    transcript = {
+        row["id"]: row for row in load_formulas() + load_custom_formulas()
+    }
 
     assert set(stored) == set(transcript)
 
@@ -501,4 +521,10 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
         assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
         split[grain] = split.get(grain, 0) + 1
 
-    assert split == {"store_sku": 17, "chain_sku": 3, "store_roster": 3}
+    assert split == {
+        "store_sku": 17,
+        "chain_sku": 5,
+        "store_roster": 3,
+        "vertical": 6,
+        "vendor": 1,
+    }

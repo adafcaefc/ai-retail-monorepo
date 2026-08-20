@@ -48,11 +48,21 @@ def load_examples() -> dict[str, list[dict[str, Any]]]:
 
 
 def corpus() -> list[tuple[str, dict[str, Any]]]:
+    """Every stored rule that has a verification-pack entry, cell by cell.
+
+    `examples.get(...)` rather than `examples[...]`: the catalogue also holds
+    the `fc*` rules from `resources/custom_formulas.json`, which are derived
+    or come from v8.5 `*_live` sheets and have no worked examples to cite. A
+    plain lookup raises `KeyError` during collection and takes the whole
+    module down with it. Nothing is silently lost by skipping them -- that
+    every formula in the workbook transcript has exactly five examples is
+    asserted in `test_formulas.py::test_corpus_covers_every_documented_example`.
+    """
     examples = load_examples()
     return [
         (formula["id"], case)
         for formula in repository.load()
-        for case in examples[formula["id"]]
+        for case in examples.get(formula["id"], [])
     ]
 
 

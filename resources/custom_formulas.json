@@ -24,6 +24,216 @@
                     "default": null
                 }
             ]
+        },
+        {
+            "id": "fc02-forecast-accuracy-pct",
+            "number": 502,
+            "name": "Forecast accuracy % (A1)",
+            "logic": "100 minus MAPE, where MAPE = volBase x 26.6 + shapeErr x 0.4 + storeVol + hzPen. The four components are the named build-up on 'A1 Accuracy live', section 'Bagian A - Build-up MAPE'. Replaces the 92.4 typed constant in demand_forecasting/tools/demand_data.py.",
+            "sheet": "A1 Accuracy live",
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "100 - (vol_base * 26.6 + shape_err * 0.4 + store_vol + hz_pen)",
+            "parameters": [
+                {
+                    "key": "vol_base",
+                    "label": "Volume base component",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "shape_err",
+                    "label": "Shape error component",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "store_vol",
+                    "label": "Store volatility component",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "hz_pen",
+                    "label": "Horizon penalty component",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc03-avg-markdown-depth",
+            "number": 503,
+            "name": "Average markdown depth (A5)",
+            "logic": "Value-weighted mean markdown depth: sum(depth_i x v_i) / sum(v_i) x 100. Rounded once at the end, not per SKU. Both sums are supplied pre-aggregated -- the expression engine has no aggregate functions.",
+            "sheet": "A5 Markdown live",
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "ROUND(weighted_depth_sum / value_sum * 100, 4)",
+            "parameters": [
+                {
+                    "key": "weighted_depth_sum",
+                    "label": "Sum of depth_i x v_i",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "value_sum",
+                    "label": "Sum of v_i (Rp)",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc04-gmroi",
+            "number": 504,
+            "name": "GMROI (A6)",
+            "logic": "Annual gross margin divided by average inventory cost. Chain-level per SKU, matching the live computation in assortment_optimization/tools/assortment_data.py.",
+            "sheet": "Live per-SKU (GMR)",
+            "grain": "chain_sku",
+            "result_type": "number",
+            "expression": "annual_gross_margin / average_inventory_cost",
+            "parameters": [
+                {
+                    "key": "annual_gross_margin",
+                    "label": "Annual gross margin (Rp)",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "average_inventory_cost",
+                    "label": "Average inventory cost (Rp)",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc05-vendor-score",
+            "number": 505,
+            "name": "Vendor score (A8)",
+            "logic": "Weighted supplier scorecard: 0.35 x OTIF + 0.30 x Fill + 0.20 x LeadAdh + 0.15 x (100 - defect x 8). One row is a vendor account, which is why grain vendor was added in sql/retail/009.",
+            "sheet": "A8 Vendors live",
+            "grain": "vendor",
+            "result_type": "number",
+            "expression": "0.35 * otif_pct + 0.30 * fill_pct + 0.20 * lead_adherence_pct + 0.15 * (100 - defect_pct * 8)",
+            "parameters": [
+                {
+                    "key": "otif_pct",
+                    "label": "OTIF %",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "fill_pct",
+                    "label": "Fill rate %",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "lead_adherence_pct",
+                    "label": "Lead-time adherence %",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "defect_pct",
+                    "label": "Defect %",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc06-replenishment-route",
+            "number": 506,
+            "name": "Replenishment route (A3)",
+            "logic": "Category-based routing: fresh, salmon and parting go Direct; promo and seasonal go Flow-Through; everything else is Cross-Dock. Returns text, not a number.",
+            "sheet": "Replenishment Detail",
+            "grain": "chain_sku",
+            "result_type": "text",
+            "expression": "IF(OR(category = \"fresh\", category = \"salmon\", category = \"parting\"), \"Direct\", IF(OR(category = \"promo\", category = \"seasonal\"), \"Flow-Through\", \"Cross-Dock\"))",
+            "parameters": [
+                {
+                    "key": "category",
+                    "label": "SKU category",
+                    "type": "text",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc07-fill-rate",
+            "number": 507,
+            "name": "Fill rate (A3)",
+            "logic": "(total SKUs - SKUs needing reorder) / total SKUs x 100, per vertical. Counts are supplied pre-aggregated; is_reorder already exists on retail.replenishment_proposal.",
+            "sheet": "A3 Replenishment live",
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "(total_skus - reorder_skus) / total_skus * 100",
+            "parameters": [
+                {
+                    "key": "total_skus",
+                    "label": "Total SKUs",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "reorder_skus",
+                    "label": "SKUs at or below ROP",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc08-service-level",
+            "number": 508,
+            "name": "Service level (A9)",
+            "logic": "100 - (stockout SKUs / total SKUs x 10%), transcribed literally from the Formulas sheet with 10% written as 0.10. NOTE: this scaling makes the result sit just under 100 for any realistic stockout count -- verify against 'A9 Summary live' before presenting it.",
+            "sheet": "A9 Summary live",
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "100 - stockout_skus / total_skus * 0.10",
+            "parameters": [
+                {
+                    "key": "stockout_skus",
+                    "label": "SKUs in stockout",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "total_skus",
+                    "label": "Total SKUs",
+                    "type": "number",
+                    "default": null
+                }
+            ]
+        },
+        {
+            "id": "fc09-part-time-positions",
+            "number": 509,
+            "name": "Part-time positions (A7)",
+            "logic": "Residual coverage gap divided by the part-time FTE factor. part_time_fte defaults to 0.5 (Constants!B10, 20h / 40h) and is a parameter rather than a literal because that constant held a wrong value (7.45) in v8.2.",
+            "sheet": "A7 Workforce live",
+            "grain": "vertical",
+            "result_type": "number",
+            "expression": "residual_gap_fte / part_time_fte",
+            "parameters": [
+                {
+                    "key": "residual_gap_fte",
+                    "label": "Residual coverage gap (FTE)",
+                    "type": "number",
+                    "default": null
+                },
+                {
+                    "key": "part_time_fte",
+                    "label": "Part-time FTE per head",
+                    "type": "number",
+                    "default": 0.5
+                }
+            ]
         }
     ]
 }

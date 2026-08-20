@@ -26,6 +26,17 @@ custom/app-derived) precisely so they read as a different kind of thing than
 (starting at 501) so `idx_retail_formula_number` never collides with the
 workbook sequence as either grows.
 
+`fc02`..`fc09` are the v8.5 per-agent rules from
+`docs/v8.5-new-agent-formulas.md`. They do have a workbook source sheet, so
+`formula.json` looks like their natural home -- but that file is the transcript
+`test_formula_conformance.py` replays against the workbook, and
+`test_formulas.py` requires five workbook-traceable worked examples in
+`workedExamples.json` for every id it holds. The v8.5 `*_live` sheets are not
+extracted yet, so those examples cannot be written without inventing them.
+They live here until their sheets are ingested and a verification pack exists;
+moving them into `formula.json` then is a rename plus worked examples, not a
+rewrite.
+
 WHERE GRAIN COMES FROM
 ----------------------
 `formula.json` records has no `grain` field -- it records `sheet`, the
@@ -86,9 +97,10 @@ GRAIN_FROM_SHEET: dict[str, str] = {
 # written under it.
 EXPECTED_SPLIT: dict[str, int] = {
     "store_sku": 17,
-    "chain_sku": 3,
+    "chain_sku": 5,
     "store_roster": 3,
-    "vertical": 1,
+    "vertical": 6,
+    "vendor": 1,
 }
 
 UPSERT = """

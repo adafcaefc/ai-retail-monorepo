@@ -24,7 +24,11 @@ ParameterType = Literal["number", "text", "boolean"]
 # the grain the v8.5 per-vertical formulas (Accuracy %, Fill rate, Service
 # level) also need -- see `docs/v8.5-new-agent-formulas.md`'s open design
 # question.
-Grain = Literal["store_sku", "chain_sku", "store_roster", "vertical"]
+#
+# `vendor` was added for the v8.5 Vendor score rule (`A8 Vendors live`),
+# whose row is a supplier account rather than a SKU, a store or a legal
+# entity -- see sql/retail/009_add_formula_vendor_grain.sql.
+Grain = Literal["store_sku", "chain_sku", "store_roster", "vertical", "vendor"]
 
 # The label the Formula Manager shows for each grain, and the table a rule at
 # that grain reads from. Kept beside the type so the UI, the API docs and the
@@ -34,6 +38,7 @@ GRAIN_LABELS: dict[str, str] = {
     "chain_sku": "Chain-wide per SKU - netted across all stores",
     "store_roster": "Per store roster - one store's workforce",
     "vertical": "Per vertical - one legal entity's own figure",
+    "vendor": "Per vendor - one supplier account's own figure",
 }
 
 GRAIN_TABLES: dict[str, str] = {
@@ -41,6 +46,7 @@ GRAIN_TABLES: dict[str, str] = {
     "chain_sku": "retail.fact_inventory_chain_daily",
     "store_roster": "",
     "vertical": "retail.agent_kpi_reference",
+    "vendor": "retail.dim_vendor",
 }
 
 
