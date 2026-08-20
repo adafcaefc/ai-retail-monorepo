@@ -41,13 +41,19 @@ export default function RiskKpiGrid({
   const dosAbove = kpis.avg_dos > DOS_TARGET.max;
 
   const tiles = [
+    // Every count below is DISTINCT SKUs over the ENGINE_STORE grid, which is
+    // what the workbook's own dropdown reports. A SKU in trouble at six stores
+    // is one SKU here, six rows in the register beneath.
     {
-      id: "stockout_risk_skus",
-      label: "Stockout-risk SKUs",
-      value: formatUnits(kpis.stockout_risk_skus, language),
-      caption: t("Position below reorder point"),
+      id: "stockout_skus",
+      label: "Stockout SKUs",
+      value: formatUnits(kpis.stockout_skus, language),
+      caption: `${formatIdr(kpis.stockout_value, language)} ${t("at risk")}`,
+      captionTone: kpis.stockout_skus > 0 ? "bad" : "",
       // The mockup's KPI #1 drills into the at-risk breakdown; here that means
-      // scoping the board to the two states that make up the reorder zone.
+      // scoping the board to the two states that make up the reorder zone --
+      // which is the wider below-ROP population (`stockout_risk_skus`), not
+      // this tile's severe subset.
       onClick: onDrillStockoutRisk,
     },
     {

@@ -26,34 +26,50 @@ Every figure below was read from the seeded warehouse and reconciled against
 `resources/dbtemp/schema_with_data.json`. These are the numbers a correct
 answer contains. Anything else on screen or in chat is a finding.
 
-### A2 · Inventory Risk — chain-net, 800 SKUs
+### A2 · Inventory Risk — ENGINE_STORE grain, 16,000 rows over 800 SKUs
+
+Read straight off the `ENGINE_STORE` grid in `RM ENGINE DATA FOR RETAIL.xlsx`
+with no filter applied, and confirmed against the workbook by the board's
+owner. **Counts are DISTINCT SKUs; money and units sum every store row** — the
+board follows the same split, so a count here is directly comparable with a
+tile and a row count is not.
 
 | Figure | Value |
 |---|---|
+| Rows (SKU × store) | 16,000 |
 | SKUs | 800 |
-| Inventory value | Rp 2,223,694,053,300 |
-| At-risk value | Rp 732,540,101,900 |
-| Below reorder point (stockout risk) | **302** |
-| Overstock SKUs | 40 |
-| Slow-mover SKUs | 51 |
-| Expiry units | 6,252 (all Grocery) |
+| Inventory value | Rp 2,223,869,209,600 |
+| At-risk value | Rp 873,041,521,900 |
+| Stockout SKUs | **247** · Rp 148,200,588,900 at risk |
+| Low SKUs | 457 |
+| Below reorder point (Stockout + Low) | **524** |
+| Overstock SKUs | **104** · Rp 47,633,362,800 excess |
+| Slow-mover SKUs | **75** |
+| Expiry SKUs | 11 · 5,624 units · Rp 124,355,878 write-off |
+| Avg days of supply | 7.85 |
 
-States: Healthy 399 · Low 196 · Stockout 106 · Slow-mover 51 · Overstock 40 ·
-Expiry 8.
+States, as distinct SKUs: Healthy 532 · Low 457 · Stockout 247 · Slow-mover 75
+· Overstock 104 · Expiry 11. These do not sum to 800: a SKU healthy in one
+store can be Stockout in another, and 393 SKUs are in both camps.
 
-Per vertical — these match the workbook's own `A2` sheet exactly, so they are
-the fastest thing to spot-check:
+Per vertical — distinct SKUs, from the same grid:
 
-| Vertical | Below ROP | Overstock | At-risk value |
-|---|---|---|---|
-| Grocery | 46 | 0 | Rp 4,232,178,400 |
-| General Merch | 31 | 8 | Rp 30,734,993,900 |
-| Fashion | 39 | 29 | Rp 74,431,694,000 |
-| Health & Beauty | 42 | 0 | Rp 8,112,067,400 |
-| Electronics | 35 | 0 | Rp 222,864,021,100 |
-| Home & Living | 32 | 3 | Rp 53,016,337,200 |
-| Digital/Online | 40 | 0 | Rp 133,323,852,000 |
-| Omnichannel | 37 | 0 | Rp 205,824,957,900 |
+| Vertical | Below ROP | Stockout | Overstock | Slow-mover | At-risk value |
+|---|---|---|---|---|---|
+| Grocery | 78 | 37 | 2 | 5 | Rp 4,457,260,000 |
+| General Merch | 46 | 21 | 15 | 10 | Rp 31,254,454,300 |
+| Fashion | 68 | 32 | 40 | 14 | Rp 73,171,687,700 |
+| Health & Beauty | 78 | 39 | 4 | 7 | Rp 10,099,854,800 |
+| Electronics | 55 | 25 | 14 | 10 | Rp 307,663,999,000 |
+| Home & Living | 62 | 29 | 11 | 10 | Rp 67,309,259,400 |
+| Digital | 70 | 32 | 9 | 10 | Rp 152,598,665,200 |
+| Omnichannel | 67 | 32 | 9 | 9 | Rp 226,486,341,500 |
+
+**Do not compare these with the workbook's `A2 Inventory Risk` summary sheet.**
+That sheet is CHAIN-NET — it totals 345 below-ROP and 26 overstock SKUs over
+the 800-row `ENGINE` rollup, where the grid holds 524 and 104. Both are right
+about different questions. The board still carries the sheet as
+`reference_by_vertical`, labelled as a benchmark from the other grain.
 
 ### A6 · Assortment Optimization — chain-net, 800 SKUs
 

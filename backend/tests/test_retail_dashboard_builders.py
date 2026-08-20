@@ -40,7 +40,11 @@ AGENTS = [
     (
         "inventory_risk",
         "src.llm.agents.retail.inventory_risk.dashboard",
-        [("items", "sku_id"), ("stores", "store_id")],
+        # `items` is ENGINE_STORE grain, so the row key is SKU x store. Keying
+        # on `sku_id` alone here does not fail -- it silently collapses 16,000
+        # rows into 800 dict entries and compares the last store of each SKU,
+        # checking 5% of the block while reporting a pass.
+        [("items", ("sku_id", "store_id")), ("stores", "store_id")],
     ),
     (
         "replenishment",
@@ -79,6 +83,18 @@ SKIP_BLOCKS = {
     # legacy fixture intentionally has no synthetic-table block to compare.
     "demand_trend",
 }
+
+
+def _row_key(row: dict, key):
+    """One field, or several for a composite-grain block.
+
+    A block whose rows are one-per-SKU keys on `sku_id`; one at SKU x store
+    grain needs both, or rows silently overwrite each other in the dicts below
+    and the comparison covers whatever happened to be written last.
+    """
+    if isinstance(key, tuple):
+        return tuple(row[part] for part in key)
+    return row[key]
 
 
 def _builder_or_skip(module_path: str):
@@ -124,9 +140,13 @@ class TestBuildersReproduceTheFixtures:
         for block, key in blocks:
             if block not in fixture or not fixture[block]:
                 continue
-            got = {row[key]: row for row in built[block]}
-            want = {row[key]: row for row in fixture[block]}
+            got = {_row_key(row, key): row for row in built[block]}
+            want = {_row_key(row, key): row for row in fixture[block]}
 
+            # Guards the collapse the composite key exists to prevent: if these
+            # disagree, two rows shared a key and one of them went unchecked.
+            assert len(got) == len(built[block]), f"{folder}.{block}: duplicate keys"
+            assert len(want) == len(fixture[block]), f"{folder}.{block}: duplicate keys"
             assert set(got) == set(want), f"{folder}.{block}: different row set"
             for row_key, expected in want.items():
                 for column, value in expected.items():
@@ -150,8 +170,8 @@ class TestBuildersReproduceTheFixtures:
         for block, key in blocks:
             if block not in fixture or not fixture[block]:
                 continue
-            assert [row[key] for row in built[block]] == [
-                row[key] for row in fixture[block]
+            assert [_row_key(row, key) for row in built[block]] == [
+                _row_key(row, key) for row in fixture[block]
             ], f"{folder}.{block} is in a different order"
 
     def test_the_non_row_blocks_match(

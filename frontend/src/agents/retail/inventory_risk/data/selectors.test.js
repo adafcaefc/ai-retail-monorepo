@@ -31,11 +31,22 @@ import {
 const scopeOf = (overrides) => ({ ...DEFAULT_SCOPE, ...overrides });
 
 describe("fixture integrity", () => {
-  it("carries the whole chain and every vertical's reference totals", () => {
-    expect(fixture.items).toHaveLength(800);
+  it("carries the whole ENGINE_STORE grid and every vertical's reference totals", () => {
+    // 800 SKUs x 20 stores per vertical. This was 800 rows while `items` was
+    // the chain-net rollup; the grid is what the workbook's dropdown filters
+    // and what the KPI cards now count.
+    expect(fixture.items).toHaveLength(16000);
+    expect(new Set(fixture.items.map((item) => item.sku_id)).size).toBe(800);
     expect(fixture.stores).toHaveLength(160);
     expect(fixture.reference_by_vertical).toHaveLength(8);
     expect(fixture.is_mock).toBe(true);
+  });
+
+  it("gives every row a store, so nothing can key on sku_id alone", () => {
+    const keys = new Set(
+      fixture.items.map((item) => `${item.sku_id}-${item.store_id}`),
+    );
+    expect(keys.size).toBe(fixture.items.length);
   });
 
   it("resolves every rule upstream, so no item needs re-classifying", () => {
@@ -69,43 +80,105 @@ describe("fixture integrity", () => {
   });
 });
 
+/*
+ * These are the figures a reader reproduces in `RM ENGINE DATA FOR RETAIL.xlsx`
+ * by filtering the ENGINE_STORE grid with no filter applied. They replace a
+ * per-vertical diff against the `A2 Inventory Risk` summary sheet, which is
+ * CHAIN-NET: that sheet totals 26 overstock SKUs where the grid holds 104, and
+ * 345 stockout-risk where the grid holds 524. The old test was not stale, it
+ * was checking the other grain — `reference_by_vertical` still carries those
+ * sheet figures, and the test below asserts they deliberately DISAGREE.
+ *
+ * `scripts/build_inventory_risk_fixture.py` pins the same numbers before it
+ * writes, so a fixture that drifts fails at build time rather than here.
+ */
+const WORKBOOK_GRID_KPIS = {
+  sku_count: 800,
+  row_count: 16000,
+  stockout_skus: 247,
+  low_skus: 457,
+  stockout_risk_skus: 524,
+  overstock_skus: 104,
+  expiry_skus: 11,
+  slow_mover_skus: 75,
+  expiry_units: 5624,
+  inventory_value: 2223869209600,
+  at_risk_value: 873041521900,
+};
+
 describe("KPIs reconcile with the workbook", () => {
-  it.each(fixture.reference_by_vertical)(
-    "matches the A2 sheet for $vertical_label",
-    (reference) => {
-      const items = scopeItems(
-        fixture.items,
-        scopeOf({ legal_entity_id: reference.legal_entity_id }),
-      );
-      const kpis = computeKpis(items);
+  it("matches the ENGINE_STORE grid, counting SKUs and summing money", () => {
+    const kpis = computeKpis(fixture.items);
+    for (const [name, expected] of Object.entries(WORKBOOK_GRID_KPIS)) {
+      expect(`${name}=${kpis[name]}`).toBe(`${name}=${expected}`);
+    }
+    expect(Math.round(kpis.stockout_value)).toBe(148200588900);
+    expect(Math.round(kpis.overstock_excess_value)).toBe(47633362800);
+    expect(Math.round(kpis.expiry_value)).toBe(124355878);
+    expect(Number(kpis.avg_dos.toFixed(2))).toBe(7.85);
+  });
 
-      expect(kpis.stockout_risk_skus).toBe(reference.stockout_risk_skus);
-      expect(kpis.overstock_skus).toBe(reference.overstock_skus);
-      expect(kpis.expiry_units).toBeCloseTo(reference.expiry_units, 6);
-      expect(kpis.inventory_value).toBe(reference.inventory_value);
-      expect(kpis.at_risk_value).toBe(reference.at_risk_value);
-      expect(Number(kpis.avg_dos.toFixed(1))).toBeCloseTo(
-        Number(reference.avg_dos.toFixed(1)),
-        6,
-      );
-    },
-  );
+  /*
+   * The distinction the whole grain change turns on. `.length` counts rows and
+   * would report 755 slow movers; the card reports the 75 SKUs those rows
+   * belong to. If someone reintroduces `.length` in `computeKpis`, this fails
+   * where the totals above would still pass on money alone.
+   */
+  it("counts distinct SKUs, not rows", () => {
+    const kpis = computeKpis(fixture.items);
+    const slowRows = fixture.items.filter((item) => item.is_slow_mover);
+    expect(slowRows).toHaveLength(755);
+    expect(kpis.slow_mover_skus).toBe(75);
+    expect(kpis.slow_mover_skus).toBe(
+      new Set(slowRows.map((item) => item.sku_id)).size,
+    );
+  });
 
-  it("totals the whole chain to the sum of its verticals", () => {
+  it("each vertical's rows sum to the chain", () => {
     const all = computeKpis(fixture.items);
     const summed = fixture.reference_by_vertical.reduce(
-      (running, row) => ({
-        stockout_risk_skus: running.stockout_risk_skus + row.stockout_risk_skus,
-        inventory_value: running.inventory_value + row.inventory_value,
-        at_risk_value: running.at_risk_value + row.at_risk_value,
-      }),
-      { stockout_risk_skus: 0, inventory_value: 0, at_risk_value: 0 },
+      (running, row) => {
+        const kpis = computeKpis(
+          scopeItems(
+            fixture.items,
+            scopeOf({ legal_entity_id: row.legal_entity_id }),
+          ),
+        );
+        return {
+          // SKUs belong to exactly one vertical, so distinct counts add up
+          // here where they would not across stores.
+          sku_count: running.sku_count + kpis.sku_count,
+          inventory_value: running.inventory_value + kpis.inventory_value,
+          at_risk_value: running.at_risk_value + kpis.at_risk_value,
+        };
+      },
+      { sku_count: 0, inventory_value: 0, at_risk_value: 0 },
     );
 
-    expect(all.stockout_risk_skus).toBe(summed.stockout_risk_skus);
-    expect(all.inventory_value).toBe(summed.inventory_value);
-    expect(all.at_risk_value).toBe(summed.at_risk_value);
-    expect(all.sku_count).toBe(800);
+    expect(summed.sku_count).toBe(all.sku_count);
+    expect(summed.inventory_value).toBeCloseTo(all.inventory_value, 2);
+    expect(summed.at_risk_value).toBeCloseTo(all.at_risk_value, 2);
+  });
+
+  /*
+   * Kept as a positive assertion rather than deleted, so the gap is documented
+   * where a reader will find it: the A2 sheet is a chain-net benchmark carried
+   * beside these cards, not a target they are expected to hit.
+   */
+  it("deliberately disagrees with the chain-net A2 summary sheet", () => {
+    const kpis = computeKpis(fixture.items);
+    const sheet = fixture.reference_by_vertical.reduce(
+      (running, row) => ({
+        stockout_risk_skus: running.stockout_risk_skus + row.stockout_risk_skus,
+        overstock_skus: running.overstock_skus + row.overstock_skus,
+      }),
+      { stockout_risk_skus: 0, overstock_skus: 0 },
+    );
+
+    expect(sheet.stockout_risk_skus).toBe(345);
+    expect(sheet.overstock_skus).toBe(26);
+    expect(kpis.stockout_risk_skus).toBeGreaterThan(sheet.stockout_risk_skus);
+    expect(kpis.overstock_skus).toBeGreaterThan(sheet.overstock_skus);
   });
 });
 
@@ -133,15 +206,29 @@ describe("scoping", () => {
       expect(row.state).toBe("Stockout");
     }
 
+    // One SKU is now one row PER STORE it is stocked in, so a SKU search
+    // returns that SKU's shelf across the chain rather than a single row.
     const bySearch = buildDashboardFromFixture(
       fixture,
       scopeOf({ sku: "GRC-001" }),
     );
-    expect(bySearch.risk_register).toHaveLength(1);
-    expect(bySearch.risk_register[0].sku_id).toBe("GRC-001");
+    expect(bySearch.risk_register).toHaveLength(20);
+    for (const row of bySearch.risk_register) {
+      expect(row.sku_id).toBe("GRC-001");
+    }
+    expect(new Set(bySearch.risk_register.map((row) => row.store_id)).size).toBe(
+      20,
+    );
+
+    // Narrowed to one store, it is a single row again.
+    const oneStore = buildDashboardFromFixture(
+      fixture,
+      scopeOf({ sku: "GRC-001", store_id: "S001" }),
+    );
+    expect(oneStore.risk_register).toHaveLength(1);
   });
 
-  it("scopes to one store by re-deriving that store's rows", () => {
+  it("scopes to one store by filtering to that store's rows", () => {
     const unscoped = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const withStore = buildDashboardFromFixture(
       fixture,
@@ -230,15 +317,17 @@ describe("scoping", () => {
     }
   });
 
-  it("reproduces the workbook's own ENGINE_STORE figures for that store", () => {
+  it("serves the workbook's own ENGINE_STORE figures for that store", () => {
     /*
-     * The claim `SUPPORTS_STORE_SCOPE` makes is that a store's rows are
-     * DERIVED exactly, not estimated. These are `ENGINE_STORE`'s own values
-     * for S001, read out of the workbook extract — if the derivation drifts,
-     * the store filter is quietly showing invented numbers and this fails.
-     *
-     * The fixture builder asserts the same thing over all 16,000 rows; this
-     * asserts it survives the trip through the engine and the selectors.
+     * These are `ENGINE_STORE`'s own values for GRC-001 at S001, read out of
+     * the workbook extract. They are now READ rather than reconstructed, and
+     * that changed three of them: the old `atStore` derivation returned ROP 88,
+     * Max 204 and ADS 29.1668846784 where the workbook holds 86, 201 and
+     * 28.755631604434562. The reconstruction was checked against the grid's
+     * `ads`/`on_hand`/`open_po` and passed, but ROP and Max were then rebuilt
+     * from a lead time the grid does not use — so the store filter had been
+     * showing a position about 2% off the workbook's own, in a panel whose
+     * whole claim was exactness.
      */
     const withStore = buildDashboardFromFixture(
       fixture,
@@ -248,12 +337,12 @@ describe("scoping", () => {
 
     expect(row).toBeDefined();
     expect(row.position).toBe(68);
-    expect(row.rop).toBe(88);
-    expect(row.max).toBe(204);
+    expect(row.rop).toBe(86);
+    expect(row.max).toBe(201);
     expect(row.state).toBe("Low");
-    expect(row.ads).toBeCloseTo(29.1668846784, 6);
-    expect(row.on_hand).toBeCloseTo(66.79353298333037, 6);
-    expect(row.dos).toBeCloseTo(2.3314111448576638, 6);
+    expect(row.ads).toBeCloseTo(28.755631604434562, 6);
+    expect(row.on_hand).toBeCloseTo(66.79160240420701, 6);
+    expect(row.dos).toBeCloseTo(2.3647541787784396, 6);
 
     // The whole store, against ENGINE_STORE's own state tally for S001.
     const states = withStore.risk_register.reduce((tally, item) => {
@@ -261,13 +350,18 @@ describe("scoping", () => {
       return tally;
     }, {});
     expect(states).toEqual({
-      Stockout: 19,
-      Low: 27,
+      Stockout: 21,
+      Low: 30,
       Expiry: 8,
-      "Slow-mover": 4,
-      Healthy: 42,
+      "Slow-mover": 1,
+      Healthy: 40,
     });
-    expect(withStore.kpis.stockout_risk_skus).toBe(46);
+    // Within one store a SKU has exactly one row, so distinct-SKU counts and
+    // row counts coincide here — which is why this is the tidiest place to
+    // check the two agree.
+    expect(withStore.kpis.stockout_skus).toBe(21);
+    expect(withStore.kpis.stockout_risk_skus).toBe(51);
+    expect(withStore.kpis.sku_count).toBe(100);
   });
 });
 
@@ -341,7 +435,17 @@ describe("derived views", () => {
     }
   });
 
-  it("reports store and cluster figures as gross, above the chain-net headline", () => {
+  /*
+   * This used to assert the cluster bars summed ABOVE the headline, because
+   * the tiles were chain-net and the store charts were gross — a gap A2 spec
+   * 10 note 1 told the board to label rather than reconcile.
+   *
+   * Both sides read the same ENGINE_STORE rows now, so the gap is gone and the
+   * charts finally add up to the number above them. Asserted as equality
+   * rather than deleted: if `items` is ever pointed back at a netted source,
+   * the two drift apart again and this is where it shows.
+   */
+  it("adds the store and cluster charts up to the headline exactly", () => {
     const payload = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     const clusterTotal = payload.at_risk_by_cluster.reduce(
       (running, row) => running + row.value,
@@ -350,8 +454,7 @@ describe("derived views", () => {
 
     expect(payload.at_risk_by_cluster).toHaveLength(4);
     expect(payload.at_risk_by_legal_entity).toHaveLength(8);
-    // Gross sums local pockets; chain-net nets them off. A2 spec 10 note 1.
-    expect(clusterTotal).toBeGreaterThan(payload.kpis.at_risk_value);
+    expect(clusterTotal).toBeCloseTo(payload.kpis.at_risk_value, 2);
   });
 
   it("stacks every SKU a store carries, leaving none outside a segment", () => {
@@ -726,17 +829,67 @@ describe("money figures behind the counts", () => {
 });
 
 describe("suggested best action", () => {
-  it("routes every non-healthy SKU to exactly one owning agent", () => {
-    const { best_actions: routes, kpis } = buildDashboardFromFixture(
+  /*
+   * A SKU can legitimately need BOTH routes at store grain: understocked in
+   * one store, overstocked in another. 33 of them do. That is invisible
+   * chain-net, where the two positions net each other off and the SKU reads
+   * Healthy — and it is the kind of thing this grain exists to surface.
+   *
+   * So the old invariant (routes partition the non-healthy SKUs) is false
+   * here, in two ways: the routes overlap by those 33, and "healthy" is no
+   * longer a property of a SKU at all — 393 SKUs are Healthy in some stores
+   * and not in others. What still holds is that the union of the routes is
+   * exactly the SKUs with at least one non-healthy row.
+   */
+  it("routes every SKU with a non-healthy row, and both routes where both apply", () => {
+    const { best_actions: routes } = buildDashboardFromFixture(
       fixture,
       DEFAULT_SCOPE,
     );
 
-    const routed = routes.reduce((running, route) => running + route.sku_count, 0);
-    expect(routed).toBe(kpis.sku_count - kpis.healthy_skus);
+    const troubled = new Set(
+      fixture.items
+        .filter((item) => item.state !== "Healthy")
+        .map((item) => item.sku_id),
+    );
+    const byAgent = new Map(routes.map((route) => [route.next_agent, route]));
+    const replenish = new Set(
+      fixture.items
+        .filter((item) => item.next_agent === "3 Replenish" && item.state !== "Healthy")
+        .map((item) => item.sku_id),
+    );
+    const markdown = new Set(
+      fixture.items
+        .filter((item) => item.next_agent === "5 Markdown" && item.state !== "Healthy")
+        .map((item) => item.sku_id),
+    );
+
+    expect(troubled.size).toBe(661);
+    expect(byAgent.get("3 Replenish").sku_count).toBe(replenish.size);
+    expect(byAgent.get("5 Markdown").sku_count).toBe(markdown.size);
+
+    const union = new Set([...replenish, ...markdown]);
+    expect(union.size).toBe(troubled.size);
+
+    const both = [...replenish].filter((sku) => markdown.has(sku));
+    expect(both).toHaveLength(33);
 
     const names = routes.map((route) => route.next_agent).sort();
     expect(names).toEqual(["3 Replenish", "5 Markdown"]);
+  });
+
+  it("lists each SKU once per route, not once per store", () => {
+    const { best_actions: routes } = buildDashboardFromFixture(
+      fixture,
+      DEFAULT_SCOPE,
+    );
+    for (const route of routes) {
+      const ids = route.top_skus.map((sku) => sku.sku_id);
+      expect(new Set(ids).size).toBe(ids.length);
+      for (const sku of route.top_skus) {
+        expect(sku.store_count).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("sends the reorder states to Agent 3 and the rest to Agent 5", () => {

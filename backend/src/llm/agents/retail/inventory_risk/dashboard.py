@@ -4,13 +4,21 @@ Returns the same shape `scripts/build_inventory_risk_fixture.py` writes, so the
 board's selectors run over it unchanged. See `retail/common/warehouse.py` for
 why the aggregation stays in the browser.
 
-Two grains are involved and they are not interchangeable. `items` comes from
-`fact_inventory_chain_daily` — the workbook's chain-level ENGINE, which is not
-the per-store grid rolled up. `stores` is aggregated from
-`fact_inventory_daily`, and those totals are GROSS: they sum local pockets of
-risk and will exceed the chain-net headline, which nets surplus against
-shortage across stores. A2 spec section 10 note 1 calls that out, and the board
-labels it rather than reconciling it away.
+`items` is ENGINE_STORE grain: one row per SKU x store, 16,000 of them, the
+same grid the workbook's own dropdown filters and the Formula Manager calls its
+primary source. It was chain-net (`fact_inventory_chain_daily`, 800 netted
+rows) until the KPI cards were found to be answering a question nobody asked --
+"how many SKUs are slow-moving once surplus in one store cancels shortage in
+another" -- and reading 37 slow movers where the grid holds 75.
+
+`stores` is aggregated from the same `fact_inventory_daily` and its totals are
+GROSS. That is no longer a second grain, just a second shape: with `items` at
+store grain the two finally reconcile, where before they could not.
+
+One thing does NOT reconcile, by design. The workbook's `A2 Inventory Risk`
+summary sheet publishes chain-net figures (overstock 26, stockout-risk 345),
+and `reference_by_vertical` still carries them. They are a benchmark from the
+other grain, not a target these cards are expected to hit.
 """
 
 from __future__ import annotations
@@ -29,7 +37,6 @@ from src.llm.agents.retail.common.warehouse import (
     SUPPORTED_FILTERS,
     _rows,
     _scope_clause,
-    chain_store_size,
     constants,
     envelope,
     agent_reference,
@@ -41,21 +48,21 @@ from src.llm.agents.retail.common.warehouse import (
 
 AGENT_ID = "retail.inventory_risk"
 
-# The twelve expressions this board runs, in dependency order. They are used
-# twice over, which is the point: `build_items` evaluates eleven of them here
-# to produce the baseline rows, and the payload ships all twelve so the
-# browser's What-If engine re-evaluates the same rules when a lever moves.
+# The eleven expressions this board runs, in dependency order. They are used
+# twice over, which is the point: `build_items` evaluates every one of them
+# here to produce the baseline rows, and the payload ships the same eleven so
+# the browser's What-If engine re-evaluates the same rules when a lever moves.
 # One catalogue, one answer, whichever side of the wire asks.
 #
-# The browser refuses to start without all twelve, so the board fails loudly at
+# The browser refuses to start without all eleven, so the board fails loudly at
 # load rather than silently at the first slider drag.
 #
-# f02 is the one this file does not evaluate: it derives on-hand at a single
-# store's health and size index, and these rows are chain-net. The drill-down
-# evaluates it in `atStore`, which is why the payload still carries it.
+# f02-on-hand is gone from this list. It rebuilt a store's on-hand from the
+# SKU's base ADS and the store's health/size indices, which is what `atStore`
+# needed while `items` was chain-net and a store view had to be derived. This
+# route ships the store grid itself now, so on-hand is read, not reconstructed.
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
-    "f02-on-hand",
     "f03-open-po-per-store",
     "f04-position",
     "f05-rop",
@@ -80,11 +87,9 @@ def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
 
 
-def build_items(
-    rows: list[dict], store_size: dict[str, float], asts: dict[str, tuple]
-) -> list[dict]:
-    """One row per SKU at chain-net level, every figure evaluated from the
-    catalogue.
+def build_items(rows: list[dict], asts: dict[str, tuple]) -> list[dict]:
+    """One row per SKU x store -- the workbook's own ENGINE_STORE grain --
+    every figure evaluated from the catalogue.
 
     NOTHING DERIVED HERE IS TYPED HERE. Each column below is the answer of a
     `retail.formula` expression, run through `src.formulas.expression` in the
@@ -92,29 +97,35 @@ def build_items(
     catalogue, that `engine.js` runs in the browser when a What-If lever moves.
     This function only supplies parameters and decides that order.
 
-    It used to read nine of these straight off `fact_inventory_chain_daily`
-    instead -- `ads`, `position_qty`, `rop_qty`, `max_qty`, `days_cover`,
-    `state`, `inventory_value`, `at_risk_value` and `expiry_units` were stored
-    answers -- and `is_stockout_risk` was a `position < rop` comparison retyped
-    in Python. Those columns are the workbook's own and they agree with the
-    catalogue today -- `verify_engine_chain` in the fixture builder proves it
-    over all 800 rows -- so this change moves no number on screen. What it
-    changes is what happens when someone edits a rule in the Formula Manager:
-    `retail.formula` is read live and uncached precisely so a corrected rule
-    takes effect at once, and until now that promise held only for the What-If
-    path. A reader who fixed f20 and watched the baseline board keep last
-    week's days-of-supply was looking at the bug this ends.
+    THIS IS STORE GRAIN, NOT CHAIN-NET.
+    It used to read `fact_inventory_chain_daily` -- the workbook's 800-row
+    ENGINE sheet, one netted row per SKU -- which made every KPI answer a
+    question nobody asked: "how many SKUs are slow-moving once surplus in one
+    store is allowed to cancel shortage in another". The workbook's own
+    ENGINE_STORE grid, and the dropdown a buyer actually filters, count the
+    16,000 SKU x store rows instead. Chain-net said 37 slow movers; the grid
+    says 75 distinct SKUs across 755 rows. Same rule, same catalogue, right
+    population.
+
+    The full f01 -> f07 chain reproduces all 16,000 ENGINE_STORE rows exactly
+    (ads, position, rop and state, to 1e-6), which is why nothing here reads a
+    stored answer: `store_size` is this row's own store, and f03's allocation
+    ratio is 1 because `open_po_qty` was already allocated to this store when
+    the grid was seeded.
+
+    COUNTS ARE DISTINCT SKUs, VALUES ARE ROW SUMS -- and that split is decided
+    downstream, in `selectors.js`'s `computeKpis`, not here. This function
+    emits rows; it does not count them.
 
     THE THREE KPI PREDICATES FOLLOW f07, NOT THE SPEC'S CARD COLUMN.
     The A2 spec's "Formula (card fx)" column and the sheet beside it disagree,
-    and the spec presents them as if they did not: on the current dataset the
-    raw `growth < 1 and dos > 10` predicate gives 43 slow movers where
-    `state == "Slow-mover"` gives 37, because 6 SKUs satisfy it but were
-    already claimed by a more urgent state. Following the spec made the card
-    contradict the chart directly beneath it. `is_stockout_risk` is the same
-    argument: f07 assigns Stockout below `0.6 x ROP` and Low below ROP, so
-    those two states ARE the rows below the reorder point, by construction --
-    reading them off the state costs nothing and cannot drift from f07.
+    and the spec presents them as if they did not: the raw
+    `growth < 1 and dos > 10` predicate claims rows a more urgent state has
+    already taken, so following the spec made the card contradict the chart
+    directly beneath it. `is_stockout_risk` is the same argument: f07 assigns
+    Stockout below `0.6 x ROP` and Low below ROP, so those two states ARE the
+    rows below the reorder point, by construction -- reading them off the state
+    costs nothing and cannot drift from f07.
     """
     items = []
     for row in rows:
@@ -128,9 +139,10 @@ def build_items(
         base_ads = _float(row["base_ads"])
         seasonality_index = _float(row["seasonality_index"])
         promo_depth = _float(row["cannibalisation_pct"])
-        # The vertical's total size index, not one store's: a chain-net row
-        # already covers every store, which is why f01 still applies to it.
-        vertical_size = store_size[row["vertical_id"]]
+        # This row IS one store, so f01's `store_size` is that store's own
+        # size index -- the vertical total belonged to the chain-net grain and
+        # would inflate ADS by roughly the store count if left in place.
+        store_size_index = _float(row["size_index"])
         # f01's archetype/horizon multiplier, preferred from `dim_item` and
         # recovered from the stored `ads` when that column is NULL -- which it
         # is until sql/retail/008 has been applied AND the dims re-seeded.
@@ -146,7 +158,7 @@ def build_items(
             _float(stored_factor)
             if stored_factor is not None
             else _arch_horizon_factor(
-                _float(row["ads"]), base_ads, seasonality_index, vertical_size
+                _float(row["ads"]), base_ads, seasonality_index, store_size_index
             )
         )
 
@@ -164,7 +176,7 @@ def build_items(
                 "base_ads": base_ads,
                 "seasonality": seasonality_index,
                 "arch_horizon_factor": arch_horizon_factor,
-                "store_size": vertical_size,
+                "store_size": store_size_index,
                 "demand_lever": 0,
                 "promo_eligible": promo_eligible,
                 "promo_lever": 0,
@@ -172,16 +184,19 @@ def build_items(
             },
         )
 
-        # A chain-net row already covers every store, so f03's allocation ratio
-        # is one and the expression returns the chain's open PO unchanged. It
-        # runs anyway rather than being short-circuited: the ratio being one is
-        # a property of this grain, not a licence to skip the rule.
+        # `open_po_qty` on a store row was ALREADY allocated to this store when
+        # the grid was seeded (the workbook's own
+        # `open_po_chain x store.size / vertical total`), so passing the two
+        # sizes as equal makes f03's ratio one and stops it allocating a second
+        # time. It runs anyway rather than being short-circuited: the ratio
+        # being one is a property of this grain, not a licence to skip the rule
+        # -- and `inbound_lever` still has to reach the expression.
         open_po = run(
             "f03-open-po-per-store",
             {
                 "open_po_total": _float(row["open_po_qty"]),
-                "store_size": vertical_size,
-                "total_store_size": vertical_size,
+                "store_size": store_size_index,
+                "total_store_size": store_size_index,
                 "inbound_lever": 0,
             },
         )
@@ -219,6 +234,13 @@ def build_items(
         items.append(
             {
                 "sku_id": row["item_key"],
+                # The other half of this row's identity. A SKU now appears once
+                # per store, so anything keying or de-duplicating on `sku_id`
+                # alone silently collapses 16,000 rows back down to 800.
+                "store_id": row["store_key"],
+                "store_name": row["store_name"],
+                "cluster": row["cluster"],
+                "channel": row["channel"],
                 "name": row["name"],
                 "vertical_id": row["vertical_id"],
                 "category_id": row["category_id"],
@@ -276,9 +298,12 @@ def build_items(
                 # -- What-If parameters, never answers ------------------
                 "base_ads": base_ads,
                 "seasonality": seasonality_index,
-                # The vertical's total size index, not one store's: a chain-net
-                # row already covers every store.
-                "store_size": vertical_size,
+                # This store's own size index, feeding f01 directly. Shipped
+                # alongside an equal `total_store_size` so the browser's f03
+                # reaches the same ratio-of-one the baseline above used --
+                # `open_po` below is already this store's allocated share.
+                "store_size": store_size_index,
+                "total_store_size": store_size_index,
                 # f01's archetype/horizon factor. Resolved once above, from
                 # `dim_item` where sql/retail/008 has been seeded and by
                 # dividing it back out of the stored `ads` where it has not --
@@ -293,19 +318,12 @@ def build_items(
                 "lead_days": lead_days,
                 "safety_days": safety_days,
                 "perishable": perishable,
-                # The pair that lets the board scope to ONE store without this
-                # route shipping the 16,000-row grid:
-                #
-                #   on_hand(sku, store) = base_ads * onhand_days * stock_factor
-                #                         * store.health_index * store.size_index
-                #
-                # `atStore` in the browser's engine.js evaluates exactly that,
-                # as f02, against the `size_index` / `health_index` carried on
-                # the store rows below. Verified against every ENGINE_STORE row
-                # by the fixture builder, so a store-scoped position is the
-                # workbook's own.
-                "onhand_days": _float(row["onhand_days"]),
-                "stock_factor": _float(row["stock_factor"]),
+                # `onhand_days` / `stock_factor` used to ride along here so the
+                # browser could rebuild a store's on-hand with f02 (`atStore`).
+                # This route now ships the store grid itself, so that
+                # reconstruction has nothing left to reconstruct -- the row IS
+                # the store -- and both fields left with it rather than being
+                # paid for 16,000 times over.
                 "next_agent": (
                     "3 Replenish" if state in REPLENISH_STATES else "5 Markdown"
                 ),
@@ -320,28 +338,33 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     params["day"] = SNAPSHOT_DATE
 
     with get_engine().connect() as connection:
-        chain = _rows(
+        # ENGINE_STORE grain: one row per SKU x store, 16,000 of them. The
+        # chain-net table is deliberately NOT read here any more -- see
+        # `build_items`. Only the three raw inputs f01/f03/f04 consume are
+        # taken from the fact table (`ads` for the archetype fallback,
+        # `on_hand_qty`, `open_po_qty`); position/rop/max/dos/state are all
+        # re-derived from the catalogue rather than read as stored answers.
+        store_rows = _rows(
             connection,
             f"""
-            SELECT c.item_key, c.ads, c.on_hand_qty, c.open_po_qty,
-                   c.position_qty, c.rop_qty, c.max_qty, c.days_cover, c.state,
-                   c.unit_price, c.inventory_value, c.at_risk_value,
-                   c.expiry_units,
+            SELECT f.item_key, f.store_key, f.ads, f.on_hand_qty, f.open_po_qty,
+                   i.price AS unit_price,
                    i.name, i.vertical_id, i.category_id, i.category_name,
                    i.brand, i.is_perishable, i.shelf_life_days, i.base_ads,
                    i.seasonality_index, i.arch_horizon_factor,
                    i.lead_time_days, i.safety_days,
                    i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
-                   i.onhand_days, i.stock_factor,
+                   s.name AS store_name, s.cluster, s.channel, s.size_index,
                    v.vendor_short
-            FROM {SCHEMA}.fact_inventory_chain_daily c
-            JOIN {SCHEMA}.dim_item i ON i.item_id = c.item_key
+            FROM {SCHEMA}.fact_inventory_daily f
+            JOIN {SCHEMA}.dim_item i ON i.item_id = f.item_key
+            JOIN {SCHEMA}.dim_store s ON s.store_id = f.store_key
             JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
             LEFT JOIN {SCHEMA}.dim_vendor v ON v.vendor_account = i.vendor_account
-            WHERE c.cal_date = :day{where}
-            -- The workbook's own order: vertical first, SKU within it.
-            -- Alphabetical would open every board on Digital.
-            ORDER BY vt.sort_order, c.item_key
+            WHERE f.cal_date = :day{where}
+            -- The workbook's own order: vertical first, SKU within it, then
+            -- store so a SKU's twenty rows stay together.
+            ORDER BY vt.sort_order, f.item_key, f.store_key
             """,
             params,
         )
@@ -411,7 +434,6 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # The agent's own KPI sheet, per vertical. Nothing on screen renders
         # it; it is what every figure above is reconciled against.
         reference = agent_reference(connection, AGENT_ID)
-        store_size = chain_store_size(connection)
 
         # The projection burns a shaped daily curve rather than a flat ADS, so
         # this board needs the same two inputs A1 reads. Neither moves a single
@@ -471,7 +493,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "formulas": catalogue_formulas,
         "filter_options": options,
         "at_risk_by_state": at_risk_by_state_gross,
-        "items": build_items(chain, store_size, asts),
+        "items": build_items(store_rows, asts),
         "stores": [
             {
                 "store_id": row["store_id"],
