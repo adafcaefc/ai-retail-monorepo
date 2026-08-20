@@ -1,23 +1,23 @@
-"""Agent 1 · Demand Forecasting — the rows, read from Postgres.
+"""Agent 1 · Demand Forecasting — the rows and live Trend aggregate.
 
-Returns the same shape `scripts/build_demand_forecasting_fixture.py` writes, so
-the board's selectors run over it unchanged.
+Returns the same row shape `scripts/build_demand_forecasting_fixture.py` writes,
+plus the SQL-calculated Demand Trend aggregate consumed by the live board.
 
 WHAT THE WORKBOOK ACTUALLY COMPUTES HERE: ONE THING
 ---------------------------------------------------
-The `A1 Demand Forecasting` sheet has six columns and five of them are typed
-constants:
+The legacy `A1 Demand Forecasting` sheet has six columns and five of them were
+typed constants:
 
     Forecast 7d      =SUMIFS(ENGINE_STORE!U, vertical)   <- measured
     Accuracy %       92.4 for all eight verticals        <- typed
-    Trend %          5.6, 8.7, 6.9, ...                  <- typed
+    Trend %          5.6, 8.7, 6.9, ...                  <- superseded for card
     Stockout-risk    46, 31, 39, ...                     <- typed
     Trending SKUs    47, 39, 44, ...                     <- typed
     Seasonality idx  114, 100, 98, ...                   <- typed
 
-`derivation` carries that distinction through to the tiles, so a reader can
-tell a backtest from a demo constant. Accuracy in particular is 92.4 in every
-vertical, which no real measurement ever is.
+`derivation` carries that distinction through to the remaining legacy tiles.
+Demand Trend is now calculated from `synthetic.demand_store_sku_32w` at the
+requested SKU × Store scope.
 
 Seasonality idx is the one exception: this board reports the derived figure
 (`warehouse.seasonality()`, catalogue formula `fc01-seasonal-index`), not the
@@ -34,7 +34,10 @@ vertical — and never drawn as an actuals line.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any
+
+from sqlalchemy import text
 
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
@@ -53,13 +56,14 @@ from src.llm.agents.retail.common.warehouse import (
 )
 
 AGENT_ID = "retail.demand_forecasting"
+SYNTHETIC_DEMAND_TABLE = "synthetic.demand_store_sku_32w"
 
 # This is the one Retail dashboard whose forecast source has both a chain-grain
 # and a store-grain fact.  The chain branch remains the default so the existing
 # All Stores KPI keeps its workbook/chain-net meaning; the store branch below
 # can honour the same canonical `store_id` request against ENGINE_STORE rows.
 SUPPORTED_FILTERS: frozenset[str] = frozenset(
-    {"legal_entity_id", "category_group", "store_id"}
+    {"legal_entity_id", "category_group", "store_id", "sku"}
 )
 
 ENGINE_FORMULAS = (
@@ -91,7 +95,7 @@ DERIVATION = {
     "stockout_risk_skus": "measured",
     "predicted_to_trend": "measured-formula",
     "forecast_accuracy": "typed-constant",
-    "demand_trend": "typed-constant",
+    "demand_trend": "calculated",
     "seasonality_index": "derived-from-gmv-profile",
     "seasonality_curve": "derived-from-gmv-profile",
     "history": "unavailable",
@@ -99,9 +103,10 @@ DERIVATION = {
 
 STORE_SCOPE_LIMITATIONS = (
     "Historical actual demand is unavailable: the loaded sales-history source "
-    "has no rows, so forecast series actuals remain null.",
-    "Forecast accuracy/MAPE and demand trend remain vertical-level workbook "
-    "constants; no Store-grain backtest source is loaded.",
+    "has no rows, so forecast series actuals remain null. Demand Trend uses the "
+    "separate synthetic SKU × Store POC table.",
+    "Forecast accuracy/MAPE remains a vertical-level workbook constant; Demand "
+    "Trend is calculated from the synthetic SKU × Store quantities.",
     "Seasonality remains vertical-level: fact_gmv_monthly has no store key, "
     "so the selected Store uses its owning vertical's curve.",
 )
@@ -109,6 +114,105 @@ STORE_SCOPE_LIMITATIONS = (
 
 def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
+
+
+def calculate_demand_trend_pct(
+    actual_4w_total: Any,
+    forecast_4w_total: Any,
+) -> float | None:
+    """Calculate aggregate Demand Trend, returning None for no denominator."""
+
+    actual = Decimal(str(actual_4w_total or 0))
+    forecast = Decimal(str(forecast_4w_total or 0))
+    if actual <= 0:
+        return None
+    return float((forecast / actual - Decimal("1")) * Decimal("100"))
+
+
+def _sku_scope_clause(
+    scope: DashboardScope,
+    sku_column: str,
+    name_column: str,
+) -> tuple[str, dict[str, Any]]:
+    """Preserve the dashboard's SKU-ID-or-name substring search semantics."""
+
+    if not scope.sku or not scope.sku.strip():
+        return "", {}
+    return (
+        f" AND (LOWER({sku_column}) LIKE :sku_pattern "
+        f"OR LOWER({name_column}) LIKE :sku_pattern)",
+        {"sku_pattern": f"%{scope.sku.strip().lower()}%"},
+    )
+
+
+def _demand_trend(
+    connection: Any,
+    scope: DashboardScope,
+) -> dict[str, Any]:
+    """Read Trend and its fixed actual/forecast eight-point series from SQL."""
+
+    clauses = ["1 = 1"]
+    params: dict[str, Any] = {}
+    if scope.legal_entity_id:
+        clauses.append("s.vertical_id = :legal_entity_id")
+        params["legal_entity_id"] = scope.legal_entity_id
+    if scope.category_group:
+        clauses.append("d.cat = :category_group")
+        params["category_group"] = scope.category_group
+    if scope.store_id:
+        clauses.append("d.store_id = :store_id")
+        params["store_id"] = scope.store_id
+
+    item_join = ""
+    if scope.sku and scope.sku.strip():
+        item_join = "JOIN retail.dim_item i ON i.item_id = d.sku_id"
+        sku_where, sku_params = _sku_scope_clause(scope, "d.sku_id", "i.name")
+        clauses.append(sku_where.removeprefix(" AND ").strip())
+        params.update(sku_params)
+
+    row = connection.execute(
+        text(
+            f"""
+            SELECT
+                COUNT_BIG(*) AS row_count,
+                COALESCE(SUM(CAST(d.actual_w4 AS DECIMAL(38,6))), 0) AS actual_w4_total,
+                COALESCE(SUM(CAST(d.actual_w3 AS DECIMAL(38,6))), 0) AS actual_w3_total,
+                COALESCE(SUM(CAST(d.actual_w2 AS DECIMAL(38,6))), 0) AS actual_w2_total,
+                COALESCE(SUM(CAST(d.actual_w1 AS DECIMAL(38,6))), 0) AS actual_w1_total,
+                COALESCE(SUM(CAST(d.forecast_w1 AS DECIMAL(38,6))), 0) AS forecast_w1_total,
+                COALESCE(SUM(CAST(d.forecast_w2 AS DECIMAL(38,6))), 0) AS forecast_w2_total,
+                COALESCE(SUM(CAST(d.forecast_w3 AS DECIMAL(38,6))), 0) AS forecast_w3_total,
+                COALESCE(SUM(CAST(d.forecast_w4 AS DECIMAL(38,6))), 0) AS forecast_w4_total
+            FROM {SYNTHETIC_DEMAND_TABLE} AS d
+            JOIN retail.dim_store AS s ON s.store_id = d.store_id
+            {item_join}
+            WHERE {' AND '.join(clauses)}
+            """
+        ),
+        params,
+    ).mappings().one()
+
+    actual_series = [
+        row[f"actual_w{week}_total"] or Decimal("0")
+        for week in (4, 3, 2, 1)
+    ]
+    forecast_series = [
+        row[f"forecast_w{week}_total"] or Decimal("0")
+        for week in (1, 2, 3, 4)
+    ]
+    actual_total = sum(actual_series, Decimal("0"))
+    forecast_total = sum(forecast_series, Decimal("0"))
+    return {
+        "trend_pct": calculate_demand_trend_pct(actual_total, forecast_total),
+        "actual_4w_total": _float(actual_total),
+        "forecast_4w_total": _float(forecast_total),
+        "row_count": int(row["row_count"] or 0),
+        "source": SYNTHETIC_DEMAND_TABLE,
+        "horizon_independent": True,
+        # Ordered actual W-4..W-1 followed by forecast W+1..W+4. These are
+        # aggregate quantities, not row-level percentages or workbook trend.
+        "sparkline": [_float(value) for value in (*actual_series, *forecast_series)],
+    }
 
 
 def _arch_horizon_factor(
@@ -238,6 +342,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             store_params,
         )
 
+        demand_trend = _demand_trend(connection, scope)
+
         # Shared with Inventory Risk's projection so the two boards cannot
         # disagree about what next month looks like.
         seasonal = seasonality(connection)
@@ -325,7 +431,13 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         ],
         "seasonality": seasonal,
         "reference_by_vertical": reference,
+        "demand_trend": demand_trend,
     }
 
 
-__all__ = ["SUPPORTED_FILTERS", "build"]
+__all__ = [
+    "SUPPORTED_FILTERS",
+    "SYNTHETIC_DEMAND_TABLE",
+    "build",
+    "calculate_demand_trend_pct",
+]

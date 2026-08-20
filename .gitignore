@@ -89,3 +89,5 @@ data/import_preview/
 # Temporary workspace
 /tmp/*
 !/tmp/.gitkeep
+plans/
+logs/

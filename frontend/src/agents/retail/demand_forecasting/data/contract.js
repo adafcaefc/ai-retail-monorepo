@@ -197,6 +197,23 @@ function normalizeDimensionRows(rows, extra = () => ({})) {
   }));
 }
 
+function normalizeDemandTrend(trend) {
+  if (!trend || typeof trend !== "object") {
+    return null;
+  }
+  return {
+    trend_pct: finiteNumber(trend.trend_pct),
+    actual_4w_total: finiteNumber(trend.actual_4w_total, 0),
+    forecast_4w_total: finiteNumber(trend.forecast_4w_total, 0),
+    row_count: boundedInteger(trend.row_count, 0, 0, 10000000),
+    source: String(trend.source || ""),
+    horizon_independent: Boolean(trend.horizon_independent),
+    sparkline: (Array.isArray(trend.sparkline) ? trend.sparkline : [])
+      .map((value) => finiteNumber(value))
+      .filter((value) => value != null),
+  };
+}
+
 function normalizeSimulation(simulation = {}, fallbackForecast) {
   const baseline = simulation.baseline || {};
   const scenario = simulation.scenario || baseline;
@@ -393,7 +410,7 @@ export function normalizeDemandDashboard(payload, { requirePhase2 = false } = {}
     kpis: (Array.isArray(payload.kpis) ? payload.kpis : []).map((kpi) => ({
       id: String(kpi?.id || ""),
       label: String(kpi?.label || ""),
-      value: finiteNumber(kpi?.value, 0),
+      value: kpi?.value == null ? null : finiteNumber(kpi.value, 0),
       unit: kpi?.unit == null ? null : String(kpi.unit),
       comparison_label: String(kpi?.comparison_label || ""),
       direction: ["up", "down", "flat"].includes(kpi?.direction)
@@ -406,6 +423,7 @@ export function normalizeDemandDashboard(payload, { requirePhase2 = false } = {}
         .map((value) => finiteNumber(value))
         .filter((value) => value != null),
     })),
+    demand_trend: normalizeDemandTrend(payload.demand_trend),
     forecast,
     confidence: normalizeSeries(payload.confidence || payload.forecast),
     dimensions: {

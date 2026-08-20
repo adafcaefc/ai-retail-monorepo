@@ -16,13 +16,17 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEMAND_AGENT_ID, DEFAULT_DEMAND_LEVERS } from "./contract.js";
+import {
+  DEMAND_AGENT_ID,
+  DEFAULT_DEMAND_LEVERS,
+  normalizeDemandDashboard,
+} from "./contract.js";
 import {
   demandForecastingDataSource,
   loadDemandForecastingDashboard,
   loadDemandForecastingScenario,
 } from "./dashboardData.js";
-import { computeTrending } from "./selectors.js";
+import { buildDashboardFromFixture, computeTrending } from "./selectors.js";
 import fixture from "./fixture.json";
 
 const grocery = fixture.reference_by_vertical.find(
@@ -97,14 +101,18 @@ describe("the Demand Forecasting gateway", () => {
     expect(trending).toBeLessThan(totalInCategory);
   });
 
-  it("passes the typed constants through untouched, and labels them", async () => {
+  it("keeps remaining typed constants separate from the live Demand Trend", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       legal_entity_id: "GRC",
     });
     const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
 
     expect(kpi("forecast_accuracy").value).toBeCloseTo(grocery.accuracy_pct, 6);
-    expect(kpi("demand_trend").value).toBeCloseTo(grocery.trend_pct, 6);
+    // The standalone fixture has no SQL aggregate. It must not fall back to
+    // the old workbook reference just because one is present in the fixture.
+    expect(kpi("demand_trend").value).toBeNull();
+    expect(kpi("demand_trend").comparison_label).toBe("Unavailable");
+    expect(kpi("demand_trend").comparison_label).not.toBe("Workbook constant");
 
     // The tile says where its number came from rather than implying it was
     // calculated. Two of the six were keyed in by hand; a third (seasonality
@@ -113,6 +121,61 @@ describe("the Demand Forecasting gateway", () => {
     expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
     expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
+  });
+
+  it("consumes the backend-calculated Trend and keeps it out of workbook blending", () => {
+    const liveTrend = {
+      trend_pct: 5.5954,
+      actual_4w_total: 1000,
+      forecast_4w_total: 1055.954,
+      row_count: 2000,
+      source: "synthetic.demand_store_sku_32w",
+      horizon_independent: true,
+      sparkline: [10, 11, 12, 13, 14, 15, 16, 17],
+    };
+    const dashboard = normalizeDemandDashboard(
+      buildDashboardFromFixture(
+        { ...fixture, demand_trend: liveTrend },
+        { legal_entity_id: "GRC" },
+      ),
+    );
+    const kpi = dashboard.kpis.find((row) => row.id === "demand_trend");
+
+    expect(kpi.value).toBeCloseTo(5.5954, 4);
+    expect(kpi.comparison_label).toBe("Calculated");
+    expect(kpi.sparkline).toEqual([10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(dashboard.demand_trend).toMatchObject(liveTrend);
+    expect(kpi.value).not.toBe(grocery.trend_pct);
+  });
+
+  it.each([
+    ["GRC", 5.5954],
+    ["S001", 6.1440],
+    ["GRC-C01", 5.7945],
+    ["GRC-001", 6.0666],
+    ["S001 + GRC-C01", 6.4092],
+    ["S001 + GRC-001", 3.8397],
+  ])("passes the selected %s scope's calculated Trend to the card", (scope, expected) => {
+    const dashboard = normalizeDemandDashboard(
+      buildDashboardFromFixture(
+        {
+          ...fixture,
+          demand_trend: {
+            trend_pct: expected,
+            actual_4w_total: 100,
+            forecast_4w_total: 100 + expected,
+            row_count: 1,
+            source: "synthetic.demand_store_sku_32w",
+            horizon_independent: true,
+            sparkline: [1, 2, 3, 4, 5, 6, 7, 8],
+          },
+        },
+        { sku: scope },
+      ),
+    );
+
+    expect(dashboard.kpis.find((row) => row.id === "demand_trend").value)
+      .toBeCloseTo(expected, 4);
   });
 
   it("derives the seasonality index from the monthly GMV curve, not the typed constant", async () => {
@@ -386,6 +449,87 @@ describe("the Demand Forecasting gateway in api mode", () => {
     expect(url).toContain("store_id=S001");
     expect(url).not.toContain("store=S001");
     expect(dashboard.scope.store_id).toBe("S001");
+  });
+
+  it("forwards supported scopes, consumes live Trend, and ignores Horizon for it", async () => {
+    const values = {
+      "GRC": 5.5954,
+      "S001": 6.1440,
+      "GRC-C01": 5.7945,
+      "GRC-001": 6.0666,
+      "S001 + GRC-C01": 6.4092,
+      "S001 + GRC-001": 3.8397,
+    };
+    const sparklineByScope = {
+      "GRC": [10, 11, 12, 13, 14, 15, 16, 17],
+      "S001": [20, 21, 22, 23, 24, 25, 26, 27],
+      "GRC-C01": [30, 31, 32, 33, 34, 35, 36, 37],
+      "GRC-001": [40, 41, 42, 43, 44, 45, 46, 47],
+      "S001 + GRC-C01": [50, 51, 52, 53, 54, 55, 56, 57],
+      "S001 + GRC-001": [60, 61, 62, 63, 64, 65, 66, 67],
+    };
+    fetchMock.mockImplementation(async (url) => {
+      const parsed = new URL(url, "http://localhost");
+      const store = parsed.searchParams.get("store_id");
+      const category = parsed.searchParams.get("category_group");
+      const sku = parsed.searchParams.get("sku");
+      const key = store && category
+        ? "S001 + GRC-C01"
+        : store && sku
+          ? "S001 + GRC-001"
+          : store || category || sku || "GRC";
+      const trend_pct = values[key];
+      return {
+        ok: true,
+        json: async () => ({
+          ...fixture,
+          demand_trend: {
+            trend_pct,
+            actual_4w_total: 100,
+            forecast_4w_total: 100 + trend_pct,
+            row_count: 1,
+            source: "synthetic.demand_store_sku_32w",
+            horizon_independent: true,
+            sparkline: sparklineByScope[key],
+          },
+        }),
+      };
+    });
+
+    const cases = [
+      [{ legal_entity_id: "GRC" }, values.GRC, "GRC"],
+      [{ store_id: "S001" }, values.S001, "S001"],
+      [{ category_group: "GRC-C01" }, values["GRC-C01"], "GRC-C01"],
+      [{ sku: "GRC-001" }, values["GRC-001"], "GRC-001"],
+      [
+        { store_id: "S001", category_group: "GRC-C01" },
+        values["S001 + GRC-C01"],
+        "S001 + GRC-C01",
+      ],
+      [
+        { store_id: "S001", sku: "GRC-001" },
+        values["S001 + GRC-001"],
+        "S001 + GRC-001",
+      ],
+    ];
+
+    for (const [query, expected, scopeKey] of cases) {
+      const dashboard = await load(query);
+      const kpi = dashboard.kpis.find((row) => row.id === "demand_trend");
+      expect(kpi.value).toBeCloseTo(expected, 4);
+      expect(kpi.comparison_label).toBe("Calculated");
+      expect(kpi.sparkline).toEqual(sparklineByScope[scopeKey]);
+    }
+
+    const horizonValues = [];
+    for (const horizon_weeks of [4, 8, 12, 16]) {
+      const dashboard = await load({ legal_entity_id: "GRC", horizon_weeks });
+      horizonValues.push(dashboard.kpis.find((kpi) => kpi.id === "demand_trend").value);
+    }
+    expect(horizonValues).toEqual([values.GRC, values.GRC, values.GRC, values.GRC]);
+    const requestedUrls = fetchMock.mock.calls.map(([url]) => url);
+    expect(requestedUrls.some((url) => url.includes("sku=GRC-001"))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes("category_group=GRC-C01"))).toBe(true);
   });
 
   it("runs a scenario over the API rows instead of refusing", async () => {

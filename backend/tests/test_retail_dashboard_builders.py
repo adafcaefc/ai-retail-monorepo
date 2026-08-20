@@ -75,6 +75,9 @@ SKIP_BLOCKS = {
     "source_workbook",
     "note",
     "what_if_reference",
+    # Demand Forecasting now adds a live SQL aggregate for the KPI. The
+    # legacy fixture intentionally has no synthetic-table block to compare.
+    "demand_trend",
 }
 
 
@@ -162,6 +165,8 @@ class TestBuildersReproduceTheFixtures:
         for block, expected in fixture.items():
             if block in SKIP_BLOCKS or block in row_blocks:
                 continue
+            if folder == "demand_forecasting" and block == "derivation":
+                expected = {**expected, "demand_trend": "calculated"}
             assert _same(built.get(block), expected), f"{folder}.{block} differs"
 
     def test_scoping_to_one_vertical_narrows_the_rows(

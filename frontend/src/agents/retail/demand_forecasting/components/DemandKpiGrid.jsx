@@ -3,6 +3,9 @@ import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
 function displayValue(kpi, language) {
+  if (kpi.value == null) {
+    return "—";
+  }
   const digits = ["forecast_accuracy", "demand_trend"].includes(kpi.id) ? 1 : 0;
   const prefix = kpi.id === "demand_trend" && kpi.value > 0 ? "+" : "";
   const value = formatNumber(kpi.value, language, {
