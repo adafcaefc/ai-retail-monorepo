@@ -112,7 +112,14 @@ export function createEngine(formulas, thresholds = {}) {
     const invValue = run("f21-inventory-value", { position, price: item.price });
 
     // The productivity chain — see the module docstring for the verification.
-    const contributionPerDay = ads * item.price * item.margin_pct;
+    // f15-contribution-per-day, evaluated rather than retyped, so this and
+    // the fixture builder's Python round identically instead of both having
+    // to happen to skip ROUND to stay in step.
+    const contributionPerDay = run("f15-contribution-per-day", {
+      ads,
+      price: item.price,
+      margin_pct: item.margin_pct,
+    });
     const weeklyGmv = ads * 7 * item.price;
     const marginRp = weeklyGmv * item.margin_pct;
     const gmroi = invValue ? marginRp / invValue : 0;
@@ -161,6 +168,7 @@ const REQUIRED_FORMULAS = [
   "f05-rop",
   "f06-maximum-inventory",
   "f07-inventory-state",
+  "f15-contribution-per-day",
   "f20-days-of-supply",
   "f21-inventory-value",
 ];

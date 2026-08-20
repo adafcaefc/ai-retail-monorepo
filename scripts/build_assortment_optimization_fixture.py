@@ -101,6 +101,7 @@ CATALOGUE_FORMULAS = (
     "f06-maximum-inventory",
     "f07-inventory-state",
     "f12-at-risk-value",
+    "f15-contribution-per-day",
     "f20-days-of-supply",
     "f21-inventory-value",
 )
@@ -324,7 +325,13 @@ def build_items(
             {"position": _num(row["position"]), "price": price},
         )
         # The productivity chain, in the engine's own order of operations.
-        contribution_per_day = ads * price * margin_pct
+        # f15-contribution-per-day, evaluated rather than retyped -- see
+        # `dashboard.py`'s matching comment for why this and `engine.js` now
+        # agree by construction instead of by both happening to skip ROUND.
+        contribution_per_day = evaluate(
+            asts["f15-contribution-per-day"],
+            {"ads": ads, "price": price, "margin_pct": margin_pct},
+        )
         weekly_gmv = ads * 7 * price
         margin_rp = weekly_gmv * margin_pct
         gmroi = (margin_rp / inv_value) if inv_value else 0.0
@@ -346,13 +353,12 @@ def build_items(
                 "weekly_gmv": weekly_gmv,
                 "margin_rp": margin_rp,
                 "funding_rp": _num(row["funding_rp"]),
-                # None of the derived chain is rounded, deliberately. These
-                # are comparison inputs -- the delist/grow cutoffs are
-                # percentiles of them -- not display values (components
-                # format at render time). Rounding here is what made the
-                # browser engine disagree with this script about the verdict
-                # of the one SKU sitting on a cutoff; `engine.test.js`
-                # asserts the two now agree exactly.
+                # `gmroi` has no catalogue formula and stays unrounded.
+                # `contribution_per_day` used to as well, deliberately, to
+                # avoid the browser engine disagreeing about the verdict of
+                # the one SKU sitting on a cutoff. Now both this script and
+                # `engine.js` evaluate f15 from the same parsed expression, so
+                # they round identically rather than needing to agree not to.
                 "gmroi": gmroi,
                 "contribution_per_day": contribution_per_day,
                 "growth": _num(master.get("growth")),

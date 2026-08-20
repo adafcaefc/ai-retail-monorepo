@@ -100,6 +100,7 @@ REPLENISH_STATES = frozenset({"Stockout", "Low"})
 # Nothing in this file states a rule any more.
 CATALOGUE_FORMULAS = (
     "f01-ads-per-store",
+    "f02-on-hand",
     "f03-open-po-per-store",
     "f04-position",
     "f05-rop",

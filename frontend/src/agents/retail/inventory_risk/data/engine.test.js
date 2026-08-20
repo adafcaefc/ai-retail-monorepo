@@ -20,7 +20,26 @@ import { LEVER_DEFINITIONS, STATE_ORDER } from "./contract.js";
 import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
 import fixture from "./fixture.json";
 
-const applyLevers = createEngine(fixture.formulas);
+const { applyLevers, atStore } = createEngine(fixture.formulas);
+
+/*
+ * f02-on-hand, exercised directly: `atStore` used to retype this formula's
+ * arithmetic by hand. Store S001 is a real ENGINE_STORE row, so this is a
+ * live check against the workbook, not just an internal-consistency one.
+ */
+describe("atStore", () => {
+  it("reproduces the workbook's per-store on-hand via f02, not retyped arithmetic", () => {
+    const item = fixture.items.find((row) => row.sku_id === "GRC-001");
+    const store = fixture.stores.find((row) => row.store_id === "S001");
+    const pointed = atStore(item, store);
+
+    expect(pointed.on_hand).toBeCloseTo(
+      item.base_ads * item.onhand_days * item.stock_factor *
+        store.health_index * store.size_index,
+      6,
+    );
+  });
+});
 
 const totalsBy = (levers, read) => {
   const totals = new Map();

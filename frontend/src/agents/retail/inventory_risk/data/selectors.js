@@ -37,7 +37,7 @@ import {
 } from "../../common/distributions.js";
 import { dailyFactors } from "../../common/demandModel.js";
 import { buildDrilldown } from "./drilldown.js";
-import { BASELINE_LEVERS, atStore, createEngine, isBaseline } from "./engine.js";
+import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
 
 /**
  * STORE SCOPING IS SUPPORTED, WITHOUT SHIPPING THE GRID.
@@ -415,8 +415,9 @@ function tallyStore(store, rows) {
  * @param {object[]} stores Store rows in scope.
  * @param {object|null} storeRow The selected store, or null for the chain.
  * @param {Function} applyLevers Bound engine, for the chain case.
+ * @param {Function} atStore Bound store-pointer, from the same engine.
  */
-function deriveStoreRows(items, stores, storeRow, applyLevers) {
+function deriveStoreRows(items, stores, storeRow, applyLevers, atStore) {
   // A selected store's rows ARE the board's rows, already derived once by the
   // caller. Running them through `atStore` again would re-point rows that are
   // already pointed, so this only counts them.
@@ -841,7 +842,7 @@ export function buildDrilldownFromFixture(
   options = {},
 ) {
   const merged = { ...DEFAULT_SCOPE, ...scope };
-  const applyLevers = engineFor(fixture.formulas);
+  const { applyLevers, atStore } = engineFor(fixture.formulas);
   const levers = { ...BASELINE_LEVERS, ...options.levers };
   const simulating = !isBaseline(levers) && options.driveWholePage !== false;
 
@@ -864,6 +865,7 @@ export function buildDrilldownFromFixture(
 
   return buildDrilldown(metricId, items, scopeStores(fixture.stores, merged), {
     applyLevers,
+    atStore,
     // The store split reads the same filtered set the headline does, so a
     // board scoped to one category shows that category across stores rather
     // than quietly widening back to the whole shelf.
@@ -876,7 +878,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const scopedStores = scopeStores(fixture.stores, merged);
   const legalEntities = fixture.filter_options.legal_entities;
 
-  const applyLevers = engineFor(fixture.formulas);
+  const { applyLevers, atStore } = engineFor(fixture.formulas);
 
   /*
    * A named store replaces the chain-net rows with that store's own, derived
@@ -924,7 +926,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     merged.sku.trim() !== "";
 
   const stores = narrowsRows
-    ? deriveStoreRows(baselineItems, scopedStores, storeRow, applyLevers)
+    ? deriveStoreRows(baselineItems, scopedStores, storeRow, applyLevers, atStore)
     : scopedStores;
 
   const levers = { ...BASELINE_LEVERS, ...options.levers };

@@ -27,7 +27,10 @@ CONTRIBUTION IS ROUNDED PER ROW BEFORE IT IS SUMMED
 total is a sum of rounded values, not a rounded sum. Summing the raw products
 instead drifts by up to a few rupiah per store across its 100 SKUs -- small,
 but it is the difference between reconciling and nearly reconciling, and the
-per-store rollup is one of the things this board is audited on.
+per-store rollup is one of the things this board is audited on. The
+`stores`/`by_state_value` SQL rollups round per row in SQL for this reason;
+the item-grain figure below evaluates the same rule (f15) through the
+catalogue instead, so both sides state one rounding decision rather than two.
 
 THE PRODUCTIVITY CHAIN IS DERIVED FROM f01, NOT READ
 Every other retail board reads its figures from the warehouse. This one
@@ -75,6 +78,7 @@ ENGINE_FORMULAS = (
     "f06-maximum-inventory",
     "f07-inventory-state",
     "f12-at-risk-value",
+    "f15-contribution-per-day",
     "f20-days-of-supply",
     "f21-inventory-value",
 )
@@ -185,12 +189,19 @@ def build_items(
                 "weekly_gmv": weekly_gmv,
                 "margin_rp": margin_rp,
                 "funding_rp": _float(row["funding_rp"]),
-                # Unrounded on purpose. The delist and grow cutoffs are
-                # percentiles of these two, so a rounded copy would move the
-                # boundary out from under the browser engine, which
-                # re-classifies against the thresholds shipped below.
+                # `gmroi` stays unrounded -- it has no catalogue formula. Not
+                # so for `contribution_per_day`: it was hand-typed unrounded
+                # to avoid moving the percentile boundary out from under the
+                # browser engine, but the actual risk was never rounding
+                # itself -- it was rounding on one side and not the other.
+                # f15 rounds; evaluating it here and in `engine.js` from the
+                # same catalogue expression means both sides agree by
+                # construction, at whatever precision f15 states.
                 "gmroi": gmroi,
-                "contribution_per_day": ads * price * margin_pct,
+                "contribution_per_day": evaluate(
+                    asts["f15-contribution-per-day"],
+                    {"ads": ads, "price": price, "margin_pct": margin_pct},
+                ),
                 "growth": _float(row["growth_index"]),
                 "dos": _float(row["days_cover"]),
                 "ads": ads,

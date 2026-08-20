@@ -37,47 +37,68 @@ fixes it in the UI.
 | A3.1 Replenishment Detail | 6 | **0** | all six |
 | A4 Promotion Effectiveness | 2 | 2 | — |
 | A5 Pricing & Markdown | 12 | 12 | — |
-| A6 Assortment Optimization | 9 | 8 | f12 |
+| A6 Assortment Optimization | 10 | 9 | f12 |
 
-Catalogue rules never inserted by any board: **f02** and **f15** (both used,
-both hardcoded — section A), and **f16–f19** (genuinely unused; A7 Workforce is
-still a stub `index.js`).
+Catalogue rules that took until 2026-08-20 to be inserted anywhere: **f02** and
+**f15** (both used, both hardcoded — section A, both now fixed). **f16–f19**
+remain genuinely unused; A7 Workforce is still a stub `index.js`.
 
 ---
 
 ## A. Used but never inserted — hardcoded outright
 
-### f15-contribution-per-day
+### f15-contribution-per-day — fixed 2026-08-20 (Python and JS sites)
 
-Catalogue: `ROUND(ads * price * margin_pct)`. Not listed in any board's
-`ENGINE_FORMULAS`. The arithmetic is retyped in five places, and only the two
-SQL ones round:
+Catalogue: `ROUND(ads * price * margin_pct)`. Was not listed in any board's
+`ENGINE_FORMULAS`. The arithmetic was retyped in five places, and only the two
+SQL ones rounded:
 
-| Site | Code |
-|---|---|
-| [assortment_optimization/dashboard.py:193](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L193) | `ads * price * margin_pct` — no ROUND |
-| [assortment_optimization/dashboard.py:365](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L365) | `sum(round(f.ads * i.price * i.margin_pct, 0))` |
-| [assortment_optimization/dashboard.py:379](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L379) | same, per store |
-| [tools/assortment_data.py:78](../backend/src/llm/agents/retail/assortment_optimization/tools/assortment_data.py#L78), [:237](../backend/src/llm/agents/retail/assortment_optimization/tools/assortment_data.py#L237) | the chat tool's own copy |
-| [assortment_optimization/data/engine.js:111](../frontend/src/agents/retail/assortment_optimization/data/engine.js#L111) | `ads * item.price * item.margin_pct` — no ROUND |
+| Site | Code | Status |
+|---|---|---|
+| [assortment_optimization/dashboard.py:193](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L193) | was `ads * price * margin_pct`, no ROUND | **fixed** — evaluates f15 |
+| [assortment_optimization/data/engine.js](../frontend/src/agents/retail/assortment_optimization/data/engine.js) | was `ads * item.price * item.margin_pct`, no ROUND | **fixed** — evaluates f15 |
+| `scripts/build_assortment_optimization_fixture.py` | same hand copy, ships the fixture both boards read | **fixed** — evaluates f15 |
+| [assortment_optimization/dashboard.py:365](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L365), [:379](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L379) | `sum(round(f.ads * i.price * i.margin_pct, 0))`, store-grain SQL rollup | left as SQL — same accepted shortcut as f21/f12 below; already matches f15's ROUND, SQL cannot call the shared evaluator |
+| [tools/assortment_data.py:78](../backend/src/llm/agents/retail/assortment_optimization/tools/assortment_data.py#L78) | the chat tool's own SQL CTE, unrounded, and its own copy of f01 without `arch_horizon_factor` | left — same SQL-cannot-call-the-evaluator reason, and it shares the live-DB `arch_horizon_factor` gap noted below |
 
-Highest-impact entry in this document. Contribution/day is a KPI tile *and* the
-input to the tail-quartile and delist/grow cutoffs, so a catalogue edit that
-never reaches these five sites changes which SKUs a buyer is told to delist.
+Was the highest-impact entry in this document: contribution/day is a KPI tile
+*and* the input to the tail-quartile and delist/grow cutoffs, so a catalogue
+edit that never reached the Python/JS sites changed which SKUs a buyer was
+told to delist. The two sides used to deliberately stay unrounded to avoid
+disagreeing with each other about a cutoff SKU (see the code comments this fix
+replaced); evaluating the same f15 expression on both sides resolves that by
+construction instead of by both happening to skip ROUND.
 
-### f02-on-hand
+### f02-on-hand — fixed 2026-08-20
 
 Catalogue: `base_ads * on_hand_days * stock_factor * store_health * store_size`.
-The string `f02` appears nowhere in `backend/`, `frontend/`, or `scripts/`.
+Used to appear nowhere in `backend/`, `frontend/`, or `scripts/`.
 
-The rule is retyped in
-[inventory_risk/data/engine.js:75-81](../frontend/src/agents/retail/inventory_risk/data/engine.js#L75-L81)
-(`atStore`, which re-points a chain row at one store). The comment above it
-states the workbook "has no formula id for it (it is a data-generation rule,
-not a business rule)" — that is incorrect: it is entry 2 in the catalogue. The
-same product is restated as prose in
-[inventory_risk/dashboard.py:125-129](../backend/src/llm/agents/retail/inventory_risk/dashboard.py#L125-L129)
-and in the fixture builders and seeders.
+Was retyped in `inventory_risk/data/engine.js`'s `atStore` (re-points a chain
+row at one store); its comment claimed the workbook "has no formula id for it
+(it is a data-generation rule, not a business rule)" — incorrect, it is
+catalogue entry 2. `atStore` moved inside `createEngine()` so it can share the
+same parsed formula set as `applyLevers` (was a standalone export; now
+`createEngine()` returns `{ applyLevers, atStore }`), and now evaluates f02
+instead. `scripts/build_inventory_risk_fixture.py` ships f02 in the fixture's
+`formulas` block to match.
+
+### A live-DB gap this surfaced: `arch_horizon_factor` reaches no backend dashboard.py
+
+While fixing the above, every `backend/.../dashboard.py` in this app (not just
+A6) turned out to be missing `arch_horizon_factor` — f01's v8.5
+archetype/horizon-factor parameter — entirely. It has no column anywhere in
+Azure SQL; the offline fixture builders read it straight from
+`resources/dbtemp/schema_with_data.json` (`engine_store.archhz`), which is a
+build-time-only source. `f06-maximum-inventory`'s v8.5 `horizon_coverage`
+parameter has the same gap. Both were fixed in the five frontend `engine.js`
+files that already had the fixture data to read (this document doesn't track
+those individually — see each file's `arch_horizon_factor`/`horizon_coverage`
+comments), but the live API path for every board still cannot supply either
+parameter, and `python main.py`'s `/api/html/dashboard/{agent}` route will
+throw for `demand_forecasting`, `inventory_risk`, and `assortment_optimization`
+until `dim_item` (or an equivalent) carries both. Needs a new migration +
+seeder change, not a code fix; out of scope for this pass.
 
 ---
 
@@ -263,20 +284,26 @@ Two consequences:
 
 ## Suggested order of work
 
-1. **f15 in A6** — five sites, feeds a classification cutoff. Add
-   `f15-contribution-per-day` to A6's `ENGINE_FORMULAS`, evaluate it in
-   `dashboard.py` and `engine.js`, and settle the ROUND question one way.
+1. ~~**f15 in A6**~~ — done 2026-08-20. `f15-contribution-per-day` evaluates
+   in `dashboard.py`, `engine.js`, and the fixture builder; the ROUND question
+   settled on "evaluate the catalogue expression everywhere," which rounds.
 2. **A3.1's tie-out check** — evaluate f11 and f04 rather than retyping them,
    so `FORMULA_TIE_OUT_FAILED` can actually detect a rule change.
 3. **f08's `ads * 7.45` fallback** in A1's default scope, and the three copies
    of 7.45 — read the value from `f08.parameters[week_factor].default`.
-4. **f02** — add it to A2's `ENGINE_FORMULAS`, evaluate it in `atStore`, and
-   correct the comment that says it has no id.
+4. ~~**f02**~~ — done 2026-08-20. Evaluated in `atStore`, now returned from
+   `createEngine()` alongside `applyLevers`; the incorrect "no formula id"
+   comment is gone.
 5. **The store-rollup SQL** (f21/f12) — lower priority; the shortcut is
    deliberate and documented, but it belongs on a checklist so a catalogue edit
-   has one place to look.
+   has one place to look. f15's two store-rollup SQL sites join this list too,
+   for the same reason.
 6. **Hover text** — derive from the catalogue's `logic`/`expression` instead of
    `KPI_FORMULAS`, or add a test asserting the two agree.
+7. **NEW, found 2026-08-20 while fixing #1/#4**: `arch_horizon_factor` (f01)
+   and `horizon_coverage` (f06) reach no `backend/.../dashboard.py` at all —
+   see section A's new entry above. Blocks the live API path for A1, A2 and
+   A6 until `dim_item` carries both.
 
 Already fixed as of 2026-08-20: `RETAIL_FORMULA_SOURCES.md`'s expression
 count (was still 22, now 23 plus a note on the separate `fc`-prefixed custom

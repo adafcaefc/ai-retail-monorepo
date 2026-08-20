@@ -25,7 +25,7 @@
  * the fixture builder checks against all 16,000 ENGINE_STORE rows.
  */
 
-import { atStore, BASELINE_LEVERS } from "./engine.js";
+import { BASELINE_LEVERS } from "./engine.js";
 
 /** How many rows the "top contributing SKUs" list shows. */
 export const TOP_SKU_COUNT = 6;
@@ -122,6 +122,9 @@ function ranked(groups, reduce) {
  *   `state`, `dos` and the `is_*` flags, which exist only after the formula
  *   chain has run. Without it the store split is omitted rather than computed
  *   from chain-net values wearing a store's name.
+ * @param {Function} [options.atStore] Bound store-pointer from the same
+ *   engine as `applyLevers` — the two are parsed together and must be a
+ *   matched pair.
  * @param {object[]} [options.allItems] Unscoped items for the store split, so a
  *   store's bar covers its whole shelf rather than the current filter.
  */
@@ -129,7 +132,7 @@ export function buildDrilldown(metricId, items, stores, options = {}) {
   const metric = drilldownMetric(metricId);
   if (!metric) return null;
 
-  const { applyLevers = null, allItems = items } = options;
+  const { applyLevers = null, atStore = null, allItems = items } = options;
 
   const byCategory = ranked(
     groupBy(items, "category_id", (row) => row.category_name),
@@ -150,7 +153,7 @@ export function buildDrilldown(metricId, items, stores, options = {}) {
    * and the What-If slider already sustains 800 per frame, so this lands well
    * inside a frame budget it never has to meet.
    */
-  const byStore = applyLevers
+  const byStore = applyLevers && atStore
     ? ranked(
         stores.map((store) => ({
           id: store.store_id,
