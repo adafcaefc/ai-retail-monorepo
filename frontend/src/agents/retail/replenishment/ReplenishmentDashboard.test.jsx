@@ -350,7 +350,7 @@ describe("requirement versus inbound supply (spec 4)", () => {
     // there is nothing behind "16 weeks ago" to accumulate against.
     for (const point of history) {
       expect(point.requirement).toBeNull();
-      expect(point.cover).toBeNull();
+      expect(point.inbound).toBeNull();
       expect(point.actual_demand).toBeGreaterThan(0);
     }
 
@@ -365,7 +365,10 @@ describe("requirement versus inbound supply (spec 4)", () => {
     expect(today.label).toBe("Today");
     expect(today.actual_demand).toBe(lastActual.actual_demand);
     expect(today.requirement).toBe(lastActual.actual_demand);
-    expect(today.cover).toBeCloseTo(
+    // Nothing arrives "today", so inbound is null rather than a zero that
+    // would dive the line to the axis at the divider.
+    expect(today.inbound).toBeNull();
+    expect(today.on_hand_after).toBeCloseTo(
       fixture.lines.reduce((total, line) => total + line.on_hand, 0),
       6,
     );
@@ -378,29 +381,72 @@ describe("requirement versus inbound supply (spec 4)", () => {
       expect(point.requirement).toBeLessThan(lastActual.actual_demand * 2);
       expect(point.actual_demand).toBeNull();
     }
+    expect(requirement.points[16].label).toBe("Today");
   });
 
-  it("draws a cover line that both rises and falls", () => {
+  it("draws an inbound line that both rises and falls", () => {
     /*
-     * The point of the synthetic arrival calendar. Cover is a running position
-     * -- last week's leftover plus this week's arrivals -- and the routes
-     * deliver on a cadence, so it sawtooths. The curve it replaced was flat
-     * from W+1 onward, because every open PO landed inside the first week and
-     * nothing ever arrived again.
+     * The point of the synthetic arrival calendar. The routes deliver on a
+     * cadence, so arrivals per week rise and fall. The curve it replaced was
+     * flat from W+1 onward, because every open PO landed inside the first week
+     * and nothing ever arrived again.
      */
     const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     expect(requirement.inbound_scheduled).toBe(true);
 
     const forward = requirement.points.slice(17);
-    const rises = forward.some((point, index) => index > 0 && point.cover > forward[index - 1].cover);
-    const falls = forward.some((point, index) => index > 0 && point.cover < forward[index - 1].cover);
+    const rises = forward.some(
+      (point, index) => index > 0 && point.inbound > forward[index - 1].inbound,
+    );
+    const falls = forward.some(
+      (point, index) => index > 0 && point.inbound < forward[index - 1].inbound,
+    );
     expect(rises).toBe(true);
     expect(falls).toBe(true);
 
     // And it moves by a visible amount, not by float noise. The generator
     // enforces the same floor before it will write the CSV.
-    const covers = forward.map((point) => point.cover);
-    expect(Math.max(...covers) / Math.min(...covers)).toBeGreaterThan(1.15);
+    const arrivals = forward.map((point) => point.inbound);
+    expect(Math.max(...arrivals) / Math.min(...arrivals)).toBeGreaterThan(1.15);
+  });
+
+  it("keeps inbound beside demand, not towering over it", () => {
+    /*
+     * Both plotted series are units per week, so they have to be legible on
+     * one axis. An earlier shape put a STOCK on this axis against a rate --
+     * a shelf restocked fortnightly holds about two weeks of demand, so the
+     * line sat 2.9x above the one beside it and the gap read as a 3M surplus
+     * rather than as ordinary batching. The generator gates the same ratio.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const forward = requirement.points.slice(17);
+
+    const meanDemand =
+      forward.reduce((total, point) => total + point.requirement, 0) / forward.length;
+    for (const point of forward) {
+      expect(point.inbound).toBeGreaterThan(meanDemand * 0.65);
+      expect(point.inbound).toBeLessThan(meanDemand * 1.35);
+    }
+  });
+
+  it("reads shortfall off the stock, not off the gap between the lines", () => {
+    /*
+     * A week where inbound dips under demand is ordinary -- the shelf absorbs
+     * it. Only an empty shelf is a shortfall, so cover_runs_out is derived
+     * from on_hand_after. On this fixture the shelf holds all 16 weeks, and
+     * inbound still dips under demand in some of them; if those two ever
+     * agreed by accident this test would stop proving anything.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const forward = requirement.points.slice(17);
+
+    const dips = forward.filter((point) => point.inbound < point.requirement);
+    expect(dips.length).toBeGreaterThan(0);
+
+    for (const point of forward) {
+      expect(point.on_hand_after).toBeGreaterThan(0);
+    }
+    expect(requirement.cover_runs_out).toBeNull();
   });
 
   it("keeps total inbound anchored to total demand, so no gap runs away", () => {
@@ -413,7 +459,7 @@ describe("requirement versus inbound supply (spec 4)", () => {
     const forward = requirement.points.slice(17);
 
     const demand = forward.reduce((total, point) => total + point.requirement, 0);
-    const arrivals = forward.reduce((total, point) => total + point.inbound_landed, 0);
+    const arrivals = forward.reduce((total, point) => total + point.inbound, 0);
     expect(arrivals / demand).toBeGreaterThan(0.98);
     expect(arrivals / demand).toBeLessThan(1.02);
   });
