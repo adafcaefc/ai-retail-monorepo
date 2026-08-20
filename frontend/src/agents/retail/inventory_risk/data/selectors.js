@@ -417,18 +417,23 @@ function tallyStore(store, rows) {
  * @param {Function} applyLevers Bound engine, for the chain case.
  * @param {Function} atStore Bound store-pointer, from the same engine.
  */
-function deriveStoreRows(items, stores, storeRow, applyLevers, atStore) {
+function deriveStoreRows(items, stores, storeRow, applyLevers, atStore, levers = BASELINE_LEVERS) {
   // A selected store's rows ARE the board's rows, already derived once by the
   // caller. Running them through `atStore` again would re-point rows that are
   // already pointed, so this only counts them.
-  if (storeRow !== null) return [tallyStore(storeRow, items)];
+  if (storeRow !== null) {
+    const storeItems = isBaseline(levers)
+      ? items
+      : items.map((item) => applyLevers(item, levers));
+    return [tallyStore(storeRow, storeItems)];
+  }
 
   return stores.map((store) =>
     tallyStore(
       store,
       items
         .filter((item) => item.vertical_id === store.vertical_id)
-        .map((item) => applyLevers(atStore(item, store), BASELINE_LEVERS)),
+        .map((item) => applyLevers(atStore(item, store), levers)),
     ),
   );
 }
@@ -960,28 +965,36 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     merged,
   );
 
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const driveWholePage = options.driveWholePage !== false;
+
   /*
    * Does the scope narrow rows WITHIN a store's shelf? Vertical and store do
-   * not — they choose which stores to show, and `fixture.stores` already
+   * not - they choose which stores to show, and `fixture.stores` already
    * covers each of those in full. Category, state and search do, and that is
    * exactly when the stored aggregates stop describing the board.
    *
-   * Reading the aggregates when nothing narrows is not just an optimisation:
-   * they are the workbook's own `ENGINE_STORE` totals, and the derivation
-   * reproduces them row for row, so the two paths agree by construction. It
-   * does save ~16,000 formula evaluations on the opening load, which is why
-   * the cheap branch is the default one.
+   * When levers are active and driveWholePage is true, store rows are also
+   * derived so store, cluster, and legal entity charts follow the simulation.
    */
   const narrowsRows =
     merged.category_group !== ALL ||
     merged.state !== ALL ||
     merged.sku.trim() !== "";
 
-  const stores = narrowsRows
-    ? deriveStoreRows(baselineItems, scopedStores, storeRow, applyLevers, atStore)
-    : scopedStores;
+  const hasLevers = !isBaseline(levers) && driveWholePage;
 
-  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const stores =
+    narrowsRows || hasLevers
+      ? deriveStoreRows(
+          baselineItems,
+          scopedStores,
+          storeRow,
+          applyLevers,
+          atStore,
+          hasLevers ? levers : BASELINE_LEVERS,
+        )
+      : scopedStores;
 
   /*
    * How far to project (A2 spec section 7a). It is not part of the scope: it
@@ -1023,7 +1036,6 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
    * position rather than a scenario — and the reference totals are the
    * workbook's own and belong to the baseline by definition.
    */
-  const driveWholePage = options.driveWholePage !== false;
   const items =
     simulation.applied && driveWholePage
       ? baselineItems.map((item) => applyLevers(item, levers))

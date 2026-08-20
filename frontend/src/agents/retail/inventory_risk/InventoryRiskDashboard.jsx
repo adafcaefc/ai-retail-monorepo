@@ -27,7 +27,10 @@ import {
   loadInventoryRiskDrilldown,
   loadInventoryRiskRows,
 } from "./data/dashboardData.js";
-import { computeLiveSimulation } from "./data/selectors.js";
+import {
+  buildDashboardFromFixture,
+  computeLiveSimulation,
+} from "./data/selectors.js";
 
 function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
@@ -188,7 +191,19 @@ export default function InventoryRiskDashboard() {
     });
   }, [dashboard, t]);
 
-  const options = dashboard?.filter_options ?? EMPTY_OPTIONS;
+  const activeDashboard = useMemo(() => {
+    if (!rawRows) return dashboard;
+    const effectiveLevers = driveWholePage ? draftLevers : appliedLevers;
+    return buildDashboardFromFixture(rawRows, scope, {
+      levers: effectiveLevers,
+      driveWholePage,
+      horizonWeeks,
+    });
+  }, [rawRows, scope, driveWholePage, draftLevers, appliedLevers, horizonWeeks, dashboard]);
+
+  const display = activeDashboard || dashboard;
+
+  const options = display?.filter_options ?? EMPTY_OPTIONS;
 
   const scopeLabels = useMemo(() => {
     const labels = [];
@@ -203,7 +218,7 @@ export default function InventoryRiskDashboard() {
     return labels;
   }, [options, scope, t]);
 
-  if (!dashboard && loading) {
+  if (!display && loading) {
     return (
       <section
         className="workboard inventory-risk-dashboard"
@@ -214,7 +229,7 @@ export default function InventoryRiskDashboard() {
     );
   }
 
-  if (!dashboard && error) {
+  if (!display && error) {
     return (
       <section
         className="workboard inventory-risk-dashboard"
@@ -234,7 +249,7 @@ export default function InventoryRiskDashboard() {
     );
   }
 
-  const inventoryValue = dashboard.kpis.inventory_value;
+  const inventoryValue = display.kpis.inventory_value;
 
   return (
     <section
@@ -262,7 +277,7 @@ export default function InventoryRiskDashboard() {
 
       <div className="risk-scope-row">
         <span className="risk-data-note">
-          {dashboard.is_mock ? t("Workbook data") : t("Live data")} · {t(dashboard.note)}
+          {display.is_mock ? t("Workbook data") : t("Live data")} · {t(display.note)}
         </span>
         <div className="risk-scope-summary">
           <span>{t("Scope")}:</span>
@@ -297,13 +312,13 @@ export default function InventoryRiskDashboard() {
         the warning before the number, not after it.
       */}
       <RiskAppliedScenarioBanner
-        levers={dashboard.simulation.levers}
+        levers={display.simulation.levers}
         onClear={resetLevers}
       />
 
       <RiskKpiGrid
-        kpis={dashboard.kpis}
-        sparklines={dashboard.kpi_sparklines}
+        kpis={display.kpis}
+        sparklines={display.kpi_sparklines}
         // The reorder zone is Stockout plus Low, and the state filter takes one
         // value — so the drill lands on Stockout, the more urgent half, rather
         // than inventing a compound filter the contract does not carry.
@@ -319,27 +334,27 @@ export default function InventoryRiskDashboard() {
         onSelectSku={(sku) => patchScope({ sku })}
       />
 
-      <ProjectedOnHandPanel projection={dashboard.projection} />
+      <ProjectedOnHandPanel projection={display.projection} />
 
       <div className="risk-chart-grid">
-        <AtRiskByStatePanel rows={dashboard.at_risk_by_state} />
+        <AtRiskByStatePanel rows={display.at_risk_by_state} />
         <CategoryValueDonut
-          rows={dashboard.value_by_category}
+          rows={display.value_by_category}
           total={inventoryValue}
         />
       </div>
 
       <RiskRegisterTable
-        rows={dashboard.risk_register}
+        rows={display.risk_register}
         onSelect={(sku) => patchScope({ sku })}
       />
 
       <DimensionCharts
-        byCategory={dashboard.at_risk_by_category}
-        byStore={dashboard.stockout_by_store}
-        byCluster={dashboard.at_risk_by_cluster}
-        byLegalEntity={dashboard.at_risk_by_legal_entity}
-        expiryTimeline={dashboard.expiry_timeline}
+        byCategory={display.at_risk_by_category}
+        byStore={display.stockout_by_store}
+        byCluster={display.at_risk_by_cluster}
+        byLegalEntity={display.at_risk_by_legal_entity}
+        expiryTimeline={display.expiry_timeline}
         scope={scope}
         onSelectCategory={(categoryId) =>
           patchScope({
@@ -373,14 +388,14 @@ export default function InventoryRiskDashboard() {
         onReset={resetLevers}
         driveWholePage={driveWholePage}
         onDriveWholePageChange={setDriveWholePage}
-        canSave={dashboard.simulation.applied && scenarios.length < MAX_SAVED_SCENARIOS}
+        canSave={display.simulation.applied && scenarios.length < MAX_SAVED_SCENARIOS}
         busy={loading}
       />
 
       <RiskScenarioComparison
         // The workbook's own curve, never the simulated one: a comparison
         // whose reference line moves with the sliders compares nothing.
-        baseline={dashboard.simulation.baseline_projection}
+        baseline={display.simulation.baseline_projection}
         scenarios={scenarios}
         onRemove={(id) =>
           setScenarios((current) => current.filter((entry) => entry.id !== id))
@@ -393,7 +408,7 @@ export default function InventoryRiskDashboard() {
         seen what it is routing.
       */}
       <SuggestedBestAction
-        routes={dashboard.best_actions}
+        routes={display.best_actions}
         onSelect={(sku) => patchScope({ sku })}
       />
     </section>

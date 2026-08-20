@@ -71,7 +71,7 @@ export default function ExpiryTimelinePanel({ timeline, onSelect }) {
                   tickFormatter={(value) => formatUnits(value, language)}
                 />
                 <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<BucketTooltip />} />
-                <Bar dataKey="units" fill="var(--risk-expiry)" isAnimationActive={false} />
+                <Bar dataKey="units" fill="var(--risk-expiry)" isAnimationActive={true} animationDuration={300} />
               </BarChart>
             </ResponsiveContainer>
           </div>

@@ -494,7 +494,7 @@ describe("InventoryRiskDashboard", () => {
     ).toBeInTheDocument();
   });
 
-  it("moves the simulator's own chart live, but keeps the rest of the board on the workbook until Run", async () => {
+  it("moves the simulator and board live as the slider moves", async () => {
     await renderSettled();
 
     const boardBefore = kpiTile("Stockout-risk SKUs").textContent;
@@ -504,21 +504,9 @@ describe("InventoryRiskDashboard", () => {
       target: { value: "40" },
     });
 
-    // The panel's own preview follows the slider immediately — no Run, no
-    // network call, just `computeLiveSimulation` over rows already in hand.
+    // Both the panel's own preview and the board follow the slider immediately
     await waitFor(() => {
       expect(simMetric("Stockout-risk SKUs").textContent).not.toBe(simBefore);
-    });
-
-    // The rest of the board is a different story: re-running every other
-    // panel on every pixel of a drag would fight a multi-lever edit, so it
-    // waits for Run.
-    expect(kpiTile("Stockout-risk SKUs").textContent).toBe(boardBefore);
-    expect(screen.queryByText(/simulated figures/)).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Run" }));
-
-    await waitFor(() => {
       expect(kpiTile("Stockout-risk SKUs").textContent).not.toBe(boardBefore);
     });
   });

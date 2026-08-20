@@ -679,17 +679,15 @@ describe("the simulation block", () => {
     expect(contained.kpis).toEqual(untouched.kpis);
   });
 
-  it("leaves the store charts on the baseline, because they arrive aggregated", () => {
-    // Honest limit rather than a bug: `fixture.stores` is summed per store
-    // before it reaches the selectors, so there are no rows left to re-run.
+  it("derives store and cluster charts under the simulation when levers are active", () => {
     const scope = { ...DEFAULT_SCOPE, legal_entity_id: "GRC" };
     const driven = buildDashboardFromFixture(fixture, scope, {
       levers: { demand: 40 },
     });
     const untouched = buildDashboardFromFixture(fixture, scope);
 
-    expect(driven.stockout_by_store).toEqual(untouched.stockout_by_store);
-    expect(driven.at_risk_by_cluster).toEqual(untouched.at_risk_by_cluster);
+    expect(driven.stockout_by_store).not.toEqual(untouched.stockout_by_store);
+    expect(driven.at_risk_by_cluster).not.toEqual(untouched.at_risk_by_cluster);
   });
 });
 
