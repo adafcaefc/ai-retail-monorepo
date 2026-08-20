@@ -51,6 +51,8 @@ const METRICS = {
     unit: "percent",
     splittable: false,
     typed: true,
+    description:
+      "Forecast Accuracy is currently calculated at the overall Legal Entity level. The current dataset does not yet contain forecast accuracy data at individual Store level, so store selections do not represent store-specific accuracy.",
   },
   demand_trend: {
     label: "Demand trend",

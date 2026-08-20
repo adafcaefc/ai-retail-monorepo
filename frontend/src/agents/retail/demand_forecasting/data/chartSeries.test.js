@@ -33,80 +33,110 @@ describe("104W Demand Forecasting chart series", () => {
         grain: "weekly",
         horizonWeeks: horizon,
       });
-      expect(series.points.slice(0, 4).map((point) => point.label))
-        .toEqual(["W-4", "W-3", "W-2", "W-1"]);
-      expect(series.points.slice(4).map((point) => point.label))
+      expect(series.history_count).toBe(52);
+      expect(series.points.slice(0, 52).map((point) => point.label))
+        .toEqual(Array.from({ length: 52 }, (_, index) => `W-${52 - index}`));
+      expect(series.points.slice(52).map((point) => point.label))
         .toEqual(Array.from({ length: horizon }, (_, index) => `W+${index + 1}`));
-      expect(series.points.slice(4).map((point) => point.forecast))
+      expect(series.points.slice(52).map((point) => point.forecast))
         .toEqual(Array.from({ length: horizon }, (_, index) => 1001 + index));
     }
   });
 
-  it("splits W1 into seven profile-weighted daily values that reconcile", () => {
-    const series = buildDemandChartSeries(source(), {
-      grain: "daily",
-      horizonWeeks: 16,
-    });
-    const actual = series.points.slice(0, 7);
-    const forecast = series.points.slice(7);
+  it("expands four ordered historical weeks and Horizon forecast weeks into daily blocks", () => {
+    for (const horizon of [4, 8, 12, 16]) {
+      const series = buildDemandChartSeries(source(), {
+        grain: "daily",
+        horizonWeeks: horizon,
+      });
+      const actual = series.points.slice(0, 28);
+      const forecast = series.points.slice(28);
 
-    expect(actual.map((point) => point.label)).toEqual([
-      "D-7", "D-6", "D-5", "D-4", "D-3", "D-2", "D-1",
-    ]);
-    expect(forecast.map((point) => point.label)).toEqual([
-      "D+1", "D+2", "D+3", "D+4", "D+5", "D+6", "D+7",
-    ]);
-    expect(sum(actual.map((point) => point.actual))).toBeCloseTo(source().actual_w1, 10);
-    expect(sum(forecast.map((point) => point.forecast))).toBeCloseTo(source().forecast_w1, 10);
-    expect(series.points.every((point) => !point.label.includes("W0"))).toBe(true);
+      expect(series.history_count).toBe(28);
+      expect(actual).toHaveLength(28);
+      expect(forecast).toHaveLength(horizon * 7);
+      expect(actual.map((point) => point.label)).toEqual(
+        Array.from({ length: 28 }, (_, index) => `D-${28 - index}`),
+      );
+      expect(forecast.map((point) => point.label)).toEqual(
+        Array.from({ length: horizon * 7 }, (_, index) => `D+${index + 1}`),
+      );
+
+      [4, 3, 2, 1].forEach((week, index) => {
+        const block = actual.slice(index * 7, index * 7 + 7);
+        expect(sum(block.map((point) => point.actual)))
+          .toBeCloseTo(source()[`actual_w${week}`], 10);
+      });
+      for (let week = 1; week <= horizon; week += 1) {
+        const block = forecast.slice((week - 1) * 7, week * 7);
+        expect(sum(block.map((point) => point.forecast)))
+          .toBeCloseTo(source()[`forecast_w${week}`], 10);
+      }
+
+      expect(series.points.every((point) => !point.label.includes("D0"))).toBe(true);
+    }
   });
 
-  it("builds exact four-week Monthly buckets", () => {
+  it("builds twelve four-week Monthly buckets from the latest 48 actual weeks", () => {
     const series = buildDemandChartSeries(source(), {
       grain: "monthly",
       horizonWeeks: 8,
     });
 
     expect(series.points.map((point) => point.label)).toEqual([
-      "M-4", "M-3", "M-2", "M-1", "M+1", "M+2",
+      "M-12", "M-11", "M-10", "M-9", "M-8", "M-7",
+      "M-6", "M-5", "M-4", "M-3", "M-2", "M-1", "M+1", "M+2",
     ]);
-    expect(series.points.slice(0, 4).map((point) => point.actual)).toEqual([
+    expect(series.history_count).toBe(12);
+    expect(series.points.slice(0, 12).map((point) => point.actual)).toEqual([
+      480 + 470 + 460 + 450,
+      440 + 430 + 420 + 410,
+      400 + 390 + 380 + 370,
+      360 + 350 + 340 + 330,
+      320 + 310 + 300 + 290,
+      280 + 270 + 260 + 250,
+      240 + 230 + 220 + 210,
+      200 + 190 + 180 + 170,
       160 + 150 + 140 + 130,
       120 + 110 + 100 + 90,
       80 + 70 + 60 + 50,
       40 + 30 + 20 + 10,
     ]);
-    expect(series.points.slice(4).map((point) => point.forecast)).toEqual([
+    expect(sum(series.points.slice(0, 12).map((point) => point.actual))).toBe(
+      sum(Array.from({ length: 48 }, (_, index) => (48 - index) * 10)),
+    );
+    expect(series.points.slice(12).map((point) => point.forecast)).toEqual([
       1001 + 1002 + 1003 + 1004,
       1005 + 1006 + 1007 + 1008,
     ]);
   });
 
-  it("enables Quarterly only at 16W and uses full 13-week buckets", () => {
-    expect(isDemandGrainEnabled("quarterly", 8)).toBe(false);
-    expect(isDemandGrainEnabled("quarterly", 16)).toBe(true);
-    expect(isDemandGrainEnabled("yearly", 16)).toBe(false);
+  it("shows four forecast quarters regardless of the selected Horizon", () => {
+    expect(isDemandGrainEnabled("yearly", 16)).toBe(true);
 
-    const series = buildDemandChartSeries(source(), {
-      grain: "quarterly",
-      horizonWeeks: 16,
-    });
-    expect(series.points.map((point) => point.label)).toEqual([
-      "Q-4", "Q-3", "Q-2", "Q-1", "Q+1",
-    ]);
-    expect(series.points.slice(0, 4).map((point) => point.actual)).toEqual([
-      sum(Array.from({ length: 13 }, (_, index) => (52 - index) * 10)),
-      sum(Array.from({ length: 13 }, (_, index) => (39 - index) * 10)),
-      sum(Array.from({ length: 13 }, (_, index) => (26 - index) * 10)),
-      sum(Array.from({ length: 13 }, (_, index) => (13 - index) * 10)),
-    ]);
-    expect(series.points.at(-1).forecast).toBe(
-      sum(Array.from({ length: 13 }, (_, index) => 1001 + index)),
-    );
-    expect(buildDemandChartSeries(source(), { grain: "quarterly", horizonWeeks: 8 }).points)
-      .toEqual([]);
-    expect(buildDemandChartSeries(source(), { grain: "yearly", horizonWeeks: 16 }).points)
-      .toEqual([]);
+    for (const horizon of [4, 8, 12, 16]) {
+      expect(isDemandGrainEnabled("quarterly", horizon)).toBe(true);
+
+      const series = buildDemandChartSeries(source(), {
+        grain: "quarterly",
+        horizonWeeks: horizon,
+      });
+      expect(series.history_count).toBe(4);
+      expect(series.points.map((point) => point.label)).toEqual([
+        "Q-4", "Q-3", "Q-2", "Q-1", "Q+1", "Q+2", "Q+3", "Q+4",
+      ]);
+      expect(series.points.slice(0, 4).map((point) => point.actual)).toEqual([
+        sum(Array.from({ length: 13 }, (_, index) => (52 - index) * 10)),
+        sum(Array.from({ length: 13 }, (_, index) => (39 - index) * 10)),
+        sum(Array.from({ length: 13 }, (_, index) => (26 - index) * 10)),
+        sum(Array.from({ length: 13 }, (_, index) => (13 - index) * 10)),
+      ]);
+      expect(series.points.slice(4).map((point) => point.forecast)).toEqual(
+        Array.from({ length: 4 }, (_, quarter) =>
+          sum(Array.from({ length: 13 }, (_, index) => 1001 + quarter * 13 + index)),
+        ),
+      );
+    }
   });
 
   it("keeps confidence centers SQL-backed while retaining the existing illustrative band method", () => {
@@ -119,6 +149,24 @@ describe("104W Demand Forecasting chart series", () => {
     );
     expect(series.points.slice(12).every((point) => point.confidence_low != null)).toBe(true);
     expect(series.points.slice(0, 12).every((point) => point.confidence_low == null)).toBe(true);
+  });
+
+  it("builds Yearly from the complete 52-week actual and forecast ranges", () => {
+    for (const horizon of [4, 8, 12, 16]) {
+      const series = buildDemandChartSeries(source(), {
+        grain: "yearly",
+        horizonWeeks: horizon,
+      });
+
+      expect(series.history_count).toBe(1);
+      expect(series.points.map((point) => point.label)).toEqual(["Y-1", "Y+1"]);
+      expect(series.points[0].actual).toBe(
+        sum(Array.from({ length: 52 }, (_, index) => (52 - index) * 10)),
+      );
+      expect(series.points[1].forecast).toBe(
+        sum(Array.from({ length: 52 }, (_, index) => 1001 + index)),
+      );
+    }
   });
 
   it("pads the Demand Outlook domain from visible actual and forecast values", () => {

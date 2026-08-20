@@ -25,6 +25,26 @@ function renderGrid(value, comparisonLabel = "Calculated", sparkline = []) {
   );
 }
 
+function renderAccuracyGrid() {
+  return render(
+    <LanguageProvider>
+      <DemandKpiGrid
+        kpis={[
+          {
+            id: "forecast_accuracy",
+            label: "Forecast accuracy",
+            value: 92.4,
+            unit: "%",
+            comparison_label: "Calculated",
+            direction: "flat",
+            status: "good",
+          },
+        ]}
+      />
+    </LanguageProvider>,
+  );
+}
+
 describe("Demand Trend KPI card", () => {
   it("displays the calculated backend value and source label", () => {
     renderGrid(5.5954);
@@ -57,5 +77,15 @@ describe("Demand Trend KPI card", () => {
 
     expect(screen.getByText("—")).toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
+  });
+});
+
+describe("Forecast Accuracy KPI card", () => {
+  it("renders the calculated source label without changing the value", () => {
+    renderAccuracyGrid();
+
+    expect(screen.getByText("92.4%")).toBeInTheDocument();
+    expect(screen.getByText("Calculated")).toBeInTheDocument();
+    expect(screen.queryByText("Workbook constant")).not.toBeInTheDocument();
   });
 });

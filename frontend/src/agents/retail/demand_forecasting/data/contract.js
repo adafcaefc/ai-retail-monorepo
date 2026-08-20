@@ -91,15 +91,13 @@ export function normalizeDemandQuery(query = {}) {
   const horizon = DEMAND_HORIZONS.includes(requestedHorizon) ? requestedHorizon : 8;
   const grain = String(query.grain || "").toLowerCase();
   const normalizedGrain = DEMAND_GRAINS.includes(grain) ? grain : "weekly";
-  const unsupportedGrain = normalizedGrain === "yearly"
-    || (normalizedGrain === "quarterly" && horizon !== 16);
 
   return {
     legal_entity_id: String(query.legal_entity_id || "ALL"),
     category_group: String(query.category_group || "ALL"),
     store_id: String(query.store_id || "ALL"),
     sku: String(query.sku || "").trim().slice(0, 120),
-    grain: unsupportedGrain ? "weekly" : normalizedGrain,
+    grain: normalizedGrain,
     horizon_weeks: horizon,
     detail_offset: boundedInteger(query.detail_offset, 0, 0, 1000000),
     detail_limit: boundedInteger(query.detail_limit, 100, 1, 100),

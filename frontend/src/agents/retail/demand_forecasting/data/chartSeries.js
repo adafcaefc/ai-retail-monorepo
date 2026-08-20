@@ -173,12 +173,18 @@ function splitWeek(total, profile = DOW_PROFILE) {
   return values;
 }
 
-function dailyPoints(source, profile) {
-  const actual = splitWeek(weeklyValue(source, "actual", 1), profile);
-  const forecast = splitWeek(weeklyValue(source, "forecast", 1), profile);
+function dailyPoints(source, horizonWeeks, profile) {
+  const actual = range(4, 1).flatMap((week) =>
+    splitWeek(weeklyValue(source, "actual", week), profile)
+      .map((value, index) => point(`D-${week * 7 - index}`, value, "actual")),
+  );
+  const forecast = range(1, horizonWeeks).flatMap((week) =>
+    splitWeek(weeklyValue(source, "forecast", week), profile)
+      .map((value, index) => point(`D+${(week - 1) * 7 + index + 1}`, value, "forecast")),
+  );
   return [
-    ...actual.map((value, index) => point(`D-${7 - index}`, value, "actual")),
-    ...forecast.map((value, index) => point(`D+${index + 1}`, value, "forecast")),
+    ...actual,
+    ...forecast,
   ];
 }
 
@@ -197,12 +203,9 @@ function groupedPoints(source, groups, type, prefix) {
 }
 
 function monthlyPoints(source, horizonWeeks) {
-  const actualGroups = [
-    [16, 15, 14, 13],
-    [12, 11, 10, 9],
-    [8, 7, 6, 5],
-    [4, 3, 2, 1],
-  ];
+  const actualGroups = Array.from({ length: 12 }, (_, index) =>
+    range(48 - index * 4, 45 - index * 4),
+  );
   const forecastGroups = Array.from({ length: horizonWeeks / 4 }, (_, index) =>
     range(index * 4 + 1, index * 4 + 4),
   );
@@ -215,19 +218,31 @@ function monthlyPoints(source, horizonWeeks) {
   };
 }
 
-function quarterlyPoints(source, horizonWeeks) {
-  if (horizonWeeks !== 16) return unavailableSeries("quarterly", horizonWeeks, source);
+function quarterlyPoints(source) {
   const actualGroups = [
     range(52, 40),
     range(39, 27),
     range(26, 14),
     range(13, 1),
   ];
+  const forecastGroups = Array.from({ length: 4 }, (_, index) =>
+    range(index * 13 + 1, index * 13 + 13),
+  );
   return {
     history_count: actualGroups.length,
     points: [
       ...groupedPoints(source, actualGroups, "actual", "Q"),
-      point("Q+1", sumWeeks(source, "forecast", range(1, 13)), "forecast"),
+      ...groupedPoints(source, forecastGroups, "forecast", "Q"),
+    ],
+  };
+}
+
+function yearlyPoints(source) {
+  return {
+    history_count: 1,
+    points: [
+      point("Y-1", sumWeeks(source, "actual", range(52, 1)), "actual"),
+      point("Y+1", sumWeeks(source, "forecast", range(1, 52)), "forecast"),
     ],
   };
 }
@@ -253,14 +268,14 @@ function summary(points) {
 }
 
 export function isDemandGrainEnabled(grain, horizonWeeks) {
-  if (grain === "yearly") return false;
-  if (grain === "quarterly") return horizonWeeks === 16;
+  if (grain === "yearly") return true;
+  if (grain === "quarterly") return true;
   return ["daily", "weekly", "monthly"].includes(grain);
 }
 
 export function buildDemandChartSeries(
   source,
-  { grain = "weekly", horizonWeeks = 8, historyWeeks = 4, dowProfile = DOW_PROFILE } = {},
+  { grain = "weekly", horizonWeeks = 8, historyWeeks = 52, dowProfile = DOW_PROFILE } = {},
 ) {
   if (!source || !isDemandGrainEnabled(grain, horizonWeeks)) {
     return unavailableSeries(grain, horizonWeeks, source);
@@ -268,13 +283,15 @@ export function buildDemandChartSeries(
 
   let built;
   if (grain === "daily") {
-    built = { history_count: 7, points: dailyPoints(source, dowProfile) };
+    built = { history_count: 28, points: dailyPoints(source, horizonWeeks, dowProfile) };
   } else if (grain === "weekly") {
     built = weeklyPoints(source, horizonWeeks, historyWeeks);
   } else if (grain === "monthly") {
     built = monthlyPoints(source, horizonWeeks);
+  } else if (grain === "quarterly") {
+    built = quarterlyPoints(source);
   } else {
-    built = quarterlyPoints(source, horizonWeeks);
+    built = yearlyPoints(source);
   }
 
   return {

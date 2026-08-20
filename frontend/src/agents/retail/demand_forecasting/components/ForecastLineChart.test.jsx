@@ -8,7 +8,7 @@ vi.mock("recharts", () => ({
   Area: () => null,
   CartesianGrid: () => null,
   ComposedChart: ({ children, data }) => (
-    <div data-testid="composed-chart" data-points={JSON.stringify(data)}>{children}</div>
+    <svg data-testid="composed-chart" data-points={JSON.stringify(data)}>{children}</svg>
   ),
   Line: ({ dataKey, strokeDasharray }) => (
     <output
@@ -27,8 +27,18 @@ vi.mock("recharts", () => ({
   ),
   ResponsiveContainer: ({ children }) => <div>{children}</div>,
   Tooltip: () => null,
-  XAxis: () => null,
+  XAxis: ({ dataKey, padding }) => (
+    <output
+      data-testid="x-axis"
+      data-key={dataKey}
+      data-padding-left={padding?.left ?? ""}
+      data-padding-right={padding?.right ?? ""}
+    />
+  ),
   YAxis: () => null,
+  usePlotArea: () => ({ x: 0, y: 0, width: 100, height: 100 }),
+  useXAxisScale: () => (value) => (value === "Y-1" ? 32 : 68),
+  useYAxisScale: () => (value) => (value === 100 ? 50 : 40),
 }));
 
 const points = [
@@ -40,6 +50,11 @@ const points = [
   { key: "W+2", label: "W+2", actual: null, forecast: 130, confidence_low: 105, confidence_high: 155 },
 ];
 
+const yearlyPoints = [
+  { key: "Y-1", label: "Y-1", actual: 100, forecast: null, confidence_low: null, confidence_high: null },
+  { key: "Y+1", label: "Y+1", actual: null, forecast: 200, confidence_low: null, confidence_high: null },
+];
+
 function renderChart(includeConfidence = false) {
   return render(
     <LanguageProvider>
@@ -48,6 +63,17 @@ function renderChart(includeConfidence = false) {
         ariaLabel="Demand forecast chart"
         compact={includeConfidence}
         includeConfidence={includeConfidence}
+      />
+    </LanguageProvider>,
+  );
+}
+
+function renderYearlyChart() {
+  return render(
+    <LanguageProvider>
+      <ForecastLineChart
+        points={yearlyPoints}
+        ariaLabel="Yearly demand forecast chart"
       />
     </LanguageProvider>,
   );
@@ -76,5 +102,36 @@ describe("Demand Forecasting line-chart transition", () => {
     expect(divider).toHaveAttribute("data-label", "Forecast starts");
     expect(divider).toHaveAttribute("data-dash", "4 4");
     expect(divider).toHaveAttribute("data-dy", "-4");
+  });
+
+  it("adds Yearly styling stubs without adding data points or ticks", () => {
+    renderYearlyChart();
+
+    const chartPoints = JSON.parse(screen.getByTestId("composed-chart").dataset.points);
+    expect(chartPoints.map((point) => point.label)).toEqual(["Y-1", "Y+1"]);
+    expect(chartPoints).toHaveLength(2);
+    expect(screen.getByTestId("x-axis")).toHaveAttribute("data-key", "label");
+    expect(screen.getByTestId("x-axis")).toHaveAttribute("data-padding-left", "32");
+    expect(screen.getByTestId("x-axis")).toHaveAttribute("data-padding-right", "32");
+    expect(screen.getByTestId("forecast-divider")).toHaveAttribute("data-x", "Y+1");
+
+    const actualStub = screen.getByTestId("yearly-actual-stub");
+    const forecastStub = screen.getByTestId("yearly-forecast-stub");
+    expect(Number(actualStub.getAttribute("x1"))).toBeGreaterThan(0);
+    expect(Number(actualStub.getAttribute("x2"))).toBeLessThan(100);
+    expect(Number(forecastStub.getAttribute("x1"))).toBeGreaterThan(0);
+    expect(Number(forecastStub.getAttribute("x2"))).toBeLessThan(100);
+    expect(actualStub.parentElement).toHaveAttribute("clip-path", "none");
+
+    expect(actualStub).toHaveAttribute(
+      "stroke",
+      "var(--demand-actual)",
+    );
+    expect(actualStub).not.toHaveAttribute("stroke-dasharray");
+    expect(forecastStub).toHaveAttribute(
+      "stroke",
+      "var(--demand-forecast)",
+    );
+    expect(forecastStub).toHaveAttribute("stroke-dasharray", "6 3");
   });
 });

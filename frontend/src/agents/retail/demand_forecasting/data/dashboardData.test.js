@@ -19,6 +19,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEMAND_AGENT_ID,
   DEFAULT_DEMAND_LEVERS,
+  normalizeDemandQuery,
   normalizeDemandDashboard,
 } from "./contract.js";
 import {
@@ -58,6 +59,14 @@ const grocery = fixture.reference_by_vertical.find(
 );
 
 describe("the Demand Forecasting gateway", () => {
+  it("preserves Quarterly and Yearly as valid chart grains", () => {
+    for (const grain of ["quarterly", "yearly"]) {
+      for (const horizon_weeks of [4, 8, 12, 16]) {
+        expect(normalizeDemandQuery({ grain, horizon_weeks }).grain).toBe(grain);
+      }
+    }
+  });
+
   it("reads the workbook fixture, not an invented dataset", async () => {
     expect(demandForecastingDataSource()).toBe("fixture");
 
@@ -138,10 +147,9 @@ describe("the Demand Forecasting gateway", () => {
     expect(kpi("demand_trend").comparison_label).toBe("Unavailable");
     expect(kpi("demand_trend").comparison_label).not.toBe("Workbook constant");
 
-    // The tile says where its number came from rather than implying it was
-    // calculated. Two of the six are keyed in by hand; the live seasonality
-    // card is checked separately on the API path below.
-    expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
+    // Forecast Accuracy's scope limitation is explained in its detail drawer;
+    // the card uses the requested presentation label without changing its value.
+    expect(kpi("forecast_accuracy").comparison_label).toBe("Calculated");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
     expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
   });
@@ -480,11 +488,20 @@ describe("the Demand Forecasting gateway in api mode", () => {
     expect(dashboard.demand_forecast_series.source)
       .toBe("synthetic.demand_store_sku_104w");
     expect(dashboard.forecast.points.map((point) => point.label))
-      .toEqual(["W-4", "W-3", "W-2", "W-1", "W+1", "W+2", "W+3", "W+4"]);
+      .toEqual([
+        ...Array.from({ length: 52 }, (_, index) => `W-${52 - index}`),
+        "W+1", "W+2", "W+3", "W+4",
+      ]);
     expect(dashboard.forecast.points.map((point) => point.actual))
-      .toEqual([49, 50, 51, 52, null, null, null, null]);
+      .toEqual([
+        ...Array.from({ length: 52 }, (_, index) => index + 1),
+        null, null, null, null,
+      ]);
     expect(dashboard.forecast.points.map((point) => point.forecast))
-      .toEqual([null, null, null, null, 100, 101, 102, 103]);
+      .toEqual([
+        ...Array.from({ length: 52 }, () => null),
+        100, 101, 102, 103,
+      ]);
 
     expect(dashboard.confidence.points.slice(0, 12).map((point) => point.actual))
       .toEqual(Array.from({ length: 12 }, (_, index) => 41 + index));

@@ -8,6 +8,9 @@ import {
   Tooltip,
   XAxis,
   YAxis,
+  usePlotArea,
+  useXAxisScale,
+  useYAxisScale,
 } from "recharts";
 
 import { formatNumber } from "../../../../format.js";
@@ -38,6 +41,61 @@ function DemandTooltip({ active, payload, label }) {
   );
 }
 
+const YEARLY_STUB_LENGTH = 24;
+const YEARLY_PLOT_INSET = 32;
+
+// Yearly has only two genuine data points. These pixel-space segments give
+// each series a short visual lead-in/out without changing its data or ticks.
+function YearlyVisualStubs({ enabled, points }) {
+  const plotArea = usePlotArea();
+  const xScale = useXAxisScale();
+  const yScale = useYAxisScale();
+
+  if (!enabled || !plotArea || !xScale || !yScale) return null;
+
+  const actual = points[0];
+  const forecast = points[1];
+  const actualX = xScale(actual.label, { position: "middle" });
+  const forecastX = xScale(forecast.label, { position: "middle" });
+  const actualY = yScale(actual.actual);
+  const forecastY = yScale(forecast.forecast);
+  if ([actualX, forecastX, actualY, forecastY].some((value) => value == null)) {
+    return null;
+  }
+
+  const left = plotArea.x;
+  const right = plotArea.x + plotArea.width;
+  return (
+    <g
+      className="demand-yearly-stubs"
+      pointerEvents="none"
+      clipPath="none"
+    >
+      <line
+        className="demand-yearly-actual-stub"
+        data-testid="yearly-actual-stub"
+        x1={Math.max(left, actualX - YEARLY_STUB_LENGTH)}
+        x2={actualX}
+        y1={actualY}
+        y2={actualY}
+        stroke="var(--demand-actual)"
+        strokeWidth={2.4}
+      />
+      <line
+        className="demand-yearly-forecast-stub"
+        data-testid="yearly-forecast-stub"
+        x1={forecastX}
+        x2={Math.min(right, forecastX + YEARLY_STUB_LENGTH)}
+        y1={forecastY}
+        y2={forecastY}
+        stroke="var(--demand-forecast)"
+        strokeWidth={2.4}
+        strokeDasharray="6 3"
+      />
+    </g>
+  );
+}
+
 export default function ForecastLineChart({
   points,
   ariaLabel,
@@ -55,9 +113,13 @@ export default function ForecastLineChart({
   }));
   const transition = buildDemandTransitionData(chartPoints);
   const data = transition.data;
-  // The SQL-backed 104W series ends actuals at W-1 and starts forecast at W+1;
-  // the legacy fixture may also carry an equal-valued connector point. In both
-  // cases the marker belongs on the first genuine forecast point.
+  const isYearly = data.length === 2
+    && data[0]?.label === "Y-1"
+    && data[1]?.label === "Y+1";
+  // The series ends actuals at its final historical point and starts forecast
+  // at its first genuine forecast point. The legacy fixture may also carry an
+  // equal-valued connector point; in both cases the marker belongs on the
+  // first genuine forecast point.
   const boundary = transition.firstForecastKey;
   const hasConfidenceBand = data.some(
     (point) => point.confidence_low != null && point.confidence_high != null,
@@ -68,7 +130,14 @@ export default function ForecastLineChart({
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={data} margin={{ top: 10, right: 16, left: 2, bottom: 2 }}>
           <CartesianGrid stroke="var(--gray-100)" strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={{ stroke: "var(--line)" }} minTickGap={18} />
+          <XAxis
+            dataKey="label"
+            padding={isYearly ? { left: YEARLY_PLOT_INSET, right: YEARLY_PLOT_INSET } : undefined}
+            tick={{ fontSize: 10, fill: "var(--muted)" }}
+            tickLine={false}
+            axisLine={{ stroke: "var(--line)" }}
+            minTickGap={18}
+          />
           <YAxis
             domain={yAxisDomain}
             tickCount={5}
@@ -111,6 +180,7 @@ export default function ForecastLineChart({
             isAnimationActive={false}
             legendType="none"
           />
+          <YearlyVisualStubs enabled={isYearly} points={data} />
         </ComposedChart>
       </ResponsiveContainer>
       <div className="demand-chart-legend" aria-hidden="true">

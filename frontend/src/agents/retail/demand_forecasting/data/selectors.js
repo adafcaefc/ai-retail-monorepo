@@ -736,6 +736,9 @@ function buildKpiCards(
     if (id === "demand_trend") {
       return calculatedDemandTrend?.trend_pct == null ? "Unavailable" : "Calculated";
     }
+    if (id === "forecast_accuracy") {
+      return "Calculated";
+    }
     return derivation?.[id] === "typed-constant" ? "Workbook constant" : "Calculated";
   };
 
