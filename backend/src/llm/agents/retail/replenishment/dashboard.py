@@ -119,9 +119,50 @@ DERIVATION = {
     "fill_rate_pct": "measured",
     "avg_cover_days": "measured",
     "route": "modelled-from-lead-time",
-    "demand_curve": "measured-32w",
+    "demand_curve": "measured-32w, history levelled onto forecast_w1",
     "inbound_schedule": "synthetic-route-cadence",
 }
+
+
+def join_history_to_forecast(
+    history: list[float], forecast: list[float]
+) -> list[float]:
+    """Scale the synthetic history so it runs into the measured forecast.
+
+    `synthetic.demand_store_sku_32w` is two halves that were never joined.
+    `forecast_w1` is pinned to a measured value -- v8.5's
+    `fact_inventory_daily.forecast_7d` -- while the 16 actual weeks were
+    synthesised independently of it. The result is a step at the divider:
+    +4.32% chain-wide from actual_w1 to forecast_w1, against +0.74% for a
+    typical week, and every vertical shows it between +4.20% and +4.42%. On
+    the chart it reads as a spike at Today that no demand event caused.
+
+    The measured half is the forecast, so the synthetic half is the one that
+    moves. History is multiplied by a single factor -- its shape is untouched,
+    only its level -- chosen so the last actual week runs into `forecast_w1`
+    at the same rate history was already growing. Continuing its own trend
+    rather than landing exactly on `forecast_w1`: equal values would draw a
+    flat segment across the divider, which is its own artifact.
+
+    `forecast_w1` is never modified, so the `ads x week_factor` calibration
+    the fixture builder checks still holds.
+
+    WHY HERE AND NOT IN THE TABLE. The seam is a defect in the shared data and
+    A1's Demand Trend reads the same table, so the source would be the better
+    place. That was a deliberate call to keep the blast radius on this board:
+    fixing it in the table moves A1's history too. The cost is that A3 and A1
+    draw slightly different history for the same SKUs until the source is
+    fixed.
+    """
+    if len(history) < 2 or not forecast:
+        return history
+    last, previous, anchor = history[-1], history[-2], forecast[0]
+    if last <= 0 or previous <= 0 or anchor <= 0:
+        return history
+    # The growth history was already running at, continued across the divider.
+    rate = last / previous
+    factor = (anchor / rate) / last
+    return [value * factor for value in history]
 
 
 def _float(value: Any) -> float:
@@ -513,13 +554,16 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             """,
             demand_params,
         )
-        demand_by_sku = {
-            row["sku_id"]: {
-                "demand_history": [_float(row[f"actual_w{n}"]) for n in range(16, 0, -1)],
-                "demand_forecast": [_float(row[f"forecast_w{n}"]) for n in range(1, 17)],
+        demand_by_sku = {}
+        for row in demand_rows:
+            forecast = [_float(row[f"forecast_w{n}"]) for n in range(1, 17)]
+            history = [_float(row[f"actual_w{n}"]) for n in range(16, 0, -1)]
+            demand_by_sku[row["sku_id"]] = {
+                # Levelled onto the measured forecast -- see
+                # join_history_to_forecast for the seam this closes.
+                "demand_history": join_history_to_forecast(history, forecast),
+                "demand_forecast": forecast,
             }
-            for row in demand_rows
-        }
 
         # 16 forward weeks of arrivals, same store x SKU grain summed to
         # chain-net, scoped through dim_item exactly as the demand curve is.
