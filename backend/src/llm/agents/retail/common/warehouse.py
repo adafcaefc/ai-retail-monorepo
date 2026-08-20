@@ -254,6 +254,78 @@ def arch_horizon_factor(
     return ads / denominator if denominator else 1.0
 
 
+# The synthetic demand table's 32 week columns, in the order they unpivot to a
+# timeline: actuals oldest first (w16 is 16 weeks back, w1 the most recent
+# actual week), then forecasts nearest first (w1 is next week). A week index
+# rides along (-16..-1, +1..+16) because "W-3" and "W+3" are labels the chart
+# derives, while ordering needs a number.
+_DEMAND_32W_COLUMNS: tuple[tuple[int, str, str], ...] = tuple(
+    [(index, "actual", f"actual_w{-index}") for index in range(-16, 0)]
+    + [(index, "forecast", f"forecast_w{index}") for index in range(1, 17)]
+)
+
+
+def demand_weekly_32w(
+    connection: Any, scope: DashboardScope | None = None
+) -> dict[str, dict[str, list[float]]]:
+    """Per-SKU chain demand curve: 16 actual weeks, then 16 forecast weeks.
+
+    Reads `synthetic.demand_store_sku_32w` (store x SKU, weeks pivoted wide)
+    and collapses the stores, because every grain this package serves is
+    chain-net -- the same argument `fact_inventory_chain_daily` makes. Returns
+    ``{sku_id: {"actual": [...16 oldest first...], "forecast": [...16 nearest
+    first...]}}``, ready to ride on an order line.
+
+    The table is calibrated against the workbook rather than independent of
+    it: the chain's first forecast week reproduces ``SUM(ads) x dow_sum`` to
+    five significant figures, so the curve and the board's own ADS state one
+    demand level, not two. The fixture builder checks that identity on every
+    rebuild; this function only reads.
+
+    Scope joins `dim_item`, so the two filters SQL applies (`legal_entity_id`,
+    `category_group`) narrow the curve exactly as they narrow the lines.
+
+    A missing table returns ``{}`` rather than raising: the boards treat the
+    curve as additive -- they drew demand as a flat ADS rate before this table
+    existed and still can, so an unseeded environment degrades to that
+    presentation instead of losing the whole dashboard to a 503.
+    """
+    exists = connection.execute(
+        text("SELECT OBJECT_ID(N'synthetic.demand_store_sku_32w', N'U')")
+    ).scalar()
+    if exists is None:
+        return {}
+
+    scope = scope or DashboardScope()
+    where, params = _scope_clause(scope, "i.vertical_id", "i.category_id")
+    values = ",\n                ".join(
+        f"({index}, '{kind}', t.{column})"
+        for index, kind, column in _DEMAND_32W_COLUMNS
+    )
+
+    rows = _rows(
+        connection,
+        f"""
+        SELECT t.sku_id, w.week_index, w.kind, sum(w.units) AS units
+        FROM synthetic.demand_store_sku_32w t
+        JOIN {SCHEMA}.dim_item i ON i.item_id = t.sku_id
+        CROSS APPLY (VALUES
+                {values}
+        ) w (week_index, kind, units)
+        WHERE 1 = 1{where}
+        GROUP BY t.sku_id, w.week_index, w.kind
+        ORDER BY t.sku_id, w.week_index
+        """,
+        params,
+    )
+
+    curves: dict[str, dict[str, list[float]]] = {}
+    for row in rows:
+        curve = curves.setdefault(row["sku_id"], {"actual": [], "forecast": []})
+        curve[row["kind"]].append(float(row["units"]))
+    return curves
+
+
 # Day-of-week demand profile, Monday first.
 #
 # THE CANONICAL COPY. The workbook stores only their sum -- `Constants` B7 =
@@ -459,6 +531,7 @@ __all__ = [
     "arch_horizon_factor",
     "chain_store_size",
     "constants",
+    "demand_weekly_32w",
     "envelope",
     "filter_options",
     "formulas",

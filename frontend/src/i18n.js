@@ -404,11 +404,14 @@ const CHROME = {
   Covered: "Tercukupi",
   "Cover runs out at": "Cakupan habis pada",
   "Cover out": "Cakupan habis",
+  Today: "Hari ini",
   "Order qty": "Jumlah pesan",
   "PO value": "Nilai PO",
   Fill: "Pemenuhan",
   "Inbound is placed on each SKU's lead day because the workbook records how much is on order but never when it arrives. Requirement is a flat ADS per day, which is all one ADS per SKU can support.":
     "Barang masuk ditempatkan pada hari lead time tiap SKU karena workbook mencatat berapa yang dipesan tetapi tidak pernah kapan tibanya. Kebutuhan memakai ADS rata per hari, karena satu ADS per SKU hanya mendukung itu.",
+  "Demand is the measured 32-week curve — 16 weeks of actuals, then 16 of forecast — with today between W-1 and W+1. No table records when an inbound order arrives, so cover is modelled as half this week's and half last week's demand: supply that lags demand by about half a week. Where requirement stands above cover is the gap a purchase order exists to close.":
+    "Permintaan adalah kurva terukur 32 minggu — 16 minggu aktual, lalu 16 minggu proyeksi — dengan hari ini di antara W-1 dan W+1. Tidak ada tabel yang mencatat kapan pesanan masuk tiba, jadi cakupan dimodelkan sebagai setengah permintaan minggu ini dan setengah minggu lalu: pasokan yang tertinggal dari permintaan sekitar setengah minggu. Di mana kebutuhan berada di atas cakupan, di situ celah yang harus ditutup pesanan pembelian.",
 
   // Route tabs and export (A3 spec section 7).
   "Purchase order route": "Rute pesanan pembelian",

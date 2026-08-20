@@ -4,6 +4,13 @@ Returns the same shape `scripts/build_replenishment_fixture.py` writes, so the
 board's selectors run over it unchanged. See `retail/common/warehouse.py` for
 why the aggregation stays in the browser.
 
+Each line also carries a 32-week demand curve (`demand_weekly`) from
+`synthetic.demand_store_sku_32w` when that table is seeded — 16 actual weeks
+then 16 forecast weeks, chain-net per SKU. It is the only time dimension this
+domain has; the requirement chart is drawn from it, split at today. Without
+the table the field is absent and the browser falls back to the flat-ADS
+presentation the workbook alone supports.
+
 Two prices, both carried. The workbook states order value twice and the two
 differ by about a fifth: `ENGINE!P` prices the shortfall at the selling price,
 while `Replenishment Detail!amount` prices whole packs at the trade-agreement
@@ -27,6 +34,7 @@ from src.llm.agents.retail.common.warehouse import (
     _scope_clause,
     arch_horizon_factor as _arch_horizon_factor,
     constants,
+    demand_weekly_32w,
     envelope,
     agent_reference,
     filter_options,
@@ -447,6 +455,12 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # it; it is what every figure above is reconciled against.
         reference = agent_reference(connection, AGENT_ID)
 
+        # The 32-week demand curve per SKU, from the synthetic table. Read in
+        # the same connection and through the same scope as the lines, so a
+        # curve always describes exactly the rows it ships beside. An unseeded
+        # table yields {} and the lines below simply go without curves.
+        curves = demand_weekly_32w(connection, scope)
+
     # A3 filters by route, not by inventory state — that is A2's control.
     options.pop("states", None)
     options["routes"] = [
@@ -461,6 +475,23 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         name: parse(expression) for name, expression in catalogue_formulas.items()
     }
 
+    lines = build_lines(rows, asts)
+    for line in lines:
+        curve = curves.get(line["sku_id"])
+        if curve is not None:
+            line["demand_weekly"] = curve
+
+    derivation = dict(DERIVATION)
+    if curves:
+        # Provenance for the requirement chart's two lines. The demand curve
+        # is read from the synthetic table; the cover curve cannot be, because
+        # no table in this warehouse records when an inbound order lands, so
+        # the browser models it and the derivation says so.
+        derivation.update(
+            requirement_curve="measured-32w",
+            cover_curve="modelled-lagged-demand",
+        )
+
     return {
         **envelope(AGENT_ID, NOTE),
         # `hz_cov` on top of the shared set: it is f06's horizon term, this
@@ -468,10 +499,10 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # baseline above used or a lever drag would move Max on its own.
         "constants": {**constants(), "hz_cov": HORIZON_COVERAGE},
         "formulas": catalogue_formulas,
-        "derivation": DERIVATION,
+        "derivation": derivation,
         "routes": [dict(route) for route in ROUTES],
         "filter_options": options,
-        "lines": build_lines(rows, asts),
+        "lines": lines,
         "quote_terms": {
             "currency": terms[0]["currency"],
             "lead_time_days": terms[0]["lead_time_days"],

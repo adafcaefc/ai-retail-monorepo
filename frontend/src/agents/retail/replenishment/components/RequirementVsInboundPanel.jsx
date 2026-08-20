@@ -11,7 +11,10 @@ import {
 } from "recharts";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { REQUIREMENT_NOTE } from "../data/contract.js";
+import {
+  REQUIREMENT_CURVE_NOTE,
+  REQUIREMENT_NOTE,
+} from "../data/contract.js";
 import { formatIdr, formatPercent, formatUnits } from "../presentation.js";
 
 function RequirementTooltip({ active, payload, label }) {
@@ -42,17 +45,21 @@ function RequirementTooltip({ active, payload, label }) {
 /**
  * A3 spec section 4 (`#ch-main`): what the chain needs against what is coming.
  *
- * Two cumulative curves. Requirement accumulates at a flat ADS per day, which
- * is all one ADS per SKU can support. Cover is today's on-hand plus each SKU's
- * open PO once it lands on its lead day — it steps rather than slopes, because
- * a delivery is an event, not a trickle.
- *
- * Where requirement crosses cover is the gap a purchase order exists to close,
+ * Two presentations, and the data picks. With the 32-week demand curve the
+ * lines now carry, the chart is weekly: requirement is the scope's demand —
+ * 16 measured weeks, then 16 forecast weeks, today between W-1 and W+1 — and
+ * cover is modelled as the lagged blend of last week's and this week's
+ * demand, because no table records when an inbound order arrives. Where
+ * requirement stands above cover is the gap a purchase order exists to close,
  * and `gap = requirement − cover → PO` is the spec's own reading of it.
  *
- * The mockup lifts requirement by 1.02. That factor is in no workbook cell and
+ * Without the curve the chart is the daily fallback: requirement accumulating
+ * at a flat ADS, cover stepping up as open POs land on their lead days.
+ *
+ * The mockup lifts requirement by 1.03. That factor is in no workbook cell and
  * stands for nothing, so it is not reproduced here — reproduced, it would read
- * as a measured safety margin rather than as a prototype's rounding.
+ * as a measured safety margin rather than as a prototype's rounding. Its
+ * every-fourth-week cover dips are invented for the same reason.
  */
 export default function RequirementVsInboundPanel({ requirement, kpis }) {
   const { language, t } = useLanguage();
@@ -68,6 +75,19 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
     );
   }
 
+  const weekly = requirement.mode === "weekly";
+  // The divider's label: the last actual week, the mockup's own `splitAt`.
+  const todayLabel = weekly
+    ? requirement.points[requirement.split_index]?.label
+    : "Today";
+  // When cover first falls short: W+k on the weekly chart, D+n on the daily
+  // one. Null means it never does inside the horizon.
+  const shortfallLabel = weekly
+    ? requirement.first_shortfall_week
+    : requirement.cover_runs_out === null
+      ? null
+      : `D+${requirement.cover_runs_out}`;
+
   /* A3 spec section 4, `#main-stats`. */
   const metrics = [
     ["Reorder", formatUnits(kpis.skus_to_reorder, language)],
@@ -81,9 +101,9 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
       <header className="po-panel-head">
         <h3>{t("Requirement vs inbound supply")}</h3>
         <span className="po-panel-note">
-          {requirement.cover_runs_out === null
+          {shortfallLabel === null
             ? t("Cover holds across the horizon")
-            : `${t("Cover runs out at")} D+${requirement.cover_runs_out}`}
+            : `${t("Cover runs out at")} ${shortfallLabel}`}
         </span>
       </header>
 
@@ -100,7 +120,7 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
             <CartesianGrid stroke="var(--gray-100)" strokeDasharray="3 3" vertical={false} />
             <XAxis
               dataKey="label"
-              interval={6}
+              interval={weekly ? 3 : 6}
               tick={{ fontSize: 10, fill: "var(--muted)" }}
               tickLine={false}
               axisLine={{ stroke: "var(--line)" }}
@@ -114,11 +134,22 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
             />
             <Tooltip content={<RequirementTooltip />} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
-            {/* Today. There is no history to divide off — see the caveat. */}
-            <ReferenceLine x="Today" stroke="var(--line)" strokeDasharray="4 4" />
-            {requirement.cover_runs_out !== null ? (
+            {/* Today: on the split between the last actual week and the first
+                forecast one — or, on the daily fallback, the left edge. */}
+            <ReferenceLine
+              x={todayLabel}
+              stroke="var(--line)"
+              strokeDasharray="4 4"
+              label={{
+                value: t("Today"),
+                position: "top",
+                fontSize: 9,
+                fill: "var(--muted)",
+              }}
+            />
+            {shortfallLabel !== null ? (
               <ReferenceLine
-                x={`D+${requirement.cover_runs_out}`}
+                x={shortfallLabel}
                 stroke="var(--po-gap, var(--danger))"
                 strokeDasharray="2 3"
                 label={{
@@ -161,7 +192,9 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
         ))}
       </dl>
 
-      <p className="po-panel-caveat">{t(REQUIREMENT_NOTE)}</p>
+      <p className="po-panel-caveat">
+        {t(weekly ? REQUIREMENT_CURVE_NOTE : REQUIREMENT_NOTE)}
+      </p>
     </section>
   );
 }

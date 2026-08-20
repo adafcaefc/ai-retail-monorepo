@@ -6,6 +6,7 @@ Run it yourself:
 
 Input:  resources/dbtemp/schema_with_data.json
         resources/dbtemp/formula.json
+        resources/demand_store_sku_32w_poc_v1.csv
 Output: frontend/src/agents/retail/replenishment/data/fixture.json
 
 WHY THIS ONE IS THE LEAST BLOCKED
@@ -81,13 +82,30 @@ story one for one:
 exceptions, so the fresh rule and the lead-time rule agree where they overlap.
 Routing on lead time is therefore the spec's intent expressed in a column this
 dataset actually has.
+
+THE 32-WEEK DEMAND CURVE
+The requirement chart's backbone comes from `synthetic.demand_store_sku_32w`,
+which holds no workbook sheet at all -- its export is
+`resources/demand_store_sku_32w_poc_v1.csv` (16,000 store x SKU rows, 16 actual
+weeks then 16 forecast, provenance in the manifest beside it). Each line gets
+`demand_weekly`, the per-SKU chain curve, summed over the SKU's 20 stores in
+`Decimal` so the fixture's floats are the same numbers the API's SQL decimal
+sums produce -- the parity test compares field for field.
+
+The curve is calibrated against this very board, and `verify_demand_calibration`
+refuses to build if that ever drifts: each SKU's first forecast week must
+reproduce the line's own ADS x `Constants!B7` (the day-of-week sum). Without
+that check a regenerated CSV could quietly state a different demand level than
+the ADS every other figure on the board reconciles against.
 """
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -101,6 +119,7 @@ from src.formulas import repository  # noqa: E402
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
+DEMAND_CSV = REPO / "resources" / "demand_store_sku_32w_poc_v1.csv"
 TARGET = (
     REPO
     / "frontend"
@@ -611,6 +630,74 @@ def verify_quotes(
     return failures
 
 
+# The CSV's week columns in timeline order: actuals oldest first (w16 is 16
+# weeks back), forecasts nearest first (w1 is next week). Same order the API's
+# `demand_weekly_32w` emits, so the two never disagree about what index means.
+DEMAND_ACTUAL_COLUMNS = tuple(f"actual_w{week}" for week in range(16, 0, -1))
+DEMAND_FORECAST_COLUMNS = tuple(f"forecast_w{week}" for week in range(1, 17))
+
+
+def load_demand_curves(source: Path = DEMAND_CSV) -> dict[str, dict[str, list[float]]]:
+    """Per-SKU chain demand curves from the synthetic table's CSV export.
+
+    Sums the SKU's store rows in `Decimal` and converts once at the end. The
+    API sums the same values as SQL `DECIMAL(20,6)` and converts once in
+    Python; two exact decimal sums of the same rows give the same float, which
+    is what lets the parity test compare field for field rather than "close
+    enough".
+    """
+    totals: dict[str, dict[str, list[Decimal]]] = {}
+    with source.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            buckets = totals.setdefault(
+                row["sku_id"],
+                {
+                    "actual": [Decimal(0)] * len(DEMAND_ACTUAL_COLUMNS),
+                    "forecast": [Decimal(0)] * len(DEMAND_FORECAST_COLUMNS),
+                },
+            )
+            for kind, columns in (
+                ("actual", DEMAND_ACTUAL_COLUMNS),
+                ("forecast", DEMAND_FORECAST_COLUMNS),
+            ):
+                for position, column in enumerate(columns):
+                    buckets[kind][position] += Decimal(row[column])
+
+    return {
+        sku: {kind: [float(value) for value in curve] for kind, curve in by_kind.items()}
+        for sku, by_kind in totals.items()
+    }
+
+
+def verify_demand_calibration(
+    lines: list[dict[str, Any]],
+    curves: dict[str, dict[str, list[float]]],
+    dow_sum: float,
+) -> list[str]:
+    """The curve's first forecast week must equal the line's own ADS x dow_sum.
+
+    The synthetic table was generated against this board: each SKU's forecast
+    week one reproduces `ads x Constants!B7`, the day-of-week sum, to six
+    decimals -- verified against all 800 SKUs on the live table. Holding the
+    CSV to the same identity is what keeps a regenerated export from stating a
+    different demand level than the ADS every other figure here reconciles
+    against.
+    """
+    failures = []
+    for line in lines:
+        curve = curves.get(line["sku_id"])
+        if curve is None:
+            failures.append(f"{line['sku_id']}: no demand curve in the CSV")
+            continue
+        expected = line["ads"] * dow_sum
+        if abs(curve["forecast"][0] - expected) > max(1.0, expected * 1e-6):
+            failures.append(
+                f"{line['sku_id']}: forecast W+1 {curve['forecast'][0]:,.2f} "
+                f"!= ADS x dow_sum {expected:,.2f}"
+            )
+    return failures
+
+
 def main() -> int:
     # A fixture built from the wrong workbook is committed to the repo
     # and read by every board in standalone mode, so it needs the same
@@ -619,6 +706,9 @@ def main() -> int:
 
     if not SOURCE.exists():
         print(f"FAIL  source not found: {SOURCE}")
+        return 1
+    if not DEMAND_CSV.exists():
+        print(f"FAIL  demand-curve source not found: {DEMAND_CSV}")
         return 1
 
     tables = read_source()
@@ -692,6 +782,24 @@ def main() -> int:
         return 1
     print(f"  ok  reconciled 5 KPIs across {len(label_of)} verticals")
 
+    # The 32-week demand curve, checked against the board's own ADS before a
+    # single line ships with it -- see THE 32-WEEK DEMAND CURVE above.
+    curves = load_demand_curves()
+    demand_failures = verify_demand_calibration(lines, curves, constants["dow_sum"])
+    if demand_failures:
+        print(
+            f"FAIL  {len(demand_failures)} line(s) disagree with the demand CSV:"
+        )
+        for failure in demand_failures[:10]:
+            print(f"      {failure}")
+        return 1
+    for line in lines:
+        line["demand_weekly"] = curves[line["sku_id"]]
+    print(
+        f"  ok  32-week demand curve calibrated on all {len(lines)} lines "
+        f"(W+1 = ADS x {constants['dow_sum']})"
+    )
+
     categories = {}
     for row in lines:
         categories.setdefault(
@@ -742,6 +850,12 @@ def main() -> int:
             "fill_rate_pct": "measured",
             "avg_cover_days": "measured",
             "route": "modelled-from-lead-time",
+            # Same two keys `replenishment/dashboard.py` adds when the
+            # synthetic table answers: the demand curve is read, the cover
+            # curve is modelled in the browser (no arrival dates exist), and
+            # the derivation block is where the two are told apart.
+            "requirement_curve": "measured-32w",
+            "cover_curve": "modelled-lagged-demand",
         },
         "filter_options": {
             "legal_entities": [

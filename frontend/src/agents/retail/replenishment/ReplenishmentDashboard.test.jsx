@@ -75,12 +75,19 @@ describe("the fixture reconciles with the A3 sheet", () => {
       expect(kpis.skus_to_reorder).toBe(reference.skus_to_reorder);
       expect(kpis.order_units).toBe(reference.order_units);
       expect(kpis.order_value_retail).toBe(reference.order_value);
+      /*
+       * Both sides at the precision the A3 sheet states. The computed KPI is
+       * rounded to one decimal because that is what the tile shows; the
+       * reference used to arrive at the same one decimal, and comparing a
+       * rounded figure to a full-precision one at 6dp tolerance fails on the
+       * rounding alone, whatever the numbers are.
+       */
       expect(Number(kpis.fill_rate_pct.toFixed(1))).toBeCloseTo(
-        reference.fill_rate_pct,
+        Number(Number(reference.fill_rate_pct).toFixed(1)),
         6,
       );
       expect(Number(kpis.avg_cover_days.toFixed(1))).toBeCloseTo(
-        reference.avg_cover_d,
+        Number(Number(reference.avg_cover_d).toFixed(1)),
         6,
       );
     },
@@ -322,36 +329,95 @@ describe("requirement versus inbound supply (spec 4)", () => {
     for (const label of ["Reorder", "Order qty", "PO value", "Fill"]) {
       expect(within(strip).getByText(label)).toBeInTheDocument();
     }
+
+    // The headline chip: the first forecast week requirement stands above
+    // the modelled cover, or an honest "holds" when it never does.
+    expect(panel.querySelector(".po-panel-note").textContent).toMatch(
+      /Cover runs out at W\+\d+|Cover holds across the horizon/,
+    );
   });
 
-  it("says the inbound date is assumed, because the workbook has none", async () => {
-    await renderSettled();
-    // The one modelled step on an otherwise measured board. If this caveat ever
-    // disappears the chart starts reading as a delivery schedule.
-    expect(
-      screen.getByText(/records how much is on order but never when it arrives/),
-    ).toBeInTheDocument();
-  });
-
-  it("accumulates requirement and steps cover up as inbound lands", () => {
+  it("splits the weekly demand curve at today, sixteen weeks either side", () => {
     const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
-    expect(requirement.points).toHaveLength(requirement.days + 1);
-    expect(requirement.points[0].requirement).toBe(0);
+    expect(requirement.mode).toBe("weekly");
+    expect(requirement.points).toHaveLength(32);
+    // Oldest first, split in the middle: "current" is the boundary the
+    // synthetic table encodes between actual_w1 and forecast_w1.
+    expect(requirement.points[0].label).toBe("W-16");
+    expect(requirement.points[15]).toMatchObject({ label: "W-1", kind: "actual" });
+    expect(requirement.points[16]).toMatchObject({ label: "W+1", kind: "forecast" });
+    expect(requirement.points[31].label).toBe("W+16");
+    expect(requirement.split_index).toBe(15);
+  });
 
-    for (let index = 1; index < requirement.points.length; index += 1) {
-      const previous = requirement.points[index - 1];
-      const point = requirement.points[index];
-      // Demand only accumulates; cover only ever gains an arrival.
-      expect(point.requirement).toBeGreaterThan(previous.requirement);
-      expect(point.cover).toBeGreaterThanOrEqual(previous.cover);
-    }
+  it("draws requirement from the lines' own curves, reconciled per week", () => {
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
     /*
      * Over every line in scope, not only the 345 being ordered. The chart
      * answers "can the chain cover its demand", which the reorder subset
      * cannot: those are by definition the lines that cannot.
      */
+    for (const [index, kind, curveIndex] of [
+      [15, "actual", 15],
+      [16, "forecast", 0],
+      [31, "forecast", 15],
+    ]) {
+      const total = fixture.lines.reduce(
+        (sum, line) => sum + line.demand_weekly[kind][curveIndex],
+        0,
+      );
+      expect(requirement.points[index].requirement).toBeCloseTo(total, 6);
+    }
+
+    // Cover lags demand by about half a week: half this week, half last.
+    const thisWeek = requirement.points[19]; // W+4
+    const lastWeek = requirement.points[18]; // W+3
+    expect(thisWeek.cover).toBeCloseTo(
+      0.5 * thisWeek.requirement + 0.5 * lastWeek.requirement,
+      6,
+    );
+  });
+
+  it("says cover is modelled, because no arrival dates exist", async () => {
+    await renderSettled();
+    // The one modelled curve on an otherwise measured board. If this caveat
+    // ever disappears the chart starts reading as a delivery schedule.
+    expect(
+      screen.getByText(/No table records when an inbound order arrives/),
+    ).toBeInTheDocument();
+  });
+
+  it("scales the requirement curve with the demand lever", () => {
+    const rest = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const surged = buildDashboardFromFixture(fixture, DEFAULT_SCOPE, {
+      levers: { demand: 10 },
+    });
+
+    // f01 lifts every line's ADS by exactly the lever; the curve rides along
+    // at the same ratio, week for week.
+    expect(
+      surged.requirement.points[16].requirement /
+        rest.requirement.points[16].requirement,
+    ).toBeCloseTo(1.1, 8);
+
+    // And the comparison panel's reference stays the unmoved baseline.
+    expect(
+      surged.simulation.baseline_requirement.points[16].requirement,
+    ).toBeCloseTo(rest.requirement.points[16].requirement, 6);
+  });
+
+  it("falls back to the daily chart when the lines carry no curve", () => {
+    const stripped = {
+      ...fixture,
+      lines: fixture.lines.map(({ demand_weekly, ...line }) => line),
+    };
+    const { requirement } = buildDashboardFromFixture(stripped, DEFAULT_SCOPE);
+
+    expect(requirement.mode).toBe("daily");
+    expect(requirement.points[0].requirement).toBe(0);
+
     const last = requirement.points[requirement.points.length - 1];
     expect(last.cover).toBeCloseTo(
       fixture.lines.reduce((total, line) => total + line.on_hand + line.open_po, 0),

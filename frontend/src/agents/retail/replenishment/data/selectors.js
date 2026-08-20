@@ -14,6 +14,7 @@ import {
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
   REQUIREMENT_DAYS,
+  REQUIREMENT_WEEKS,
   ROUTE_ORDER,
   SCHEMA_VERSION,
   SIMULATION_METRICS,
@@ -349,19 +350,119 @@ export function computePurchaseOrder(lines) {
 /**
  * A3 spec section 4: what the chain needs against what is already coming.
  *
- * Two cumulative curves over the horizon. *Requirement* is demand accumulating
- * at a flat ADS per day — flat because one ADS per SKU is all the workbook
- * holds. *Cover* is what is on the shelf now plus each SKU's open PO once it
- * lands on its lead day, which is why that curve steps rather than slopes.
+ * Two presentations share this one entry point, and the data picks: every
+ * line carrying a 32-week `demand_weekly` curve gets the weekly chart (see
+ * `computeWeeklyRequirement`); anything else falls back to the daily
+ * accumulation the workbook alone supports (`computeDailyRequirement`). A
+ * stale fixture or an unseeded synthetic table therefore degrades to the old
+ * chart instead of an empty panel.
  *
- * Where requirement overtakes cover is the gap a purchase order exists to
- * fill, and the day it happens is the honest headline: `cover_runs_out`.
- *
- * The mockup multiplies requirement by 1.02. That factor appears nowhere in
- * the workbook and stands for nothing, so it is not reproduced — a 2% lift
- * invented in a prototype would read here as a measured safety margin.
+ * `baselineLines` is the same universe before any lever moved. Under a What-If
+ * the weekly branch scales each line's curve by its own ads ratio, so the
+ * demand and promo levers bend the backbone exactly as f01 bends ADS — pass
+ * the baseline in and that stays a division; leave it out and the lines are
+ * their own baseline.
  */
-export function computeRequirement(lines, days = REQUIREMENT_DAYS) {
+export function computeRequirement(lines, baselineLines = lines) {
+  if (lines.length && lines.every((line) => line.demand_weekly)) {
+    return computeWeeklyRequirement(lines, baselineLines);
+  }
+  return computeDailyRequirement(lines);
+}
+
+/** `W-16` … `W-1`, `W+1` … `W+16` — the label of curve position `index`. */
+function weekLabel(index) {
+  return index < REQUIREMENT_WEEKS.actual
+    ? `W-${REQUIREMENT_WEEKS.actual - index}`
+    : `W+${index - REQUIREMENT_WEEKS.actual + 1}`;
+}
+
+/**
+ * The weekly chart: a measured demand backbone, split at today.
+ *
+ * Requirement is the scope's demand curve read straight off the lines — 16
+ * actual weeks, then 16 forecast weeks, chain-net — so it rises and dips with
+ * the data instead of accumulating a flat ADS into a straight line.
+ *
+ * Cover is modelled, and has to be: no table in this warehouse records when
+ * an inbound order arrives (the same honesty the fallback's caveat states).
+ * It is drawn as half this week's and half last week's demand — a supply that
+ * replenishes on last week's sales, lagging demand by about half a week. The
+ * mockup also dips that curve every fourth week; those shortfalls are
+ * invented, and are deliberately not reproduced. Where demand grows, the gap
+ * opens on its own, and the first forecast week it opens is the honest
+ * headline: `first_shortfall_week`.
+ */
+function computeWeeklyRequirement(lines, baselineLines) {
+  const baseAds = new Map(baselineLines.map((line) => [line.sku_id, line.ads]));
+
+  const actual = Array(REQUIREMENT_WEEKS.actual).fill(0);
+  const forecast = Array(REQUIREMENT_WEEKS.forecast).fill(0);
+  for (const line of lines) {
+    // The scenario's ads against the baseline's own: a lever that lifts a
+    // line's ADS by 10% lifts its whole curve by the same 10%, and a promo
+    // lever bends only the eligible lines' curves.
+    const baseline = baseAds.get(line.sku_id) ?? line.ads;
+    const ratio = baseline > 0 ? line.ads / baseline : 1;
+    line.demand_weekly.actual.forEach(
+      (value, index) => { actual[index] += value * ratio; },
+    );
+    line.demand_weekly.forecast.forEach(
+      (value, index) => { forecast[index] += value * ratio; },
+    );
+  }
+
+  const demand = [...actual, ...forecast];
+  const points = demand.map((value, index) => ({
+    label: weekLabel(index),
+    kind: index < REQUIREMENT_WEEKS.actual ? "actual" : "forecast",
+    requirement: value,
+    // The oldest week has no prior week to lag against; its cover is its own
+    // demand, which is the neutral choice at a boundary nothing is known past.
+    cover: 0.5 * value + 0.5 * (index === 0 ? value : demand[index - 1]),
+  }));
+
+  // The divider the mockup draws `splitAt`: on the last actual point, between
+  // it and the first forecast week. "Today" is the boundary the table's own
+  // column names encode — actual_w1 behind, forecast_w1 ahead.
+  const splitIndex = REQUIREMENT_WEEKS.actual - 1;
+
+  let firstShortfall = null;
+  for (let index = splitIndex + 1; index < points.length; index += 1) {
+    if (points[index].requirement > points[index].cover) {
+      firstShortfall = points[index].label;
+      break;
+    }
+  }
+
+  const last = points[points.length - 1];
+  return {
+    mode: "weekly",
+    points,
+    split_index: splitIndex,
+    weeks: { ...REQUIREMENT_WEEKS },
+    // The first forecast week, calibrated on this board: at baseline it is
+    // the scope's Σ ADS × dow_sum, so the curve and the tiles state one
+    // demand level.
+    demand_per_week: forecast[0],
+    first_shortfall_week: firstShortfall,
+    // The gap at the end of the horizon: what this scope is short by, before
+    // any order is raised.
+    gap_at_horizon: Math.max(0, last.requirement - last.cover),
+  };
+}
+
+/**
+ * The fallback chart: two cumulative curves over a 28-day horizon.
+ *
+ * *Requirement* is demand accumulating at a flat ADS per day — flat because
+ * one ADS per SKU is all the workbook holds. *Cover* is what is on the shelf
+ * now plus each SKU's open PO once it lands on its lead day, which is why
+ * that curve steps rather than slopes. Where requirement overtakes cover is
+ * the gap a purchase order exists to fill, and the day it happens is the
+ * honest headline: `cover_runs_out`.
+ */
+function computeDailyRequirement(lines, days = REQUIREMENT_DAYS) {
   const demandPerDay = sum(lines, "ads");
   const onHand = sum(lines, "on_hand");
   const points = [];
@@ -384,6 +485,7 @@ export function computeRequirement(lines, days = REQUIREMENT_DAYS) {
   const shortfall = points.find((point) => point.requirement > point.cover);
 
   return {
+    mode: "daily",
     days,
     points,
     demand_per_day: demandPerDay,
@@ -448,10 +550,12 @@ export function computeSimulation(lines, universe, levers, applyLevers) {
      * Two curves, because Compare Scenarios (A3 spec 9d) needs a reference
      * that does not move. The board's own `requirement` cannot serve: with
      * "levers drive whole page" on it is the simulated one, and a comparison
-     * whose baseline shifts with the sliders compares nothing.
+     * whose baseline shifts with the sliders compares nothing. The scenario's
+     * curve is scaled against the baseline universe line by line, so a lever
+     * bends the demand backbone by the same ratio it bends ADS.
      */
     baseline_requirement: computeRequirement(universe),
-    requirement: applied ? computeRequirement(scenarioUniverse) : null,
+    requirement: applied ? computeRequirement(scenarioUniverse, universe) : null,
     index: SIMULATION_METRICS.map((metric) => ({
       ...metric,
       baseline_value: baseline[metric.id],
@@ -643,7 +747,10 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     },
     kpis: computeKpis(live, liveUniverse),
     kpi_sparklines: computeKpiSparklines(live, liveUniverse),
-    requirement: computeRequirement(liveUniverse),
+    // `universe` is the un-levered reference: under "levers drive whole page"
+    // the curve scales itself against it, and at rest the two are the same
+    // array and every ratio is one.
+    requirement: computeRequirement(liveUniverse, universe),
     simulation,
     by_route: computeByRoute(live, fixture.routes),
     by_store: computeByStore(stores),

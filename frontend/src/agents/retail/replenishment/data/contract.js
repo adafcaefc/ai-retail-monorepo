@@ -123,12 +123,24 @@ export const MAX_SAVED_SCENARIOS = 4;
 /**
  * How far the requirement chart looks ahead, in days (A3 spec section 4).
  *
- * The same horizon Inventory Risk projects over, so a reader moving between the
- * two boards is comparing the same window. Four times the longest lead in the
- * dataset (7 days, cross-dock), which is enough for every route to land at
- * least once and for the gap the PO fills to be visible.
+ * The fallback horizon, used only when the lines carry no 32-week demand
+ * curve — an unseeded `synthetic.demand_store_sku_32w` or a stale fixture.
+ * The same horizon Inventory Risk projects over, so a reader moving between
+ * the two boards is comparing the same window. Four times the longest lead in
+ * the dataset (7 days, cross-dock), which is enough for every route to land
+ * at least once and for the gap the PO fills to be visible.
  */
 export const REQUIREMENT_DAYS = 28;
+
+/**
+ * The weekly chart's span: 16 measured weeks, then 16 forecast weeks.
+ *
+ * "Today" is the boundary the synthetic table encodes in its column names —
+ * `actual_w1` is the most recent actual week, `forecast_w1` the next one
+ * ahead — so the divider sits between W-1 and W+1 with no date arithmetic
+ * anywhere.
+ */
+export const REQUIREMENT_WEEKS = Object.freeze({ actual: 16, forecast: 16 });
 
 /**
  * The assumption behind the requirement-versus-inbound chart, A3 spec 4.
@@ -143,6 +155,24 @@ export const REQUIREMENT_NOTE =
   "Inbound is placed on each SKU's lead day because the workbook records how " +
   "much is on order but never when it arrives. Requirement is a flat ADS per " +
   "day, which is all one ADS per SKU can support.";
+
+/**
+ * The weekly chart's assumption, when the lines carry a 32-week curve.
+ *
+ * The demand backbone is measured. The cover curve cannot be: no table in
+ * this warehouse records when an inbound order arrives, so cover is modelled
+ * as half this week's and half last week's demand — a supply that replenishes
+ * on last week's sales and therefore lags demand by about half a week. The
+ * mockup also dips that curve every fourth week; those shortfalls are
+ * invented, and inventing a shortfall on a measured board is how a prototype
+ * ornament starts reading as a delivery record.
+ */
+export const REQUIREMENT_CURVE_NOTE =
+  "Demand is the measured 32-week curve — 16 weeks of actuals, then 16 of " +
+  "forecast — with today between W-1 and W+1. No table records when an " +
+  "inbound order arrives, so cover is modelled as half this week's and half " +
+  "last week's demand: supply that lags demand by about half a week. Where " +
+  "requirement stands above cover is the gap a purchase order exists to close.";
 
 /** @typedef {object} ReplenishmentScope */
 export const DEFAULT_SCOPE = Object.freeze({
@@ -256,12 +286,23 @@ export function normalizeReplenishmentDashboard(payload) {
      * `requirement` and `simulation` default to empty rather than throwing,
      * and `schema_version` stays 1: both are additive, so a backend that
      * predates them renders an empty panel instead of crashing the board.
+     *
+     * `mode` picks the chart's grain: "weekly" when every line carried a
+     * 32-week demand curve, "daily" for the flat-ADS fallback. The weekly
+     * fields (`split_index`, `first_shortfall_week`, `demand_per_week`) are
+     * declared here for the same reason every field is — one this list omits
+     * never reaches a component.
      */
     requirement: {
+      mode: payload.requirement?.mode ?? "daily",
       days: payload.requirement?.days ?? 0,
+      weeks: payload.requirement?.weeks ?? null,
       points: payload.requirement?.points ?? [],
       demand_per_day: payload.requirement?.demand_per_day ?? 0,
+      demand_per_week: payload.requirement?.demand_per_week ?? 0,
       cover_runs_out: payload.requirement?.cover_runs_out ?? null,
+      first_shortfall_week: payload.requirement?.first_shortfall_week ?? null,
+      split_index: payload.requirement?.split_index ?? 0,
       gap_at_horizon: payload.requirement?.gap_at_horizon ?? 0,
     },
     simulation: {

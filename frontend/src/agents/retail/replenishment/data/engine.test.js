@@ -55,6 +55,22 @@ describe("the engine at the workbook's own lever setting", () => {
     expect(isBaseline({})).toBe(true);
     expect(isBaseline({ demand: 1 })).toBe(false);
   });
+
+  /*
+   * The 32-week demand curve rides on the line, and a scenario line is a
+   * spread of the baseline one. If a future edit replaces that spread with an
+   * explicit field list, the curve is the field most likely to be left behind
+   * — and the requirement chart would silently fall back to the flat daily
+   * presentation under a lever, which reads as the lever deleting history.
+   */
+  it("carries the 32-week demand curve through a lever move", () => {
+    const line = fixture.lines[0];
+    const out = applyLevers(line, { ...BASELINE_LEVERS, demand: 10 });
+
+    expect(out.demand_weekly).toBe(line.demand_weekly);
+    expect(out.demand_weekly.actual).toHaveLength(16);
+    expect(out.demand_weekly.forecast).toHaveLength(16);
+  });
 });
 
 describe("what the levers actually reach", () => {
