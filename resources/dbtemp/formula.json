@@ -513,10 +513,10 @@
             "id": "f15-contribution-per-day",
             "number": 15,
             "name": "Contribution per day",
-            "logic": "ADS × price × margin %",
+            "logic": "ADS x price x margin %. Not rounded: v8.5's ENGINE_STORE!AB is =J4*R4*AP4, where v8.2 wrapped the same product in ROUND(...,0).",
             "sheet": "ENGINE_STORE",
             "result_type": "number",
-            "expression": "ROUND(ads * price * margin_pct)",
+            "expression": "ads * price * margin_pct",
             "parameters": [
                 {
                     "key": "ads",

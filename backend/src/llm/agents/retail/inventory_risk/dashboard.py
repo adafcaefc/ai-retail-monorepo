@@ -21,6 +21,7 @@ from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
     HORIZON_COVERAGE,
+    arch_horizon_factor as _arch_horizon_factor,
     REPLENISH_STATES,
     SCHEMA,
     SNAPSHOT_DATE,
@@ -77,28 +78,6 @@ NOTE = (
 def _float(value: Any) -> float:
     """Postgres NUMERIC arrives as Decimal; the payload is JSON."""
     return float(value) if value is not None else 0.0
-
-
-def _arch_horizon_factor(
-    ads: float, base_ads: float, seasonality: float, store_size: float
-) -> float:
-    """Recover f01's archetype/horizon factor from the row it was applied to.
-
-    The warehouse stores the finished `ads` and the three inputs beside it, but
-    not the factor between them, so it is divided back out. At the workbook's
-    own lever setting f01 reduces to
-
-        ads = base_ads x seasonality x arch_horizon_factor x store_size
-
-    because the promo branch returns 1 when `Constants` B17 is zero. The
-    division is therefore exact, not a fit.
-
-    A zero denominator means the row carries no usable inputs; 1.0 keeps it
-    arithmetically neutral rather than emitting a NaN that would spread through
-    every KPI the moment a lever moved.
-    """
-    denominator = base_ads * seasonality * store_size
-    return ads / denominator if denominator else 1.0
 
 
 def build_items(

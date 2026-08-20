@@ -3,10 +3,11 @@
     {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!J4",
-      "expected": 29.166885,
+      "expected": 28.755632,
       "values": {
         "base_ads": 20.9096,
         "seasonality": 1.14,
+        "arch_horizon_factor": 0.9859,
         "store_size": 1.2236,
         "demand_lever": 0,
         "promo_eligible": "N",
@@ -16,6 +17,7 @@
       "sources": {
         "base_ads": "SKU_Master!G6",
         "seasonality": "SKU_Master!AA6",
+        "arch_horizon_factor": "ENGINE_STORE!AH4",
         "store_size": "Stores!E6",
         "demand_lever": "Constants!B16",
         "promo_eligible": "SKU_Master!U6",
@@ -26,10 +28,11 @@
     {
       "label": "SKU GRC-001, Store S002",
       "address": "ENGINE_STORE!J5",
-      "expected": 34.57072,
+      "expected": 34.083273,
       "values": {
         "base_ads": 20.9096,
         "seasonality": 1.14,
+        "arch_horizon_factor": 0.9859,
         "store_size": 1.4503,
         "demand_lever": 0,
         "promo_eligible": "N",
@@ -39,6 +42,7 @@
       "sources": {
         "base_ads": "SKU_Master!G6",
         "seasonality": "SKU_Master!AA6",
+        "arch_horizon_factor": "ENGINE_STORE!AH5",
         "store_size": "Stores!E7",
         "demand_lever": "Constants!B16",
         "promo_eligible": "SKU_Master!U6",
@@ -49,10 +53,11 @@
     {
       "label": "SKU GRC-001, Store S003",
       "address": "ENGINE_STORE!J6",
-      "expected": 19.615421,
+      "expected": 19.338844,
       "values": {
         "base_ads": 20.9096,
         "seasonality": 1.14,
+        "arch_horizon_factor": 0.9859,
         "store_size": 0.8229,
         "demand_lever": 0,
         "promo_eligible": "N",
@@ -62,6 +67,7 @@
       "sources": {
         "base_ads": "SKU_Master!G6",
         "seasonality": "SKU_Master!AA6",
+        "arch_horizon_factor": "ENGINE_STORE!AH6",
         "store_size": "Stores!E8",
         "demand_lever": "Constants!B16",
         "promo_eligible": "SKU_Master!U6",
@@ -72,10 +78,11 @@
     {
       "label": "SKU GRC-001, Store S004",
       "address": "ENGINE_STORE!J7",
-      "expected": 25.627098,
+      "expected": 25.265756,
       "values": {
         "base_ads": 20.9096,
         "seasonality": 1.14,
+        "arch_horizon_factor": 0.9859,
         "store_size": 1.0751,
         "demand_lever": 0,
         "promo_eligible": "N",
@@ -85,6 +92,7 @@
       "sources": {
         "base_ads": "SKU_Master!G6",
         "seasonality": "SKU_Master!AA6",
+        "arch_horizon_factor": "ENGINE_STORE!AH7",
         "store_size": "Stores!E9",
         "demand_lever": "Constants!B16",
         "promo_eligible": "SKU_Master!U6",
@@ -95,10 +103,11 @@
     {
       "label": "SKU GRC-001, Store S005",
       "address": "ENGINE_STORE!J8",
-      "expected": 34.847228,
+      "expected": 34.355883,
       "values": {
         "base_ads": 20.9096,
         "seasonality": 1.14,
+        "arch_horizon_factor": 0.9859,
         "store_size": 1.4619,
         "demand_lever": 0,
         "promo_eligible": "N",
@@ -108,6 +117,7 @@
       "sources": {
         "base_ads": "SKU_Master!G6",
         "seasonality": "SKU_Master!AA6",
+        "arch_horizon_factor": "ENGINE_STORE!AH8",
         "store_size": "Stores!E10",
         "demand_lever": "Constants!B16",
         "promo_eligible": "SKU_Master!U6",
@@ -468,96 +478,106 @@
     {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!O4",
-      "expected": 204,
+      "expected": 201,
       "values": {
-        "ads": 29.166885,
+        "ads": 28.755632,
         "lead_time_days": 2,
         "lead_time_adjust": 0,
         "safety_days": 1,
-        "safety_adjust": 0
+        "safety_adjust": 0,
+        "horizon_coverage": 4
       },
       "sources": {
         "ads": "ENGINE_STORE!J4",
         "lead_time_days": "SKU_Master!K6",
         "lead_time_adjust": "Constants!B20",
         "safety_days": "SKU_Master!N6",
-        "safety_adjust": "Constants!B21"
+        "safety_adjust": "Constants!B21",
+        "horizon_coverage": "Constants!B24"
       }
     },
     {
       "label": "SKU GRC-001, Store S002",
       "address": "ENGINE_STORE!O5",
-      "expected": 242,
+      "expected": 239,
       "values": {
-        "ads": 34.57072,
+        "ads": 34.083273,
         "lead_time_days": 2,
         "lead_time_adjust": 0,
         "safety_days": 1,
-        "safety_adjust": 0
+        "safety_adjust": 0,
+        "horizon_coverage": 4
       },
       "sources": {
         "ads": "ENGINE_STORE!J5",
         "lead_time_days": "SKU_Master!K6",
         "lead_time_adjust": "Constants!B20",
         "safety_days": "SKU_Master!N6",
-        "safety_adjust": "Constants!B21"
+        "safety_adjust": "Constants!B21",
+        "horizon_coverage": "Constants!B24"
       }
     },
     {
       "label": "SKU GRC-001, Store S003",
       "address": "ENGINE_STORE!O6",
-      "expected": 137,
+      "expected": 135,
       "values": {
-        "ads": 19.615421,
+        "ads": 19.338844,
         "lead_time_days": 2,
         "lead_time_adjust": 0,
         "safety_days": 1,
-        "safety_adjust": 0
+        "safety_adjust": 0,
+        "horizon_coverage": 4
       },
       "sources": {
         "ads": "ENGINE_STORE!J6",
         "lead_time_days": "SKU_Master!K6",
         "lead_time_adjust": "Constants!B20",
         "safety_days": "SKU_Master!N6",
-        "safety_adjust": "Constants!B21"
+        "safety_adjust": "Constants!B21",
+        "horizon_coverage": "Constants!B24"
       }
     },
     {
       "label": "SKU GRC-001, Store S004",
       "address": "ENGINE_STORE!O7",
-      "expected": 179,
+      "expected": 177,
       "values": {
-        "ads": 25.627098,
+        "ads": 25.265756,
         "lead_time_days": 2,
         "lead_time_adjust": 0,
         "safety_days": 1,
-        "safety_adjust": 0
+        "safety_adjust": 0,
+        "horizon_coverage": 4
       },
       "sources": {
         "ads": "ENGINE_STORE!J7",
         "lead_time_days": "SKU_Master!K6",
         "lead_time_adjust": "Constants!B20",
         "safety_days": "SKU_Master!N6",
-        "safety_adjust": "Constants!B21"
+        "safety_adjust": "Constants!B21",
+        "horizon_coverage": "Constants!B24"
       }
     },
     {
       "label": "SKU GRC-001, Store S005",
       "address": "ENGINE_STORE!O8",
-      "expected": 244,
+      "expected": 240,
       "values": {
-        "ads": 34.847228,
+        "ads": 34.355883,
         "lead_time_days": 2,
         "lead_time_adjust": 0,
         "safety_days": 1,
-        "safety_adjust": 0
+        "safety_adjust": 0,
+        "horizon_coverage": 4
       },
       "sources": {
         "ads": "ENGINE_STORE!J8",
         "lead_time_days": "SKU_Master!K6",
         "lead_time_adjust": "Constants!B20",
         "safety_days": "SKU_Master!N6",
-        "safety_adjust": "Constants!B21"
+        "safety_adjust": "Constants!B21",
+        "horizon_coverage": "Constants!B24"
       }
     }
   ],
@@ -1231,7 +1251,7 @@
     {
       "label": "SKU GRC-001, Store S001",
       "address": "ENGINE_STORE!AB4",
-      "expected": 134230,
+      "expected": 134230.379803,
       "values": {
         "ads": 29.166885,
         "price": 18900,
@@ -1246,7 +1266,7 @@
     {
       "label": "SKU GRC-001, Store S002",
       "address": "ENGINE_STORE!AB5",
-      "expected": 159100,
+      "expected": 159099.639048,
       "values": {
         "ads": 34.57072,
         "price": 18900,
@@ -1261,7 +1281,7 @@
     {
       "label": "SKU GRC-001, Store S003",
       "address": "ENGINE_STORE!AB6",
-      "expected": 90273,
+      "expected": 90273.109755,
       "values": {
         "ads": 19.615421,
         "price": 18900,
@@ -1276,7 +1296,7 @@
     {
       "label": "SKU GRC-001, Store S004",
       "address": "ENGINE_STORE!AB7",
-      "expected": 117940,
+      "expected": 117939.749061,
       "values": {
         "ads": 25.627098,
         "price": 18900,
@@ -1291,7 +1311,7 @@
     {
       "label": "SKU GRC-001, Store S005",
       "address": "ENGINE_STORE!AB8",
-      "expected": 160372,
+      "expected": 160372.17034,
       "values": {
         "ads": 34.847228,
         "price": 18900,
@@ -1760,7 +1780,7 @@
     {
       "label": "SKU GRC-005, chain-net",
       "address": "ENGINE!N10",
-      "expected": 758.15991,
+      "expected": 758,
       "values": {
         "perishable": "Y",
         "position": 2653,
@@ -1777,7 +1797,7 @@
     {
       "label": "SKU GRC-007, chain-net",
       "address": "ENGINE!N12",
-      "expected": 268.969627,
+      "expected": 269,
       "values": {
         "perishable": "Y",
         "position": 713,

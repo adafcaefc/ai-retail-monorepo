@@ -36,8 +36,11 @@ from __future__ import annotations
 
 from typing import Any
 
+from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
+    DOW_SUM,
+    REPLENISH_STATES,
     SCHEMA,
     SNAPSHOT_DATE,
     _rows,
@@ -71,6 +74,7 @@ ENGINE_FORMULAS = (
     "f07-inventory-state",
     "f08-forecast-7-days",
     "f20-days-of-supply",
+    "fc10-trending-sku",
 )
 
 # 90% two-sided normal quantile. With the workbook's 92.4% accuracy this puts
@@ -146,18 +150,163 @@ def build_signals(row: dict) -> list[str]:
     return signals
 
 
-def is_trending(is_viral: bool, growth_index: float) -> bool:
-    """The A1 spec's own test: `count(viral OR growth>1.25)`.
+def build_item(row: dict, vertical_size: float, asts: dict[str, tuple]) -> dict:
+    """One SKU row, every derived figure evaluated from the catalogue.
 
-    A per-row predicate, not a rank+quota allocation against the sheet's
-    vertical-wide `Trending SKUs` count -- it composes correctly under any
-    scope filter (category, store, vertical) because it never depends on how
-    many other rows are in the result set. It still reconciles exactly to
-    the workbook's typed count at vertical grain (see
-    `scripts/build_demand_forecasting_fixture.py`'s `reconcile()`); it is no
-    longer *forced* to.
+    NOTHING DERIVED HERE IS TYPED HERE. `ads`, `forecast_7d`, `position`,
+    `rop`, `dos`, `state`, `is_stockout_risk` and `is_trending` are each the
+    answer of a `retail.formula` expression, run through
+    `src.formulas.expression` in the order the rules consume one another --
+    the same order, from the same catalogue, that `data/engine.js` runs in the
+    browser when a What-If lever moves. This function supplies parameters and
+    decides that order; it resolves no rule.
+
+    It used to read the stored answers instead: `ads`, `position_qty`,
+    `rop_qty` and `state` came straight off the fact table, `forecast_7d` was
+    the literal `ads * 7.45` (f08's arithmetic retyped, and on the chain
+    branch the stored column does not even exist), `is_stockout_risk` was a
+    `position < rop` comparison, and `is_trending` was `viral or growth >
+    1.25`. Those answers are the workbook's own and they still agree with the
+    catalogue exactly -- the fixture builder's `verify_engine_chain()` proves
+    it over all 800 rows -- so this moves no number on screen. What it changes
+    is what happens after someone edits a rule: `retail.formula` is read live
+    and uncached precisely so a correction takes effect at once, and that
+    promise previously held only for the What-If path. Editing f08 and
+    watching the baseline tile keep the old figure until a lever moved -- then
+    jump -- is the bug this ends.
+
+    THE STOCKOUT FLAG FOLLOWS f07, NOT A SECOND COMPARISON. f07 assigns
+    `Stockout` below `0.6 x ROP` and `Low` below ROP, so those two states ARE
+    the rows below the reorder point, by construction. Reading them off the
+    state cannot drift from f07; a separate `position < rop` can. Both give
+    345 of 800 on the current dataset, with no row disagreeing.
     """
-    return bool(is_viral) or growth_index > 1.25
+    base_ads = _float(row["base_ads"])
+    seasonality_index = _float(row["seasonality_index"])
+    store_size = _float(row.get("store_size", vertical_size))
+    promo_eligible = "Y" if row["is_promo_eligible"] else "N"
+    perishable = "Y" if row["is_perishable"] else "N"
+    growth = _float(row["growth_index"])
+
+    # f01's archetype/horizon multiplier, preferred from `dim_item` and
+    # recovered from the stored `ads` only where that column is still NULL.
+    # NOT a 1.0 fallback: 1.0 is f01's arithmetic identity, so it looks
+    # harmless while quietly reinstating the pre-v8.5 dataset.
+    stored_factor = row.get("arch_horizon_factor")
+    arch_horizon_factor = (
+        _float(stored_factor)
+        if stored_factor is not None
+        else _arch_horizon_factor(
+            _float(row["ads"]), base_ads, seasonality_index, store_size
+        )
+    )
+
+    def run(formula_id: str, values: dict[str, Any]) -> Any:
+        return evaluate(asts[formula_id], values)
+
+    # -- the chain, in dependency order ----------------------------------
+    # Levers sit at zero throughout: this is the baseline board, and zero is
+    # the setting the workbook itself was calculated at. The browser re-runs
+    # these same expressions off the parameters carried below when a lever
+    # actually moves.
+    ads = run(
+        "f01-ads-per-store",
+        {
+            "base_ads": base_ads,
+            "seasonality": seasonality_index,
+            "arch_horizon_factor": arch_horizon_factor,
+            "store_size": store_size,
+            "demand_lever": 0,
+            "promo_eligible": promo_eligible,
+            "promo_lever": 0,
+            "promo_depth": _float(row["cannibalisation_pct"]),
+        },
+    )
+
+    # The stored open-PO quantity is already at this row's own grain -- chain
+    # net on the default board, one store's share under a Store scope -- so
+    # f03's allocation ratio is one and the expression returns it unchanged.
+    # It runs anyway rather than being short-circuited: the ratio being one is
+    # a property of the grain, not a licence to skip the rule.
+    open_po = run(
+        "f03-open-po-per-store",
+        {
+            "open_po_total": _float(row["open_po_qty"]),
+            "store_size": store_size,
+            "total_store_size": store_size,
+            "inbound_lever": 0,
+        },
+    )
+
+    on_hand = _float(row["on_hand_qty"])
+    position = run("f04-position", {"on_hand": on_hand, "open_po": open_po})
+
+    rop = run(
+        "f05-rop",
+        {
+            "ads": ads,
+            "lead_time_days": _float(row["lead_time_days"]),
+            "lead_time_adjust": 0,
+            "safety_days": _float(row["safety_days"]),
+            "safety_adjust": 0,
+        },
+    )
+
+    dos = run("f20-days-of-supply", {"ads": ads, "position": position})
+    state = run(
+        "f07-inventory-state",
+        {
+            "position": position,
+            "rop": rop,
+            "days_of_supply": dos,
+            "perishable": perishable,
+            "shelf_life_days": row["shelf_life_days"] or 0,
+            "velocity": growth,
+        },
+    )
+
+    item = {
+        "sku_id": row["item_key"],
+        "name": row["name"],
+        "vertical_id": row["vertical_id"],
+        "category_id": row["category_id"],
+        "category_label": row["category_name"],
+        "ads": ads,
+        "forecast_7d": run(
+            "f08-forecast-7-days", {"ads": ads, "week_factor": DOW_SUM}
+        ),
+        "on_hand": on_hand,
+        "open_po": open_po,
+        "position": position,
+        "rop": rop,
+        "state": state,
+        "price": _float(row["unit_price"]),
+        "growth": growth,
+        "is_stockout_risk": state in REPLENISH_STATES,
+        "is_trending": bool(
+            run(
+                "fc10-trending-sku",
+                {
+                    "is_viral": "Y" if row["is_viral"] else "N",
+                    "growth_index": growth,
+                },
+            )
+        ),
+        "signals": build_signals(row),
+        "shelf_life_days": row["shelf_life_days"],
+        "perishable": perishable,
+        "base_ads": base_ads,
+        "seasonality": seasonality_index,
+        "store_size": store_size,
+        "arch_horizon_factor": arch_horizon_factor,
+        "promo_eligible": promo_eligible,
+        "promo_depth": _float(row["cannibalisation_pct"]),
+        "lead_days": _float(row["lead_time_days"]),
+        "safety_days": _float(row["safety_days"]),
+    }
+    if row.get("store_id"):
+        item["store_id"] = row["store_id"]
+    return item
 
 
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
@@ -181,7 +330,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                        f.state, i.price AS unit_price,
                        i.name, i.vertical_id, i.category_id, i.category_name,
                        i.is_perishable, i.shelf_life_days, i.base_ads,
-                       i.seasonality_index, i.lead_time_days, i.safety_days,
+                       i.seasonality_index, i.arch_horizon_factor,
+                       i.lead_time_days, i.safety_days,
                        i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
                        i.is_viral, s.store_id, s.size_index AS store_size
                 FROM {SCHEMA}.fact_inventory_daily f
@@ -204,7 +354,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                        c.position_qty, c.rop_qty, c.state, c.unit_price,
                        i.name, i.vertical_id, i.category_id, i.category_name,
                        i.is_perishable, i.shelf_life_days, i.base_ads,
-                       i.seasonality_index, i.lead_time_days, i.safety_days,
+                       i.seasonality_index, i.arch_horizon_factor,
+                       i.lead_time_days, i.safety_days,
                        i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
                        i.is_viral
                 FROM {SCHEMA}.fact_inventory_chain_daily c
@@ -250,51 +401,15 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         options = filter_options(connection)
         store_size = chain_store_size(connection)
 
-    items = []
-    for row in chain:
-        ads = _float(row["ads"])
-        item = {
-            "sku_id": row["item_key"],
-            "name": row["name"],
-            "vertical_id": row["vertical_id"],
-            "category_id": row["category_id"],
-            "category_label": row["category_name"],
-            "ads": ads,
-            # All Stores uses the chain-net f08 equivalent already used by
-            # the existing board.  Store scope reads ENGINE_STORE's own
-            # f08 value, whose grain is store x SKU.
-            "forecast_7d": _float(row.get("forecast_7d", ads * 7.45)),
-            "on_hand": _float(row["on_hand_qty"]),
-            "open_po": _float(row["open_po_qty"]),
-            "position": _float(row["position_qty"]),
-            "rop": _float(row["rop_qty"]),
-            "state": row["state"],
-            "price": _float(row["unit_price"]),
-            "growth": _float(row["growth_index"]),
-            "is_stockout_risk": _float(row["position_qty"]) < _float(row["rop_qty"]),
-            "is_trending": is_trending(row["is_viral"], _float(row["growth_index"])),
-            "signals": build_signals(row),
-            "shelf_life_days": row["shelf_life_days"],
-            "perishable": "Y" if row["is_perishable"] else "N",
-            "base_ads": _float(row["base_ads"]),
-            "seasonality": _float(row["seasonality_index"]),
-            "store_size": _float(
-                row.get("store_size", store_size[row["vertical_id"]])
-            ),
-            "arch_horizon_factor": _arch_horizon_factor(
-                ads,
-                _float(row["base_ads"]),
-                _float(row["seasonality_index"]),
-                _float(row.get("store_size", store_size[row["vertical_id"]])),
-            ),
-            "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
-            "promo_depth": _float(row["cannibalisation_pct"]),
-            "lead_days": _float(row["lead_time_days"]),
-            "safety_days": _float(row["safety_days"]),
-        }
-        if row.get("store_id"):
-            item["store_id"] = row["store_id"]
-        items.append(item)
+    catalogue = formulas(ENGINE_FORMULAS)
+    # Parsed once for all 800 rows rather than per row: `build_item` walks the
+    # whole chain per SKU, and re-parsing nine expressions each time would be
+    # thousands of parses for one dashboard load.
+    asts = {name: parse(expression) for name, expression in catalogue.items()}
+
+    items = [
+        build_item(row, store_size[row["vertical_id"]], asts) for row in chain
+    ]
 
     forecast_by_store = {
         row["store_id"]: _float(row["forecast_7d"]) for row in stores
@@ -306,7 +421,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "scope_limitations": list(STORE_SCOPE_LIMITATIONS) if scope.store_id else [],
         "constants": {**constants(), "interval_z": INTERVAL_Z},
         "derivation": DERIVATION,
-        "formulas": formulas(ENGINE_FORMULAS),
+        "formulas": catalogue,
         "filter_options": {
             key: options[key] for key in ("legal_entities", "categories", "stores")
         },

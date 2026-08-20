@@ -523,7 +523,7 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
 
     assert split == {
         "store_sku": 17,
-        "chain_sku": 5,
+        "chain_sku": 6,
         "store_roster": 3,
         "vertical": 6,
         "vendor": 1,

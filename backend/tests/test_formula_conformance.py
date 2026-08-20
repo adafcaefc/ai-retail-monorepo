@@ -59,6 +59,11 @@ NO_LEVERS = {
     "inbound_lever": 0,
     "lead_time_adjust": 0,
     "safety_adjust": 0,
+    # v8.5 split the markdown rule in two: f23 computes the gross exposure and
+    # f14 the recoverable share of it, the latter reading an MD lever that did
+    # not exist when this file was written. Zero at the stored state, like
+    # every other lever here -- Constants B16-B21.
+    "markdown_lever": 0,
 }
 
 # The one scenario the workbook publishes a result for, on `What-If . Per
@@ -85,7 +90,13 @@ COLUMN_FORMULAS = {
     "order_value": "f11-order-value",
     "at_risk": "f12-at-risk-value",
     "promo_incr_margin": "f13-incremental-promotion-margin",
-    "at_risk_value": "f14-recoverable-at-risk-value",
+    # v8.5 note: ENGINE_STORE's "At-risk value" column is byte-identical to
+    # "At-risk" on all 16,000 rows (verified), so both columns are f12. The
+    # v8.5 split -- f23 gross, f14 recoverable -- has no stored column on this
+    # sheet at all: its outputs live on `A5 Markdown live`, which is not
+    # extracted. Neither rule can be conformance-checked here, so neither is
+    # listed; `test_formulas.py` still replays them through worked examples.
+    "at_risk_value": "f12-at-risk-value",
     "contribution_day": "f15-contribution-per-day",
     "labour_fte": "f16-labour-fte",
     "dos": "f20-days-of-supply",
@@ -144,11 +155,65 @@ def week_factor(tables) -> float:
     raise AssertionError("Constants!B7 (DOW sum) is missing from the extract.")
 
 
+@pytest.fixture(scope="module")
+def horizon_coverage(tables) -> float:
+    """`Constants` B24 -- hzCov = MAX(2, Horizon/2), 4 at the stored state.
+
+    Read rather than typed for the same reason as B7: v8.5 made this constant
+    load-bearing for `f06-maximum-inventory`, and a typed copy would drift the
+    moment the Horizon lever moves.
+    """
+    for row in tables["constants"]:
+        if row["source_cell"] == "B24":
+            return row["value"]
+    raise AssertionError("Constants!B24 (hzCov) is missing from the extract.")
+
+
 def _run(asts: dict[str, tuple], formula_id: str, **values: Any) -> Any:
     return evaluate(asts[formula_id], values)
 
 
 # -- the engine grid ---------------------------------------------------
+
+
+def _row_inputs(
+    stored: dict[str, Any], sku: dict[str, Any], store: dict[str, Any]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The SKU and store inputs as ENGINE_STORE's own row states them.
+
+    v8.5 carries a copy of every input on the grid row -- `base`, `seas`,
+    `onHandDays`, `stockF`, `veSize`, `lead`, `safety`, `expiry`, `margin`,
+    `cann`, `fund`, `promo`, `price`, `size`, `health` -- and those are what
+    the sheet's own formulas read. They are no longer a straight copy of
+    `SKU_Master`/`Stores`: feeding f02 from the master tables reproduces 1,760
+    of 16,000 rows, feeding it from these reproduces all 16,000.
+
+    Anything with no column on the grid (elasticity) still comes from the
+    master row, as do the two categorical flags: the grid stores `promo` and
+    `perish` as 1/0 while the expressions compare against "Y"/"N", and the
+    grid's encoding agrees with the master's on all 16,000 rows anyway.
+    """
+    return (
+        {
+            **sku,
+            "base_ads": stored["base"],
+            "seasonality": stored["seas"],
+            "onhand_days": stored["onhanddays"],
+            "stockf": stored["stockf"],
+            "open_po": stored["openporaw"],
+            "sum_vert_size": stored["vesize"],
+            "lead_d": stored["lead"],
+            "safety_d": stored["safety"],
+            "expiry_d": stored["expiry"],
+            "growth": stored["growth"],
+            "margin_pct": stored["margin"],
+            "cannib_pct": stored["cann"],
+            "fund_pct": stored["fund"],
+            "price": stored["price"],
+            "pack_factor": stored["pack"],
+        },
+        {**store, "size": stored["size"], "health": stored["health"]},
+    )
 
 
 def _engine_row(
@@ -158,6 +223,8 @@ def _engine_row(
     vertical: dict[str, Any],
     week: float,
     levers: dict[str, Any],
+    arch_horizon_factor: float,
+    horizon_coverage: float,
 ) -> dict[str, Any]:
     """One ENGINE_STORE row, rebuilt from the formulas alone.
 
@@ -171,6 +238,7 @@ def _engine_row(
         "f01-ads-per-store",
         base_ads=sku["base_ads"],
         seasonality=sku["seasonality"],
+        arch_horizon_factor=arch_horizon_factor,
         store_size=store["size"],
         demand_lever=levers["demand_lever"],
         promo_eligible=sku["promo"],
@@ -204,7 +272,12 @@ def _engine_row(
         "safety_adjust": levers["safety_adjust"],
     }
     rop = _run(asts, "f05-rop", **reorder_days)
-    maximum = _run(asts, "f06-maximum-inventory", **reorder_days)
+    maximum = _run(
+        asts,
+        "f06-maximum-inventory",
+        **reorder_days,
+        horizon_coverage=horizon_coverage,
+    )
 
     days_of_supply = _run(
         asts, "f20-days-of-supply", ads=ads, position=position
@@ -280,13 +353,10 @@ def _engine_row(
         ),
         "at_risk_value": _run(
             asts,
-            "f14-recoverable-at-risk-value",
+            "f12-at-risk-value",
             state=state,
             position=position,
-            ads=ads,
-            shelf_life_days=sku["expiry_d"],
             price=sku["price"],
-            max_inventory=maximum,
         ),
         "contribution_day": _run(
             asts,
@@ -306,7 +376,7 @@ def _engine_row(
 
 
 @pytest.fixture(scope="module")
-def engine_grid(asts, tables, week_factor) -> list[tuple[dict, dict]]:
+def engine_grid(asts, tables, week_factor, horizon_coverage) -> list[tuple[dict, dict]]:
     """All 16,000 rows recomputed, paired with what the workbook stored."""
     sku_by_id = {row["sku_id"]: row for row in tables["sku_master"]}
     store_by_id = {row["store_id"]: row for row in tables["stores"]}
@@ -317,11 +387,16 @@ def engine_grid(asts, tables, week_factor) -> list[tuple[dict, dict]]:
             stored,
             _engine_row(
                 asts,
-                sku_by_id[stored["sku_id"]],
-                store_by_id[stored["store_id"]],
+                *_row_inputs(
+                    stored,
+                    sku_by_id[stored["sku_id"]],
+                    store_by_id[stored["store_id"]],
+                ),
                 vertical_by_id[stored["vertical_id"]],
                 week_factor,
                 NO_LEVERS,
+                stored["archhz"],
+                horizon_coverage,
             ),
         )
         for stored in tables["engine_store"]
@@ -336,9 +411,39 @@ def _agrees(computed: Any, stored: Any) -> bool:
     return math.isclose(computed, stored, rel_tol=1e-9, abs_tol=1e-6)
 
 
+# Two ENGINE_STORE columns contradict the workbook's own Formulas sheet. Both
+# were read straight off the v8.5 cells, so neither is a transcription doubt:
+#
+#   AC4 (Labour FTE)  =J4*7*R4/6200000
+#   Y4  (Order value) =V4*R4
+#
+# The first hardcodes Grocery's sales-per-FTE for all eight verticals, where
+# `Verticals` states 8.2M (GMR), 15M (ELC), 11M (DGT) and so on -- f16 does the
+# per-vertical lookup the sheet's own prose describes. The second values the
+# requirement (Order sales) rather than what is actually bought (Order buy x
+# pack), so every rounded-up purchase order is under-valued; the Formulas sheet
+# reads "order-buy x pack x price", which is what f11 computes.
+#
+# Reproducing either would mean copying a defect into the catalogue that agents
+# then quote as fact, so the columns are marked and the formulas left correct.
+WORKBOOK_DEFECTS = {
+    "labour_fte": (
+        "ENGINE_STORE!AC hardcodes 6,200,000 (Grocery's sales-per-FTE) for all "
+        "eight verticals; f16 does the per-vertical lookup the sheet intended."
+    ),
+    "order_value": (
+        "ENGINE_STORE!Y is =V*R (order sales x price), under-valuing every "
+        "rounded-up order; f11 prices what is actually bought, per the "
+        "Formulas sheet's own 'order-buy x pack x price'."
+    ),
+}
+
+
 @pytest.mark.parametrize("column", sorted(COLUMN_FORMULAS))
 def test_formulas_reproduce_engine_store(engine_grid, column: str) -> None:
     """Every computed ENGINE_STORE column, every row."""
+    if column in WORKBOOK_DEFECTS:
+        pytest.xfail(WORKBOOK_DEFECTS[column])
     mismatches = [
         (stored["sku_id"], stored["store_id"], computed[column], stored[column])
         for stored, computed in engine_grid
@@ -416,7 +521,7 @@ def test_formulas_reproduce_workforce(asts, tables, column: str) -> None:
 
 
 def test_levers_reproduce_the_published_scenario(
-    asts, tables, week_factor
+    asts, tables, week_factor, horizon_coverage
 ) -> None:
     """demand +20% against `What-If . Per Agent`.
 
@@ -441,7 +546,10 @@ def test_levers_reproduce_the_published_scenario(
 
         totals = forecast.setdefault(label, [0.0, 0.0])
         for index, levers in enumerate((NO_LEVERS, PUBLISHED_SCENARIO)):
-            row = _engine_row(asts, sku, store, vertical, week_factor, levers)
+            row = _engine_row(
+                asts, *_row_inputs(stored, sku, store), vertical,
+                week_factor, levers, stored["archhz"], horizon_coverage,
+            )
             totals[index] += row["forecast_7d"]
 
     published = {
@@ -450,6 +558,24 @@ def test_levers_reproduce_the_published_scenario(
     }
     assert set(published) == set(forecast), (
         "What-If . Per Agent and ENGINE_STORE disagree on the vertical list"
+    )
+
+    # v8.5 divergence, measured rather than guessed: solving the published
+    # deltas for the promo multiplier gives 2.6000 +/- 0.0004 on all eight
+    # verticals, while ENGINE_STORE!J's own formula reads
+    #   =AG4*F4*AH4*H4*(1+Constants!$B$16/100)
+    #    *IF(AND(AT4=1,Constants!$B$17>0),1+(Constants!$B$17/100)*1.3*(1-AR4),1)
+    # -- a 1.3 that f01 transcribes faithfully. So `What-If . Per Agent` was
+    # calculated with a different promo multiplier than the grid it summarises,
+    # and only one of the two can be right. At rest the difference is invisible
+    # (B17 = 0 collapses the IF), which is why the grid checks above pass.
+    #
+    # Not resolved here: which figure the app should use is a product decision,
+    # and changing f01 to 2.6 would break nothing in this file and silently
+    # double every promo uplift the agents quote.
+    pytest.xfail(
+        "What-If . Per Agent implies a promo multiplier of 2.6; "
+        "ENGINE_STORE!J and f01 both use 1.3."
     )
 
     drifted = []
@@ -509,7 +635,8 @@ def test_inbound_lead_and_safety_have_no_workbook_reference(tables) -> None:
     ],
 )
 def test_raising_a_lever_never_lowers_what_it_drives(
-    asts, tables, week_factor, lever: str, formula_id: str, reads: str
+    asts, tables, week_factor, horizon_coverage, lever: str, formula_id: str,
+    reads: str,
 ) -> None:
     """Direction only -- but direction is where sign errors live.
 
@@ -531,11 +658,16 @@ def test_raising_a_lever_never_lowers_what_it_drives(
         rows = [
             _engine_row(
                 asts,
-                sku_by_id[stored["sku_id"]],
-                store_by_id[stored["store_id"]],
+                *_row_inputs(
+                    stored,
+                    sku_by_id[stored["sku_id"]],
+                    store_by_id[stored["store_id"]],
+                ),
                 vertical_by_id[stored["vertical_id"]],
                 week_factor,
                 {**NO_LEVERS, lever: step},
+                stored["archhz"],
+                horizon_coverage,
             )[reads]
             for step in (-2, 0, 2)
         ]
@@ -549,7 +681,7 @@ def test_raising_a_lever_never_lowers_what_it_drives(
 
 
 def test_the_reorder_floors_engage_under_a_negative_lever(
-    asts, tables, week_factor
+    asts, tables, week_factor, horizon_coverage
 ) -> None:
     """`MAX(1, lead + adj)` and `MAX(0, safety + adj)` -- dead at rest, live in What-If.
 
@@ -579,11 +711,12 @@ def test_the_reorder_floors_engage_under_a_negative_lever(
         floored += 1
         row = _engine_row(
             asts,
-            sku,
-            store_by_id[stored["store_id"]],
+            *_row_inputs(stored, sku, store_by_id[stored["store_id"]]),
             vertical_by_id[stored["vertical_id"]],
             week_factor,
             levers,
+            stored["archhz"],
+            horizon_coverage,
         )
         days = max(1, sku["lead_d"] - 2) + max(0, sku["safety_d"] - 2)
         expected = math.floor(abs(row["ads"] * days) + 0.5)
@@ -608,13 +741,29 @@ def test_zero_levers_are_the_workbooks_stored_state(tables) -> None:
     above becomes a comparison against a scenario -- and would still pass while
     meaning something else entirely.
     """
+    # v8.5 widened the `what_if_lever` block: it now also carries `Horizon
+    # (weeks)` = 8 and its derived `hzCov` = 4, plus a seasonality index per
+    # vertical (GRC 96, GMR 99, ...). None of those are levers -- they are
+    # structural parameters that are non-zero at rest by design, and f06 reads
+    # hzCov precisely because it is 4 and not 0. Only the six deltas are levers,
+    # and only they must sit at zero for NO_LEVERS to be the stored state.
+    deltas = {
+        "Demand uplift %",
+        "Promo depth %",
+        "Markdown depth %",
+        "Extra inbound %",
+        "Vendor lead Δ (d)",
+        "Safety stock Δ (d)",
+    }
     levers = {
         row["parameter"]: row["value"]
         for row in tables["constants"]
-        if row["block"] == "what_if_lever"
+        if row["block"] == "what_if_lever" and row["parameter"] in deltas
     }
 
-    assert levers, "Constants carries no what_if_lever block"
+    assert levers.keys() == deltas, (
+        f"Constants no longer carries all six levers: found {sorted(levers)}"
+    )
     assert set(levers.values()) == {0}, (
         f"the workbook was calculated with a lever applied: {levers}"
     )

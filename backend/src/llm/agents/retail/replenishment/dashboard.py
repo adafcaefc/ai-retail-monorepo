@@ -14,8 +14,12 @@ and hiding the other is how a board gets used to argue for the wrong decision.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
+from sqlalchemy import text
+
+from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
     HORIZON_COVERAGE,
@@ -24,6 +28,7 @@ from src.llm.agents.retail.common.warehouse import (
     SUPPORTED_FILTERS,
     _rows,
     _scope_clause,
+    arch_horizon_factor as _arch_horizon_factor,
     constants,
     envelope,
     agent_reference,
@@ -34,7 +39,29 @@ from src.llm.agents.retail.common.warehouse import (
 
 AGENT_ID = "retail.replenishment"
 
+# The synthetic arrival calendar is on by default -- it is what stops A3's
+# cover line being flat, so a board that quietly ran without it would show the
+# defect this was built to remove. Set REPLENISHMENT_SYNTHETIC_INBOUND=0 to
+# force the old reading (each open PO on its lead day) without dropping the
+# table. A missing table has the same effect on its own, so this switch exists
+# for the case where the table IS there and someone wants the comparison.
+SYNTHETIC_INBOUND_ENV = "REPLENISHMENT_SYNTHETIC_INBOUND"
+
+
+def synthetic_inbound_enabled() -> bool:
+    return os.environ.get(SYNTHETIC_INBOUND_ENV, "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+    )
+
+
 # f01 through f11: the chain from a demand rate to a priced purchase order.
+#
+# Used twice over, which is the point. `build_lines` evaluates all nine here
+# to produce the baseline rows, and the payload ships the same nine so the
+# browser's What-If engine re-evaluates them when a lever moves. One
+# catalogue, one answer, whichever side of the wire asks.
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
     "f03-open-po-per-store",
@@ -92,6 +119,8 @@ DERIVATION = {
     "fill_rate_pct": "measured",
     "avg_cover_days": "measured",
     "route": "modelled-from-lead-time",
+    "demand_curve": "measured-32w",
+    "inbound_schedule": "synthetic-route-cadence",
 }
 
 
@@ -106,60 +135,171 @@ def route_for(lead_days: float) -> str:
     return ROUTES[-1]["id"]
 
 
-def _arch_horizon_factor(
-    ads: float, base_ads: float, seasonality: float, store_size: float
-) -> float:
-    """Recover f01's archetype/horizon factor from the row it was applied to.
+def build_lines(
+    rows: list[dict],
+    asts: dict[str, tuple],
+    demand_by_sku: dict[str, dict[str, list[float]]],
+    inbound_by_sku: dict[str, list[float]],
+) -> list[dict]:
+    """One order line per SKU, chain level, every figure from the catalogue.
 
-    Same reconstruction as `inventory_risk/dashboard.py`'s helper of the same
-    name: the warehouse stores the finished `ads` and the three inputs beside
-    it, but not the factor between them, so it is divided back out. At the
-    workbook's own lever setting f01 reduces to
+    NOTHING DERIVED HERE IS TYPED HERE. Each figure below is the answer of a
+    `retail.formula` expression, run through `src.formulas.expression` in the
+    order the formulas consume one another -- the same order, from the same
+    catalogue, that `engine.js` runs in the browser when a What-If lever moves.
+    This function only supplies parameters and decides that order.
 
-        ads = base_ads x seasonality x arch_horizon_factor x store_size
+    It used to read eleven of these straight off the two fact tables instead:
+    `ads`, `position_qty`, `rop_qty`, `max_qty`, `days_cover`,
+    `order_qty_sales`, `order_qty_buy`, `order_value`, `amount`,
+    `saving_vs_designated` and a stored `is_reorder` flag. Those columns are
+    the workbook's own and they agree with the catalogue exactly -- verified
+    against all 800 rows before this switch was made -- so the change moves no
+    number on screen. What it changes is what happens when someone edits a rule
+    in the Formula Manager: `retail.formula` is read live and uncached
+    precisely so a corrected rule takes effect at once, and until now that
+    promise held only for the What-If path on this board. A reader who fixed
+    f05 and watched the reorder list keep yesterday's reorder point was looking
+    at the bug this ends.
 
-    because the promo branch returns 1 when `Constants` B17 is zero. The
-    division is therefore exact, not a fit.
-
-    A zero denominator means the row carries no usable inputs; 1.0 keeps it
-    arithmetically neutral rather than emitting a NaN that would spread
-    through every KPI the moment a lever moved.
-    """
-    denominator = base_ads * seasonality * store_size
-    return ads / denominator if denominator else 1.0
-
-
-def build_lines(rows: list[dict], demand_by_sku: dict[str, dict[str, list[float]]]) -> list[dict]:
-    """One order line per SKU, chain level.
-
-    `order_value_retail` comes from the chain ENGINE and `order_value_cost`
-    from the proposal, because the workbook computes them from different
-    quantities: retail prices the shortfall, cost prices the whole packs a
-    purchase order actually buys. The gap between them is real stock, not a
-    reconciliation error, and the board labels it.
+    `order_value_retail` and `order_value_cost` are both f11, evaluated twice
+    against different quantities, because the workbook prices them from
+    different ones: retail prices the shortfall in sales units and never rounds
+    to a pack, cost prices the whole packs a purchase order actually buys. The
+    gap between them is real stock, not a reconciliation error, and the board
+    labels it. `saving_vs_designated` is a third f11 evaluation differenced
+    against the second, so no new pricing rule is born in Python.
     """
     lines = []
     for row in rows:
+
+        def run(formula_id: str, values: dict[str, Any]) -> Any:
+            return evaluate(asts[formula_id], values)
+
         lead_days = _float(row["lead_time_days"])
+        safety_days = _float(row["safety_days"])
         base_ads = _float(row["base_ads"])
-        seasonality = _float(row["seasonality_index"])
-        store_size = _float(row["store_size"])
-        # f01's archetype/horizon multiplier, preferred from `dim_item` and
-        # recovered from the stored `ads` when that column is NULL -- see
-        # inventory_risk/dashboard.py's build_items() for the full account of
-        # why this is not a 1.0 fallback.
-        stored_factor = row.get("arch_horizon_factor")
-        arch_horizon_factor = (
-            _float(stored_factor)
-            if stored_factor is not None
-            else _arch_horizon_factor(
-                _float(row["ads"]), base_ads, seasonality, store_size
-            )
-        )
+        seasonality_index = _float(row["seasonality_index"])
+        promo_eligible = "Y" if row["is_promo_eligible"] else "N"
+        promo_depth = _float(row["cannibalisation_pct"])
+        pack_factor = _float(row["pack_factor"])
+        price_retail = _float(row["unit_price"])
+        price_trade = _float(row["unit_price_ta"])
+        best_price = _float(row["best_price"])
+        # The vertical's total size index, not one store's: a chain-net row
+        # already covers every store, which is why f01 still applies to it.
+        vertical_size = _float(row["store_size"])
+        # f01's archetype/horizon multiplier (v8.5), preferred from `dim_item`
+        # and recovered from the stored `ads` when that column is NULL -- which
+        # it is until sql/retail/008 has been applied AND the dims re-seeded.
+        #
+        # NOT a 1.0 fallback. One would be f01's arithmetic identity and would
+        # therefore look harmless, but it silently reproduces the pre-v8.5
+        # dataset -- an ADS the workbook never calculated, and with it a
+        # different ROP, Max and order quantity on every line below.
+        # 16 real weeks each way, chain-net (summed across this SKU's stores)
+        # -- see synthetic.demand_store_sku_32w. History is oldest-first (16
+        # weeks ago -> last week); forecast is nearest-first (next week -> 16
+        # weeks out). A SKU the synthetic table does not carry gets zeros, so
+        # the curve degrades to nothing rather than dropping the line.
         demand = demand_by_sku.get(
             row["item_key"],
             {"demand_history": [0.0] * 16, "demand_forecast": [0.0] * 16},
         )
+        stored_factor = row.get("arch_horizon_factor")
+        arch_horizon = (
+            _float(stored_factor)
+            if stored_factor is not None
+            else _arch_horizon_factor(
+                _float(row["ads"]), base_ads, seasonality_index, vertical_size
+            )
+        )
+
+        # -- the chain, in dependency order ------------------------------
+        # Levers sit at zero throughout: this is the baseline board, and zero
+        # is the setting the workbook itself was calculated at (`Constants`
+        # B16-B21). The browser re-runs these same expressions off the
+        # parameters carried below when a lever actually moves.
+        ads = run(
+            "f01-ads-per-store",
+            {
+                "base_ads": base_ads,
+                "seasonality": seasonality_index,
+                "arch_horizon_factor": arch_horizon,
+                "store_size": vertical_size,
+                "demand_lever": 0,
+                "promo_eligible": promo_eligible,
+                "promo_lever": 0,
+                "promo_depth": promo_depth,
+            },
+        )
+
+        # A chain-net row already covers every store, so f03's allocation ratio
+        # is one and the expression returns the chain's open PO unchanged. It
+        # runs anyway rather than being short-circuited: the ratio being one is
+        # a property of this grain, not a licence to skip the rule.
+        open_po = run(
+            "f03-open-po-per-store",
+            {
+                "open_po_total": _float(row["open_po_qty"]),
+                "store_size": vertical_size,
+                "total_store_size": vertical_size,
+                "inbound_lever": 0,
+            },
+        )
+
+        on_hand = _float(row["qty_on_hand"])
+        position = run("f04-position", {"on_hand": on_hand, "open_po": open_po})
+
+        reorder = {
+            "ads": ads,
+            "lead_time_days": lead_days,
+            "lead_time_adjust": 0,
+            "safety_days": safety_days,
+            "safety_adjust": 0,
+        }
+        rop = run("f05-rop", reorder)
+        max_qty = run(
+            "f06-maximum-inventory",
+            {**reorder, "horizon_coverage": HORIZON_COVERAGE},
+        )
+
+        order_sales = run(
+            "f09-order-quantity-sales-units",
+            {"position": position, "rop": rop, "max_inventory": max_qty},
+        )
+        order_buy = run(
+            "f10-order-quantity-purchase-units",
+            {"order_sales_units": order_sales, "pack_factor": pack_factor},
+        )
+
+        value_cost = run(
+            "f11-order-value",
+            {
+                "order_buy_units": order_buy,
+                "pack_factor": pack_factor,
+                "price": price_trade,
+            },
+        )
+        # `ENGINE!P`: the shortfall at selling price, never rounded to a pack.
+        # Sales units need no conversion, so the pack factor is one.
+        value_retail = run(
+            "f11-order-value",
+            {
+                "order_buy_units": order_sales,
+                "pack_factor": 1,
+                "price": price_retail,
+            },
+        )
+        value_at_best = run(
+            "f11-order-value",
+            {
+                "order_buy_units": order_buy,
+                "pack_factor": pack_factor,
+                "price": best_price,
+            },
+        )
+
         lines.append(
             {
                 "sku_id": row["item_key"],
@@ -170,44 +310,54 @@ def build_lines(rows: list[dict], demand_by_sku: dict[str, dict[str, list[float]
                 "route": route_for(lead_days),
                 "lead_days": lead_days,
                 "perishable": "Y" if row["is_perishable"] else "N",
-                "on_hand": _float(row["qty_on_hand"]),
-                "open_po": _float(row["open_po_qty"]),
-                "position": _float(row["position_qty"]),
-                "rop": _float(row["rop_qty"]),
-                "max": _float(row["max_qty"]),
-                "dos": _float(row["days_cover"]),
-                "ads": _float(row["ads"]),
-                "is_reorder": bool(row["is_reorder"]),
-                "order_qty_sales": _float(row["order_qty_sales"]),
-                "order_qty_buy": _float(row["order_qty_buy"]),
+                "on_hand": on_hand,
+                "open_po": open_po,
+                "position": position,
+                "rop": rop,
+                "max": max_qty,
+                "dos": run("f20-days-of-supply", {"ads": ads, "position": position}),
+                "ads": ads,
+                # `Position < ROP` is f09's own condition, read off the same two
+                # figures f09 was handed rather than off a stored YES/NO. A2
+                # decides the same question through the state machine and lands
+                # on the same rows; `crossModule.test.js` holds them to it.
+                "is_reorder": position < rop,
+                "order_qty_sales": order_sales,
+                "order_qty_buy": order_buy,
                 "buy_uom": row["buy_uom"],
-                "pack_factor": _float(row["pack_factor"]),
-                "order_value_retail": _float(row["order_value"]),
-                "order_value_cost": _float(row["amount"]),
-                "unit_price_retail": _float(row["unit_price"]),
-                "unit_price_trade": _float(row["unit_price_ta"]),
+                "pack_factor": pack_factor,
+                "order_value_retail": value_retail,
+                "order_value_cost": value_cost,
+                "unit_price_retail": price_retail,
+                "unit_price_trade": price_trade,
                 "designated_vendor": row["designated_short"],
                 "best_price_vendor": row["best_short"],
-                "best_price": _float(row["best_price"]),
-                "saving_vs_designated": _float(row["saving_vs_designated"]),
-                # -- What-If parameters ---------------------------------
+                "best_price": best_price,
+                "saving_vs_designated": value_cost - value_at_best,
+                # -- What-If parameters, never answers ------------------
                 "base_ads": base_ads,
-                "seasonality": seasonality,
-                "arch_horizon_factor": arch_horizon_factor,
+                "seasonality": seasonality_index,
+                # Resolved once above, from `dim_item` where sql/retail/008 has
+                # been seeded and by dividing it back out of the stored `ads`
+                # where it has not -- never from a bare 1.0.
+                "arch_horizon_factor": arch_horizon,
                 # `Constants` B24. A model parameter rather than a fact about
-                # this SKU, but f06 reads it per row, so it rides along --
-                # same as inventory_risk/dashboard.py.
+                # this SKU, but f06 reads it per row, so it rides along.
                 "horizon_coverage": HORIZON_COVERAGE,
-                "store_size": store_size,
-                # 16 real weeks each way, chain-net (summed across this SKU's
-                # stores) -- see synthetic.demand_store_sku_32w. History is
-                # oldest-first (16 weeks ago -> last week); forecast is
-                # nearest-first (next week -> 16 weeks out).
+                "store_size": vertical_size,
+                # Measured, not derived: no formula in the catalogue produces
+                # these, so they ride along as parameters the way base_ads
+                # does.
                 "demand_history": demand["demand_history"],
                 "demand_forecast": demand["demand_forecast"],
-                "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
-                "promo_depth": _float(row["cannibalisation_pct"]),
-                "safety_days": _float(row["safety_days"]),
+                # 16 forward weeks of arrivals, chain-net. Synthetic and
+                # labelled so in DERIVATION: no table records when an inbound
+                # order lands. Empty when the schedule is absent or switched
+                # off, which the browser reads as "fall back to the lead day".
+                "inbound_schedule": inbound_by_sku.get(row["item_key"], []),
+                "promo_eligible": promo_eligible,
+                "promo_depth": promo_depth,
+                "safety_days": safety_days,
             }
         )
     return lines
@@ -230,8 +380,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    c.order_value,
                    i.name, i.vertical_id, i.category_id, i.category_name,
                    i.is_perishable, i.lead_time_days, i.safety_days,
-                   i.pack_factor, i.base_ads, i.seasonality_index,
                    i.arch_horizon_factor,
+                   i.pack_factor, i.base_ads, i.seasonality_index,
                    i.is_promo_eligible, i.cannibalisation_pct,
                    dv.vendor_short AS designated_short,
                    bv.vendor_short AS best_short,
@@ -347,7 +497,9 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # summed to chain-net per SKU (this board's own grain -- see
         # build_lines). Without this the requirement chart had only one ADS
         # per SKU to work with and could draw nothing but a straight ramp.
-        demand_where, demand_params = _scope_clause(scope, "i.vertical_id", "i.category_id")
+        demand_where, demand_params = _scope_clause(
+            scope, "i.vertical_id", "i.category_id"
+        )
         demand_rows = _rows(
             connection,
             f"""
@@ -369,23 +521,62 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             for row in demand_rows
         }
 
+        # 16 forward weeks of arrivals, same store x SKU grain summed to
+        # chain-net, scoped through dim_item exactly as the demand curve is.
+        # Guarded twice: an environment that has not run migration 011 has no
+        # table to read, and an operator can switch it off with the table in
+        # place. Either way `inbound_by_sku` stays empty and the browser falls
+        # back to placing each open PO on its lead day.
+        inbound_by_sku: dict[str, list[float]] = {}
+        has_inbound = connection.execute(
+            text("SELECT OBJECT_ID(N'synthetic.inbound_store_sku_16w', N'U')")
+        ).scalar()
+        if has_inbound is not None and synthetic_inbound_enabled():
+            inbound_where, inbound_params = _scope_clause(
+                scope, "i.vertical_id", "i.category_id"
+            )
+            inbound_rows = _rows(
+                connection,
+                f"""
+                SELECT b.sku_id,
+                       {", ".join(f"sum(b.arrival_w{n}) AS arrival_w{n}" for n in range(1, 17))}
+                FROM synthetic.inbound_store_sku_16w b
+                JOIN {SCHEMA}.dim_item i ON i.item_id = b.sku_id
+                WHERE 1 = 1{inbound_where}
+                GROUP BY b.sku_id
+                """,
+                inbound_params,
+            )
+            inbound_by_sku = {
+                row["sku_id"]: [_float(row[f"arrival_w{n}"]) for n in range(1, 17)]
+                for row in inbound_rows
+            }
+
     # A3 filters by route, not by inventory state — that is A2's control.
     options.pop("states", None)
     options["routes"] = [
         {"value": route["id"], "label": route["label"]} for route in ROUTES
     ]
 
+    catalogue_formulas = formulas(ENGINE_FORMULAS)
+    # Parsed once for all 800 rows rather than per row: `build_lines` walks the
+    # whole chain per SKU, and re-parsing nine expressions each time would be
+    # ~7,200 parses for one dashboard load.
+    asts = {
+        name: parse(expression) for name, expression in catalogue_formulas.items()
+    }
+
     return {
         **envelope(AGENT_ID, NOTE),
-        # `hz_cov` rides on the shared block, same as inventory_risk/dashboard.py:
-        # the browser needs the same value f06 used server-side, or a lever drag
-        # would move Max on its own.
+        # `hz_cov` on top of the shared set: it is f06's horizon term, this
+        # board now evaluates f06, and the browser needs the same value the
+        # baseline above used or a lever drag would move Max on its own.
         "constants": {**constants(), "hz_cov": HORIZON_COVERAGE},
-        "formulas": formulas(ENGINE_FORMULAS),
+        "formulas": catalogue_formulas,
         "derivation": DERIVATION,
         "routes": [dict(route) for route in ROUTES],
         "filter_options": options,
-        "lines": build_lines(rows, demand_by_sku),
+        "lines": build_lines(rows, asts, demand_by_sku, inbound_by_sku),
         "quote_terms": {
             "currency": terms[0]["currency"],
             "lead_time_days": terms[0]["lead_time_days"],

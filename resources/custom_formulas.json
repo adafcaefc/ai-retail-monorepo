@@ -234,6 +234,30 @@
                     "default": 0.5
                 }
             ]
+        },
+        {
+            "id": "fc10-trending-sku",
+            "number": 510,
+            "name": "Trending SKU (A1)",
+            "logic": "The A1 spec's own trending test: a SKU is trending if it is flagged viral or its growth index clears 1.25. A per-row predicate, so it composes under any scope filter -- unlike the sheet's vertical-wide `Trending SKUs` count, which cannot be split by category or store. Returns 1/0 so the board counts rows rather than parsing a label. Replaces the `is_trending()` comparison retyped in demand_forecasting/dashboard.py and data/engine.js.",
+            "sheet": null,
+            "grain": "chain_sku",
+            "result_type": "number",
+            "expression": "IF(OR(is_viral = \"Y\", growth_index > 1.25), 1, 0)",
+            "parameters": [
+                {
+                    "key": "is_viral",
+                    "label": "Viral flag (Y/N)",
+                    "type": "text",
+                    "default": "N"
+                },
+                {
+                    "key": "growth_index",
+                    "label": "Growth index",
+                    "type": "number",
+                    "default": 1.1125
+                }
+            ]
         }
     ]
 }
