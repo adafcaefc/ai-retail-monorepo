@@ -1,6 +1,6 @@
 # Disabled features — how to turn them back on
 
-Two sidebar tiles are currently hidden. Nothing was deleted: each one is
+Two static pages and one agent module are currently hidden. Nothing was deleted: each one is
 commented out at its single point of registration, so the code, tests and
 fixtures backing it are untouched and still on disk. This doc is the
 reference for switching each one back on.
@@ -59,3 +59,26 @@ following the exact patterns `inventory_risk` and `replenishment` already
 established for the same kind of gap. See
 `backend/src/llm/agents/retail/promotion_effectiveness/dashboard.py` and
 `frontend/src/agents/retail/promotion_effectiveness/` for the current shape.
+
+## AI Explanation & Summary (A9) — hidden 2026-08-20
+
+**Where:** `backend/src/llm/agents/modules.py`
+
+`"retail.ai_explanation_summary"` is commented out of `ENABLED_MODULES`, the
+same single point of registration the four `finance.*` modules are switched off
+at. The module is therefore never imported, never served by
+`GET /api/html/agents`, and never reaches the sidebar — it was a
+navigation-only tile (`dashboard_only`, no chat, no config JSON), so nothing
+behind it is lost. `backend/src/llm/agents/retail/ai_explanation_summary/` and
+`frontend/src/agents/retail/ai_explanation_summary/` are untouched on disk.
+
+**To re-enable:** uncomment the id in `ENABLED_MODULES` and the matching
+`RETAIL_DESTINATIONS` entry in `backend/tests/test_retail_module.py` (that
+tuple is what pins the sidebar roster and its built/nav flags).
+
+Note: `retail.ai_explanation_summary` deliberately stays in
+`DISABLED_DASHBOARD_IDS` in `frontend/src/agents/registry.js`, and in the
+`DISABLED_AGENTS` fixture in `frontend/src/App.test.jsx`. That set only greys
+out a tile the API actually returns, so it is inert while the module is off —
+keeping it means re-enabling the module brings the tile back as a placeholder
+rather than as a clickable board with nothing behind it.

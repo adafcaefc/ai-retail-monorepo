@@ -35,7 +35,8 @@ ENABLED_MODULES: tuple[str, ...] = (
     "retail.assortment_optimization",   # A6  built
     "retail.workforce_optimizer",       # A7  nav
     "retail.vendor_brand_performance",  # A8  nav
-    "retail.ai_explanation_summary",    # A9  nav
+    # A9 is hidden -- see docs/DISABLED_FEATURES.md to switch it back on.
+    # "retail.ai_explanation_summary",  # A9  nav
 )
 
 __all__ = ["ENABLED_MODULES"]

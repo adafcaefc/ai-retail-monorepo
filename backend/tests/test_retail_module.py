@@ -12,13 +12,15 @@ from src.llm.agents.common.tools.freeform_query import DOMAIN_ALLOWED_TABLES
 from src.llm.agents.modules import ENABLED_MODULES
 
 
-# The mockup's nine retail destinations, in sidebar order, each flagged with
-# whether anything is wired behind it. Built and navigation-only are two
-# contiguous blocks again now that A5 has caught up with A6, but the flag stays
-# per entry rather than a prefix slice: they came apart once already, and order
-# has to stay the agent's own number because that is what the sidebar shows and
-# what every spec refers to. `modules.py` carries the same note beside the same
-# list.
+# The mockup's retail destinations that are switched on, in sidebar order, each
+# flagged with whether anything is wired behind it. Eight of the mockup's nine:
+# A9 is hidden (docs/DISABLED_FEATURES.md) and sits commented out below rather
+# than deleted, so bringing it back is one uncomment here and one in
+# modules.py. Built and navigation-only are two contiguous blocks again now
+# that A5 has caught up with A6, but the flag stays per entry rather than a
+# prefix slice: they came apart once already, and order has to stay the agent's
+# own number because that is what the sidebar shows and what every spec refers
+# to. `modules.py` carries the same note beside the same list.
 RETAIL_DESTINATIONS = (
     ("retail.demand_forecasting", "Demand Forecasting", "Ask Demand...", True),
     ("retail.inventory_risk", "Inventory Risk", "Ask Inventory...", True),
@@ -49,12 +51,13 @@ RETAIL_DESTINATIONS = (
         "Ask Vendor...",
         False,
     ),
-    (
-        "retail.ai_explanation_summary",
-        "AI Explanation & Summary",
-        "Ask Summary...",
-        False,
-    ),
+    # Hidden -- see docs/DISABLED_FEATURES.md to re-enable.
+    # (
+    #     "retail.ai_explanation_summary",
+    #     "AI Explanation & Summary",
+    #     "Ask Summary...",
+    #     False,
+    # ),
 )
 
 # Both keep the sidebar's order; only the filter differs. Derived rather than
@@ -71,7 +74,7 @@ PASSES_PER_MODULE = 3
 
 
 def test_retail_folder_carries_every_destination_in_order() -> None:
-    """Seven built, three navigation-only, in the mockup's sidebar order.
+    """Seven built, two navigation-only, in the mockup's sidebar order.
 
     This asserted exactly three modules while Agents 4-9 did not exist. They
     are now reachable, which is the point of the change rather than a
@@ -285,7 +288,7 @@ def test_placeholder_dashboards_return_a_valid_empty_payload() -> None:
 
 
 def test_placeholder_modules_declare_no_chivon_agents() -> None:
-    """The three carry no config JSON, so they must not name one either.
+    """The two carry no config JSON, so they must not name one either.
 
     `test_every_declared_chivon_agent_exists` catches the reverse for the
     built modules; this is the same guard from the empty side.
