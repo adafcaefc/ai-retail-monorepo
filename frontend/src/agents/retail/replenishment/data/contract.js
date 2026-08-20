@@ -151,7 +151,8 @@ export const REQUIREMENT_WEEKS_FORWARD = 16;
  */
 export const REQUIREMENT_NOTE =
   "Inbound follows a generated delivery calendar — the workbook records how " +
-  "much is on order but never when it arrives.";
+  "much is on order but never when it arrives. Both lines are units per " +
+  "week; the stock they imply is in the tooltip.";
 
 /** Shown instead when no arrival schedule reached the browser. */
 export const REQUIREMENT_FALLBACK_NOTE =
@@ -279,6 +280,7 @@ export function normalizeReplenishmentDashboard(payload) {
       // panel's caveat to the one that describes what it actually drew.
       inbound_scheduled: payload.requirement?.inbound_scheduled ?? false,
       demand_per_week: payload.requirement?.demand_per_week ?? 0,
+      inbound_per_week: payload.requirement?.inbound_per_week ?? 0,
       cover_runs_out: payload.requirement?.cover_runs_out ?? null,
       gap_at_horizon: payload.requirement?.gap_at_horizon ?? 0,
     },

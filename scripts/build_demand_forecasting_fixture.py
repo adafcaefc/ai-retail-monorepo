@@ -491,7 +491,7 @@ def main() -> int:
             "predicted_to_trend": "measured-formula",
             "forecast_accuracy": "typed-constant",
             "demand_trend": "typed-constant",
-            "seasonality_index": "derived-from-gmv-profile",
+            "seasonality_index": "calculated-from-engine-store-seas",
             "seasonality_curve": "derived-from-gmv-profile",
             "history": "unavailable",
         },

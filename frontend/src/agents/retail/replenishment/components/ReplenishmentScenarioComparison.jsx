@@ -30,7 +30,12 @@ function leverSummary(levers) {
 /**
  * A3 spec section 9d (`#ch-compare`): saved scenarios overlaid.
  *
- * What is overlaid is each scenario's cover curve, not its KPI totals. The
+ * What is overlaid is each scenario's STOCK curve (`on_hand_after`), not its
+ * inbound one and not its KPI totals. Inbound is committed supply and does not
+ * move when a lever moves, so overlaying it would draw four identical lines.
+ * The stock does move, and it is what the question below is actually about.
+ *
+ * The
  * question a buyer brings to a scenario is "does this run me out before the PO
  * lands", and four totals per scenario cannot answer it however neatly they are
  * tabulated. The listed figure is the order value each scenario commits, which
@@ -61,9 +66,9 @@ export default function ReplenishmentScenarioComparison({
     .map((point, index) => ({ point, index }))
     .filter(({ point }) => point.week >= 0);
   const data = forward.map(({ point, index }) => {
-    const row = { label: point.label, baseline: point.cover };
+    const row = { label: point.label, baseline: point.on_hand_after };
     for (const [position, scenario] of scenarios.entries()) {
-      row[`s${position}`] = scenario.requirement.points[index]?.cover ?? null;
+      row[`s${position}`] = scenario.requirement.points[index]?.on_hand_after ?? null;
     }
     return row;
   });

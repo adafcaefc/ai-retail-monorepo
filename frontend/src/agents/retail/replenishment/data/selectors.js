@@ -350,41 +350,44 @@ export function computePurchaseOrder(lines) {
 /**
  * A3 spec section 4: what the chain needs against what is already coming.
  *
- * Three series over 33 weekly points, W-16 through Today through W+16, all in
- * ONE UNIT: units per week. That is the whole shape of this function, and it
- * is what the two defects it replaces had in common.
+ * Three series over 33 weekly points, W-16 through Today through W+16, ALL IN
+ * ONE UNIT: units per week. Every defect this function has had was a unit
+ * mismatch, and each fix was the same fix.
  *
- * *Actual demand* (W-16..Today) and *Requirement* (Today..W+16) are the same
- * measurement either side of now — last week's real demand and next week's
- * forecast demand, `synthetic.demand_store_sku_32w` summed to chain-net per
- * SKU. Requirement used to be a running total instead, which put a rate
- * (~1.7M) and a cumulative (~29M) on one axis: history was pinned to the floor
- * of the chart, and requirement climbed away from a flat cover line for ever,
- * so the panel reported "Cover runs out at W+1" for every scope on the board.
- * Nothing accumulates here, so nothing runs away.
+ * First it plotted a running total (~29M) against a weekly rate (~1.7M), so
+ * requirement climbed away from a flat cover line for ever and the panel read
+ * "Cover runs out at W+1" for every scope on the board. Then it plotted a
+ * stock — units sitting on the shelf — against that rate, which is better but
+ * still two footings: a shelf restocked fortnightly must hold about two weeks
+ * of demand, so the line sat 2.9x above the one beside it and the gap looked
+ * like a 3M surplus rather than the ordinary consequence of batching.
  *
- * TODAY IS A REAL POINT, CARRIED BY BOTH SERIES. It holds W-1's measured value
- * in `actual_demand` AND in `requirement` — the same number written twice, not
- * an interpolation. Before, history stopped at W-1 and the forward curves
- * started at Today with `connectNulls={false}` between them, so the chart drew
- * a gap at the divider. Two series that share a point join through it.
+ * So: *Actual demand* (W-16..Today), *Requirement* (Today..W+16) and *Inbound*
+ * (Today..W+16) are all rates. Demand out per week against stock in per week.
+ * Both anchored to the same total across the horizon, so inbound oscillates
+ * ABOUT the demand line rather than above it, crossing where a delivery week
+ * over- or under-shoots. Reading the gap is now reading one comparison.
  *
- * *Cover* is a running position: last week's leftover plus this week's
- * arrivals, which is exactly what the panel's own legend ("Inbound + on-hand
- * cover") has always claimed it was. Arrivals come from
- * `synthetic.inbound_store_sku_16w` when the scope carries a schedule --
- * batched on a route cadence, so the line sawtooths the way a real receiving
- * calendar does rather than sitting flat.
+ * TODAY IS A REAL POINT, CARRIED BY BOTH DEMAND SERIES. It holds W-1's
+ * measured value in `actual_demand` AND in `requirement` — the same number
+ * written twice, not an interpolation. Before, history stopped at W-1 and the
+ * forward curves started at Today with `connectNulls={false}` between them, so
+ * the chart drew a gap at the divider. Two series that share a point join
+ * through it.
  *
- * Without a schedule it falls back to what the workbook alone supports: each
- * SKU's whole open PO delivered once, in the week its lead day falls. Note
- * "once" — the old fallback re-added every landed PO at every later week,
- * which is what made cover flat rather than declining. Every route leads 2, 4
- * or 7 days, so in practice everything arrives in W+1 and cover then draws
- * down against demand, which at least shows a chain running out.
+ * `on_hand_after` is the stock underneath the two flows, and it is NOT
+ * plotted: putting it back on this axis is precisely the mistake above. It is
+ * what answers "does the chain actually run out", because a week where inbound
+ * falls short of demand is ordinary and the shelf absorbs it — only an empty
+ * shelf is a shortfall. The tooltip reads it, `cover_runs_out` is derived from
+ * it, and Compare Scenarios plots it, since it is the curve that moves when a
+ * lever moves (inbound is committed supply and does not).
  *
- * Where cover falls below requirement is a week the shelf cannot serve, and
- * the first one is the honest headline: `cover_runs_out`.
+ * Arrivals come from `synthetic.inbound_store_sku_16w`. Without one it falls
+ * back to what the workbook alone supports: each SKU's open PO in the week its
+ * lead day falls, and nothing after — which as a rate is the honest statement
+ * that no further delivery is on record, and is exactly the case where a
+ * buyer should be raising one.
  *
  * The mockup multiplies requirement by 1.02. That factor appears nowhere in
  * the workbook and stands for nothing, so it is not reproduced — a 2% lift
@@ -411,90 +414,77 @@ export function computeRequirement(
       week: -weekNumber,
       label: `W-${weekNumber}`,
       actual_demand: history[index],
-      // Cover is a forward statement about supply. No table records what was
-      // on the shelf 16 weeks ago, and back-casting one would be invention.
+      // Inbound is a forward statement about supply. No table records what was
+      // delivered 16 weeks ago, and back-casting it would be invention.
       requirement: null,
-      cover: null,
+      inbound: null,
+      on_hand_after: null,
     });
   }
 
-  // The bridge. Today carries last week's measured demand in both series, so
-  // the history line and the requirement line pass through one identical
-  // point and read as a single backbone. `cover` starts here at what is
-  // actually on the shelf, which is the opening position of the loop below.
+  // The bridge. Today carries last week's measured demand in both demand
+  // series, so the history line and the requirement line pass through one
+  // identical point and read as a single backbone. Inbound stays null: nothing
+  // arrives "today", and drawing a zero would dive the line to the axis.
   const lastActual = weeksBack ? history[weeksBack - 1] : 0;
   points.push({
     week: 0,
     label: "Today",
     actual_demand: lastActual,
     requirement: lastActual,
-    cover: onHand,
+    inbound: null,
+    on_hand_after: onHand,
   });
 
   // A scope has a schedule only if some line in it carries a non-zero week.
-  // An all-zero schedule is indistinguishable from an unseeded table, and
-  // treating it as real would draw cover collapsing to nothing.
+  // An all-zero schedule is indistinguishable from an unseeded table.
   const scheduled = lines.some((line) =>
     (line.inbound_schedule ?? []).some((value) => value > 0),
   );
 
   let opening = onHand;
-  let landed = 0;
+  let shortfallWeek = null;
   for (let weekNumber = 1; weekNumber <= weeksForward; weekNumber += 1) {
     const requirement = lines.reduce(
       (total, line) => total + (line.demand_forecast?.[weekNumber - 1] ?? 0),
       0,
     );
 
-    let arrivals = 0;
+    let inbound = 0;
     if (scheduled) {
       for (const line of lines) {
-        arrivals += line.inbound_schedule?.[weekNumber - 1] ?? 0;
+        inbound += line.inbound_schedule?.[weekNumber - 1] ?? 0;
       }
     } else {
-      // Each open PO lands once, in the week that contains its lead day.
+      // Each open PO lands once, in the week that contains its lead day. All
+      // three routes lead under 7 days, so in practice this is one delivery in
+      // W+1 and nothing after it.
       const opens = (weekNumber - 1) * 7;
       const closes = weekNumber * 7;
       for (const line of lines) {
         if (line.lead_days > opens && line.lead_days <= closes) {
-          landed += line.open_po ?? 0;
+          inbound += line.open_po ?? 0;
         }
       }
     }
 
-    /*
-     * Two readings, because only one of them is supportable at a time.
-     *
-     * With a schedule, cover is a running position: what last week left plus
-     * what arrived this week, drawn down by what the week sells.
-     *
-     * WITHOUT one, it is NOT. Running the same drawdown on open POs alone
-     * empties the shelf within about a week and then draws a flat zero for
-     * the rest of the horizon -- which reads as "nothing will ever arrive
-     * again", a far stronger claim than the data supports. The absence of an
-     * arrival calendar is not evidence of an absence of arrivals; it is only
-     * the workbook declining to record dates. So the fallback stays the
-     * stock reading it has always been -- on-hand plus every open PO once it
-     * has landed -- which stops at what is actually known and asserts nothing
-     * about the weeks past it. The panel's caveat says which one was drawn.
-     */
-    const cover = scheduled ? opening + arrivals : onHand + landed;
+    const closing = opening + inbound - requirement;
+    if (shortfallWeek === null && closing < 0) shortfallWeek = weekNumber;
+
     points.push({
       week: weekNumber,
       label: `W+${weekNumber}`,
       actual_demand: null,
       requirement,
-      cover,
-      inbound_landed: scheduled ? arrivals : landed,
+      inbound,
+      // Floored at zero: a shelf cannot hold negative stock, and letting it go
+      // negative would carry one week's shortfall into every week after it.
+      on_hand_after: Math.max(0, closing),
     });
-    // What survives the week is what the next one opens with. Floored at zero:
-    // a shelf cannot hold negative stock, and letting it go negative would
-    // carry one week's shortfall forward into every week after it.
-    opening = Math.max(0, cover - requirement);
+    opening = Math.max(0, closing);
   }
 
   const forward = points.filter((point) => point.week > 0);
-  const shortfall = forward.find((point) => point.requirement > point.cover);
   const last = forward[forward.length - 1];
 
   return {
@@ -505,11 +495,16 @@ export function computeRequirement(
     demand_per_week: forward.length
       ? forward.reduce((total, point) => total + point.requirement, 0) / forward.length
       : 0,
-    // The first week the shelf cannot serve that week's demand.
-    cover_runs_out: shortfall ? shortfall.week : null,
-    // The gap in the last week of the horizon: what this scope is short by
-    // then, before any order is raised.
-    gap_at_horizon: last ? Math.max(0, last.requirement - last.cover) : 0,
+    inbound_per_week: forward.length
+      ? forward.reduce((total, point) => total + point.inbound, 0) / forward.length
+      : 0,
+    // The first week the shelf cannot serve that week's demand. Derived from
+    // the stock, not from the two plotted flows: inbound dipping under demand
+    // for a week is ordinary and is not a shortfall.
+    cover_runs_out: shortfallWeek,
+    // What the horizon ends holding, which is the honest closing statement
+    // when nothing ran out.
+    gap_at_horizon: last ? Math.max(0, last.requirement - last.inbound) : 0,
   };
 }
 

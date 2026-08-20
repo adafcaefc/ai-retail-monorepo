@@ -79,7 +79,7 @@ Seasonality idx  114, 100, 98, …                     <- typed
 | Predicted to trend | measured formula | `viral OR growth > 1.25`, per SKU. Reconciles exactly to the sheet's typed count |
 | Forecast accuracy | typed | 92.4 for **all eight** verticals — a demo constant, not a backtest |
 | Demand trend | typed | Per vertical, and unsupported by the series (see below) |
-| Seasonality index | derived | 108.3 derived (`fc01-seasonal-index`) is what the tile shows; 114 is the sheet's own typed figure, still carried in `reference_by_vertical` for comparison |
+| Seasonality index | calculated | Live API KPI: `AVG(retail.temp_engine_store.[Seas]) * 100` after the selected SKU × Store scope. The monthly `fc01-seasonal-index` curve is chart/model-only; the legacy A1 reference remains available to other KPIs |
 
 ### `time_series_24mo` is not history
 

@@ -231,6 +231,8 @@ def test_retail_dashboards_declare_the_filters_they_apply() -> None:
         expected = {"legal_entity_id", "category_group"}
         if agent_id in ("retail.demand_forecasting", "retail.pricing_markdown"):
             expected.add("store_id")
+        if agent_id == "retail.demand_forecasting":
+            expected.add("sku")
 
         assert descriptor.supported_filters == frozenset(expected)
         expected_ignored = (

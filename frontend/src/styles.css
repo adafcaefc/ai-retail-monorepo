@@ -6664,26 +6664,6 @@ img.ey-logo {
   font-weight: 700;
 }
 
-.demand-scope-limitations {
-  margin: var(--space-2) 0;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--accent-warning);
-  border-radius: var(--radius-md);
-  background: var(--accent-warning-soft);
-  color: var(--text);
-  font-size: var(--text-xs);
-}
-
-.demand-scope-limitations strong {
-  display: block;
-  margin-bottom: var(--space-1);
-}
-
-.demand-scope-limitations ul {
-  margin: 0;
-  padding-left: var(--space-4);
-}
-
 .demand-inline-error {
   display: flex;
   align-items: center;
@@ -9361,7 +9341,10 @@ button.po-kpi {
    ========================================================================== */
 
 .po-chart--tall {
-  height: 280px;
+  /* Requirement vs inbound supply plots three weekly rates in one narrow band
+     across 33 points. It needs the extra height for the curves to separate --
+     see the panel's own note on why its y-axis is framed on the data. */
+  height: 380px;
 }
 .po-chart--sim {
   height: 200px;

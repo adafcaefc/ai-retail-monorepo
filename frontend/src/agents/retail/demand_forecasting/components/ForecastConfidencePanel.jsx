@@ -13,7 +13,12 @@ export default function ForecastConfidencePanel({ confidence }) {
         </div>
         <span className="demand-panel-tag">{confidence.horizon_weeks}W</span>
       </header>
-      <ForecastLineChart points={confidence.points} ariaLabel={t("Demand forecast confidence chart")} compact />
+      <ForecastLineChart
+        points={confidence.points}
+        ariaLabel={t("Demand forecast confidence chart")}
+        compact
+        includeConfidence
+      />
     </section>
   );
 }

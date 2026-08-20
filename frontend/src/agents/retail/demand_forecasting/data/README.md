@@ -24,6 +24,18 @@ All dimension `forecast_units` values are raw seven-day numbers. Category,
 store, cluster, and legal-entity rows must each sum to
 `dimensions.chain_total`, which must equal the scoped `forecast_next_7d` KPI.
 
+## Live Demand Trend
+
+API responses include a `demand_trend` object from
+`synthetic.demand_store_sku_32w`. It contains `trend_pct`, the aggregate
+`actual_4w_total` and `forecast_4w_total`, `row_count`, `source`, and the
+`horizon_independent` marker. The calculation is fixed to
+`SUM(forecast_w1..forecast_w4) / SUM(actual_w4..actual_w1) - 1`, expressed as
+a percentage, after applying legal-entity, category, store, and SKU ID/name
+scope. The Trend KPI is unavailable on the standalone workbook fixture rather
+than falling back to `reference_by_vertical.trend_pct`; that legacy reference
+continues only where the existing forecast model still needs it.
+
 Forecast Detail uses the selected grain. Weekly Detail is a seven-day period,
 so its full-result `forecast_total_units` reconciles directly to the next-7d
 KPI even though only the first 100 rows are returned. Daily, Monthly,

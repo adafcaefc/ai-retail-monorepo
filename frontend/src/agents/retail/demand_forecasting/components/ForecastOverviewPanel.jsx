@@ -1,5 +1,6 @@
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
+import { isDemandGrainEnabled } from "../data/chartSeries.js";
 import ForecastLineChart from "./ForecastLineChart.jsx";
 
 const GRAIN_LABELS = {
@@ -29,21 +30,26 @@ export default function ForecastOverviewPanel({ forecast, grains, onGrainChange 
           <p>{t("Demand outlook")}</p>
           <h2 id="demand-overview-title">{t("Demand forecast — actual vs AI")}</h2>
           <span>{t(forecast.horizon_label)}</span>
-          {forecast.history_count > 0 ? (
-            <small className="demand-history-caveat">{t("Illustrative history — not real transaction data")}</small>
+          {forecast.subtitle ? (
+            <small className="demand-history-caveat">{t(forecast.subtitle)}</small>
           ) : null}
         </div>
         <div className="demand-period-selector" aria-label={t("Forecast period")}>
-          {grains.map((grain) => (
-            <button
-              key={grain}
-              type="button"
-              aria-pressed={forecast.grain === grain}
-              onClick={() => onGrainChange(grain)}
-            >
-              {t(GRAIN_LABELS[grain])}
-            </button>
-          ))}
+          {grains.map((grain) => {
+            const enabled = isDemandGrainEnabled(grain, forecast.horizon_weeks);
+            return (
+              <button
+                key={grain}
+                type="button"
+                aria-pressed={forecast.grain === grain}
+                disabled={!enabled}
+                aria-disabled={!enabled}
+                onClick={() => enabled && onGrainChange(grain)}
+              >
+                {t(GRAIN_LABELS[grain])}
+              </button>
+            );
+          })}
         </div>
       </header>
       <ForecastLineChart points={forecast.points} ariaLabel={t("Demand forecast overview chart")} />
