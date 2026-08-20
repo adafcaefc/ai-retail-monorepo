@@ -20,6 +20,7 @@ from typing import Any
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
+    HORIZON_COVERAGE,
     REPLENISH_STATES,
     SCHEMA,
     SNAPSHOT_DATE,
@@ -44,6 +45,7 @@ AGENT_ID = "retail.inventory_risk"
 # rather than silently at the first slider drag.
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
+    "f02-on-hand",
     "f03-open-po-per-store",
     "f04-position",
     "f05-rop",
@@ -66,6 +68,28 @@ NOTE = (
 def _float(value: Any) -> float:
     """Postgres NUMERIC arrives as Decimal; the payload is JSON."""
     return float(value) if value is not None else 0.0
+
+
+def _arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    The warehouse stores the finished `ads` and the three inputs beside it, but
+    not the factor between them, so it is divided back out. At the workbook's
+    own lever setting f01 reduces to
+
+        ads = base_ads x seasonality x arch_horizon_factor x store_size
+
+    because the promo branch returns 1 when `Constants` B17 is zero. The
+    division is therefore exact, not a fit.
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN that would spread through
+    every KPI the moment a lever moved.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
 
 
 def build_items(
@@ -141,6 +165,27 @@ def build_items(
                 # The vertical's total size index, not one store's: a chain-net
                 # row already covers every store.
                 "store_size": store_size[row["vertical_id"]],
+                # f01's archetype/horizon factor (`ENGINE_STORE!AH`, driven by
+                # SKU_Master's Pattern column). No table holds it as a number,
+                # so it is recovered from the row it was applied to:
+                #
+                #   stored ads = base_ads x seasonality x archHz x store_size
+                #
+                # at the workbook's own lever setting, where f01's promo branch
+                # returns 1. Exact rather than approximate, and constant per SKU
+                # -- verified across all 16,000 store rows. Falling back to 1
+                # would silently reproduce the pre-v2 dataset, which is the bug
+                # this field exists to end, so a row that cannot supply it is
+                # left to fail loudly in the browser instead.
+                "arch_horizon_factor": _arch_horizon_factor(
+                    ads,
+                    _float(row["base_ads"]),
+                    _float(row["seasonality_index"]),
+                    store_size[row["vertical_id"]],
+                ),
+                # `Constants` B24. A model parameter rather than a fact about
+                # this SKU, but f06 reads it per row, so it rides along.
+                "horizon_coverage": HORIZON_COVERAGE,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
                 "lead_days": _float(row["lead_time_days"]),

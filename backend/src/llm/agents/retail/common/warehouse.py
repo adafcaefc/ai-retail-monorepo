@@ -251,6 +251,13 @@ MONTH_INDEX = 6
 # The sum the seven factors above must reproduce (`Constants` B7).
 DOW_SUM = 7.45
 
+# The cover f06 adds on top of lead and safety days (`Constants` B24, held there
+# as `hzCov = MAX(2, Horizon/2)`). Read as a stored value, not recomputed from
+# `Constants` B23: that cell is referenced by no formula in the workbook, so
+# driving hzCov off a horizon the reader can change would move every Max level
+# away from the sheet it is supposed to reconcile against.
+HORIZON_COVERAGE = 4.0
+
 
 def constants() -> dict[str, Any]:
     """Model parameters, from the catalogue's own reference rather than a table.
