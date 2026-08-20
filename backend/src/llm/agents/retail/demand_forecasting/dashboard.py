@@ -111,6 +111,24 @@ def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
 
 
+def _arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    Same recovery `inventory_risk/dashboard.py` uses, and for the same reason:
+    the warehouse stores the finished `ads` and the three inputs beside it, but
+    not the factor between them, so the What-If engine (which re-runs f01 from
+    scratch on every lever move) has nothing to read it from unless this row
+    hands it back the division.
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN the moment a lever moves.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
+
+
 def build_signals(row: dict) -> list[str]:
     """The badges A1 puts on a SKU.
 
@@ -262,6 +280,12 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             "seasonality": _float(row["seasonality_index"]),
             "store_size": _float(
                 row.get("store_size", store_size[row["vertical_id"]])
+            ),
+            "arch_horizon_factor": _arch_horizon_factor(
+                ads,
+                _float(row["base_ads"]),
+                _float(row["seasonality_index"]),
+                _float(row.get("store_size", store_size[row["vertical_id"]])),
             ),
             "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
             "promo_depth": _float(row["cannibalisation_pct"]),

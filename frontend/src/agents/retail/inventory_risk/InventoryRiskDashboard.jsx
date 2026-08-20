@@ -25,7 +25,9 @@ import {
 import {
   loadInventoryRiskDashboard,
   loadInventoryRiskDrilldown,
+  loadInventoryRiskRows,
 } from "./data/dashboardData.js";
+import { computeLiveSimulation } from "./data/selectors.js";
 
 function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
@@ -78,6 +80,36 @@ export default function InventoryRiskDashboard() {
   // The KPI tile currently broken down, or null. Built on demand — see
   // `loadInventoryRiskDrilldown` for why it is not part of the board payload.
   const [drilldown, setDrilldown] = useState(null);
+  /*
+   * Raw rows for the current scope, held only so the What-If panel can
+   * recompute its own live preview on every slider tick without a fetch per
+   * tick — see `computeLiveSimulation`. Not the dashboard payload: these rows
+   * commit to no lever position.
+   */
+  const [rawRows, setRawRows] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadInventoryRiskRows(scope).then((rows) => {
+      if (!cancelled) setRawRows(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [scope]);
+
+  /*
+   * Recomputed on every slider tick, not on Run — this is what makes the
+   * panel's own chart and KPI strip dynamic while a lever is still being
+   * dragged. It never touches the network (`rawRows` is already in hand) and
+   * never rebuilds the rest of the board, which is exactly why it can afford
+   * to run on every tick when `computeSimulation` over 800+ SKUs on every Run
+   * cannot.
+   */
+  const liveSimulation = useMemo(() => {
+    if (!rawRows) return null;
+    return computeLiveSimulation(rawRows, scope, draftLevers, { horizonWeeks });
+  }, [rawRows, scope, draftLevers, horizonWeeks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -329,7 +361,9 @@ export default function InventoryRiskDashboard() {
       <p className="risk-footnote">{t(GROSS_VS_NET_NOTE)}</p>
 
       <RiskWhatIfSimulator
-        simulation={dashboard.simulation}
+        // The panel's own chart and KPI strip: recomputed on every tick, from
+        // `draftLevers`, so they move while the slider is still being dragged.
+        liveSimulation={liveSimulation}
         draftLevers={draftLevers}
         onLeverChange={(id, value) =>
           setDraftLevers((current) => ({ ...current, [id]: value }))

@@ -61,6 +61,12 @@ function kpiTile(label) {
   return within(grid).getByText(label).closest(".risk-kpi");
 }
 
+/** The What-If panel's own metric strip, not the whole-page KPI grid. */
+function simMetric(label) {
+  const strip = document.querySelector(".risk-scenario-metrics");
+  return within(strip).getByText(label).closest("article");
+}
+
 const grocery = fixture.reference_by_vertical.find(
   (row) => row.legal_entity_id === "GRC",
 );
@@ -475,32 +481,45 @@ describe("InventoryRiskDashboard", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
-  it("offers all six levers and disables the one the workbook cannot model", async () => {
+  it("offers the five levers the workbook can model, and no markdown lever", async () => {
     await renderSettled();
 
     expect(screen.getByLabelText("Demand surge")).toBeEnabled();
     expect(screen.getByLabelText("Inbound cover")).toBeEnabled();
-    // A2 spec 8a lists a markdown lever; formula.json has no markdown term.
-    expect(screen.getByLabelText("Markdown clear")).toBeDisabled();
+    // formula.json has no markdown term, so the lever is absent rather than
+    // present-and-disabled — see MARKDOWN_INSIGHT_NOTE in contract.js.
+    expect(screen.queryByLabelText("Markdown clear")).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Pricing & Markdown board/),
+    ).toBeInTheDocument();
   });
 
-  it("keeps the board on the workbook until Run is pressed", async () => {
+  it("moves the simulator's own chart live, but keeps the rest of the board on the workbook until Run", async () => {
     await renderSettled();
 
-    const before = kpiTile("Stockout-risk SKUs").textContent;
+    const boardBefore = kpiTile("Stockout-risk SKUs").textContent;
+    const simBefore = simMetric("Stockout-risk SKUs").textContent;
+
     fireEvent.change(screen.getByLabelText("Demand surge"), {
       target: { value: "40" },
     });
 
-    // Dragging a slider re-runs 800 SKUs; doing that per pixel would make the
-    // control fight the user, so nothing moves until Run.
-    expect(kpiTile("Stockout-risk SKUs").textContent).toBe(before);
+    // The panel's own preview follows the slider immediately — no Run, no
+    // network call, just `computeLiveSimulation` over rows already in hand.
+    await waitFor(() => {
+      expect(simMetric("Stockout-risk SKUs").textContent).not.toBe(simBefore);
+    });
+
+    // The rest of the board is a different story: re-running every other
+    // panel on every pixel of a drag would fight a multi-lever edit, so it
+    // waits for Run.
+    expect(kpiTile("Stockout-risk SKUs").textContent).toBe(boardBefore);
     expect(screen.queryByText(/simulated figures/)).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     await waitFor(() => {
-      expect(kpiTile("Stockout-risk SKUs").textContent).not.toBe(before);
+      expect(kpiTile("Stockout-risk SKUs").textContent).not.toBe(boardBefore);
     });
   });
 

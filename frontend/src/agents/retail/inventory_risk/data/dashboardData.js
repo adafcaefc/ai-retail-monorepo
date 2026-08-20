@@ -115,10 +115,24 @@ export async function loadInventoryRiskDashboard(scope = {}, options = {}) {
  * @param {{levers?: object, driveWholePage?: boolean}} [options]
  */
 export async function loadInventoryRiskDrilldown(scope, metricId, options = {}) {
-  const rows =
-    DATA_SOURCE === "api"
-      ? await fetchDashboard("retail.inventory_risk", serializeScope(scope))
-      : fixture;
+  const rows = await loadInventoryRiskRows(scope);
 
   return buildDrilldownFromFixture(rows, scope, metricId, options);
+}
+
+/**
+ * The raw rows a scope resolves to — not a finished dashboard, and not
+ * committed to any lever position.
+ *
+ * Exists so the What-If panel can hold onto the rows for a scope and recompute
+ * `computeLiveSimulation` against them on every slider tick, without a network
+ * round trip per tick. `loadInventoryRiskDashboard` already does this fetch
+ * internally on every call, which is fine for a Run (occasional, and the
+ * board needs its other panels rebuilt anyway) and wrong for a drag (every
+ * pixel, needing nothing but arithmetic on rows already in hand).
+ */
+export async function loadInventoryRiskRows(scope = {}) {
+  return DATA_SOURCE === "api"
+    ? await fetchDashboard("retail.inventory_risk", serializeScope(scope))
+    : fixture;
 }
