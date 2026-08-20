@@ -41,8 +41,24 @@ volume, which is how it works: a store that turns over enough to fill a truck
 every week gets one, and the smallest stores are folded into a fortnightly
 consolidation run.
 
-    the smallest 12% of stores by volume   every 2 weeks   (19 of 160)
-    every other store                      every week
+    the smallest 5% of stores IN EACH VERTICAL   every 2 weeks   (1 per
+                                                 vertical, 8 of 160)
+    every other store                            every week
+
+WITHIN EACH VERTICAL, NOT ACROSS THE CHAIN
+------------------------------------------
+Chain-wide ranking does not work here, and the reason is worth recording. Mean
+store volume differs about tenfold BETWEEN verticals -- HNL averages 40,631
+over the horizon against GRC's 390,265 -- so "the smallest 12% of all 160
+stores" selects whole verticals rather than the small stores inside each one.
+At a 12% chain-wide cut, 14 of the 19 landed in HNL and the other 5 in ELC,
+and the remaining six verticals had no batched store at all. Every scope on
+the board except those two drew a perfectly flat inbound line.
+
+Ranking inside each vertical gives every scope the same character, and is the
+better model anyway: a vertical is its own banner with its own DC, so which of
+its stores earn a weekly truck is decided among themselves, not against a
+grocery hypermarket in another division.
 
 All of a store's SKUs travel on that store's calendar, whatever route they
 came in on -- one truck carries the lot. `route` is still written on every row
@@ -56,13 +72,17 @@ one worth half of one -- rather than a cosmetic one. It does set how far the
 inbound line swings from the demand line beside it, so the number is stated
 rather than buried:
 
-    30% of stores fortnightly  ->  arrivals stray 8.96% from weekly demand
-    20%                        ->  4.81%
-    15%                        ->  3.23%
-    12%                        ->  2.37%   <- chosen
-    10%                        ->  1.89%
-     5%                        ->  0.81%
-     3%                        ->  0.36%   below the floor gate, lines merge
+Verticals hold 20 stores each, so the share resolves to a whole number of
+stores and the dial is coarser than it looks -- there are two settings, not a
+continuum:
+
+    2 stores per vertical (share >= 8%)   chain 5.93%, verticals 5.3 - 6.4%
+    1 store  per vertical (share ~5%)     chain 2.88%, verticals 2.7 - 3.2%
+    0                                     flat, and gate 2 rejects it
+
+One is chosen. Note how tightly the per-vertical figures cluster now: every
+scope on the board draws the same character, which is the property the
+chain-wide ranking destroyed.
 
 Earlier revisions batched by route instead. Putting all 2,000 cross-dock rows
 on one fortnightly beat made arrivals swing 8.1% either side of demand, and an
@@ -121,7 +141,7 @@ ROUTES: tuple[tuple[str, int], ...] = (
 # Timing. The smallest stores share a fortnightly consolidation run; everyone
 # else gets a weekly truck. See the module docstring for what this share does
 # to the drawn line, and why it is 10% rather than 30% or 0%.
-FORTNIGHTLY_STORE_SHARE = 0.12
+FORTNIGHTLY_STORE_SHARE = 0.05
 FORTNIGHTLY_CADENCE = 2
 
 # The three gates this generator refuses to write a file without.
@@ -138,21 +158,37 @@ def route_for(lead_days: float) -> str:
     return ROUTES[-1][0]
 
 
-def store_cadence(demand: list[dict[str, Any]]) -> dict[str, int]:
-    """Weeks between deliveries for each store, by its share of chain volume.
+def store_cadence(
+    demand: list[dict[str, Any]], store_vertical: dict[str, str]
+) -> dict[str, int]:
+    """Weeks between deliveries for each store, by its rank WITHIN its vertical.
 
-    The smallest `FORTNIGHTLY_STORE_SHARE` of stores are folded into one
-    fortnightly consolidation run -- one run, not staggered, because that is
-    what makes the ripple visible at all. Everyone else receives weekly.
+    The smallest `FORTNIGHTLY_STORE_SHARE` of each vertical's stores are folded
+    into one fortnightly consolidation run -- one run per vertical, not
+    staggered, because that is what makes the ripple visible at all. Everyone
+    else receives weekly.
+
+    Ranking is per vertical rather than chain-wide; see the module docstring
+    for the scope-dependent flat line that mistake produced. At least one store
+    per vertical is always taken, so no scope can come out perfectly flat while
+    the others ripple.
     """
     volume: dict[str, float] = {}
     for record in demand:
         volume[record["store_id"]] = volume.get(record["store_id"], 0.0) + sum(
             record["forecast"]
         )
-    smallest_first = sorted(volume, key=lambda store: volume[store])
-    cutoff = int(len(smallest_first) * FORTNIGHTLY_STORE_SHARE)
-    fortnightly = set(smallest_first[:cutoff])
+
+    grouped: dict[str, list[str]] = {}
+    for store in volume:
+        grouped.setdefault(store_vertical.get(store, ""), []).append(store)
+
+    fortnightly: set[str] = set()
+    for stores in grouped.values():
+        smallest_first = sorted(stores, key=lambda store: volume[store])
+        cutoff = max(1, round(len(smallest_first) * FORTNIGHTLY_STORE_SHARE))
+        fortnightly.update(smallest_first[:cutoff])
+
     return {
         store: (FORTNIGHTLY_CADENCE if store in fortnightly else 1) for store in volume
     }
@@ -179,7 +215,7 @@ def load_demand() -> list[dict[str, Any]]:
         ]
 
 
-def load_workbook() -> tuple[dict[str, dict[str, Any]], float]:
+def load_workbook() -> tuple[dict[str, dict[str, Any]], float, dict[str, str]]:
     payload = json.loads(WORKBOOK.read_text(encoding="utf-8"))
     tables: dict[str, list[dict[str, Any]]] = {}
     for table in payload["tables"]:
@@ -190,13 +226,16 @@ def load_workbook() -> tuple[dict[str, dict[str, Any]], float]:
     # Chain on-hand, the same figure `build_lines` puts on each line. Only the
     # running-position report below uses it; nothing is written from it.
     on_hand = sum(float(row["qty_on_hand"]) for row in tables["replenishment_detail"])
-    return sku_master, on_hand
+    store_vertical = {row["store_id"]: row["vertical_id"] for row in tables["stores"]}
+    return sku_master, on_hand, store_vertical
 
 
 def build_rows(
-    demand: list[dict[str, Any]], sku_master: dict[str, dict[str, Any]]
+    demand: list[dict[str, Any]],
+    sku_master: dict[str, dict[str, Any]],
+    store_vertical: dict[str, str],
 ) -> list[dict[str, Any]]:
-    cadences = store_cadence(demand)
+    cadences = store_cadence(demand, store_vertical)
     rows = []
     for record in demand:
         sku = sku_master[record["sku_id"]]
@@ -266,6 +305,37 @@ def running_position(
     return position
 
 
+def vertical_gaps(
+    rows: list[dict[str, Any]],
+    demand: list[dict[str, Any]],
+    store_vertical: dict[str, str],
+) -> dict[str, float]:
+    """Largest weekly gap between arrivals and demand, per vertical.
+
+    The board is almost always looked at through a legal-entity filter, so the
+    chain total is not the thing a reader sees. This measures what each scope
+    actually draws.
+    """
+    arrivals: dict[str, list[float]] = {}
+    wanted: dict[str, list[float]] = {}
+    for row, record in zip(rows, demand):
+        vertical = store_vertical.get(row["store_id"], "")
+        into = arrivals.setdefault(vertical, [0.0] * WEEKS)
+        out = wanted.setdefault(vertical, [0.0] * WEEKS)
+        for index, column in enumerate(ARRIVAL_COLUMNS):
+            into[index] += float(row[column])
+            out[index] += record["forecast"][index]
+
+    return {
+        vertical: max(
+            abs(arrivals[vertical][index] - out[index]) / out[index]
+            for index in range(WEEKS)
+            if out[index]
+        )
+        for vertical, out in wanted.items()
+    }
+
+
 def fingerprint(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -301,14 +371,14 @@ def main() -> int:
             return 1
 
     demand = load_demand()
-    sku_master, on_hand = load_workbook()
+    sku_master, on_hand, store_vertical = load_workbook()
 
     unknown = sorted({r["sku_id"] for r in demand} - set(sku_master))[:5]
     if unknown:
         print(f"FAIL  demand CSV references SKUs the workbook does not hold: {unknown}")
         return 1
 
-    rows = build_rows(demand, sku_master)
+    rows = build_rows(demand, sku_master, store_vertical)
 
     total_forecast = sum(sum(record["forecast"]) for record in demand)
     total_arrivals = sum(
@@ -353,6 +423,21 @@ def main() -> int:
         return 1
     print(f"  ok  arrivals stay within {gap:.2%} of weekly demand")
 
+    # GATE 4: every vertical ripples. The chain figure can sit comfortably
+    # inside the band while individual scopes draw a flat line, which is
+    # exactly what a chain-wide store ranking used to do.
+    per_vertical = vertical_gaps(rows, demand, store_vertical)
+    worst = min(per_vertical.values()) if per_vertical else 0.0
+    flat = sorted(name for name, value in per_vertical.items() if value < floor)
+    if flat:
+        print(f"FAIL  {len(flat)} vertical(s) draw a flat inbound line: {flat}")
+        print("      every scope on the board must show the same character")
+        return 1
+    print(
+        f"  ok  all {len(per_vertical)} verticals ripple"
+        f" (weakest {worst:.2%}, chain {gap:.2%})"
+    )
+
     empty = [index + 1 for index, value in enumerate(position) if value <= 0]
     print(
         f"  ..  stock runs out in week(s) {empty}"
@@ -396,9 +481,10 @@ def main() -> int:
                 " pack_factor cases."
             ),
             "timing": (
-                "store cadence by volume -- the smallest"
-                f" {FORTNIGHTLY_STORE_SHARE:.0%} of stores share one fortnightly"
-                " consolidation run, every other store receives weekly."
+                "store cadence by volume within each vertical -- the smallest"
+                f" {FORTNIGHTLY_STORE_SHARE:.0%} of each vertical's stores share one"
+                " fortnightly consolidation run, every other store receives"
+                " weekly."
                 " Invented: no workbook cell states a delivery interval."
             ),
             "lead_d_and_pack_factor": (
@@ -418,6 +504,8 @@ def main() -> int:
             "max_gap_from_weekly_demand": gap,
             "max_gap_bounds": list(GAP_BOUNDS),
             "fortnightly_store_share": FORTNIGHTLY_STORE_SHARE,
+            "fortnightly_share_ranked_within": "vertical",
+            "max_gap_by_vertical": per_vertical,
             "chain_arrivals_by_week": weekly_arrivals,
             "chain_demand_by_week": weekly_demand,
             "chain_position_by_week": position,

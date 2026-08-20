@@ -1,12 +1,12 @@
 {
   "generation_name": "inbound_store_sku_16w_v1",
   "generator_version": "inbound-store-sku-16w-generator-v1.0.0",
-  "generated_at": "2026-08-20T22:31:47.573308+00:00",
+  "generated_at": "2026-08-20T22:56:44.991007+00:00",
   "business_timezone": "Asia/Jakarta",
   "output_row_count": 16000,
   "quantity_precision": 6,
   "input_fingerprint": "b59a1024ed3e8a599638f3b0d68b63bfa552e97486a122ec4327073036fb4124",
-  "output_fingerprint": "9f031f549f85bea676ff335855197f07b16f0c5c6b9e8b282d88da18353f7234",
+  "output_fingerprint": "92a2d3cd47c05f325b95f4ddaf0ba7f2f4420c26aefa7bf364a8061fc9e9b1cd",
   "column_contract": {
     "columns": [
       "sku_id",
@@ -61,7 +61,7 @@
   "provenance": {
     "arrival_w1_to_arrival_w16": "synthetic. No table in this warehouse records an inbound arrival date; this schedule is invented to supply one.",
     "quantities": "demand-anchored: each delivery carries forecast_w* demand from its own week until the next delivery, rounded to whole pack_factor cases.",
-    "timing": "store cadence by volume -- the smallest 12% of stores share one fortnightly consolidation run, every other store receives weekly. Invented: no workbook cell states a delivery interval.",
+    "timing": "store cadence by volume within each vertical -- the smallest 5% of each vertical's stores share one fortnightly consolidation run, every other store receives weekly. Invented: no workbook cell states a delivery interval.",
     "lead_d_and_pack_factor": "resources/dbtemp/schema_with_data.json sku_master"
   },
   "determinism": {
@@ -69,34 +69,45 @@
     "note": "No random component. The schedule is a function of the demand curve and the SKU's route, so a rerun is byte-identical."
   },
   "plausibility": {
-    "inbound_demand_ratio": 1.0000186938808469,
+    "inbound_demand_ratio": 1.0001222463803083,
     "inbound_demand_ratio_bounds": [
       0.98,
       1.02
     ],
-    "max_gap_from_weekly_demand": 0.023664423601562772,
+    "max_gap_from_weekly_demand": 0.028821620020364924,
     "max_gap_bounds": [
       0.005,
       0.04
     ],
-    "fortnightly_store_share": 0.12,
+    "fortnightly_store_share": 0.05,
+    "fortnightly_share_ranked_within": "vertical",
+    "max_gap_by_vertical": {
+      "DGT": 0.027142648968335216,
+      "ELC": 0.03199148346805146,
+      "FSH": 0.029454775105536075,
+      "GMR": 0.03008065521258402,
+      "GRC": 0.030271815259347634,
+      "HNB": 0.03101608525164931,
+      "HNL": 0.027272355054332984,
+      "OMN": 0.02990682701266572
+    },
     "chain_arrivals_by_week": [
-      1851110.0,
-      1766180.0,
-      1846136.0,
-      1757905.0,
-      1838813.0,
-      1756404.0,
-      1845844.0,
-      1772825.0,
-      1873570.0,
-      1805918.0,
-      1910218.0,
-      1839702.0,
-      1940832.0,
-      1862025.0,
-      1955438.0,
-      1869918.0
+      1860526.0,
+      1757022.0,
+      1855434.0,
+      1748842.0,
+      1847958.0,
+      1747442.0,
+      1855220.0,
+      1764040.0,
+      1883009.0,
+      1796968.0,
+      1919557.0,
+      1830540.0,
+      1950435.0,
+      1853027.0,
+      1964927.0,
+      1860945.0
     ],
     "chain_demand_by_week": [
       1809147.2230879958,
@@ -117,22 +128,22 @@
       1913897.0727119907
     ],
     "chain_position_by_week": [
-      1735182.7769120042,
-      1693085.892184011,
-      1734707.9667040098,
-      1692583.6484230093,
-      1734199.9679149978,
-      1692589.5936610042,
-      1734579.9358259977,
-      1692516.4477899894,
-      1735828.4483879872,
-      1693447.1906649834,
-      1736930.8262129908,
-      1693215.3498869867,
-      1737311.8632229932,
-      1693462.8703029868,
-      1737750.398004993,
-      1693771.3252930022
+      1744598.7769120042,
+      1693343.892184011,
+      1744263.9667040098,
+      1693076.6484230093,
+      1743837.9679149978,
+      1693265.5936610042,
+      1744631.9358259977,
+      1693783.4477899894,
+      1746534.4483879872,
+      1695203.1906649834,
+      1748025.8262129908,
+      1695148.3498869867,
+      1748847.8632229932,
+      1696000.8703029868,
+      1749777.398004993,
+      1696825.3252930022
     ],
     "rows_by_route": {
       "flow": 12500,

@@ -15,7 +15,7 @@ import {
   REQUIREMENT_FALLBACK_NOTE,
   REQUIREMENT_NOTE,
 } from "../data/contract.js";
-import { formatIdr, formatPercent, formatUnits } from "../presentation.js";
+import { formatUnits } from "../presentation.js";
 
 function RequirementTooltip({ active, payload, label }) {
   const { language, t } = useLanguage();
@@ -113,8 +113,15 @@ function RequirementTooltip({ active, payload, label }) {
  * The mockup lifts requirement by 1.02. That factor is in no workbook cell and
  * stands for nothing, so it is not reproduced here — reproduced, it would read
  * as a measured safety margin rather than as a prototype's rounding.
+ *
+ * A3 spec 4 also puts a four-figure strip under the chart (`#main-stats`:
+ * reorder count, order quantity, PO value, fill). It is not reproduced either,
+ * because on this board those four are already the KPI cards directly above
+ * the panel, reading the same numbers from the same selector — the strip
+ * restated them a few hundred pixels lower and gave the eye a second thing to
+ * reconcile against.
  */
-export default function RequirementVsInboundPanel({ requirement, kpis }) {
+export default function RequirementVsInboundPanel({ requirement }) {
   const { language, t } = useLanguage();
 
   if (!requirement.points.length) {
@@ -152,14 +159,6 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
   const high = plotted.length ? Math.max(...plotted) : 0;
   const padding = (high - low) * 0.2 || high * 0.05 || 1;
   const domain = [Math.max(0, low - padding), high + padding];
-
-  /* A3 spec section 4, `#main-stats`. */
-  const metrics = [
-    ["Reorder", formatUnits(kpis.skus_to_reorder, language)],
-    ["Order qty", formatUnits(Math.round(kpis.order_units), language)],
-    ["PO value", formatIdr(kpis.order_value_cost, language)],
-    ["Fill", formatPercent(kpis.fill_rate_pct, language)],
-  ];
 
   return (
     <section className="po-panel po-requirement" aria-label={t("Requirement vs inbound supply")}>
@@ -249,15 +248,6 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
           </LineChart>
         </ResponsiveContainer>
       </div>
-
-      <dl className="po-metric-strip">
-        {metrics.map(([label, value]) => (
-          <div key={label}>
-            <dt>{t(label)}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
-      </dl>
 
       <p className="po-panel-caveat">
         {t(requirement.inbound_scheduled ? REQUIREMENT_NOTE : REQUIREMENT_FALLBACK_NOTE)}

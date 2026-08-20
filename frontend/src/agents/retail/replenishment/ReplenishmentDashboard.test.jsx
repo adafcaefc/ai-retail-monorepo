@@ -317,11 +317,13 @@ describe("requirement versus inbound supply (spec 4)", () => {
       .closest(".po-panel");
     expect(panel).toBeInTheDocument();
 
-    // The four figures spec 4 puts under the chart.
-    const strip = panel.querySelector(".po-metric-strip");
-    for (const label of ["Reorder", "Order qty", "PO value", "Fill"]) {
-      expect(within(strip).getByText(label)).toBeInTheDocument();
-    }
+    /*
+     * Spec 4 puts a four-figure strip under the chart. It is deliberately not
+     * drawn: the KPI cards above the panel already carry those same four
+     * numbers off the same selector, so the strip was a second copy for the
+     * eye to reconcile against.
+     */
+    expect(panel.querySelector(".po-metric-strip")).toBeNull();
   });
 
   it("says the delivery calendar is generated, because the workbook has none", async () => {

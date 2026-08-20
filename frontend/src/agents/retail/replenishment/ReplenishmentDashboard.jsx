@@ -256,7 +256,6 @@ export default function ReplenishmentDashboard() {
 
       <RequirementVsInboundPanel
         requirement={dashboard.requirement}
-        kpis={dashboard.kpis}
       />
 
       <div className="po-chart-grid">
