@@ -18,6 +18,7 @@ from typing import Any
 
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
+    HORIZON_COVERAGE,
     SCHEMA,
     SNAPSHOT_DATE,
     SUPPORTED_FILTERS,
@@ -105,6 +106,29 @@ def route_for(lead_days: float) -> str:
     return ROUTES[-1]["id"]
 
 
+def _arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    Same reconstruction as `inventory_risk/dashboard.py`'s helper of the same
+    name: the warehouse stores the finished `ads` and the three inputs beside
+    it, but not the factor between them, so it is divided back out. At the
+    workbook's own lever setting f01 reduces to
+
+        ads = base_ads x seasonality x arch_horizon_factor x store_size
+
+    because the promo branch returns 1 when `Constants` B17 is zero. The
+    division is therefore exact, not a fit.
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN that would spread
+    through every KPI the moment a lever moved.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
+
+
 def build_lines(rows: list[dict]) -> list[dict]:
     """One order line per SKU, chain level.
 
@@ -117,6 +141,21 @@ def build_lines(rows: list[dict]) -> list[dict]:
     lines = []
     for row in rows:
         lead_days = _float(row["lead_time_days"])
+        base_ads = _float(row["base_ads"])
+        seasonality = _float(row["seasonality_index"])
+        store_size = _float(row["store_size"])
+        # f01's archetype/horizon multiplier, preferred from `dim_item` and
+        # recovered from the stored `ads` when that column is NULL -- see
+        # inventory_risk/dashboard.py's build_items() for the full account of
+        # why this is not a 1.0 fallback.
+        stored_factor = row.get("arch_horizon_factor")
+        arch_horizon_factor = (
+            _float(stored_factor)
+            if stored_factor is not None
+            else _arch_horizon_factor(
+                _float(row["ads"]), base_ads, seasonality, store_size
+            )
+        )
         lines.append(
             {
                 "sku_id": row["item_key"],
@@ -148,9 +187,14 @@ def build_lines(rows: list[dict]) -> list[dict]:
                 "best_price": _float(row["best_price"]),
                 "saving_vs_designated": _float(row["saving_vs_designated"]),
                 # -- What-If parameters ---------------------------------
-                "base_ads": _float(row["base_ads"]),
-                "seasonality": _float(row["seasonality_index"]),
-                "store_size": _float(row["store_size"]),
+                "base_ads": base_ads,
+                "seasonality": seasonality,
+                "arch_horizon_factor": arch_horizon_factor,
+                # `Constants` B24. A model parameter rather than a fact about
+                # this SKU, but f06 reads it per row, so it rides along --
+                # same as inventory_risk/dashboard.py.
+                "horizon_coverage": HORIZON_COVERAGE,
+                "store_size": store_size,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
                 "safety_days": _float(row["safety_days"]),
@@ -177,6 +221,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    i.name, i.vertical_id, i.category_id, i.category_name,
                    i.is_perishable, i.lead_time_days, i.safety_days,
                    i.pack_factor, i.base_ads, i.seasonality_index,
+                   i.arch_horizon_factor,
                    i.is_promo_eligible, i.cannibalisation_pct,
                    dv.vendor_short AS designated_short,
                    bv.vendor_short AS best_short,
@@ -296,7 +341,10 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
 
     return {
         **envelope(AGENT_ID, NOTE),
-        "constants": constants(),
+        # `hz_cov` rides on the shared block, same as inventory_risk/dashboard.py:
+        # the browser needs the same value f06 used server-side, or a lever drag
+        # would move Max on its own.
+        "constants": {**constants(), "hz_cov": HORIZON_COVERAGE},
         "formulas": formulas(ENGINE_FORMULAS),
         "derivation": DERIVATION,
         "routes": [dict(route) for route in ROUTES],

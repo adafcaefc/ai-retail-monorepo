@@ -265,7 +265,7 @@ def verify_order_chain(engine, sku_master, store_size) -> dict[str, str]:
     return expressions
 
 
-def build_lines(engine, sku_master, detail, store_size):
+def build_lines(engine, sku_master, detail, store_size, hz_cov):
     """One requisition line per SKU, at chain-net level."""
     by_sku = {row["item"]: row for row in detail}
     lines = []
@@ -318,6 +318,11 @@ def build_lines(engine, sku_master, detail, store_size):
                 "store_size": store_size[row["vertical_id"]],
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
+                "arch_horizon_factor": sku["arch_horizon_factor"],
+                # `Constants` B24. A model parameter rather than a fact about
+                # this SKU, but f06 reads it per row, so it rides along --
+                # same as inventory_risk's fixture.
+                "horizon_coverage": hz_cov,
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
             }
@@ -564,11 +569,19 @@ def main() -> int:
     reference = {row["vertical_label"]: row for row in reference_rows}
 
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU -- so it's read off any one
+    # ENGINE_STORE row per SKU and carried on sku_master like every other
+    # per-SKU f01 input. See build_inventory_risk_fixture.py's version of
+    # this same fix for the full explanation.
+    for row in tables["engine_store"]:
+        sku_master[row["sku_id"]]["arch_horizon_factor"] = row["archhz"]
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
     constants = {
         **constants_from_cells(
-            tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+            tables["constants"], {"dow_sum": "B7", "month_index": "B6", "hz_cov": "B24"}
         ),
         # Carried by every board, because `warehouse.constants()` serves one
         # block to all of them and the API path must equal this file. This
@@ -581,7 +594,8 @@ def main() -> int:
     expressions = verify_order_chain(tables["engine"], sku_master, store_size)
 
     lines = build_lines(
-        tables["engine"], sku_master, tables["replenishment_detail"], store_size
+        tables["engine"], sku_master, tables["replenishment_detail"], store_size,
+        constants["hz_cov"],
     )
     store_rows = build_stores(tables["engine_store"], stores, sku_master)
 
