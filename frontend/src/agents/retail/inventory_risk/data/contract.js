@@ -43,12 +43,12 @@ export const HEALTHY_STATE = "Healthy";
 /**
  * The reorder zone: exactly the states `Position < ROP` produces.
  *
- * f07 assigns Stockout below `0.6 × ROP` and Low below ROP, so these two
- * states and that comparison select the same rows by construction. Naming the
- * set once keeps the tiles, the register and the What-If engine from each
- * deciding it separately.
+ * Defined in `agents/retail/common/inventoryStates.js` and re-exported here so
+ * A2's existing importers keep their path. Agent 1 reports the same tile from
+ * the same set — see that file for why it is shared rather than copied, and
+ * for what the equivalence does and does not guarantee.
  */
-export const REPLENISH_STATES = Object.freeze(["Stockout", "Low"]);
+export { REPLENISH_STATES } from "../../common/inventoryStates.js";
 
 /**
  * What-If levers, A2 spec section 8a → `Constants` B16–B21.

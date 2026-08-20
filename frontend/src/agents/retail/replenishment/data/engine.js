@@ -129,7 +129,7 @@ export function createEngine(formulas) {
      * prices the *shortfall* at the selling price and never rounds up to a
      * pack — so it goes through f11 with a pack factor of one, because sales
      * units need no conversion. Both reproduce the fixture exactly at zero
-     * levers, over all 302 lines that carry an order.
+     * levers, over all 345 lines that carry an order.
      */
     const valueCost = run("f11-order-value", {
       order_buy_units: orderBuy,
@@ -147,7 +147,7 @@ export function createEngine(formulas) {
      * order, priced twice. Stated as a difference of two f11 evaluations
      * rather than as a margin formula of its own, so no new pricing rule is
      * born in JavaScript. Both forms reproduce the workbook's stored column
-     * over all 302 lines; this one keeps the arithmetic in the catalogue.
+     * over all 345 lines; this one keeps the arithmetic in the catalogue.
      */
     const valueAtBest = run("f11-order-value", {
       order_buy_units: orderBuy,
@@ -171,7 +171,7 @@ export function createEngine(formulas) {
       /*
        * Reorder follows `Position < ROP`, which is f09's own condition. A2
        * decides the same question through the state machine and lands on the
-       * same 302 rows; `crossModule.test.js` holds the two boards to it.
+       * same 345 rows; `crossModule.test.js` holds the two boards to it.
        */
       is_reorder: position < rop,
     };

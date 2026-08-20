@@ -98,6 +98,10 @@ CATALOGUE_FORMULAS = (
     "f07-inventory-state",
     "f08-forecast-7-days",
     "f20-days-of-supply",
+    # A1's own trending predicate. The board counts rows this returns 1
+    # for, so the 1.25 threshold is editable in the Formula Manager
+    # rather than retyped here and again in data/engine.js.
+    "fc10-trending-sku",
 )
 
 # DOW_PROFILE, INTERVAL_Z and MONTH_LABELS all come from retail_demand_model
@@ -224,8 +228,10 @@ def build_items(
     sku_master: dict[str, dict[str, Any]],
     store_size: dict[str, float],
     week_factor: float,
+    expressions: dict[str, str],
 ) -> list[dict[str, Any]]:
     """One row per SKU at chain-net level."""
+    trending_ast = parse(expressions["fc10-trending-sku"])
     items = []
     for row in engine:
         sku = sku_master[row["sku_id"]]
@@ -252,7 +258,12 @@ def build_items(
                 "growth": sku["growth"],
                 "state": row["state"],
                 "is_stockout_risk": row["position"] < row["rop"],
-                "is_trending": is_trending(sku),
+                "is_trending": bool(
+                    evaluate(
+                        trending_ast,
+                        {"is_viral": sku["viral"], "growth_index": sku["growth"]},
+                    )
+                ),
                 "signals": signals,
                 # What-If parameters, identical in meaning to the Inventory
                 # Risk fixture's so both boards move the same way.
@@ -273,19 +284,6 @@ def build_items(
             }
         )
     return items
-
-
-def is_trending(sku: dict[str, Any]) -> bool:
-    """The A1 spec's own test: `count(viral OR growth>1.25)`.
-
-    A per-SKU predicate, not a rank+quota allocation against the sheet's
-    vertical-wide `Trending SKUs` count -- it composes correctly under any
-    later UI-level scoping (category, store) because it never depends on how
-    many other SKUs are in the group. It still reconciles exactly to the
-    workbook's typed count at vertical grain -- see `reconcile()` -- it is no
-    longer *forced* to.
-    """
-    return sku["viral"] == "Y" or sku["growth"] > 1.25
 
 
 def build_stores(
@@ -436,6 +434,7 @@ def main() -> int:
         sku_master,
         store_size,
         constants["dow_sum"],
+        expressions,
     )
     store_rows = build_stores(
         tables["engine_store"], stores, constants["dow_sum"]

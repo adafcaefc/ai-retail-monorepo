@@ -417,8 +417,8 @@ export function computeSimulation(lines, universe, levers, applyLevers) {
 
   /*
    * At rest the scenario IS the baseline. Re-running the engine here would
-   * produce figures differing in the last float digit — 302 re-evaluations
-   * summed instead of 302 readings — and the panel would report a delta on a
+   * produce figures differing in the last float digit — 345 re-evaluations
+   * summed instead of 345 readings — and the panel would report a delta on a
    * board nobody has touched.
    */
   const scenarioLines = applied ? lines.map((line) => applyLevers(line, merged)) : lines;
@@ -429,7 +429,7 @@ export function computeSimulation(lines, universe, levers, applyLevers) {
   /*
    * Under a scenario the reorder set itself moves: a line that was healthy at
    * rest can fall below ROP once lead time rises. So the scenario's KPIs are
-   * taken over the re-filtered set, not over the baseline's 302 rows — holding
+   * taken over the re-filtered set, not over the baseline's 345 rows — holding
    * the old membership would report a new order value for an old order.
    */
   const scenarioScoped = applied

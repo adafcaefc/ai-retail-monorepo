@@ -190,12 +190,25 @@ def route_for(lead_days: int) -> str:
     return ROUTES[-1]["id"]
 
 
-def verify_order_chain(engine, sku_master, store_size) -> dict[str, str]:
-    """Rebuild the order quantities from the catalogue before writing anything.
+def verify_order_chain(engine, sku_master, store_size, hz_cov) -> dict[str, str]:
+    """Rebuild the order chain from the catalogue before writing anything.
 
-    f09 to f11 are the ones this board turns into a purchase order, so they get
-    the same treatment the other two builders give their chains: reproduce all
-    800 rows at rest, or the fixture is not written.
+    Every formula this board turns into a purchase order is checked against the
+    workbook column it is supposed to reproduce -- all 800 rows, or the fixture
+    is not written.
+
+    It used to start at f09, taking the workbook's own `position`, `rop` and
+    `max` as given. That left the whole demand half of the chain unchecked, and
+    it is exactly where v8.5 changed: f01 gained an archetype/horizon factor
+    and f06 took its horizon term as a parameter. The catalogue moved, this
+    builder did not, and nothing here failed -- the fixture kept its pre-v8.5
+    expressions and the board carried on until the first What-If lever drag
+    raised on the operand that was never supplied. Checking f01 through f06 as
+    well is what makes that a build failure rather than a runtime one.
+
+    Each formula is evaluated against the workbook's own stored inputs rather
+    than against the previous formula's output. Chaining would report one
+    failure as six; this way the name that fails is the rule that is wrong.
     """
     formulas = {formula["id"]: formula for formula in repository.load()}
     missing = [key for key in CATALOGUE_FORMULAS if key not in formulas]
@@ -208,6 +221,53 @@ def verify_order_chain(engine, sku_master, store_size) -> dict[str, str]:
 
     for row in engine:
         sku = sku_master[row["sku_id"]]
+        size = store_size[row["vertical_id"]]
+
+        ads = evaluate(
+            asts["f01-ads-per-store"],
+            {
+                "base_ads": sku["base_ads"],
+                "seasonality": sku["seasonality"],
+                "arch_horizon_factor": sku["arch_horizon_factor"],
+                "store_size": size,
+                "demand_lever": 0,
+                "promo_eligible": sku["promo"],
+                "promo_lever": 0,
+                "promo_depth": sku["cannib_pct"],
+            },
+        )
+        open_po = evaluate(
+            asts["f03-open-po-per-store"],
+            {
+                # Ratio of one: a chain-net row already covers every store, so
+                # there is no allocation left to do.
+                "open_po_total": row["open_po"],
+                "store_size": size,
+                "total_store_size": size,
+                "inbound_lever": 0,
+            },
+        )
+        position = evaluate(
+            asts["f04-position"],
+            # The workbook publishes position and open PO but not on-hand, so
+            # on-hand is the difference -- which is how `build_lines` below
+            # states it too. The check is therefore that f04 is consistent with
+            # that reading, not an independent measurement of it.
+            {"on_hand": row["position"] - row["open_po"], "open_po": row["open_po"]},
+        )
+
+        reorder = {
+            "ads": row["ads"],
+            "lead_time_days": sku["lead_d"],
+            "lead_time_adjust": 0,
+            "safety_days": sku["safety_d"],
+            "safety_adjust": 0,
+        }
+        rop = evaluate(asts["f05-rop"], reorder)
+        max_qty = evaluate(
+            asts["f06-maximum-inventory"], {**reorder, "horizon_coverage": hz_cov}
+        )
+
         order_sales = evaluate(
             asts["f09-order-quantity-sales-units"],
             {
@@ -223,30 +283,44 @@ def verify_order_chain(engine, sku_master, store_size) -> dict[str, str]:
                 "pack_factor": sku["pack_factor"],
             },
         )
-        """
-        f11 is deliberately NOT compared against `ENGINE!P` here.
+        dos = evaluate(
+            asts["f20-days-of-supply"],
+            {"ads": row["ads"], "position": row["position"]},
+        )
 
-        They answer different questions and differ by the pack rounding
-        between them. f11 prices what the purchase order actually buys —
-        `CEILING(need / pack) x pack x price`, whole cases. `ENGINE!P` prices
-        the requirement, `ROUND(need x price)`, before any case is rounded up.
-
-        GRC-001: 43,545,600 against 43,507,800, a gap of exactly two units at
-        Rp 18,900. That gap is real inventory the PO will bring in, so both
-        numbers are right and neither should be quietly replaced by the other.
-        f11 is verified against the per-store grid, where whole cases are what
-        gets ordered, by `backend/tests/test_formula_conformance.py`.
-        """
-        for name, computed, stored in (
-            ("order_units", order_sales, row["order_units"]),
+        # f11 is deliberately NOT compared against `ENGINE!P` here.
+        #
+        # They answer different questions and differ by the pack rounding
+        # between them. f11 prices what the purchase order actually buys --
+        # `CEILING(need / pack) x pack x price`, whole cases. `ENGINE!P` prices
+        # the requirement, `ROUND(need x price)`, before any case is rounded
+        # up.
+        #
+        # GRC-001: 43,545,600 against 43,507,800, a gap of exactly two units at
+        # Rp 18,900. That gap is real inventory the PO will bring in, so both
+        # numbers are right and neither should be quietly replaced by the
+        # other. f11 is verified against the per-store grid, where whole cases
+        # are what gets ordered, by `backend/tests/test_formula_conformance.py`.
+        for name, computed, stored, tolerance in (
+            # f01 carries four rounded workbook inputs into one product, so it
+            # reconciles to four decimals rather than to the exact float the
+            # tighter checks below use.
+            ("ads", ads, row["ads"], 1e-4),
+            ("open_po", open_po, row["open_po"], 1e-6),
+            ("position", position, row["position"], 1e-6),
+            ("rop", rop, row["rop"], 1e-6),
+            ("max", max_qty, row["max"], 1e-6),
+            ("dos", dos, row["dos"], 1e-4),
+            ("order_units", order_sales, row["order_units"], 1e-6),
             (
                 "order_buy_units",
                 order_buy,
                 # ceil without importing math: the same integer f10 produces.
                 -(-row["order_units"] // sku["pack_factor"]),
+                1e-6,
             ),
         ):
-            if abs(float(computed) - float(stored)) > 1e-6:
+            if abs(float(computed) - float(stored)) > tolerance:
                 failures.append(
                     f"{row['sku_id']} / {name}: formula {computed!r},"
                     f" workbook {stored!r}"
@@ -265,7 +339,7 @@ def verify_order_chain(engine, sku_master, store_size) -> dict[str, str]:
     return expressions
 
 
-def build_lines(engine, sku_master, detail, store_size):
+def build_lines(engine, sku_master, detail, store_size, hz_cov):
     """One requisition line per SKU, at chain-net level."""
     by_sku = {row["item"]: row for row in detail}
     lines = []
@@ -318,6 +392,13 @@ def build_lines(engine, sku_master, detail, store_size):
                 "store_size": store_size[row["vertical_id"]],
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
+                # The two v8.5 parameters. `engine.js` reads both off the line
+                # -- f01 multiplies by the first, f06 adds the second -- so a
+                # row without them cannot be simulated at all: the evaluator
+                # raises on the missing operand rather than quietly assuming
+                # one, which is what this board did until now.
+                "arch_horizon_factor": sku["arch_horizon_factor"],
+                "horizon_coverage": hz_cov,
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
             }
@@ -564,11 +645,23 @@ def main() -> int:
     reference = {row["vertical_label"]: row for row in reference_rows}
 
     sku_master = {row["sku_id"]: row for row in tables["sku_master"]}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU -- so it's read off any one
+    # ENGINE_STORE row per SKU and carried on sku_master like every other
+    # per-SKU f01 input. Without it this board rebuilt a pre-v8.5 ADS and the
+    # browser's engine threw on the first lever drag.
+    for row in tables["engine_store"]:
+        sku_master[row["sku_id"]]["arch_horizon_factor"] = row["archhz"]
     stores = {row["store_id"]: row for row in tables["stores"]}
     store_size = chain_store_size(tables["stores"])
     constants = {
         **constants_from_cells(
-            tables["constants"], {"dow_sum": "B7", "month_index": "B6"}
+            tables["constants"],
+            # `hz_cov` joins the shared pair now that this board evaluates f06:
+            # the browser must use the same horizon term the rows were built
+            # with or a lever drag would move Max on its own.
+            {"dow_sum": "B7", "month_index": "B6", "hz_cov": "B24"},
         ),
         # Carried by every board, because `warehouse.constants()` serves one
         # block to all of them and the API path must equal this file. This
@@ -578,10 +671,16 @@ def main() -> int:
     }
     check_profile(constants["dow_sum"])
 
-    expressions = verify_order_chain(tables["engine"], sku_master, store_size)
+    expressions = verify_order_chain(
+        tables["engine"], sku_master, store_size, constants["hz_cov"]
+    )
 
     lines = build_lines(
-        tables["engine"], sku_master, tables["replenishment_detail"], store_size
+        tables["engine"],
+        sku_master,
+        tables["replenishment_detail"],
+        store_size,
+        constants["hz_cov"],
     )
     store_rows = build_stores(tables["engine_store"], stores, sku_master)
 

@@ -105,9 +105,9 @@ describe("the fixture reconciles with the A3 sheet", () => {
 
   it("agrees with Inventory Risk on which SKUs need reordering", () => {
     // A3 reads the workbook's own YES/NO; A2 computes `Position < ROP`. They
-    // must select the same 302 rows, or the two boards contradict each other.
+    // must select the same 345 rows, or the two boards contradict each other.
     const need = fixture.lines.filter((line) => line.is_reorder);
-    expect(need).toHaveLength(302);
+    expect(need).toHaveLength(345);
     for (const line of fixture.lines) {
       expect(line.is_reorder).toBe(line.position < line.rop);
     }
@@ -225,9 +225,9 @@ describe("ReplenishmentDashboard", () => {
   it("opens on what needs ordering, not on the whole assortment", async () => {
     await renderSettled();
 
-    // 302 of 800 lines sit below ROP; a buyer opening this board wants those.
+    // 345 of 800 lines sit below ROP; a buyer opening this board wants those.
     expect(screen.getByLabelText("Only what needs ordering")).toBeChecked();
-    expect(within(kpiTile("SKUs to reorder")).getByText("302")).toBeInTheDocument();
+    expect(within(kpiTile("SKUs to reorder")).getByText("345")).toBeInTheDocument();
   });
 
   it("labels the source rather than presenting workbook figures as live", async () => {
@@ -264,7 +264,7 @@ describe("ReplenishmentDashboard", () => {
     await waitFor(() => {
       const rows = document.querySelectorAll(".po-row");
       expect(rows.length).toBeGreaterThan(0);
-      expect(rows.length).toBeLessThan(302);
+      expect(rows.length).toBeLessThan(345);
     });
   });
 
@@ -348,7 +348,7 @@ describe("requirement versus inbound supply (spec 4)", () => {
     }
 
     /*
-     * Over every line in scope, not only the 302 being ordered. The chart
+     * Over every line in scope, not only the 345 being ordered. The chart
      * answers "can the chain cover its demand", which the reorder subset
      * cannot: those are by definition the lines that cannot.
      */
@@ -440,12 +440,12 @@ describe("What-If (spec 9)", () => {
       expect(screen.getByText(/simulated order, not one to send/)).toBeInTheDocument();
     });
 
-    // A longer lead raises Max, so more lines fall below ROP than the 302 the
+    // A longer lead raises Max, so more lines fall below ROP than the 345 the
     // workbook stores.
     const reordered = Number(
       within(kpiTile("SKUs to reorder")).getByText(/^\d+$/).textContent,
     );
-    expect(reordered).toBeGreaterThan(302);
+    expect(reordered).toBeGreaterThan(345);
   });
 
   it("returns to the workbook position when the scenario is cleared", async () => {
@@ -460,7 +460,7 @@ describe("What-If (spec 9)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Back to workbook" }));
 
     await waitFor(() => {
-      expect(within(kpiTile("SKUs to reorder")).getByText("302")).toBeInTheDocument();
+      expect(within(kpiTile("SKUs to reorder")).getByText("345")).toBeInTheDocument();
     });
     expect(screen.queryByText(/simulated order/)).toBeNull();
   });
@@ -483,7 +483,7 @@ describe("the simulation at rest", () => {
     const { simulation } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
     expect(simulation.applied).toBe(false);
-    // Identity, not equality. Re-running 302 lines at zero levers would land
+    // Identity, not equality. Re-running 345 lines at zero levers would land
     // within a float ulp of the stored figures and report a delta on a board
     // nobody has touched.
     expect(simulation.scenario).toBe(simulation.baseline);

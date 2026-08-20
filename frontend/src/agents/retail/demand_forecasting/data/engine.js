@@ -26,13 +26,16 @@
 
 import { evaluate, parse } from "../../../../formulas/expression.js";
 import { DEFAULT_DEMAND_LEVERS, normalizeDemandLevers } from "./contract.js";
+import { REPLENISH_STATES } from "../../common/inventoryStates.js";
 
 const REQUIRED_FORMULAS = [
   "f01-ads-per-store",
   "f03-open-po-per-store",
   "f04-position",
   "f05-rop",
+  "f07-inventory-state",
   "f08-forecast-7-days",
+  "f20-days-of-supply",
 ];
 
 /** True when nothing has been moved, so the board can skip recomputing. */
@@ -111,14 +114,41 @@ export function createDemandEngine(formulas, weekFactor) {
       safety_adjust: lever.safety,
     });
 
+    const dos = run("f20-days-of-supply", { ads, position });
+
+    const state = run("f07-inventory-state", {
+      position,
+      rop,
+      days_of_supply: dos,
+      perishable: item.perishable,
+      shelf_life_days: item.shelf_life_days,
+      velocity: item.growth,
+    });
+
     return {
       ...item,
       ads,
       open_po: openPo,
       position,
       rop,
+      dos,
+      state,
       forecast_7d: run("f08-forecast-7-days", { ads, week_factor: weekFactor }),
-      is_stockout_risk: position < rop,
+      /*
+       * The flag follows f07's state rather than re-testing `position < rop`.
+       * f07 assigns Stockout below 0.6 x ROP and Low below ROP, so those two
+       * states ARE the reorder zone by construction -- a second comparison
+       * can drift from f07, reading it off the state cannot. Same rule and
+       * same source as `inventory_risk/data/engine.js` and as this board's
+       * own Python baseline, so the two boards cannot report a different
+       * "Stockout-risk SKUs" under the same levers.
+       *
+       * `is_trending` is deliberately absent: fc10 reads `is_viral` and
+       * `growth_index`, neither of which any lever touches, so the spread
+       * above carries the baseline's catalogue-evaluated answer through
+       * unchanged rather than re-running a rule that cannot move.
+       */
+      is_stockout_risk: REPLENISH_STATES.includes(state),
     };
   };
 }

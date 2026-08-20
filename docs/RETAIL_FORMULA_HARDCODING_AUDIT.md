@@ -31,7 +31,7 @@ fixes it in the UI.
 
 | Board | Ships | Evaluates | Dead in payload |
 |---|---|---|---|
-| A1 Demand Forecasting | 8 | 5 | f06, f07, f20 |
+| A1 Demand Forecasting | 9 | 8 | f06 |
 | A2 Inventory Risk | 11 | 11 | — |
 | A3 Replenishment | 9 | 9 | — |
 | A3.1 Replenishment Detail | 6 | **0** | all six |
@@ -130,13 +130,26 @@ retypes `position * price`:
 - [assortment_optimization/dashboard.py:381](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L381), [:395](../backend/src/llm/agents/retail/assortment_optimization/dashboard.py#L395)
 - [pricing_markdown/dashboard.py:353-355](../backend/src/llm/agents/retail/pricing_markdown/dashboard.py#L353-L355) — documents the shortcut ("trivial enough not to round-trip through the expression engine"), and drops f21's ROUND with it
 
-### f08 in A1's default scope
+### f08 in A1's default scope — fixed
 
-[demand_forecasting/dashboard.py:283](../backend/src/llm/agents/retail/demand_forecasting/dashboard.py#L283)
-is `_float(row.get("forecast_7d", ads * 7.45))`. The chain-grain query never
-selects `forecast_7d`, so the All-Stores board — the default view — always
-takes the hardcoded fallback. Only the store-scoped branch reads the stored
-f08 column.
+**Resolved.** It was `_float(row.get("forecast_7d", ads * 7.45))`; the
+chain-grain query never selects `forecast_7d`, so the All-Stores board — the
+default view — always took the hardcoded fallback, and the store-scoped branch
+read a stored answer instead of evaluating the rule.
+
+`build_item()` now evaluates f01 → f08 on both branches, with `week_factor`
+supplied as f08's parameter from `warehouse.DOW_SUM` rather than typed into the
+multiplication. Editing f08 in the Formula Manager moves the baseline tile:
+doubling the expression takes the chain total from 1,809,147 to 3,618,294. It
+previously moved nothing until a What-If lever was dragged, at which point the
+tile jumped — baseline and scenario were resolving two different rules.
+
+The same pass moved A1's other two derivable KPI predicates onto the
+catalogue: the Stockout-risk flag now follows `f07`'s state (as A2's does)
+instead of a retyped `position < rop`, and `Predicted to trend` evaluates the
+new `fc10-trending-sku` instead of `viral or growth > 1.25` typed in Python and
+in the fixture builder. No displayed figure changed — see
+[A1_KPI_FORMULA_PAIRING.md](./A1_KPI_FORMULA_PAIRING.md).
 
 ### f05 inverted by hand
 
@@ -172,7 +185,10 @@ instead of contributing zero.
 Payload weight that nothing reads. Each is a rule the board claims to run and
 does not:
 
-- **A1 Demand** — f06, f07, f20. `state` arrives as a stored column from A2; f07 appears only in a comment.
+- **A1 Demand** — f06 only, as of the A1 KPI pass. f07 and f20 are now
+  evaluated on both paths (they produce the Stockout-risk tile's state and
+  its days-of-cover sparkline), and `state` is computed rather than read as
+  a stored column. f06 remains shipped and unread: no A1 figure needs Max.
 - **A6 Assortment** — f12. No `at_risk` reference exists in the A6 frontend.
 - **A3.1 Detail** — all six (see section B).
 

@@ -38,8 +38,8 @@ describe("the engine at the workbook's own lever setting", () => {
    * changes its own numbers the moment a slider is touched and put back, so it
    * gets its own assertion rather than riding along with the quantities.
    */
-  it("reproduces both order values and the saving on all 302 ordered lines", () => {
-    expect(ordered).toHaveLength(302);
+  it("reproduces both order values and the saving on all 345 ordered lines", () => {
+    expect(ordered).toHaveLength(345);
 
     for (const line of ordered) {
       const out = applyLevers(line, BASELINE_LEVERS);
@@ -106,7 +106,7 @@ describe("what the levers actually reach", () => {
       (line) => applyLevers(line, { ...BASELINE_LEVERS, lead: 6 }).is_reorder,
     ).length;
 
-    expect(base).toBe(302);
+    expect(base).toBe(345);
     expect(stretched).toBeGreaterThan(base);
   });
 

@@ -227,6 +227,33 @@ def chain_store_size(connection: Any) -> dict[str, float]:
     return {row["vertical_id"]: float(row["total"]) for row in rows}
 
 
+def arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    The warehouse stores the finished `ads` and the three inputs beside it, but
+    not the factor between them, so it is divided back out. At the workbook's
+    own lever setting f01 reduces to
+
+        ads = base_ads x seasonality x arch_horizon_factor x store_size
+
+    because the promo branch returns 1 when `Constants` B17 is zero. The
+    division is therefore exact, not a fit.
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN that would spread through
+    every KPI the moment a lever moved.
+
+    Lives here rather than on one board because two boards now need it: Agent 2
+    reads `dim_item.arch_horizon_factor` and falls back to this, and Agent 3
+    does the same. A second copy of a numeric recovery rule is the shape of bug
+    this package keeps paying for.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
+
+
 # Day-of-week demand profile, Monday first.
 #
 # THE CANONICAL COPY. The workbook stores only their sum -- `Constants` B7 =
@@ -257,11 +284,11 @@ DOW_SUM = 7.45
 # driving hzCov off a horizon the reader can change would move every Max level
 # away from the sheet it is supposed to reconcile against.
 #
-# Deliberately NOT returned by `constants()` below: only Agent 2 evaluates f06,
-# and only its fixture carries `hz_cov`. A board layers its own constants onto
-# the shared set at the point it builds its payload -- the same way Agent 1
-# adds `interval_z` -- so a value one board needs does not silently widen the
-# contract of five that do not.
+# Deliberately NOT returned by `constants()` below: only Agents 2 and 3
+# evaluate f06, and only their fixtures carry `hz_cov`. A board layers its own
+# constants onto the shared set at the point it builds its payload -- the same
+# way Agent 1 adds `interval_z` -- so a value two boards need does not silently
+# widen the contract of the four that do not.
 HORIZON_COVERAGE = 4.0
 
 
@@ -429,6 +456,7 @@ __all__ = [
     "SNAPSHOT_DATE",
     "STATE_ORDER",
     "SUPPORTED_FILTERS",
+    "arch_horizon_factor",
     "chain_store_size",
     "constants",
     "envelope",
