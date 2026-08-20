@@ -215,6 +215,16 @@ def main() -> int:
         row["vendor"]: row["vendor_account"] for row in tables["vendors"]["rows"]
     }
 
+    # ENGINE_STORE!archhz -- f01's archetype/horizon multiplier. It is a
+    # per-SKU constant (identical across all 20 stores for a given SKU), but
+    # the workbook precomputes it at store grain, so it is read off any one row
+    # per SKU. Without it every live query fell back to a factor of 1.0 and
+    # returned an ADS the workbook never calculated. Needs
+    # sql/retail/008_add_dim_item_arch_horizon_factor.sql applied first.
+    arch_horizon_of = {
+        row["sku_id"]: row["archhz"] for row in tables["engine_store"]["rows"]
+    }
+
     items = []
     unresolved: list[str] = []
     for row in tables["sku_master"]["rows"]:
@@ -273,6 +283,9 @@ def main() -> int:
                 # formula's archetype/horizon factor -- needs
                 # sql/retail/006_add_dim_item_archetype_pattern.sql applied first.
                 "archetype_pattern": row["pattern_archetype"],
+                # The multiplier that label resolves to, which is what f01
+                # actually reads -- see `arch_horizon_of` above.
+                "arch_horizon_factor": arch_horizon_of.get(row["sku_id"]),
             }
         )
 

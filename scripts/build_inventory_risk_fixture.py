@@ -577,15 +577,17 @@ def build_items(
                 # the "Data di workbook" column beside it do not agree, and the
                 # spec presents them as if they did:
                 #
-                #   dos > 15                -> 40   state == "Overstock"  -> 40
-                #   growth < 1 and dos > 10 -> 62   state == "Slow-mover" -> 51
+                #   dos > 15                -> 26   state == "Overstock"  -> 26
+                #   growth < 1 and dos > 10 -> 43   state == "Slow-mover" -> 37
                 #
                 # Overstock agreed only by luck of this dataset (no perishable
                 # SKU sits above 15 days without being Expiry first). Slow-mover
-                # never agreed: 11 SKUs satisfy the raw predicate but were
+                # never agreed: 6 SKUs satisfy the raw predicate but were
                 # already claimed by a higher-severity state, so the card read
-                # 62 while the state chart and the register below it showed 51.
-                # The board contradicted itself.
+                # 43 while the state chart and the register below it showed 37.
+                # The board contradicted itself. (The counts move with the
+                # dataset -- they were 62 and 51 before the fixture was
+                # regenerated; the disagreement is the point, not the number.)
                 "is_stockout_risk": row["position"] < row["rop"],
                 "is_overstock": state == "Overstock",
                 "is_slow_mover": state == "Slow-mover",

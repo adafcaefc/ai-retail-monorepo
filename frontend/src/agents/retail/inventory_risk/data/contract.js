@@ -379,8 +379,10 @@ export const KPI_FORMULAS = Object.freeze({
   expiry_value: "Σ Expiry-units at-risk value, state = Expiry",
   // "not already worse off" is the whole difference between this count and a
   // bare growth/DoS predicate: a slow SKU that is also short of stock is
-  // counted once, under the more urgent state. Reading 51 here and 62 from the
+  // counted once, under the more urgent state. Reading 37 here and 43 from the
   // raw predicate is not a discrepancy — states are exclusive by severity.
+  // (The gap is a property of the dataset, not a fixed number; it was 51 vs 62
+  // before the fixture was regenerated. The argument is what matters.)
   slow_mover_skus:
     "count( state = Slow-mover: growth < 1.0, DoS > 10," +
     " not already worse off )",

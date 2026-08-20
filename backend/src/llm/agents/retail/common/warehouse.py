@@ -251,6 +251,18 @@ MONTH_INDEX = 6
 # The sum the seven factors above must reproduce (`Constants` B7).
 DOW_SUM = 7.45
 
+# Horizon coverage in days (`Constants` B24, v8.5), the third term in f06's
+# reorder window: Max = ADS x (lead + safety + hzCov). Named here rather than
+# in one board because the fixture builders all read B24 off the workbook, and
+# a board that guessed it would compute a Max the workbook never published.
+#
+# Deliberately NOT returned by `constants()` below: only Agent 2 evaluates f06,
+# and only its fixture carries `hz_cov`. A board layers its own constants onto
+# the shared set at the point it builds its payload -- the same way Agent 1
+# adds `interval_z` -- so a value one board needs does not silently widen the
+# contract of five that do not.
+HZ_COV = 4.0
+
 
 def constants() -> dict[str, Any]:
     """Model parameters, from the catalogue's own reference rather than a table.
@@ -410,6 +422,7 @@ def envelope(agent: str, note: str) -> dict[str, Any]:
 
 
 __all__ = [
+    "HZ_COV",
     "REPLENISH_STATES",
     "SCHEMA",
     "SNAPSHOT_DATE",
