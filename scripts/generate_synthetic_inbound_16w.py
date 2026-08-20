@@ -41,7 +41,7 @@ volume, which is how it works: a store that turns over enough to fill a truck
 every week gets one, and the smallest stores are folded into a fortnightly
 consolidation run.
 
-    the smallest 5% of stores by volume    every 2 weeks   (8 of 160)
+    the smallest 12% of stores by volume   every 2 weeks   (19 of 160)
     every other store                      every week
 
 All of a store's SKUs travel on that store's calendar, whatever route they
@@ -58,8 +58,10 @@ rather than buried:
 
     30% of stores fortnightly  ->  arrivals stray 8.96% from weekly demand
     20%                        ->  4.81%
+    15%                        ->  3.23%
+    12%                        ->  2.37%   <- chosen
     10%                        ->  1.89%
-     5%                        ->  0.81%   <- chosen
+     5%                        ->  0.81%
      3%                        ->  0.36%   below the floor gate, lines merge
 
 Earlier revisions batched by route instead. Putting all 2,000 cross-dock rows
@@ -67,7 +69,11 @@ on one fortnightly beat made arrivals swing 8.1% either side of demand, and an
 earlier set that also batched the 12,500 flow rows swung them 13x between
 alternating weeks. Staggering the phase so the runs load evenly collapses the
 ripple to about 0.3%, which draws the inbound line straight on top of the
-demand line and says nothing. Five percent sits between the two: a visible undulation rather than a wave.
+demand line and says nothing. Twelve percent sits between the two. Note that how visible this is on screen
+also depends on the chart's y-axis: `RequirementVsInboundPanel` frames the axis
+on the data rather than anchoring it at zero, because demand and inbound are
+both around 1.8M and a zero-anchored axis compresses the whole comparison into
+the top tenth of the panel.
 
 A delivery covers demand from its own week until the next one, rounded to
 whole cases (`pack_factor`) because a purchase order buys cases, not units.
@@ -115,7 +121,7 @@ ROUTES: tuple[tuple[str, int], ...] = (
 # Timing. The smallest stores share a fortnightly consolidation run; everyone
 # else gets a weekly truck. See the module docstring for what this share does
 # to the drawn line, and why it is 10% rather than 30% or 0%.
-FORTNIGHTLY_STORE_SHARE = 0.05
+FORTNIGHTLY_STORE_SHARE = 0.12
 FORTNIGHTLY_CADENCE = 2
 
 # The three gates this generator refuses to write a file without.

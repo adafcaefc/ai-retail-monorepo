@@ -9338,7 +9338,10 @@ button.po-kpi {
    ========================================================================== */
 
 .po-chart--tall {
-  height: 280px;
+  /* Requirement vs inbound supply plots three weekly rates in one narrow band
+     across 33 points. It needs the extra height for the curves to separate --
+     see the panel's own note on why its y-axis is framed on the data. */
+  height: 380px;
 }
 .po-chart--sim {
   height: 200px;

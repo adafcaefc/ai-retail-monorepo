@@ -128,6 +128,31 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
     );
   }
 
+  /*
+   * The y-axis is framed on the data, not anchored at zero.
+   *
+   * Every plotted series here is a weekly rate in the same narrow band --
+   * demand runs 1.60M to 1.91M and inbound tracks it within a few percent --
+   * so a zero-anchored axis spends 80% of its height on empty space below the
+   * lines and squeezes the entire comparison into the top tenth of the panel.
+   * At that scale a real 2.4% swing in supply is a couple of pixels and reads
+   * as a flat line.
+   *
+   * This is a comparison of two like quantities, not a magnitude chart, so
+   * framing on the data is the honest choice rather than a flattering one --
+   * and the axis ticks state the range they cover, so nothing is hidden. The
+   * padding keeps the curves off the top and bottom edges.
+   */
+  const plotted = requirement.points.flatMap((point) =>
+    [point.actual_demand, point.requirement, point.inbound].filter(
+      (value) => typeof value === "number",
+    ),
+  );
+  const low = plotted.length ? Math.min(...plotted) : 0;
+  const high = plotted.length ? Math.max(...plotted) : 0;
+  const padding = (high - low) * 0.2 || high * 0.05 || 1;
+  const domain = [Math.max(0, low - padding), high + padding];
+
   /* A3 spec section 4, `#main-stats`. */
   const metrics = [
     ["Reorder", formatUnits(kpis.skus_to_reorder, language)],
@@ -166,6 +191,7 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
               axisLine={{ stroke: "var(--line)" }}
             />
             <YAxis
+              domain={domain}
               tick={{ fontSize: 10, fill: "var(--muted)" }}
               tickLine={false}
               axisLine={false}
