@@ -7,7 +7,7 @@ Run it yourself:
 Input:  resources/dbtemp/schema_with_data.json  (produced by extract_workbook_schema.py)
 Output: frontend/src/agents/retail/pricing_markdown/data/fixture.json
 
-WHY THIS DOES NOT TRUST THE "A5 Pricing & Markdown" SHEET
+WHY THIS DOES NOT TRUST THE "A5 Pricing & Markdown" SHEET'S OWN CELLS
 `Dataset_AI_Retail.xlsx` (untracked, repo root) carries a full audit of this
 workbook (sheets "AUDIT Root Cause", "AUDIT Fix Register", "AUDIT
 Before-After"). Root cause RC-2 there: A5!C6:G13 (avg depth %, at-risk,
@@ -18,35 +18,50 @@ against that sheet and found the sheet's numbers off by 4-8x, non-uniformly,
 which is what a paste-once snapshot looks like next to a live recompute).
 The same root cause is flagged for A6, A8 and A9.
 
-The audit's own recommended fix (F-05 / T-12) is to source at-risk and
-recoverable value from ENGINE_STORE (store grain) via SUMIFS rather than
-from the stale A5 sheet or the chain-net ENGINE table. This script follows
-that recommendation:
+ROW GRAIN, NOT A PER-SKU ROLLUP
+The A5 sheet's own concept of "Markdown candidates" is a count of ENGINE_STORE
+*rows* in a candidate state (1,638: Expiry 153 + Overstock 730 + Slow-mover
+755) -- not a count of SKUs that merely touch one of those states somewhere
+among their ~20 stores (170, this script's own earlier and undercounting
+version). `items` here is therefore one row per ENGINE_STORE record, the same
+grain the sheet itself uses -- every KPI (candidates, at-risk, recoverable,
+write-off, avg depth, comp idx) is summed or averaged directly over these rows,
+no SKU-level rollup in between.
 
-  - at_risk_value / recoverable_value per SKU = SUM across that SKU's stores
-    of ENGINE_STORE!at_risk / ENGINE_STORE!markdown_recoverable (the AA
-    column, renamed by the workbook fix from "At-risk value" to "Markdown
-    recoverable" -- it was always the recoverable figure, mislabeled).
-  - A SKU is a markdown candidate if ANY of its stores show
-    state in {Expiry, Overstock, Slow-mover}; the displayed `state` label is
-    the candidate state carrying the largest at-risk value for that SKU.
-  - Descriptive, non-monetary fields (position, price, ads, dos, rop, max,
-    vendor, brand, category) are read from the chain-net ENGINE table, which
-    RC-2 does not flag as broken -- only the money-at-risk figures were.
+  - `at_risk_value` = that row's own ENGINE_STORE!At-risk (column T).
+  - A row is a markdown candidate iff its own `state` is in
+    {Expiry, Overstock, Slow-mover}. No aggregation across a SKU's stores.
+  - Descriptive, non-monetary fields not carried per-row on ENGINE_STORE
+    (name, category label, brand, vendor, comp_idx, elasticity, ...) are
+    joined from SKU_Master, constant across a SKU's ~20 rows.
+
+`recoverable_value` IS COMPUTED, NOT READ FROM COLUMN AA
+The audit's recommended fix (F-05 / T-12) was to read recoverable value from
+ENGINE_STORE!markdown_recoverable ("column AA, renamed from 'At-risk value' to
+'Markdown recoverable'"). That rename never reached the currently pinned v8.5
+workbook: column AA's header there is still literally "At-risk value", and its
+values are byte-identical to column T for every row checked -- it is a
+duplicate of gross at-risk, not a distinct recoverable figure, and reading it
+as `markdown_recoverable` KeyErrors (confirmed) because no such column exists
+in the current extraction. So `recoverable_value` is computed here instead,
+via f23-markdown-at-risk-gross -> f14-recoverable-at-risk-value at zero
+levers -- the exact same two formulas `frontend/.../pricing_markdown/data/
+engine.js`'s What-If engine already runs when a lever moves. Baseline and
+simulated recoverable now share one computation instead of two that could
+silently disagree.
 
 VALIDATION
-Not a reconciliation against the (known-stale) A5 sheet. Instead, the four
-structural trials from AUDIT Fix Register that apply to inventory rows,
+Not a reconciliation against the (known-stale) A5 sheet cells. Instead, the
+four structural trials from AUDIT Fix Register that apply to inventory rows,
 re-run here against the freshly extracted ENGINE_STORE:
   T-01  Position = OnHand + OpenPO
   T-02  Max > ROP
   T-03  AtRisk <= InventoryValue
   T-04  Healthy state must carry AtRisk = 0
-Any violation aborts the build. The candidate-scope recoverable total is also
-checked against the audit's own verified "Before-After: rumus hidup" figure
-for ENGINE_STORE!AA (Rp 58,301,830,268) -- a live-recomputed number the
-audit already confirmed independently, not this script re-deriving its own
-expectation and then agreeing with itself.
+Any violation aborts the build. `markdown_candidates` is also checked against
+1,638 exactly -- the count independently confirmed against both the raw
+`.xlsx` (via openpyxl) and this JSON extract, three ways, before this script
+was rewritten to this grain.
 
 WHY NOT backend/src/formulas/repository.py
 Agent 4's fixture builder loads its formula catalogue via
@@ -105,7 +120,12 @@ SOURCE_WORKBOOK = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 
 CANDIDATE_STATES = ("Expiry", "Overstock", "Slow-mover")
 STATE_ORDER = ("Stockout", "Low", "Expiry", "Overstock", "Slow-mover", "Healthy")
-CANDIDATE_PRIORITY = {"Expiry": 0, "Overstock": 1, "Slow-mover": 2}
+
+# Independently confirmed against the pinned v8.5 workbook three ways (raw
+# .xlsx via openpyxl, this JSON extract, per-state row counts summing to it)
+# before this script was rewritten to row grain. A mismatch means the
+# extraction or the workbook itself changed underneath this script.
+EXPECTED_MARKDOWN_CANDIDATES = 1638
 
 # f14's own baseline depth constants at markdown_lever=0 (see
 # resources/dbtemp/formula.json's f14-recoverable-at-risk-value expression).
@@ -133,11 +153,6 @@ CATALOGUE_FORMULAS = (
     "f22-expiry-units",
     "f23-markdown-at-risk-gross",
 )
-
-# The audit's own verified "live formula" total for ENGINE_STORE!markdown
-# recoverable, across every candidate-state row chain-wide (AUDIT
-# Before-After, "Markdown recovery (ENGINE_STORE!AA)", SESUDAH column).
-AUDIT_VERIFIED_RECOVERABLE_TOTAL = 58_301_830_268
 
 
 def load_tables() -> dict[str, list[dict[str, Any]]]:
@@ -264,67 +279,28 @@ def run_structural_trials(engine_store: list[dict[str, Any]]) -> list[str]:
     return failures
 
 
-def aggregate_markdown_by_sku(
-    engine_store: list[dict[str, Any]],
-) -> dict[str, dict[str, Any]]:
-    """Roll ENGINE_STORE up to one markdown summary per SKU.
-
-    `at_risk_value` sums every store (a SKU with any non-healthy store
-    carries exposure there); `recoverable_value` sums only the
-    candidate-state stores, since markdown_recoverable is already 0
-    elsewhere by construction (T-04-adjacent: verified empirically -- no
-    non-candidate row in this extraction carries a nonzero recoverable
-    value). `state` is a DISPLAY label only: the candidate state contributing
-    the most at-risk value for that SKU, chosen by CANDIDATE_PRIORITY when
-    tied. It does not gate which stores are summed.
-    """
-    by_sku: dict[str, dict[str, Any]] = {}
-    for row in engine_store:
-        sku = row["sku_id"]
-        bucket = by_sku.setdefault(
-            sku,
-            {"at_risk_value": 0.0, "recoverable_value": 0.0, "candidate_states": {}},
-        )
-        bucket["at_risk_value"] += _num(row["at_risk"])
-        state = row["state"]
-        if state in CANDIDATE_STATES:
-            bucket["recoverable_value"] += _num(row["markdown_recoverable"])
-            bucket["candidate_states"][state] = bucket["candidate_states"].get(state, 0.0) + _num(row["at_risk"])
-
-    for sku, bucket in by_sku.items():
-        candidates = bucket.pop("candidate_states")
-        if candidates:
-            bucket["is_markdown_candidate"] = True
-            bucket["display_state"] = max(
-                candidates.items(),
-                key=lambda kv: (kv[1], -CANDIDATE_PRIORITY[kv[0]]),
-            )[0]
-        else:
-            bucket["is_markdown_candidate"] = False
-            bucket["display_state"] = None
-        bucket["write_off_value"] = max(0.0, bucket["at_risk_value"] - bucket["recoverable_value"])
-
-    return by_sku
-
-
 def build_items(
-    engine: list[dict[str, Any]],
+    engine_store: list[dict[str, Any]],
     sku_master: list[dict[str, Any]],
     verticals: list[dict[str, Any]],
-    markdown_by_sku: dict[str, dict[str, Any]],
     lead_times: dict[str, float],
+    hz_cov: float,
+    asts: dict[str, Any],
 ) -> list[dict[str, Any]]:
-    """One row per SKU. Descriptive fields from ENGINE (chain-net, not
-    flagged by RC-2); at-risk/recoverable/write-off/candidacy from the
-    ENGINE_STORE aggregation above.
+    """One row per ENGINE_STORE record -- see the module docstring for why.
+
+    `recoverable_value`/`write_off_value` are computed per row via
+    f23-markdown-at-risk-gross -> f14-recoverable-at-risk-value at zero
+    levers (`markdown_lever=0`), not read from a workbook column -- see the
+    module docstring for why that column no longer exists to read.
     """
     by_sku = {row["sku_id"]: row for row in sku_master}
     vertical_order = {row["vertical_id"]: i for i, row in enumerate(verticals)}
     ordered = sorted(
-        engine,
+        engine_store,
         key=lambda row: (
             vertical_order.get(row.get("vertical_id"), len(verticals)),
-            -markdown_by_sku.get(row["sku_id"], {}).get("at_risk_value", 0.0),
+            -_num(row.get("at_risk")),
         ),
     )
 
@@ -334,57 +310,83 @@ def build_items(
         if not master:
             continue
 
-        md = markdown_by_sku.get(row["sku_id"], {
-            "at_risk_value": 0.0, "recoverable_value": 0.0, "write_off_value": 0.0,
-            "is_markdown_candidate": False, "display_state": None,
-        })
+        state = row["state"]
         position = _num(row["position"])
         price = _num(row["price"])
+        ads = _num(row["ads"])
         max_inventory = _num(row["max"])
         shelf_life_days = _num(master.get("expiry_d"))
-        # Chain state (ENGINE!state) as the fallback label for non-candidates,
-        # since the state-distribution chart (spec section 6) needs every SKU
-        # labelled, not only the 234 markdown candidates.
-        display_state = md["display_state"] or row["state"]
+        elasticity = _num(master.get("elasticity"))
+        at_risk_value = _num(row["at_risk"])
+
+        gross = evaluate(
+            asts["f23-markdown-at-risk-gross"],
+            {
+                "state": state, "position": position, "ads": ads,
+                "shelf_life_days": shelf_life_days, "max_inventory": max_inventory,
+                "price": price,
+            },
+        )
+        recoverable_value = evaluate(
+            asts["f14-recoverable-at-risk-value"],
+            {"gross": gross, "state": state, "elasticity": elasticity, "markdown_lever": 0},
+        )
+        write_off_value = max(0.0, at_risk_value - recoverable_value)
+
+        # This row already IS one store, so f01's store_size is that store's
+        # own size_index (not the vertical total a chain-net item would need),
+        # and f03's ratio is 1 at rest -- see engine.js's What-If cascade.
+        store_size = _num(row.get("size"))
 
         items.append(
             {
                 "sku_id": row["sku_id"],
+                "store_id": row["store_id"],
                 "name": master.get("item", row["sku_id"]),
                 "vertical_id": row["vertical_id"],
                 "category_id": row["cat_id"],
                 "category_label": master.get("category", row["cat_id"]),
                 "brand": master.get("brand", ""),
                 "vendor": master.get("vendor", ""),
-                "state": display_state,
-                "severity_rank": STATE_ORDER.index(display_state) if display_state in STATE_ORDER else len(STATE_ORDER),
-                "is_markdown_candidate": md["is_markdown_candidate"],
+                "cluster": row.get("cluster"),
+                "channel": row.get("channel"),
+                "state": state,
+                "severity_rank": STATE_ORDER.index(state) if state in STATE_ORDER else len(STATE_ORDER),
+                "is_markdown_candidate": state in CANDIDATE_STATES,
                 "position": position,
                 "rop": _num(row["rop"]),
                 "max": max_inventory,
                 "dos": _num(row["dos"]),
-                "ads": _num(row["ads"]),
+                "ads": ads,
                 "price": price,
                 "inv_value": _num(row["inv_value"]),
-                "at_risk_value": round(md["at_risk_value"], 2),
-                "recoverable_value": round(md["recoverable_value"], 2),
-                "write_off_value": round(md["write_off_value"], 2),
-                "expiry_units": _num(row.get("expiry_u")),
+                "at_risk_value": round(at_risk_value, 2),
+                "recoverable_value": round(recoverable_value, 2),
+                "write_off_value": round(write_off_value, 2),
+                "expiry_units": _num(row.get("expiry")),
                 "shelf_life_days": shelf_life_days,
-                "is_perishable": str(master.get("perishable", "N")).strip().upper() == "Y",
-                "perishable": master.get("perishable", "N"),
+                "is_perishable": str(row.get("perish", master.get("perishable", "N"))).strip().upper() == "Y",
+                "perishable": row.get("perish", master.get("perishable", "N")),
                 "growth": _num(master.get("growth")),
                 "comp_idx": _num(master.get("comp_idx")),
                 # f14-recoverable-at-risk-value's own input, for the browser
                 # engine's What-If re-simulation (see engine.js).
-                "elasticity": _num(master.get("elasticity")),
+                "elasticity": elasticity,
                 "open_po": _num(row.get("open_po")),
-                "on_hand": position - _num(row.get("open_po")),
+                "on_hand": _num(row.get("on_hand")),
                 # What-If cascade inputs for the browser engine (Task 4).
+                # arch_horizon_factor/horizon_coverage are required by
+                # f01-ads-per-store/f06-maximum-inventory respectively (v8.5)
+                # -- omitting them crashes the engine the instant a lever
+                # moves, the same defect fixed today in Replenishment's
+                # fixture builder.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
-                "store_size": _num(master.get("sum_vert_size")),
-                "stock_factor": _num(master.get("stockf")),
+                "arch_horizon_factor": _num(row.get("archhz")),
+                "store_size": store_size,
+                "total_store_size": store_size,
+                "horizon_coverage": hz_cov,
+                "stock_factor": _num(row.get("stockf")),
                 "onhand_days": _num(master.get("onhand_days")),
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
@@ -615,9 +617,8 @@ def main() -> int:
         return 1
 
     stores_by_id = {row["store_id"]: row for row in tables["stores"]}
-    markdown_by_sku = aggregate_markdown_by_sku(tables["engine_store"])
     items = build_items(
-        tables["engine"], tables["sku_master"], tables["verticals"], markdown_by_sku, lead_times
+        tables["engine_store"], tables["sku_master"], tables["verticals"], lead_times, hz_cov, asts,
     )
     for item in items:
         item["best_action_tab"] = classify(item)
@@ -628,15 +629,12 @@ def main() -> int:
     filter_options = build_filter_options(tables["verticals"], tables["sku_master"], tables["stores"])
 
     candidates = [i for i in items if i["is_markdown_candidate"]]
-    if not candidates:
-        print("FAIL  no markdown candidates found in engine_store")
-        return 1
-
-    shipped_recoverable = sum(i["recoverable_value"] for i in candidates)
-    if abs(shipped_recoverable - AUDIT_VERIFIED_RECOVERABLE_TOTAL) / AUDIT_VERIFIED_RECOVERABLE_TOTAL > 0.005:
+    if len(candidates) != EXPECTED_MARKDOWN_CANDIDATES:
         print(
-            "FAIL  recoverable value does not match the audit's verified total: "
-            f"shipped Rp {shipped_recoverable:,.0f} vs audit Rp {AUDIT_VERIFIED_RECOVERABLE_TOTAL:,.0f}"
+            f"FAIL  markdown_candidates is {len(candidates)}, expected exactly "
+            f"{EXPECTED_MARKDOWN_CANDIDATES} (Expiry/Overstock/Slow-mover rows "
+            "in ENGINE_STORE) -- the workbook or extraction changed underneath "
+            "this script"
         )
         return 1
 
@@ -647,12 +645,13 @@ def main() -> int:
         "source_workbook": SOURCE_WORKBOOK,
         "is_mock": True,
         "note": (
-            "Workbook demonstration data, not a live ERP position. At-risk and "
-            "recoverable value are summed from ENGINE_STORE (store grain) per "
-            "AUDIT Fix Register F-05, not read from the A5 sheet's own cells, "
-            "which a prior audit found to hold stale hardcoded values. Store/"
-            "cluster/channel charts are gross and will not reconcile 1:1 with "
-            "the chain-net headline."
+            "Workbook demonstration data, not a live ERP position. `items` is "
+            "one row per ENGINE_STORE record (SKU x store, 16,000 rows) -- the "
+            "A5 sheet's own grain -- not a chain-net SKU rollup, so every KPI "
+            "sums/averages directly over these rows. At-risk value is read "
+            "from ENGINE_STORE; recoverable value is computed via f23/f14 at "
+            "zero levers, not read from the A5 sheet's own cells, which a "
+            "prior audit found to hold stale hardcoded values."
         ),
         "formulas": formulas,
         "filter_options": filter_options,
@@ -663,13 +662,19 @@ def main() -> int:
 
     TARGET.parent.mkdir(parents=True, exist_ok=True)
     temp = TARGET.with_suffix(".json.tmp")
-    temp.write_text(json.dumps(fixture, indent=2, ensure_ascii=False), encoding="utf-8")
+    # Compact, not indent=2: items grew 20x (800 -> 16,000 rows) with this
+    # rewrite, and pretty-printing roughly doubles a file this size for zero
+    # benefit -- nothing reads this file by eye. Matches every other retail
+    # fixture builder's own format.
+    temp.write_text(
+        json.dumps(fixture, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
     temp.replace(TARGET)
 
     print(f"ok  {TARGET.relative_to(REPO)}")
     print(f"    {len(items)} items, {len(candidates)} markdown candidates, {len(stores_rollup)} stores")
     print(f"    at-risk Rp {sum(i['at_risk_value'] for i in candidates):,.0f}, "
-          f"recoverable Rp {shipped_recoverable:,.0f}")
+          f"recoverable Rp {sum(i['recoverable_value'] for i in candidates):,.0f}")
     return 0
 
 

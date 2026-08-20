@@ -42,16 +42,21 @@ export function buildDrilldown(metricId, items) {
     value: g.value,
   }));
 
-  const topSkus = [...items]
-    .map((i) => ({
-      sku_id: i.sku_id,
-      name: i.name,
-      vertical_id: i.vertical_id,
-      category_label: i.category_label,
-      value: round(Number(i[metricId]) || 0),
-    }))
-    .sort((a, b) => b.value - a.value)
-    .slice(0, TOP_SKU_COUNT);
+  // Named SKUs, not (SKU, store) rows: `items` is one row per ENGINE_STORE
+  // record, so a single SKU present at several candidate stores is grouped
+  // back to one entry here, summed across its rows — the same way
+  // by_category/by_vertical above already group many rows into one label.
+  // Without this, "Top contributing SKUs" could fill its six slots with the
+  // same SKU repeated at different stores.
+  const topSkus = topGroups(items, "sku_id", (rows) => round(metric.reduce(rows)), TOP_SKU_COUNT).map(
+    (g) => ({
+      sku_id: g.key,
+      name: labelFor(items, g.key, "sku_id", "name"),
+      vertical_id: labelFor(items, g.key, "sku_id", "vertical_id"),
+      category_label: labelFor(items, g.key, "sku_id", "category_label"),
+      value: g.value,
+    }),
+  );
 
   return {
     id: metricId,

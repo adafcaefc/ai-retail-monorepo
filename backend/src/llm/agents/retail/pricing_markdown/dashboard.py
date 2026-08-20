@@ -7,37 +7,27 @@ expect semi-raw `items`/`stores`/`formulas`/`reference_by_vertical` and do the
 KPI/chart aggregation themselves, same as the fixture. See
 `retail/common/warehouse.py` for why the aggregation stays in the browser.
 
-TWO GRAINS, LIKE THE FIXTURE BUILDER
--------------------------------------
-`fact_inventory_chain_daily` (chain-net, one row per item) carries every
-descriptive field the candidate table and KPI cards show: position, rop, max,
-ads, days_cover, price, inventory_value, expiry_units. RC-2 of the workbook
-audit did not flag these as broken.
+ONE GRAIN, LIKE THE FIXTURE BUILDER (NOT TWO ANY MORE)
+-------------------------------------------------------
+`items` is one row per `fact_inventory_daily` record (SKU x store) -- the A5
+sheet's own grain, matching `scripts/build_pricing_markdown_fixture.py`'s own
+rewrite to this same grain. This used to roll the store fact up to one row
+per chain-net SKU by default (a SKU counted as a markdown candidate if ANY of
+its stores showed a candidate state), which undercounts: the workbook's own
+"Markdown candidates" is a count of store-level rows in {Expiry, Overstock,
+Slow-mover} (1,638), not a count of SKUs that merely touch one of those
+states somewhere among their ~20 stores (170). `legal_entity_id`,
+`category_group` and `store_id` are now all the same kind of filter --
+intrinsic fields on this already-per-store row -- so `store_id` no longer
+needs its own recompute path; it just narrows rows, exactly like the other
+two.
 
-`fact_inventory_daily` (store grain, ~16,000 rows) is where markdown
-candidacy and its money figures come from, per the audit's own recommended
-fix (F-05): with no `store_id` in scope, a SKU is a markdown candidate if ANY
-of its stores show state in {Expiry, Overstock, Slow-mover}, and
-`at_risk_value` / `recoverable_value` are summed across that SKU's stores
-rather than read off the chain fact's own `at_risk_value` column (a
-different, chain-net figure). Scoped to one store, `build()` reruns that same
-aggregation (`aggregate_markdown_by_sku`) over just that store's rows instead
--- state/candidacy/money then reflect that store alone, and SKUs the store
-does not stock drop out of `items` entirely, rather than the chain-wide
-total silently standing in unchanged. Neither
-`fact_inventory_daily` nor `fact_inventory_chain_daily` stores the two
-markdown-specific columns migration 004 added
-(`markdown_at_risk_value`/`markdown_recoverable`) populated — the seeder never
-wrote them — so this module computes them itself, at request time, via the
-same f12/f23/f14 formulas the browser's What-If engine runs, read from
-`retail.formula` (never hand-restated). Deliberately unscoped by
-legal_entity_id/category_group: an item's own money figures must be its true
-total across whichever stores are in view regardless of which vertical/
-category the caller is looking at, exactly as
-`scripts/build_pricing_markdown_fixture.py::aggregate_markdown_by_sku` runs
-over the whole ENGINE_STORE table before that scope is applied. `store_id` is
-the one filter that does narrow it -- "whichever stores are in view" becomes
-one store instead of every store the SKU sits in.
+`fact_inventory_daily` does not store the two markdown-specific columns
+migration 004 added (`markdown_at_risk_value`/`markdown_recoverable`)
+populated -- the seeder never wrote them -- so this module computes
+at-risk/recoverable/inventory-value/expiry-units itself, per row, at request
+time, via the same f12/f21/f22/f23/f14 formulas the browser's What-If engine
+runs, read from `retail.formula` (never hand-restated).
 
 WHY `is_mock` STAYS TRUE
 See `warehouse.envelope()`: rows are real, but they are one workbook snapshot
@@ -54,12 +44,12 @@ from src.formulas import repository
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
+    HORIZON_COVERAGE,
     SCHEMA,
     SNAPSHOT_DATE,
     STATE_ORDER,
     SUPPORTED_FILTERS as _BASE_SUPPORTED_FILTERS,
     _rows,
-    chain_store_size,
     envelope,
     filter_options,
     formulas,
@@ -67,16 +57,15 @@ from src.llm.agents.retail.common.warehouse import (
 )
 
 # store_id is this agent's own addition on top of the pair every Retail board
-# shares (legal_entity_id/category_group): unlike them, narrowing it means
-# recomputing an item's money/candidacy at store grain rather than merely
-# trimming rows, so it stays a local override rather than moving into
+# shares (legal_entity_id/category_group). Now that `items` is unconditionally
+# store grain, all three are the same kind of filter -- an intrinsic field on
+# each row -- but this stays a local override rather than moving into
 # warehouse.SUPPORTED_FILTERS, which promotion_effectiveness also imports and
-# still only honours client-side. See `build()` below.
+# still only honours store_id client-side.
 SUPPORTED_FILTERS: frozenset[str] = _BASE_SUPPORTED_FILTERS | {"store_id"}
 
 AGENT_ID = "retail.pricing_markdown"
 
-CHAIN = f"{SCHEMA}.fact_inventory_chain_daily"
 STORE_FACT = f"{SCHEMA}.fact_inventory_daily"
 ITEM = f"{SCHEMA}.dim_item"
 STORE_DIM = f"{SCHEMA}.dim_store"
@@ -105,7 +94,6 @@ ENGINE_FORMULAS = (
 # A5 spec section 2: markdown candidates are exactly these three states.
 # Stockout and Low are Replenishment's (Agent 3) territory.
 CANDIDATE_STATES = frozenset({"Expiry", "Overstock", "Slow-mover"})
-CANDIDATE_PRIORITY = {"Expiry": 0, "Overstock": 1, "Slow-mover": 2}
 
 # A5 spec section 7's markdownClassify. Overstock candidates that still carry
 # open PO need reorder suppressed before anything else -- mirrored from
@@ -151,6 +139,8 @@ _MONEY_FORMULA_IDS = (
     "f12-at-risk-value",
     "f23-markdown-at-risk-gross",
     "f14-recoverable-at-risk-value",
+    "f21-inventory-value",
+    "f22-expiry-units",
 )
 _ast_cache: dict[str, Any] | None = None
 
@@ -199,50 +189,20 @@ def _store_money(row: dict[str, Any]) -> dict[str, float]:
             "markdown_lever": 0,
         },
     )
-    return {"at_risk": at_risk, "gross": gross, "recoverable": recoverable}
-
-
-def aggregate_markdown_by_sku(store_money_rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Roll fact_inventory_daily up to one markdown summary per SKU.
-
-    Mirrors scripts/build_pricing_markdown_fixture.py::aggregate_markdown_by_sku:
-    `at_risk_value` sums every store (a SKU with any non-Healthy store carries
-    exposure there); `recoverable_value` sums only the candidate-state stores.
-    `state` is a DISPLAY label only -- the candidate state contributing the
-    most at-risk value for that SKU, tie-broken by CANDIDATE_PRIORITY. It does
-    not gate which stores are summed into at_risk_value.
-
-    Takes rows already merged with `_store_money` (via `build()`'s single
-    pass over `store_rows`) rather than recomputing it here -- f12/f23/f14 run
-    once per store row, not twice.
-    """
-    by_sku: dict[str, dict[str, Any]] = {}
-    for row in store_money_rows:
-        sku = row["item_key"]
-        bucket = by_sku.setdefault(
-            sku,
-            {"at_risk_value": 0.0, "recoverable_value": 0.0, "candidate_states": {}, "open_po": 0.0},
-        )
-        bucket["at_risk_value"] += row["at_risk"]
-        bucket["open_po"] += _float(row.get("open_po_qty"))
-        state = row["state"]
-        if state in CANDIDATE_STATES:
-            bucket["recoverable_value"] += row["recoverable"]
-            bucket["candidate_states"][state] = bucket["candidate_states"].get(state, 0.0) + row["at_risk"]
-
-    for bucket in by_sku.values():
-        candidates = bucket.pop("candidate_states")
-        if candidates:
-            bucket["is_markdown_candidate"] = True
-            bucket["display_state"] = max(
-                candidates.items(), key=lambda kv: (kv[1], -CANDIDATE_PRIORITY[kv[0]])
-            )[0]
-        else:
-            bucket["is_markdown_candidate"] = False
-            bucket["display_state"] = None
-        bucket["write_off_value"] = max(0.0, bucket["at_risk_value"] - bucket["recoverable_value"])
-
-    return by_sku
+    inventory_value = evaluate(asts["f21-inventory-value"], {"position": position, "price": price})
+    expiry_units = evaluate(
+        asts["f22-expiry-units"],
+        {
+            "perishable": "Y" if row["is_perishable"] else "N",
+            "position": position,
+            "ads": _float(row["ads"]),
+            "shelf_life_days": _float(row["shelf_life_days"]),
+        },
+    )
+    return {
+        "at_risk": at_risk, "gross": gross, "recoverable": recoverable,
+        "inventory_value": inventory_value, "expiry_units": expiry_units,
+    }
 
 
 def classify(state: str | None, is_candidate: bool, open_po: float) -> str | None:
@@ -254,64 +214,65 @@ def classify(state: str | None, is_candidate: bool, open_po: float) -> str | Non
 
 
 def build_items(
-    chain_rows: list[dict[str, Any]],
-    markdown_by_sku: dict[str, dict[str, Any]],
+    store_money_rows: list[dict[str, Any]],
     lead_days: dict[str, float],
-    store_sizes: dict[str, float],
 ) -> list[dict[str, Any]]:
-    """One row per SKU, chain-net descriptive fields plus store-grain money."""
-    empty_money = {
-        "at_risk_value": 0.0,
-        "recoverable_value": 0.0,
-        "write_off_value": 0.0,
-        "is_markdown_candidate": False,
-        "display_state": None,
-        "open_po": 0.0,
-    }
+    """One row per `fact_inventory_daily` record (SKU x store) -- this board's
+    real grain, matching `scripts/build_pricing_markdown_fixture.py`'s own
+    rewrite to the same grain. No SKU-level rollup: candidacy, state, and
+    every money figure are this row's own, already merged in via
+    `_store_money`.
+    """
     items = []
-    for row in chain_rows:
-        md = markdown_by_sku.get(row["item_key"], empty_money)
-        display_state = md["display_state"] or row["state"]
-        best_action_tab = classify(md["display_state"], md["is_markdown_candidate"], md["open_po"])
-        store_size = store_sizes.get(row["vertical_id"], 0.0)
+    for row in store_money_rows:
+        state = row["state"]
+        is_candidate = state in CANDIDATE_STATES
+        open_po = _float(row["open_po_qty"])
+        best_action_tab = classify(state, is_candidate, open_po)
         items.append(
             {
                 "sku_id": row["item_key"],
+                "store_id": row["store_key"],
                 "name": row["name"],
                 "vertical_id": row["vertical_id"],
                 "category_id": row["category_id"],
                 "category_label": row["category_name"],
                 "brand": row["brand"],
                 "vendor": row["vendor_account"],
-                "state": display_state,
-                "severity_rank": STATE_ORDER.index(display_state)
-                if display_state in STATE_ORDER
-                else len(STATE_ORDER),
-                "is_markdown_candidate": md["is_markdown_candidate"],
+                "cluster": row["cluster"],
+                "channel": row["channel"],
+                "state": state,
+                "severity_rank": STATE_ORDER.index(state) if state in STATE_ORDER else len(STATE_ORDER),
+                "is_markdown_candidate": is_candidate,
                 "position": _float(row["position_qty"]),
                 "rop": _float(row["rop_qty"]),
                 "max": _float(row["max_qty"]),
                 "dos": _float(row["days_cover"]),
                 "ads": _float(row["ads"]),
-                "price": _float(row["unit_price"]),
-                "inv_value": _float(row["inventory_value"]),
-                "at_risk_value": round(md["at_risk_value"], 2),
-                "recoverable_value": round(md["recoverable_value"], 2),
-                "write_off_value": round(md["write_off_value"], 2),
-                "expiry_units": _float(row["expiry_units"]),
+                "price": _float(row["price"]),
+                "inv_value": round(row["inventory_value"], 2),
+                "at_risk_value": round(row["at_risk"], 2),
+                "recoverable_value": round(row["recoverable"], 2),
+                "write_off_value": round(max(0.0, row["at_risk"] - row["recoverable"]), 2),
+                "expiry_units": round(row["expiry_units"], 2),
                 "shelf_life_days": _float(row["shelf_life_days"]),
                 "is_perishable": bool(row["is_perishable"]),
                 "perishable": "Y" if row["is_perishable"] else "N",
                 "growth": _float(row["growth_index"]),
                 "comp_idx": _float(row["competitor_index"]),
                 "elasticity": _float(row["elasticity"]),
-                "open_po": _float(row["open_po_qty"]),
+                "open_po": open_po,
                 "on_hand": _float(row["on_hand_qty"]),
-                # What-If cascade inputs the browser engine re-evaluates.
+                # What-If cascade inputs the browser engine re-evaluates. This
+                # row already IS one store, so store_size is that store's own
+                # size_index (not the vertical total a chain-net item would
+                # need), and f03's ratio is 1 at rest.
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
-                "store_size": store_size,
-                "total_store_size": store_size,
+                "arch_horizon_factor": _float(row["arch_horizon_factor"]),
+                "store_size": _float(row["size_index"]),
+                "total_store_size": _float(row["size_index"]),
+                "horizon_coverage": HORIZON_COVERAGE,
                 "stock_factor": _float(row["stock_factor"]),
                 "onhand_days": _float(row["onhand_days"]),
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
@@ -431,96 +392,64 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     scope = scope or DashboardScope()
 
     with get_engine().connect() as connection:
-        # UNSCOPED in SQL on purpose -- see the module docstring. Read every
-        # store row chain-wide; `scope.store_id` (if any) is applied in
-        # Python below, once these rows are already in hand, since both the
-        # unscoped `reference` block and a store-scoped `items` need to
-        # aggregate over this same set.
+        # UNSCOPED in SQL on purpose. Read every store row chain-wide; scope
+        # is applied in Python below, once, since `reference` needs the full
+        # unscoped population (a benchmark, not a figure any filter narrows)
+        # while `items`/`stores` need the scoped one -- both start from this
+        # same set.
         store_rows = _rows(
             connection,
             f"""
             SELECT f.item_key, f.store_key, f.state, f.position_qty, f.max_qty,
-                   f.ads, f.open_po_qty,
-                   i.price AS price, i.shelf_life_days, i.elasticity,
-                   i.category_id, i.category_name,
+                   f.rop_qty, f.days_cover, f.on_hand_qty, f.ads, f.open_po_qty,
+                   i.name, i.vertical_id, i.category_id, i.category_name,
+                   i.brand, i.vendor_account, i.price, i.shelf_life_days,
+                   i.is_perishable, i.growth_index, i.competitor_index,
+                   i.elasticity, i.base_ads, i.seasonality_index,
+                   i.arch_horizon_factor, i.stock_factor, i.onhand_days,
+                   i.is_promo_eligible, i.cannibalisation_pct, i.safety_days,
                    s.name AS store_name, s.vertical_id AS store_vertical_id,
-                   s.cluster, s.channel
+                   s.cluster, s.channel, s.size_index
             FROM {STORE_FACT} f
             JOIN {ITEM} i ON i.item_id = f.item_key
             JOIN {STORE_DIM} s ON s.store_id = f.store_key
+            JOIN {VERTICAL} vt ON vt.vertical_id = i.vertical_id
             WHERE f.cal_date = :day
+            ORDER BY vt.sort_order, f.item_key, f.store_key
             """,
             {"day": SNAPSHOT_DATE},
         )
         store_money_rows = [{**row, **_store_money(row)} for row in store_rows]
-        markdown_by_sku = aggregate_markdown_by_sku(store_money_rows)
-        # `category_group`/`state` narrow the store rollup here, not in
-        # scopeStores() client-side: by the time a row reaches `stores_rollup`
-        # it has already been summed across every category/state at that
-        # store, so there's nothing left for a client-side filter to key on
-        # (unlike `store_id`, which matches an intrinsic field on the
-        # pre-aggregated row and stays client-side, untouched by this).
-        stores_scoped_rows = store_money_rows
-        if scope.category_group:
-            stores_scoped_rows = [r for r in stores_scoped_rows if r["category_id"] == scope.category_group]
-        if scope.state:
-            stores_scoped_rows = [r for r in stores_scoped_rows if r["state"] == scope.state]
-        stores_rollup = build_stores(stores_scoped_rows)
 
-        # UNSCOPED too -- the reference block and the depth-by-vertical
-        # weighting need the full population, same as agent_kpi_reference is
-        # never scoped for the sibling boards. Scope is applied in Python
-        # below, once, to the item list actually returned.
-        chain_rows = _rows(
-            connection,
-            f"""
-            SELECT c.item_key, c.ads, c.position_qty, c.rop_qty, c.max_qty,
-                   c.days_cover, c.state, c.on_hand_qty, c.open_po_qty,
-                   c.unit_price, c.inventory_value, c.expiry_units,
-                   i.name, i.vertical_id, i.category_id, i.category_name,
-                   i.brand, i.vendor_account, i.shelf_life_days, i.is_perishable,
-                   i.growth_index, i.competitor_index, i.elasticity, i.base_ads,
-                   i.seasonality_index, i.stock_factor, i.onhand_days,
-                   i.is_promo_eligible, i.cannibalisation_pct, i.safety_days
-            FROM {CHAIN} c
-            JOIN {ITEM} i ON i.item_id = c.item_key
-            JOIN {VERTICAL} vt ON vt.vertical_id = i.vertical_id
-            WHERE c.cal_date = :day
-            ORDER BY vt.sort_order, c.item_key
-            """,
-            {"day": SNAPSHOT_DATE},
-        )
         lead_days = _designated_lead_times(connection)
-        store_sizes = chain_store_size(connection)
         options = filter_options(connection)
 
-    all_items = build_items(chain_rows, markdown_by_sku, lead_days, store_sizes)
-    # Reference stays chain-wide even under a store scope: it is a benchmark
-    # (avg markdown depth per vertical), not a figure the store filter claims
-    # to narrow, same as agent_kpi_reference is never scoped for the sibling
-    # boards.
+    all_items = build_items(store_money_rows, lead_days)
+    # Reference stays unscoped: it is a benchmark (avg markdown depth per
+    # vertical), not a figure any filter claims to narrow, same as
+    # agent_kpi_reference is never scoped for the sibling boards.
     reference = build_reference(all_items, options["legal_entities"])
-
-    if scope.store_id:
-        # Rerun the same store-grain aggregation the unscoped path used
-        # above, but over just this store's rows -- state/candidacy/money
-        # then reflect that one store, and a SKU the store does not stock
-        # simply is not in `store_scoped_items` below (dropped further down,
-        # after the vertical/category filters, alongside everything else).
-        rows_at_store = [row for row in store_money_rows if row["store_key"] == scope.store_id]
-        store_markdown_by_sku = aggregate_markdown_by_sku(rows_at_store)
-        store_scoped_items = build_items(chain_rows, store_markdown_by_sku, lead_days, store_sizes)
-        stocked_skus = {row["item_key"] for row in rows_at_store}
-        population = [item for item in store_scoped_items if item["sku_id"] in stocked_skus]
-    else:
-        population = all_items
 
     items = [
         item
-        for item in population
+        for item in all_items
         if (not scope.legal_entity_id or item["vertical_id"] == scope.legal_entity_id)
         and (not scope.category_group or item["category_id"] == scope.category_group)
+        and (not scope.store_id or item["store_id"] == scope.store_id)
     ]
+
+    # `category_group`/`state` narrow the store rollup here, not client-side:
+    # by the time a row reaches `stores_rollup` it has already been summed
+    # across every category/state at that store, so there is nothing left
+    # for a client-side filter to key on -- unlike `legal_entity_id`, which
+    # matches an intrinsic field on the aggregated row and is applied after,
+    # alongside `stores` below.
+    stores_scoped_rows = store_money_rows
+    if scope.category_group:
+        stores_scoped_rows = [r for r in stores_scoped_rows if r["category_id"] == scope.category_group]
+    if scope.state:
+        stores_scoped_rows = [r for r in stores_scoped_rows if r["state"] == scope.state]
+    stores_rollup = build_stores(stores_scoped_rows)
     stores = [
         store
         for store in stores_rollup

@@ -45,6 +45,7 @@ export default function SuggestedBestAction({ groups, onSelect }) {
             <thead>
               <tr>
                 <th>{t("SKU")}</th>
+                <th>{t("Store")}</th>
                 <th>{t("Category")}</th>
                 <th>{t("State")}</th>
                 <th>{t("Position")}</th>
@@ -56,8 +57,9 @@ export default function SuggestedBestAction({ groups, onSelect }) {
             </thead>
             <tbody>
               {rows.map((c) => (
-                <tr key={c.sku_id} onClick={() => onSelect?.(c.sku_id)}>
+                <tr key={`${c.sku_id}-${c.store_id}`} onClick={() => onSelect?.(c.sku_id)}>
                   <td>{c.sku_id}</td>
+                  <td>{c.store_id}</td>
                   <td>{c.category_label}</td>
                   <td>{t(c.state)}</td>
                   <td>{formatUnits(c.position, "en")}</td>
