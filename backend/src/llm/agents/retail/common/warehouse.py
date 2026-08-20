@@ -288,7 +288,7 @@ def constants() -> dict[str, Any]:
 def seasonal_indices(
     gmv_by_month: dict[int, float], node: tuple | None = None
 ) -> list[float]:
-    """Twelve classical indices: month GMV over the series mean, times 100.
+    """Seasonal indices: month GMV over the series mean (period sum / count), times 100.
 
     Evaluates `fc01-seasonal-index` from the catalogue rather than doing the
     arithmetic here -- this is the rule the "Seasonality index" KPI tile
@@ -308,10 +308,20 @@ def seasonal_indices(
     if node is None:
         node = parse(formulas(("fc01-seasonal-index",))["fc01-seasonal-index"])
 
-    values = [gmv_by_month.get(month, 0.0) for month in range(12)]
-    mean = sum(values) / len(values) if values else 0.0
-    if not mean:
+    if not gmv_by_month:
         return [100.0] * 12
+
+    # Support both full 12-month calendar and custom date/period ranges (e.g. Jul Y1 to Jul Y2)
+    keys = sorted(gmv_by_month.keys()) if all(isinstance(k, int) for k in gmv_by_month.keys()) else list(gmv_by_month.keys())
+    if len(keys) == 12 and keys == list(range(12)):
+        values = [gmv_by_month.get(month, 0.0) for month in range(12)]
+    else:
+        values = [gmv_by_month[k] for k in keys]
+
+    total_sum = sum(values)
+    mean = total_sum / len(values) if values else 0.0
+    if not mean:
+        return [100.0] * len(values)
     return [
         evaluate(node, {"month_gmv": value, "series_mean": mean})
         for value in values

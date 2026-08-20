@@ -7,7 +7,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AGENT_ID, ALL, DEFAULT_SCOPE } from "./contract.js";
+import { AGENT_ID, ALL, BASELINE_LEVERS, DEFAULT_SCOPE } from "./contract.js";
 import { loadPromotionDashboard, loadPromotionDrilldown } from "./dashboardData.js";
 import fixture from "./fixture.json";
 import {
@@ -211,6 +211,32 @@ describe("the Store filter", () => {
 
     expect(storeDashboard.campaigns).toEqual(chainDashboard.campaigns);
     expect(storeDashboard.by_season).toEqual(chainDashboard.by_season);
+  });
+
+  // Regression test: selecting a store used to throw "Operator '*' needs a
+  // number, got undefined" — every item was missing `arch_horizon_factor`,
+  // a real f01 term the Store filter's `atStore`/`applyLevers` re-evaluation
+  // always runs, even at baseline levers. See engine.test.js's
+  // "arch_horizon_factor" suite for the engine-level coverage.
+  it("does not throw for any store, and returns populated KPIs", () => {
+    for (const store of fixture.stores) {
+      let dashboard;
+      expect(() => {
+        dashboard = buildDashboardFromFixture(fixture, scopeOf({ store_id: store.store_id }));
+      }).not.toThrow();
+      expect(dashboard.scope.store_id).toBe(store.store_id);
+      expect(Number.isFinite(dashboard.kpis.incremental_margin)).toBe(true);
+    }
+  });
+
+  it("does not throw when a store is selected and a What-If lever is moved", () => {
+    const store = fixture.stores[0];
+    expect(() =>
+      buildDashboardFromFixture(fixture, scopeOf({ store_id: store.store_id }), {
+        levers: { ...BASELINE_LEVERS, promo: 20 },
+        driveWholePage: true,
+      }),
+    ).not.toThrow();
   });
 });
 

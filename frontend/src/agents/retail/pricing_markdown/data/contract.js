@@ -46,6 +46,20 @@ export const HEALTHY_STATE = "Healthy";
 export const CANDIDATE_STATES = Object.freeze(["Expiry", "Overstock", "Slow-mover"]);
 
 /**
+ * f14's per-state BASE depth, before the markdown lever scales it -- the
+ * same three constants `scripts/build_pricing_markdown_fixture.py` and the
+ * live `pricing_markdown/dashboard.py`'s `build_reference()` use to seed
+ * `reference_by_vertical`, and the same ones the source workbook's own
+ * engine (`K5()`) reads. f14's live depth per item is
+ * `MIN(0.65, DEPTH_BY_STATE[state] * (25 + markdown_lever) / 25)` -- see
+ * `itemDepth` in `selectors.js`, which is also where the resulting per-item
+ * depth gets weighted by at-risk value over whatever candidates are
+ * actually in scope (`depthWeightedAvgPct`), rather than only ever reading
+ * the vertical-level, always-unscoped `reference_by_vertical` figure.
+ */
+export const DEPTH_BY_STATE = Object.freeze({ Expiry: 0.4, Overstock: 0.25, "Slow-mover": 0.3 });
+
+/**
  * What-If levers, A5 spec section 9a -> `Constants` B16-B21.
  *
  * `demand`, `promo`, `inbound`, `lead`, `safety` flow through to `state` via
@@ -193,7 +207,7 @@ export const CANDIDATE_SCOPE_NOTE =
 
 export const KPI_FORMULAS = Object.freeze({
   markdown_candidates: "count(SKUs with >=1 store in {Expiry, Overstock, Slow-mover})",
-  avg_depth_pct: "weighted avg markdown depth by candidate value (vertical-level, workbook reference)",
+  avg_depth_pct: "SUM(depth(state, markdown_lever) x at_risk_value) / SUM(at_risk_value) over candidates in scope",
   at_risk_value: "SUM(ENGINE_STORE.at_risk) across a SKU's stores",
   recoverable_value:
     "SUM(ENGINE_STORE.markdown_recoverable) across a SKU's candidate-state stores; " +
