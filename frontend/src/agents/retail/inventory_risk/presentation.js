@@ -113,6 +113,7 @@ export function categoryColor(index) {
 export function kpiTone(id, value) {
   if (value === 0) return "neutral";
   switch (id) {
+    case "stockout_skus":
     case "stockout_risk_skus":
     case "expiry_units":
       return "bad";

@@ -44,14 +44,14 @@ export function isBaseline(levers) {
 /**
  * Bind an engine to one fixture's expressions.
  *
- * Parsing is done once here rather than per row: a slider drag re-runs this
- * over 800 items, and re-parsing ten expressions each time turns a keystroke
- * into 8,000 parses. `atStore` shares the same one-time parse for f02, since
- * a whole-chain drill-down calls it up to 16,000 times on a single click.
+ * Parsing is done once here rather than per row, and that matters more than it
+ * used to: a slider drag re-runs this over 16,000 ENGINE_STORE rows, so
+ * re-parsing the catalogue per row would turn one keystroke into ~180,000
+ * parses.
  *
- * Returns `{ applyLevers, atStore }` rather than a bare function so the two
- * stay bound to the same parsed catalogue — see `atStore`'s own docstring for
- * why it moved here from a standalone export.
+ * Returns `{ applyLevers }` — an object rather than a bare function because it
+ * carried `atStore` alongside until the board moved to store grain and the
+ * reconstruction became unnecessary.
  */
 export function createEngine(formulas) {
   const missing = REQUIRED_FORMULAS.filter((id) => !formulas?.[id]);
@@ -84,10 +84,10 @@ export function createEngine(formulas) {
     const openPo = run("f03-open-po-per-store", {
       open_po_total: item.open_po,
       store_size: item.store_size,
-      // A chain-net row already covers every store, so there is no allocation
-      // left to do and the size ratio is one — which is what the fallback
-      // gives. A row scoped to one store (see `atStore`) sets both halves
-      // instead, and f03 allocates the chain's open PO by size share.
+      // `open_po` on a store row was ALREADY allocated to that store when the
+      // grid was built, so the two sizes are equal and f03's ratio is one —
+      // allocating a second time would shrink every position on the board.
+      // The fallback covers a row that predates `total_store_size`.
       total_store_size: item.total_store_size ?? item.store_size,
       inbound_lever: lever.inbound,
     });
@@ -169,58 +169,23 @@ export function createEngine(formulas) {
     };
   }
 
-  /**
-   * Re-point a chain-net item at ONE store, so the engine derives that
-   * store's row instead of the chain's.
+  /*
+   * `atStore` used to live here: it re-pointed a chain-net item at one store,
+   * rebuilding that store's on-hand with f02 and swapping `store_size` for the
+   * store's own index. The board shipped 800 chain rows and derived any of the
+   * 16,000 grid rows on demand.
    *
-   * `ENGINE_STORE` is not an independent measurement — it is the SKU
-   * attributes crossed with the store attributes, and three products
-   * regenerate it:
-   *
-   *     ads      = base_ads x seasonality x store.size          (f01)
-   *     on_hand  = base_ads x onhand_days x stock_factor
-   *                x store.health x store.size                  (f02)
-   *     open_po  = open_po_chain x (store.size / vertical total) (f03)
-   *
-   * All three are formulas this module runs now: the first falls out of f01
-   * once `store_size` is one store's index rather than the vertical's total,
-   * f02 is evaluated here from the catalogue rather than retyped (it used to
-   * be, with a comment claiming the workbook "has no formula id for it" —
-   * incorrect, it is catalogue entry 2), and f03 runs inside `applyLevers`.
-   *
-   * `scripts/build_inventory_risk_fixture.py` checks all three against every
-   * one of the 16,000 `ENGINE_STORE` rows before the fixture is written, so
-   * what comes back is the workbook's own per-store position, not an
-   * estimate of it.
-   *
-   * Everything downstream — ROP, Max, DoS, state, the three KPI flags — is
-   * then the ordinary chain: the same expressions, fed one store's inputs.
+   * `items` IS the grid now, so there is nothing left to re-point -- a row
+   * already carries its store's on-hand, size index and state. f02 left
+   * `REQUIRED_FORMULAS` with it, and `onhand_days` / `stock_factor` are no
+   * longer shipped per item.
    */
-  function atStore(item, store) {
-    return {
-      ...item,
-      // f01 and f03 both read this; it is now one store, not the whole
-      // vertical.
-      store_size: store.size_index,
-      // The denominator of f03's allocation ratio stays the vertical total,
-      // which is what `item.store_size` held before this call.
-      total_store_size: item.store_size,
-      on_hand: run("f02-on-hand", {
-        base_ads: item.base_ads,
-        on_hand_days: item.onhand_days,
-        stock_factor: item.stock_factor,
-        store_health: store.health_index,
-        store_size: store.size_index,
-      }),
-    };
-  }
 
-  return { applyLevers, atStore };
+  return { applyLevers };
 }
 
 const REQUIRED_FORMULAS = [
   "f01-ads-per-store",
-  "f02-on-hand",
   "f03-open-po-per-store",
   "f04-position",
   "f05-rop",

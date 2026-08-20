@@ -78,7 +78,10 @@ export default function RiskRegisterTable({ rows, onSelect }) {
           <tbody>
             {visible.map((row) => (
               <tr
-                key={row.sku_id}
+                // SKU x store, not SKU: at ENGINE_STORE grain the same SKU
+                // appears once per store it is stocked in, and a bare `sku_id`
+                // would collide across those ~20 rows.
+                key={`${row.sku_id}-${row.store_id}`}
                 className={`risk-row risk-row--${stateSlug(row.state)}`}
                 onClick={() => onSelect(row.sku_id)}
                 tabIndex={0}
@@ -92,10 +95,14 @@ export default function RiskRegisterTable({ rows, onSelect }) {
               >
                 <td>
                   {/* Name first: a reader scanning for a product recognises it
-                      by name, and the code is the lookup key underneath. */}
+                      by name, and the code is the lookup key underneath. The
+                      store follows, because one row is one SKU AT ONE STORE
+                      and two rows of the same product are otherwise
+                      indistinguishable. */}
                   <span className="risk-sku-name-primary">{row.name}</span>
                   <span className="risk-sku-meta">
-                    {row.sku_id} · {row.category_name}
+                    {row.sku_id} · {row.store_name ?? row.store_id} ·{" "}
+                    {row.category_name}
                   </span>
                 </td>
                 <td>

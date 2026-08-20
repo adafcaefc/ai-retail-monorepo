@@ -20,24 +20,26 @@ import { LEVER_DEFINITIONS, STATE_ORDER } from "./contract.js";
 import { BASELINE_LEVERS, createEngine, isBaseline } from "./engine.js";
 import fixture from "./fixture.json";
 
-const { applyLevers, atStore } = createEngine(fixture.formulas);
+const { applyLevers } = createEngine(fixture.formulas);
 
 /*
- * f02-on-hand, exercised directly: `atStore` used to retype this formula's
- * arithmetic by hand. Store S001 is a real ENGINE_STORE row, so this is a
- * live check against the workbook, not just an internal-consistency one.
+ * `atStore` used to live here, rebuilding a store's on-hand with f02 so a
+ * chain-net row could be re-pointed at one store. `items` is the ENGINE_STORE
+ * grid now, so a row already carries its store's own on-hand and there is
+ * nothing to reconstruct — the engine exposes `applyLevers` alone.
  */
-describe("atStore", () => {
-  it("reproduces the workbook's per-store on-hand via f02, not retyped arithmetic", () => {
-    const item = fixture.items.find((row) => row.sku_id === "GRC-001");
-    const store = fixture.stores.find((row) => row.store_id === "S001");
-    const pointed = atStore(item, store);
+describe("the engine's surface", () => {
+  it("no longer exposes a store-pointer, and needs no f02 to start", () => {
+    expect(createEngine(fixture.formulas).atStore).toBeUndefined();
+    expect(fixture.formulas["f02-on-hand"]).toBeUndefined();
+  });
 
-    expect(pointed.on_hand).toBeCloseTo(
-      item.base_ads * item.onhand_days * item.stock_factor *
-        store.health_index * store.size_index,
-      6,
-    );
+  it("carries a store on every row, which is what replaced the derivation", () => {
+    for (const item of fixture.items.slice(0, 50)) {
+      expect(typeof item.store_id).toBe("string");
+      expect(item.store_size).toBeGreaterThan(0);
+      expect(item.total_store_size).toBe(item.store_size);
+    }
   });
 });
 
@@ -54,7 +56,7 @@ const totalsBy = (levers, read) => {
 };
 
 describe("at the workbook's own lever setting", () => {
-  it("returns all 800 rows exactly as the fixture holds them", () => {
+  it("returns all 16,000 grid rows exactly as the fixture holds them", () => {
     const drifted = [];
 
     for (const item of fixture.items) {

@@ -28,10 +28,12 @@ comparison the workbook's own KPI formula makes (`Position < ROP`, straight
 from `A2 Inventory Risk!B`) or a reading of the state the workbook already
 resolved.
 
-The one place the thresholds live is `resources/dbtemp/formula.json`,
-`f07-inventory-state`. `verify_engine_chain` re-derives all 800 rows from it
-and six sibling formulas before anything is written, so the link between that
-file and this fixture is asserted rather than assumed.
+The one place the thresholds live is the `retail.formula` table,
+`f07-inventory-state` -- read through `src.formulas.repository`, which is what
+the Formula Manager writes and what the live API reads, so this fixture and the
+board cannot be built from two different versions of a rule.
+`verify_engine_chain` re-derives all 800 chain rows from it and its siblings
+before anything is written, so the link is asserted rather than assumed.
 
 RECONCILIATION
 Before writing anything, the six KPIs are recomputed per vertical from the
@@ -98,9 +100,14 @@ REPLENISH_STATES = frozenset({"Stockout", "Low"})
 # examples apiece like every other entry. That is where they now live.
 #
 # Nothing in this file states a rule any more.
+# f02-on-hand is not here. It rebuilt a store's on-hand from the SKU's base ADS
+# and the store's health/size indices, which is what `atStore` needed while
+# `items` was chain-net and a store view had to be derived on the fly. The
+# fixture ships the ENGINE_STORE grid itself now, so on-hand is read from the
+# row rather than reconstructed. `verify_store_derivation` still proves the
+# relationship holds -- it just no longer has to be re-run in the browser.
 CATALOGUE_FORMULAS = (
     "f01-ads-per-store",
-    "f02-on-hand",
     "f03-open-po-per-store",
     "f04-position",
     "f05-rop",
@@ -196,7 +203,7 @@ def verify_engine_chain(
     store_size: dict[str, float],
     hz_cov: float,
 ) -> dict[str, str]:
-    """Rebuild every chain-net row from `formula.json` and insist it matches.
+    """Rebuild every chain-net row from `retail.formula` and insist it matches.
 
     This script reads its figures straight out of the workbook rather than
     computing them, which is the right way round. But the What-If panel
@@ -221,7 +228,7 @@ def verify_engine_chain(
     missing = [key for key in wanted if key not in formulas]
     if missing:
         raise SystemExit(
-            f"FAIL  formula.json is missing {', '.join(missing)}; the rules"
+            f"FAIL  retail.formula is missing {', '.join(missing)}; the rules"
             " this fixture depends on have no home"
         )
 
@@ -391,7 +398,7 @@ def verify_engine_chain(
 
     if failures:
         print(
-            f"FAIL  formula.json disagrees with ENGINE on {len(failures)}"
+            f"FAIL  retail.formula disagrees with ENGINE on {len(failures)}"
             f" value(s) across {len(engine)} rows:"
         )
         for line in failures[:5]:
@@ -404,7 +411,7 @@ def verify_engine_chain(
     )
     # Returned so the fixture can carry the exact expressions that were just
     # verified. Shipping them together is what stops the browser evaluating a
-    # formula.json that nobody checked against this data.
+    # catalogue revision that nobody checked against this data.
     return expressions
 
 
@@ -506,41 +513,59 @@ def verify_store_derivation(
 
 
 def build_items(
-    engine: list[dict[str, Any]],
+    engine_store: list[dict[str, Any]],
     sku_master: dict[str, dict[str, Any]],
-    store_size: dict[str, float],
+    stores: dict[str, dict[str, Any]],
     hz_cov: float,
+    f22_node: tuple,
     f23_node: tuple,
 ) -> list[dict[str, Any]]:
-    """One row per SKU at chain-net level, with every predicate pre-resolved.
+    """One row per SKU x store -- ENGINE_STORE's own 16,000-row grain.
 
-    `f23_node` is `f23-markdown-at-risk-gross`, parsed once by the caller --
-    the fixture's `expiry_value`/`overstock_excess_value` tiles sum this
-    field client-side instead of re-deriving the arithmetic; see
-    `frontend/.../inventory_risk/data/selectors.js`'s `computeKpis`.
+    This used to read the 800-row chain `ENGINE` sheet, which netted a SKU's
+    surplus in one store against its shortage in another before any KPI saw
+    it. The cards were then counting a population the workbook's own dropdown
+    never shows: 37 slow movers against the grid's 75 distinct SKUs.
+
+    `f22_node` / `f23_node` are `f22-expiry-units` and
+    `f23-markdown-at-risk-gross`, parsed once by the caller. Unlike the chain
+    sheet, ENGINE_STORE carries no pre-computed expiry-units column, so f22 is
+    evaluated here -- and note it ROUNDs per row where f23 does not, which is
+    why the units tile and the write-off tile do not divide evenly into each
+    other. Both follow the catalogue; the rounding difference is the
+    catalogue's, not this file's.
     """
     items = []
-    for row in engine:
+    for row in engine_store:
         sku = sku_master[row["sku_id"]]
+        store = stores[row["store_id"]]
         dos = row["dos"]
         growth = sku["growth"]
         state = row["state"]
+        shelf_life_days = sku["expiry_d"]
 
         items.append(
             {
                 "sku_id": row["sku_id"],
+                # The other half of this row's identity. A SKU now appears once
+                # per store, so anything keying or de-duplicating on `sku_id`
+                # alone silently collapses 16,000 rows back down to 800.
+                "store_id": row["store_id"],
+                "store_name": store["store_name"],
+                "cluster": store["cluster"],
+                "channel": store["channel"],
                 "name": sku["item"],
                 "vertical_id": row["vertical_id"],
                 "category_id": row["cat_id"],
                 "category_name": sku["category"],
-                "brand": row["brand"],
-                "vendor": row["vendor"],
+                "brand": sku["brand"],
+                "vendor": sku["vendor"],
                 "state": state,
                 "severity_rank": STATE_ORDER.index(state),
-                # A2 spec 5c: Position = On-Hand + Open PO, so on-hand is the
-                # difference. The workbook stores Position and Open PO, not
-                # on-hand, so it is derived here once instead of in the UI.
-                "on_hand": row["position"] - row["open_po"],
+                # ENGINE_STORE carries on-hand natively, so this is read rather
+                # than derived as `position - open_po` the way the chain sheet
+                # forced.
+                "on_hand": row["on_hand"],
                 "open_po": row["open_po"],
                 "position": row["position"],
                 "rop": row["rop"],
@@ -550,44 +575,42 @@ def build_items(
                 "price": row["price"],
                 "inv_value": row["inv_value"],
                 "at_risk_value": row["at_risk"],
-                "expiry_units": row["expiry_u"],
+                "expiry_units": evaluate(
+                    f22_node,
+                    {
+                        "perishable": row["perish"],
+                        "position": row["position"],
+                        "ads": row["ads"],
+                        "shelf_life_days": shelf_life_days,
+                    },
+                ),
                 "markdown_at_risk_gross": evaluate(
                     f23_node,
                     {
                         "state": state,
                         "position": row["position"],
                         "ads": row["ads"],
-                        "shelf_life_days": sku["expiry_d"],
+                        "shelf_life_days": shelf_life_days,
                         "max_inventory": row["max"],
                         "price": row["price"],
                     },
                 ),
-                "shelf_life_days": sku["expiry_d"],
+                "shelf_life_days": shelf_life_days,
                 "is_perishable": str(row["perish"]).strip().upper() == "Y",
                 "growth": growth,
                 # The three KPI predicates, each written the way the workbook's
-                # own A2 sheet writes it -- so none of them restates a rule.
-                #
-                #   #1 Stockout-risk  A2!B = SUMPRODUCT((ENGINE!F < ENGINE!G))
-                #   #2 Overstock      A2!C = COUNTIFS(ENGINE!J, "Overstock")
-                #   #4 Slow-moving           ENGINE!J = "Slow-mover"
+                # own ENGINE_STORE grid writes it -- so none of them restates a
+                # rule. They flag a ROW; the cards count DISTINCT SKUs over the
+                # rows they flag (see `selectors.js`'s `computeKpis`), which is
+                # how 755 slow-moving rows read as 75 slow-moving SKUs.
                 #
                 # Two of these used to be predicates over DoS instead, copied
                 # from the A2 spec's "Formula (card fx)" column. That column and
                 # the "Data di workbook" column beside it do not agree, and the
-                # spec presents them as if they did:
-                #
-                #   dos > 15                -> 26   state == "Overstock"  -> 26
-                #   growth < 1 and dos > 10 -> 43   state == "Slow-mover" -> 37
-                #
-                # Overstock agreed only by luck of this dataset (no perishable
-                # SKU sits above 15 days without being Expiry first). Slow-mover
-                # never agreed: 6 SKUs satisfy the raw predicate but were
-                # already claimed by a higher-severity state, so the card read
-                # 43 while the state chart and the register below it showed 37.
-                # The board contradicted itself. (The counts move with the
-                # dataset -- they were 62 and 51 before the fixture was
-                # regenerated; the disagreement is the point, not the number.)
+                # spec presents them as if they did: the raw
+                # `growth < 1 and dos > 10` claims rows a higher-severity state
+                # has already taken, so the card contradicted the state chart
+                # directly beneath it. Following `state` cannot drift from f07.
                 "is_stockout_risk": row["position"] < row["rop"],
                 "is_overstock": state == "Overstock",
                 "is_slow_mover": state == "Slow-mover",
@@ -601,22 +624,18 @@ def build_items(
                 "base_ads": sku["base_ads"],
                 "seasonality": sku["seasonality"],
                 "arch_horizon_factor": sku["arch_horizon_factor"],
-                # The vertical's total size index, not one store's. See
-                # `chain_store_size` for why f01 still applies.
-                "store_size": store_size[row["vertical_id"]],
-                # -- Per-store derivation inputs ------------------------
-                # These two, with a store's own `size_index` and
-                # `health_index`, reproduce that store's on-hand exactly:
-                #
-                #   on_hand = base_ads * onhand_days * stock_factor
-                #             * store.health * store.size
-                #
-                # `verify_store_derivation` proves it over all 16,000
-                # ENGINE_STORE rows before this file is written. Carrying two
-                # numbers per SKU rather than the grid itself is what lets the
-                # store filter work without ~163 KB of extra payload.
-                "onhand_days": sku["onhand_days"],
-                "stock_factor": sku["stockf"],
+                # This store's own size index, feeding f01 directly. Shipped
+                # alongside an equal `total_store_size` so f03's allocation
+                # ratio is one: `open_po` above was ALREADY allocated to this
+                # store when the grid was built, and allocating it twice would
+                # shrink every position in the fixture.
+                "store_size": row["size"],
+                "total_store_size": row["size"],
+                # `onhand_days` / `stock_factor` used to ride along here so the
+                # browser could rebuild a store's on-hand with f02 (`atStore`).
+                # The fixture ships the store grid itself now, so there is
+                # nothing left to reconstruct -- and two fields stop being paid
+                # for 16,000 times over.
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
                 "lead_days": sku["lead_d"],
@@ -724,67 +743,108 @@ def build_store_rows(
 
 
 def kpis_for(items: list[dict[str, Any]]) -> dict[str, Any]:
-    """The six A2 KPIs plus slow-mover, from pre-resolved flags only.
+    """The A2 KPIs at ENGINE_STORE grain, mirroring `computeKpis` client-side.
 
-    `overstock_excess_value` and `expiry_value` are the money figures the A2
-    cards show underneath their counts, both summing `markdown_at_risk_gross`
-    (`f23-markdown-at-risk-gross`) rather than re-deriving it -- the same
-    switch `computeKpis` makes client-side, kept identical here since this
-    function exists only to mirror it for `reconcile()`.
-    `overstock_excess_value` scopes to Overstock-state rows only, not
-    Slow-mover, matching the tile's name even though f23 shares one branch
-    across both states.
+    COUNTS ARE DISTINCT SKUs, VALUES ARE ROW SUMS. That split is the whole
+    point of this grain: a SKU sits in ~20 stores and can be Slow-mover in
+    several of them, so counting rows would report 755 slow movers where the
+    workbook's own dropdown reports 75. Money is the opposite -- every row's
+    exposure is real and additive, so values sum across all 16,000.
+
+    `stockout_skus` counts the Stockout state alone (247 SKUs), which is what
+    the workbook's card shows. `stockout_risk_skus` is the wider below-ROP
+    measure (Stockout + Low, 524 SKUs) and is kept because routing to Agent 3
+    and the store-level segments both use it -- the two answer different
+    questions and are deliberately not folded together.
+
+    `overstock_excess_value` and `expiry_value` both sum
+    `markdown_at_risk_gross` (`f23-markdown-at-risk-gross`) rather than
+    re-deriving it. `expiry_units` scopes to Expiry-state rows for the same
+    reason `expiry_value` does -- the two tiles sit next to each other and
+    must describe the same rows.
     """
     count = len(items)
+
+    def distinct(predicate) -> int:
+        return len({row["sku_id"] for row in items if predicate(row)})
+
+    expiry_rows = [row for row in items if row["state"] == "Expiry"]
     return {
-        "stockout_risk_skus": sum(1 for row in items if row["is_stockout_risk"]),
-        "overstock_skus": sum(1 for row in items if row["is_overstock"]),
+        "sku_count": len({row["sku_id"] for row in items}),
+        "row_count": count,
+        "stockout_skus": distinct(lambda row: row["state"] == "Stockout"),
+        "low_skus": distinct(lambda row: row["state"] == "Low"),
+        "stockout_risk_skus": distinct(lambda row: row["is_stockout_risk"]),
+        "overstock_skus": distinct(lambda row: row["is_overstock"]),
         "overstock_excess_value": sum(
             row["markdown_at_risk_gross"] for row in items if row["is_overstock"]
         ),
-        "expiry_units": sum(row["expiry_units"] for row in items),
-        "expiry_value": sum(
-            row["markdown_at_risk_gross"] for row in items if row["state"] == "Expiry"
-        ),
-        "slow_mover_skus": sum(1 for row in items if row["is_slow_mover"]),
+        "expiry_skus": distinct(lambda row: row["state"] == "Expiry"),
+        "expiry_units": sum(row["expiry_units"] for row in expiry_rows),
+        "expiry_value": sum(row["markdown_at_risk_gross"] for row in expiry_rows),
+        "slow_mover_skus": distinct(lambda row: row["is_slow_mover"]),
         "avg_dos": (sum(row["dos"] for row in items) / count) if count else 0.0,
         "inventory_value": sum(row["inv_value"] for row in items),
         "at_risk_value": sum(row["at_risk_value"] for row in items),
     }
 
 
-def reconcile(
-    items: list[dict[str, Any]],
-    reference: list[dict[str, Any]],
-    label_of: dict[str, str],
-) -> list[str]:
-    """Recompute each vertical's KPIs and diff against the A2 sheet."""
-    by_label = {row["vertical_label"]: row for row in reference}
+# The chain-wide KPIs this fixture must reproduce, read off the ENGINE_STORE
+# grid in `RM ENGINE DATA FOR RETAIL.xlsx` with no filter applied and confirmed
+# against the workbook by the board's owner.
+#
+# This replaces a diff against the `A2 Inventory Risk` summary sheet. That
+# sheet is CHAIN-NET -- its overstock column totals 26 where the grid holds
+# 730 rows / 104 SKUs, and its stockout-risk column totals 345 where the grid
+# holds 7,090 rows -- so once `items` moved to store grain the old check could
+# only ever fail. It was not a check that had stopped being useful; it was
+# checking the other grain. `reference_by_vertical` still carries those sheet
+# figures as a labelled benchmark.
+#
+# Keep these pinned. They are the difference between "the cards moved" and
+# "the cards moved to the workbook's own answer".
+EXPECTED_CHAIN_KPIS: dict[str, float] = {
+    "sku_count": 800,
+    "row_count": 16000,
+    "stockout_skus": 247,
+    "low_skus": 457,
+    "overstock_skus": 104,
+    "expiry_skus": 11,
+    "slow_mover_skus": 75,
+    "expiry_units": 5624,
+    "inventory_value": 2223869209600,
+    "at_risk_value": 873041521900,
+}
+
+# Money figures, checked to the rupiah after rounding. `expiry_value` is f23
+# unrounded (124,355,877.68); `expiry_units` above is f22, which ROUNDs per
+# row. The two tiles therefore do not divide into each other exactly, and that
+# is the catalogue's own inconsistency rather than a defect here.
+EXPECTED_CHAIN_MONEY: dict[str, int] = {
+    "overstock_excess_value": 47633362800,
+    "expiry_value": 124355878,
+}
+
+
+def reconcile(items: list[dict[str, Any]]) -> list[str]:
+    """Diff the whole grid's KPIs against the workbook's ENGINE_STORE dropdown.
+
+    Chain-wide rather than per-vertical: these are the figures a reader can
+    reproduce in the workbook in about thirty seconds, which is what makes them
+    worth pinning.
+    """
+    mine = kpis_for(items)
     failures: list[str] = []
 
-    for vertical_id, label in sorted(label_of.items()):
-        scoped = [row for row in items if row["vertical_id"] == vertical_id]
-        mine = kpis_for(scoped)
-        book = by_label[label]
+    for name, expected in EXPECTED_CHAIN_KPIS.items():
+        computed = mine[name]
+        if abs(float(computed) - float(expected)) > 1e-6:
+            failures.append(f"{name}: computed {computed}, workbook {expected}")
 
-        checks = (
-            ("stockout_risk_skus", mine["stockout_risk_skus"], book["stockout_risk_skus"]),
-            ("overstock_skus", mine["overstock_skus"], book["overstock_skus"]),
-            ("expiry_units", mine["expiry_units"], book["expiry_units"]),
-            ("inventory_value", mine["inventory_value"], book["inventory_value"]),
-            ("at_risk_value", mine["at_risk_value"], book["at_risk_value"]),
-            # avg_dos is stored rounded to one decimal on the sheet.
-            ("avg_dos", round(mine["avg_dos"], 1), round(book["avg_dos"], 1)),
-        )
-        for name, computed, stored in checks:
-            if isinstance(computed, float) or isinstance(stored, float):
-                agrees = abs(float(computed) - float(stored)) <= 1e-6
-            else:
-                agrees = computed == stored
-            if not agrees:
-                failures.append(
-                    f"{label} / {name}: computed {computed}, workbook {stored}"
-                )
+    for name, expected in EXPECTED_CHAIN_MONEY.items():
+        computed = round(mine[name])
+        if computed != expected:
+            failures.append(f"{name}: computed {computed}, workbook {expected}")
 
     return failures
 
@@ -857,19 +917,28 @@ def main() -> int:
         tables["engine_store"], tables["engine"], sku_master, stores, store_size
     )
 
+    f22_node = parse(expressions["f22-expiry-units"])
     f23_node = parse(expressions["f23-markdown-at-risk-gross"])
-    items = build_items(tables["engine"], sku_master, store_size, hz_cov, f23_node)
+    items = build_items(
+        tables["engine_store"], sku_master, stores, hz_cov, f22_node, f23_node
+    )
     store_rows = build_store_rows(tables["engine_store"], stores)
 
-    failures = reconcile(items, reference, label_of)
+    failures = reconcile(items)
     if failures:
-        print(f"FAIL  {len(failures)} KPI(s) disagree with the A2 sheet:")
+        print(
+            f"FAIL  {len(failures)} KPI(s) disagree with the workbook's"
+            " ENGINE_STORE grid:"
+        )
         for line in failures:
             print(f"      {line}")
         return 1
 
-    checked = len(label_of) * 6
-    print(f"  ok  reconciled {checked} KPI values across {len(label_of)} verticals")
+    checked = len(EXPECTED_CHAIN_KPIS) + len(EXPECTED_CHAIN_MONEY)
+    print(
+        f"  ok  reconciled {checked} chain-wide KPI values against ENGINE_STORE"
+        f" ({len(items)} rows)"
+    )
 
     entity_of = {label: vertical_id for vertical_id, label in label_of.items()}
 
@@ -945,11 +1014,15 @@ def main() -> int:
             # shape inside it is ours, and `derivation` says so.
             "dow_profile": list(DOW_PROFILE),
         },
-        # The expressions the What-If engine runs, copied from formula.json
-        # after `verify_engine_chain` proved they rebuild the rows below. The
-        # browser evaluates these rather than importing formula.json directly,
-        # so the rules and the data it was verified against cannot arrive out
-        # of step with each other.
+        # The expressions the What-If engine runs, read from `retail.formula`
+        # after `verify_engine_chain` proved they rebuild the rows below, and
+        # FROZEN here. The browser evaluates this copy, so the rules and the
+        # data they were verified against cannot arrive out of step.
+        #
+        # The freezing is the trade: an offline bundle keeps evaluating these
+        # expressions after someone edits the same rule in the Formula Manager,
+        # until this script is re-run. The live API path has no such gap --
+        # `warehouse._catalogue()` re-reads the table on every request.
         "formulas": expressions,
         # The workbook's own +20% demand scenario, carried so the What-If
         # engine has something to be checked against. Every other figure in
