@@ -166,7 +166,11 @@ class TestBuildersReproduceTheFixtures:
             if block in SKIP_BLOCKS or block in row_blocks:
                 continue
             if folder == "demand_forecasting" and block == "derivation":
-                expected = {**expected, "demand_trend": "calculated"}
+                expected = {
+                    **expected,
+                    "demand_trend": "calculated",
+                    "seasonality_index": "calculated-from-engine-store-seas",
+                }
             assert _same(built.get(block), expected), f"{folder}.{block} differs"
 
     def test_scoping_to_one_vertical_narrows_the_rows(

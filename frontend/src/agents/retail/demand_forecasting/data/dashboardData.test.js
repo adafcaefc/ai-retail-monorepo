@@ -29,6 +29,30 @@ import {
 import { buildDashboardFromFixture, computeTrending } from "./selectors.js";
 import fixture from "./fixture.json";
 
+const apiChartSeries = {
+  source: "synthetic.demand_store_sku_104w",
+  grain: "sku_store",
+  row_count: 16000,
+  ...Object.fromEntries(
+    Array.from({ length: 52 }, (_, index) => [`actual_w${52 - index}`, index + 1]),
+  ),
+  ...Object.fromEntries(
+    Array.from({ length: 52 }, (_, index) => [`forecast_w${index + 1}`, 100 + index]),
+  ),
+};
+const apiFixture = {
+  ...fixture,
+  demand_forecast_series: apiChartSeries,
+  seasonality_index: {
+    value: 103.125,
+    average_seas: 1.03125,
+    row_count: 16000,
+    source: "retail.temp_engine_store.[Seas]",
+    grain: "sku_store",
+    aggregation: "AVG(Seas) * 100",
+  },
+};
+
 const grocery = fixture.reference_by_vertical.find(
   (row) => row.legal_entity_id === "GRC",
 );
@@ -115,9 +139,8 @@ describe("the Demand Forecasting gateway", () => {
     expect(kpi("demand_trend").comparison_label).not.toBe("Workbook constant");
 
     // The tile says where its number came from rather than implying it was
-    // calculated. Two of the six were keyed in by hand; a third (seasonality
-    // index) used to be but now reads the derived `fc01-seasonal-index`
-    // curve instead — see RETAIL_FORMULA_HARDCODING_AUDIT.md section F.
+    // calculated. Two of the six are keyed in by hand; the live seasonality
+    // card is checked separately on the API path below.
     expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
     expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
@@ -178,21 +201,21 @@ describe("the Demand Forecasting gateway", () => {
       .toBeCloseTo(expected, 4);
   });
 
-  it("derives the seasonality index from the monthly GMV curve, not the typed constant", async () => {
+  it("uses the standalone rows for seasonality, not the monthly GMV curve or typed constant", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       legal_entity_id: "GRC",
     });
     const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
     const { by_legal_entity, current_month_index } = fixture.seasonality;
 
-    // Scoped to one vertical, the blend is just that vertical's own curve at
-    // the current month -- no weighting across verticals left to do.
-    expect(kpi("seasonality_index").value).toBeCloseTo(
+    // The checked-in standalone rows carry the v8.5 Seas value, so the
+    // scoped SKU average is 1.14 x 100. The monthly profile is chart-only.
+    expect(kpi("seasonality_index").value).toBeCloseTo(114, 6);
+    expect(kpi("seasonality_index").value).not.toBeCloseTo(
       by_legal_entity.GRC[current_month_index],
-      6,
+      1,
     );
-    // The two numbers really do differ -- this is not a no-op switch.
-    expect(kpi("seasonality_index").value).not.toBeCloseTo(grocery.seasonality_idx, 1);
+    expect(kpi("seasonality_index").value).toBeCloseTo(grocery.seasonality_idx, 6);
   });
 
   it("totals the chain to the sum of its verticals", async () => {
@@ -416,7 +439,7 @@ describe("the Demand Forecasting gateway in api mode", () => {
   beforeEach(async () => {
     vi.stubEnv("MODE", "production");
     vi.resetModules();
-    fetchMock = vi.fn(async () => ({ ok: true, json: async () => fixture }));
+    fetchMock = vi.fn(async () => ({ ok: true, json: async () => apiFixture }));
     vi.stubGlobal("fetch", fetchMock);
     ({
       loadDemandForecastingDashboard: load,
@@ -451,6 +474,64 @@ describe("the Demand Forecasting gateway in api mode", () => {
     expect(dashboard.scope.store_id).toBe("S001");
   });
 
+  it("builds both chart center lines from the API's 104W series", async () => {
+    const dashboard = await load({ horizon_weeks: 4, grain: "weekly" });
+
+    expect(dashboard.demand_forecast_series.source)
+      .toBe("synthetic.demand_store_sku_104w");
+    expect(dashboard.forecast.points.map((point) => point.label))
+      .toEqual(["W-4", "W-3", "W-2", "W-1", "W+1", "W+2", "W+3", "W+4"]);
+    expect(dashboard.forecast.points.map((point) => point.actual))
+      .toEqual([49, 50, 51, 52, null, null, null, null]);
+    expect(dashboard.forecast.points.map((point) => point.forecast))
+      .toEqual([null, null, null, null, 100, 101, 102, 103]);
+
+    expect(dashboard.confidence.points.slice(0, 12).map((point) => point.actual))
+      .toEqual(Array.from({ length: 12 }, (_, index) => 41 + index));
+    expect(dashboard.confidence.points.slice(12).map((point) => point.forecast))
+      .toEqual([100, 101, 102, 103]);
+  });
+
+  it.each([
+    [{}, 103.125, 1.03125, 16000],
+    [{ legal_entity_id: "GRC" }, 114, 1.14, 2000],
+    [{ store_id: "S001" }, 114, 1.14, 100],
+    [{ category_group: "GRC-C01" }, 114, 1.14, 100],
+    [{ sku: "GRC-001" }, 114, 1.14, 20],
+    [{ store_id: "S001", category_group: "GRC-C01" }, 114, 1.14, 5],
+    [{ store_id: "S001", sku: "GRC-001" }, 114, 1.14, 1],
+  ])(
+    "uses the backend Seas aggregate for the %j scope",
+    async (query, value, averageSeas, rowCount) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...apiFixture,
+          seasonality_index: {
+            ...apiFixture.seasonality_index,
+            value,
+            average_seas: averageSeas,
+            row_count: rowCount,
+          },
+        }),
+      });
+
+      const dashboard = await load(query);
+      const kpi = dashboard.kpis.find((row) => row.id === "seasonality_index");
+
+      expect(kpi.value).toBe(value);
+      expect(kpi.comparison_label).toBe("Calculated");
+      expect(dashboard.seasonality_index).toMatchObject({
+        value,
+        average_seas: averageSeas,
+        row_count: rowCount,
+        source: "retail.temp_engine_store.[Seas]",
+        grain: "sku_store",
+        aggregation: "AVG(Seas) * 100",
+      });
+    },
+  );
+
   it("forwards supported scopes, consumes live Trend, and ignores Horizon for it", async () => {
     const values = {
       "GRC": 5.5954,
@@ -482,7 +563,7 @@ describe("the Demand Forecasting gateway in api mode", () => {
       return {
         ok: true,
         json: async () => ({
-          ...fixture,
+          ...apiFixture,
           demand_trend: {
             trend_pct,
             actual_4w_total: 100,

@@ -230,39 +230,31 @@ and renders `LINE_FORMULAS` / `KPI_FORMULAS` instead.
 
 ---
 
-## F. A typed constant shipped where a derived figure was already sitting unused
+## F. A typed constant shipped where the current SKU × Store source was already available
 
 Sections A–E are all a catalogue bypass: `retail.formula` has a rule, and a
-board retypes it anyway. This section is the adjacent failure — no catalogue
-entry existed, real data to derive one from was already in the codebase, and
-the tile shipped the workbook's typed constant instead.
+board retypes it anyway. This section is the adjacent failure — the live
+SKU × Store `ENGINE_STORE.Seas` source was available, but the tile used either
+the workbook reference or a frontend-derived monthly curve.
 
 ### A1 Demand — the "Seasonality index" tile
 
-**Fixed 2026-08-20.** `demand_forecasting/data/selectors.js`'s `computeKpis()`
-set `seasonality_index` by blending the A1 sheet's typed per-vertical
-constant (`seasonality_idx` — 114, 100, 98… on `agent_kpi_reference`), while
-`blendSeasonality()` two lines away already derived a real monthly index from
-`fact_gmv_monthly` for the chart beside it. Both numbers shipped in the same
-payload (`docs/RETAIL_FORMULA_SOURCES.md` already documented both — Grocery:
-114 typed against 108.3 derived); the headline tile just read the wrong one.
-
-Now catalogued as `fc01-seasonal-index` (`resources/custom_formulas.json`) —
-a new `fc`-prefixed namespace rather than the next `fNN`, because this rule
-was never a row on the workbook's `Formulas` sheet; it is this project's own
-method for filling a gap the workbook left typed. `warehouse.seasonal_indices()`
-evaluates it; the tile now reads `blendSeasonality(...)`'s curve at the
-current month instead of the typed blend.
+**Fixed 2026-08-20.** `demand_forecasting/dashboard.py` now queries the current
+v8.5 `retail.temp_engine_store.[Seas]` column at SKU × Store grain, applies the
+selected filters, and returns `AVG(Seas) * 100`. The frontend consumes that
+backend-calculated field directly. The monthly `fc01-seasonal-index` curve
+still powers the separate seasonality chart/model block and is no longer a
+header KPI input.
 
 ### What else to watch for
 
 Any tile whose `derivation` label reads `typed-constant` is a candidate:
 check whether the data it would need to derive from for real already exists
 elsewhere in the payload before assuming none does. A1's `forecast_accuracy`
-and `demand_trend` are typed for a different reason — no data exists to
+and legacy `demand_trend` are typed for a different reason — no data exists to
 derive them from at all (`docs/RETAIL_FORMULA_SOURCES.md`'s "Still missing"
-table) — so they are not the same case; `seasonality_index` was, because
-`fact_gmv_monthly` already existed and was already being read for the chart.
+table). The seasonality chart remains a separate monthly profile and should
+not be substituted for the SKU × Store KPI source.
 
 ---
 

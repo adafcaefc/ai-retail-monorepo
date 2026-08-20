@@ -88,6 +88,27 @@ describe("the KPI drill-down drawer", () => {
     expect(within(drawer).getByText(/No history recorded/)).toBeInTheDocument();
   });
 
+  it("describes the live Seasonality Index source in its detail drawer", async () => {
+    await renderSettled();
+
+    fireEvent.click(screen.getByText("Seasonality index").closest(".demand-kpi"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(
+      within(drawer).getByText(
+        "This value is calculated from the current Azure SQL ENGINE_STORE seasonality data for the selected scope, using AVG(Seas) × 100. It updates with Legal Entity, Category, Store, and SKU filters.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).getByText(
+        "No historical seasonality series is stored. The KPI is calculated from the current SKU × Store snapshot in Azure SQL.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByText(/constant typed into the A1 sheet/i),
+    ).not.toBeInTheDocument();
+  });
+
   it("refuses to split a typed constant across categories", async () => {
     await renderSettled();
 

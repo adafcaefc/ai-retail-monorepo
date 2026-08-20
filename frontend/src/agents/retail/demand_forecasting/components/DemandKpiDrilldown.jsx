@@ -5,13 +5,15 @@ import DrillDrawer, {
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
+const DEFAULT_HISTORY_NOTE =
+  "No history recorded. The source holds a single snapshot per SKU with no date column, so a trend here would be generated rather than measured.";
+
 /**
  * What one A1 KPI tile is made of (mockup: `openKpiDrill`).
  *
- * Three of A1's six tiles are constants typed into the workbook, with no
- * per-SKU basis at all. Those open to an explanation rather than a breakdown —
- * the alternative is splitting one number across twelve categories and letting
- * the pieces read as findings.
+ * Non-splittable tiles open to an explanation rather than a breakdown — the
+ * alternative is splitting one number across categories and letting the pieces
+ * read as findings.
  *
  * The mockup's twelve-period history is a seeded random walk; there is no
  * dated source here, so that section says so.
@@ -21,6 +23,7 @@ export default function DemandKpiDrilldown({ drilldown, onClose, onSelectSku }) 
   if (!drilldown) return null;
 
   const format = formatterFor(drilldown.unit, language);
+  const historyNote = drilldown.history_note ?? DEFAULT_HISTORY_NOTE;
 
   return (
     <DrillDrawer
@@ -43,9 +46,7 @@ export default function DemandKpiDrilldown({ drilldown, onClose, onSelectSku }) 
           <p className="drill-warning">{t(drilldown.typed_note)}</p>
           <DrillSection icon="📈" title="12-period history of this metric">
             <p className="drill-empty">
-              {t(
-                "No history recorded. The source holds a single snapshot per SKU with no date column, so a trend here would be generated rather than measured.",
-              )}
+              {t(historyNote)}
             </p>
           </DrillSection>
         </>
@@ -53,9 +54,7 @@ export default function DemandKpiDrilldown({ drilldown, onClose, onSelectSku }) 
         <>
           <DrillSection icon="📈" title="12-period history of this metric">
             <p className="drill-empty">
-              {t(
-                "No history recorded. The source holds a single snapshot per SKU with no date column, so a trend here would be generated rather than measured.",
-              )}
+              {t(historyNote)}
             </p>
           </DrillSection>
 

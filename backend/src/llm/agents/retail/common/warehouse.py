@@ -284,13 +284,10 @@ def seasonal_indices(
 ) -> list[float]:
     """Twelve classical indices: month GMV over the series mean, times 100.
 
-    Evaluates `fc01-seasonal-index` from the catalogue rather than doing the
-    arithmetic here -- this is the rule the "Seasonality index" KPI tile
-    reads too (`demand_forecasting/data/selectors.js`'s `computeKpis`), and a
-    Formula Manager edit to `fc01` should reach both without either being
-    retyped. `fc01` sits in a separate `fc`-prefixed id space from the
-    workbook's own `f01`-`fNN` because it is not a transcription of any
-    workbook cell -- see `resources/custom_formulas.json`.
+    Evaluates `fc01-seasonal-index` from the catalogue for the seasonality
+    chart/model block. The header Seasonality Index KPI is separate: the live
+    Demand Forecasting builder reads the current v8.5 `ENGINE_STORE.Seas`
+    rows at SKU × Store grain and returns its scoped average.
 
     `node` lets a caller looping over several verticals (`seasonality()`
     below) parse `fc01` once and pass the AST in, rather than every vertical

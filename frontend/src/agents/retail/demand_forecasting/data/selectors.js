@@ -58,6 +58,10 @@ import {
 } from "../../common/demandModel.js";
 import { buildDrilldown } from "./drilldown.js";
 import { createDemandEngine, isDemandBaseline } from "./engine.js";
+import {
+  buildConfidenceSeries,
+  buildDemandChartSeries,
+} from "./chartSeries.js";
 
 const ALL = "ALL";
 
@@ -113,20 +117,18 @@ const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 
 /**
  * The six A1 headline tiles, over exactly the rows in scope.
  *
- * `seasonality_index` used to blend the A1 sheet's typed `seasonality_idx`
- * reference constant — the same number `fixture.reference_by_vertical`
- * carries and the tile now bypasses. It reads the scope's own derived curve
- * (`blendSeasonality`, `fc01-seasonal-index` under the hood) at the current
- * month instead, the same figure the seasonality chart already draws — see
- * `docs/RETAIL_FORMULA_SOURCES.md` for both numbers side by side.
+ * `seasonality_index` is supplied by the backend from the current v8.5
+ * `ENGINE_STORE.Seas` aggregate. It is deliberately not read from
+ * `reference_by_vertical` or derived from the monthly seasonality curve used
+ * by the chart.
  */
 export function computeKpis(
   items,
   referenceBy,
   seasonality,
   calculatedDemandTrend = null,
+  seasonalityIndex = null,
 ) {
-  const curve = blendSeasonality(items, seasonality);
   return {
     forecast_next_7d: sum(items, "forecast_7d"),
     forecast_accuracy: blend(items, referenceBy, "accuracy_pct"),
@@ -137,7 +139,7 @@ export function computeKpis(
     forecast_model_trend: blend(items, referenceBy, "trend_pct"),
     stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
     predicted_to_trend: items.filter((item) => item.is_trending).length,
-    seasonality_index: curve[seasonality.current_month_index],
+    seasonality_index: seasonalityIndex,
     sku_count: items.length,
   };
 }
@@ -450,6 +452,7 @@ export function computeSimulation(
   referenceBy,
   seasonality,
   calculatedDemandTrend = null,
+  seasonalityIndex = null,
 ) {
   const merged = normalizeDemandLevers(levers);
   const applied = !isDemandBaseline(merged);
@@ -458,6 +461,7 @@ export function computeSimulation(
     referenceBy,
     seasonality,
     calculatedDemandTrend,
+    seasonalityIndex,
   );
   const scenario = applied
     ? computeKpis(
@@ -465,6 +469,7 @@ export function computeSimulation(
       referenceBy,
       seasonality,
       calculatedDemandTrend,
+      seasonalityIndex,
     )
     : baseline;
 
@@ -517,6 +522,33 @@ export function buildDrilldownFromFixture(fixture, query = {}, metricId, options
   );
 }
 
+/**
+ * Resolve the header value supplied by the backend.
+ *
+ * The standalone bundle has no SQL endpoint, so its checked-in rows provide a
+ * deliberately explicit compatibility source. The live/API path always wins
+ * with the backend object and never reaches this fallback. In either case the
+ * monthly GMV curve and `reference_by_vertical` are not KPI inputs.
+ */
+export function resolveSeasonalityIndex(payload, scopedItems) {
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, "seasonality_index")) {
+    const source = payload.seasonality_index;
+    const rawValue = source && typeof source === "object"
+      ? source.value
+      : source;
+    if (rawValue == null) return null;
+    const value = Number(rawValue);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (!payload?.is_mock) return null;
+  const values = (scopedItems ?? [])
+    .map((item) => Number(item?.seasonality))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return (values.reduce((total, value) => total + value, 0) / values.length) * 100;
+}
+
 export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
   const merged = normalizeDemandQuery({ ...DEFAULT_DEMAND_QUERY, ...query });
   const calculatedDemandTrend = fixture.demand_trend || null;
@@ -527,6 +559,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
   const applyLevers = engineFor(fixture.formulas, fixture.constants.dow_sum);
   const levers = normalizeDemandLevers(options.levers ?? DEFAULT_DEMAND_LEVERS);
   const baselineItems = scopeItems(fixture.items, merged);
+  const seasonalityIndex = resolveSeasonalityIndex(fixture, baselineItems);
   const simulation = computeSimulation(
     baselineItems,
     levers,
@@ -534,6 +567,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     referenceBy,
     fixture.seasonality,
     calculatedDemandTrend,
+    seasonalityIndex,
   );
 
   const driveWholePage = options.driveWholePage !== false;
@@ -548,9 +582,17 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     referenceBy,
     fixture.seasonality,
     calculatedDemandTrend,
+    seasonalityIndex,
   );
   const curve = blendSeasonality(items, fixture.seasonality);
   const periodDays = GRAIN_DAYS[merged.grain] ?? GRAIN_DAYS.weekly;
+
+  const demandForecastSeries = options.demandForecastSeries
+    || fixture.demand_forecast_series
+    || null;
+  if (options.requireDemandForecastSeries && !demandForecastSeries) {
+    throw new Error("Demand Forecasting API returned no 104W chart series.");
+  }
 
   const seriesOptions = {
     ads: sum(items, "ads"),
@@ -563,7 +605,13 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     accuracyPct: kpis.forecast_accuracy,
     intervalZ: fixture.constants.interval_z,
   };
-  const forecast = buildForecastSeries(seriesOptions);
+  const forecast = demandForecastSeries
+    ? buildDemandChartSeries(demandForecastSeries, {
+      grain: merged.grain,
+      horizonWeeks: merged.horizon_weeks,
+      dowProfile: fixture.constants.dow_profile,
+    })
+    : buildForecastSeries(seriesOptions);
 
   const categories =
     merged.legal_entity_id === ALL
@@ -605,9 +653,16 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       calculatedDemandTrend,
     ),
     forecast,
-    // Same series, always weekly, so the confidence panel is comparable across
-    // grain changes rather than re-scaling under the reader.
-    confidence: buildForecastSeries({ ...seriesOptions, grain: "weekly" }),
+    // Same SQL-backed weekly source, always weekly, so the confidence panel is
+    // comparable across grain changes rather than re-scaling under the reader.
+    confidence: demandForecastSeries
+      ? buildConfidenceSeries(
+        demandForecastSeries,
+        merged.horizon_weeks,
+        kpis.forecast_accuracy,
+        fixture.constants.interval_z,
+      )
+      : buildForecastSeries({ ...seriesOptions, grain: "weekly" }),
     dimensions: computeDimensions(items, stores, fixture.seasonality, curve),
     trending_items: computeTrending(items),
     details: computeDetails(items, merged, periodDays),
@@ -622,6 +677,8 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     suggested_actions: computeSuggestedActions(items, kpis),
     reference_by_vertical: fixture.reference_by_vertical,
     demand_trend: calculatedDemandTrend,
+    demand_forecast_series: demandForecastSeries,
+    seasonality_index: fixture.seasonality_index ?? null,
   };
 }
 
