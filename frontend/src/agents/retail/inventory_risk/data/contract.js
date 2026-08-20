@@ -53,10 +53,13 @@ export const REPLENISH_STATES = Object.freeze(["Stockout", "Low"]);
 /**
  * What-If levers, A2 spec section 8a → `Constants` B16–B21.
  *
- * `effect` is what the reader is told the lever does. It is not decoration:
- * `markdown` is listed with no effect because the workbook's formulas carry no
- * markdown term, and a slider that silently does nothing is worse than one
- * that says so.
+ * B18 (markdown) is deliberately absent. It was carried here once as a
+ * disabled slider, but a dead control is worse than no control: this
+ * workbook's own formulas have no markdown term (verified against every
+ * expression the `A2 Inventory Risk` sheet computes), so no position of that
+ * lever could ever move a number on this board. Recovering at-risk value
+ * through markdown is `f14-recoverable-at-risk-value`, modelled on the
+ * Pricing & Markdown board instead — see `MARKDOWN_INSIGHT_NOTE` below.
  */
 export const LEVER_DEFINITIONS = Object.freeze([
   {
@@ -78,17 +81,6 @@ export const LEVER_DEFINITIONS = Object.freeze([
     step: 1,
     cell: "B17",
     effect: "Promo-eligible SKUs deplete faster",
-  },
-  {
-    id: "markdown",
-    label: "Markdown clear",
-    unit: "%",
-    min: 0,
-    max: 60,
-    step: 1,
-    cell: "B18",
-    effect: "No modelled effect — the workbook has no markdown term",
-    modelled: false,
   },
   {
     id: "inbound",
@@ -135,6 +127,15 @@ export const LEVER_DEFINITIONS = Object.freeze([
 export const BASELINE_LEVERS = Object.freeze(
   Object.fromEntries(LEVER_DEFINITIONS.map((lever) => [lever.id, 0])),
 );
+
+/**
+ * Points the reader at where markdown-driven recovery IS modelled, since it
+ * is not modelled here. `f14-recoverable-at-risk-value` reads `Constants!B18`
+ * on the Pricing & Markdown board (Agent 5), which owns the state-based
+ * markdown-depth table this board has no equivalent of.
+ */
+export const MARKDOWN_INSIGHT_NOTE =
+  "Markdown-driven recovery isn't modelled on this board — see the Pricing & Markdown board (Agent 5) for how much of this at-risk value a markdown could recover.";
 
 /**
  * Shelf-life buckets for the expiry timeline (A2 spec section 6,

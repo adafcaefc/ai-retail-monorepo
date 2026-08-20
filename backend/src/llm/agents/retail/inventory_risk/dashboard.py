@@ -20,7 +20,7 @@ from typing import Any
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
 from src.llm.agents.retail.common.warehouse import (
-    HZ_COV,
+    HORIZON_COVERAGE,
     REPLENISH_STATES,
     SCHEMA,
     SNAPSHOT_DATE,
@@ -79,6 +79,28 @@ def _float(value: Any) -> float:
     return float(value) if value is not None else 0.0
 
 
+def _arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    The warehouse stores the finished `ads` and the three inputs beside it, but
+    not the factor between them, so it is divided back out. At the workbook's
+    own lever setting f01 reduces to
+
+        ads = base_ads x seasonality x arch_horizon_factor x store_size
+
+    because the promo branch returns 1 when `Constants` B17 is zero. The
+    division is therefore exact, not a fit.
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN that would spread through
+    every KPI the moment a lever moved.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
+
+
 def build_items(
     rows: list[dict], store_size: dict[str, float], asts: dict[str, tuple]
 ) -> list[dict]:
@@ -96,10 +118,9 @@ def build_items(
     `state`, `inventory_value`, `at_risk_value` and `expiry_units` were stored
     answers -- and `is_stockout_risk` was a `position < rop` comparison retyped
     in Python. Those columns are the workbook's own and they agree with the
-    catalogue
-    today -- `verify_engine_chain` in the fixture builder proves it over all
-    800 rows -- so this change moves no number on screen. What it changes is
-    what happens when someone edits a rule in the Formula Manager:
+    catalogue today -- `verify_engine_chain` in the fixture builder proves it
+    over all 800 rows -- so this change moves no number on screen. What it
+    changes is what happens when someone edits a rule in the Formula Manager:
     `retail.formula` is read live and uncached precisely so a corrected rule
     takes effect at once, and until now that promise held only for the What-If
     path. A reader who fixed f20 and watched the baseline board keep last
@@ -131,10 +152,24 @@ def build_items(
         # The vertical's total size index, not one store's: a chain-net row
         # already covers every store, which is why f01 still applies to it.
         vertical_size = store_size[row["vertical_id"]]
-        # 1.0 is f01's identity for this multiplier, so a dim_item that has not
-        # been re-seeded since sql/retail/008 returns exactly the pre-008 ADS
-        # rather than a NULL that would poison every figure below it.
-        arch_horizon_factor = _float(row.get("arch_horizon_factor")) or 1.0
+        # f01's archetype/horizon multiplier, preferred from `dim_item` and
+        # recovered from the stored `ads` when that column is NULL -- which it
+        # is until sql/retail/008 has been applied AND the dims re-seeded.
+        #
+        # NOT a 1.0 fallback. One would be f01's arithmetic identity and would
+        # therefore look harmless, but it silently reproduces the pre-v8.5
+        # dataset -- an ADS the workbook never calculated, and with it a
+        # different DoS, state and expiry figure on every card below. The
+        # division recovers the real factor exactly (see `_arch_horizon_factor`)
+        # and only falls back when the row carries no usable inputs at all.
+        stored_factor = row.get("arch_horizon_factor")
+        arch_horizon_factor = (
+            _float(stored_factor)
+            if stored_factor is not None
+            else _arch_horizon_factor(
+                _float(row["ads"]), base_ads, seasonality_index, vertical_size
+            )
+        )
 
         def run(formula_id: str, values: dict[str, Any]) -> Any:
             return evaluate(asts[formula_id], values)
@@ -183,7 +218,10 @@ def build_items(
             "safety_adjust": 0,
         }
         rop = run("f05-rop", reorder)
-        max_qty = run("f06-maximum-inventory", {**reorder, "horizon_coverage": HZ_COV})
+        max_qty = run(
+            "f06-maximum-inventory",
+            {**reorder, "horizon_coverage": HORIZON_COVERAGE},
+        )
 
         dos = run("f20-days-of-supply", {"ads": ads, "position": position})
 
@@ -259,16 +297,23 @@ def build_items(
                 # -- What-If parameters, never answers ------------------
                 "base_ads": base_ads,
                 "seasonality": seasonality_index,
-                "arch_horizon_factor": arch_horizon_factor,
+                # The vertical's total size index, not one store's: a chain-net
+                # row already covers every store.
                 "store_size": vertical_size,
+                # f01's archetype/horizon factor. Resolved once above, from
+                # `dim_item` where sql/retail/008 has been seeded and by
+                # dividing it back out of the stored `ads` where it has not --
+                # never from a bare 1.0, which would silently reproduce the
+                # pre-v8.5 dataset.
+                "arch_horizon_factor": arch_horizon_factor,
+                # `Constants` B24. A model parameter rather than a fact about
+                # this SKU, but f06 reads it per row, so it rides along.
+                "horizon_coverage": HORIZON_COVERAGE,
                 "promo_eligible": promo_eligible,
                 "promo_depth": promo_depth,
                 "lead_days": lead_days,
                 "safety_days": safety_days,
                 "perishable": perishable,
-                # f06 reads this; carried so a lever drag re-derives Max
-                # against the same horizon the baseline above used.
-                "horizon_coverage": HZ_COV,
                 # The pair that lets the board scope to ONE store without this
                 # route shipping the 16,000-row grid:
                 #
@@ -400,7 +445,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # the only board that evaluates f06, and the browser needs the same
         # value the baseline above used or a lever drag would move Max on its
         # own. Agent 1 layers `interval_z` the same way.
-        "constants": {**constants(), "hz_cov": HZ_COV},
+        "constants": {**constants(), "hz_cov": HORIZON_COVERAGE},
         "seasonality": seasonal,
         "formulas": catalogue_formulas,
         "filter_options": options,

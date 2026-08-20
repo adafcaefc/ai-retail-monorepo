@@ -103,9 +103,13 @@ Two details the tile depends on:
   *and* Slow-mover. The caption scopes to Overstock rows only, matching the
   tile's name.
 
-`horizon_coverage` is `Constants` B24 (`hz_cov`, 4.0), carried in the payload
-as `constants.hz_cov` so the browser re-derives Max against the same horizon
-the baseline used.
+`horizon_coverage` is `Constants` B24 — `HORIZON_COVERAGE` in
+[`warehouse.py`](../backend/src/llm/agents/retail/common/warehouse.py), 4.0. It
+rides on each item *and* on `constants.hz_cov`, so the browser re-derives Max
+against the same horizon the baseline used. It is layered onto this board's
+constants rather than added to the shared `constants()`: Agent 2 is the only
+board that evaluates f06, and widening the contract of five boards that never
+run it is how a payload grows fields nobody reads.
 
 ---
 
@@ -203,9 +207,22 @@ it.
 > v8.5 added an archetype/horizon multiplier to f01. `dim_item` carried the
 > archetype *label* but never the multiplier the formula reads, so live queries
 > fell back to `1.0` — silently returning an ADS the workbook never calculated,
-> and with it a different DoS, state, and expiry figure. `sql/retail/008` adds
-> the column, seeded from `ENGINE_STORE!archhz` (a per-SKU constant, verified
-> identical across all 20 stores for all 800 SKUs).
+> and with it a different DoS, state, and expiry figure.
+>
+> It is now resolved two ways, in that order:
+>
+> 1. **`dim_item.arch_horizon_factor`**, added by `sql/retail/008` and seeded
+>    from `ENGINE_STORE!archhz` — a per-SKU constant, verified identical across
+>    all 20 stores for all 800 SKUs.
+> 2. **Recovered by division** from the stored `ads`, when that column is still
+>    NULL — `_arch_horizon_factor()` divides out
+>    `base_ads × seasonality × store_size`. At zero levers f01's promo branch
+>    returns 1, so the division is exact rather than a fit.
+>
+> Both give the same number; the second is what makes the board correct before
+> the migration is applied. **Neither falls back to `1.0`** except when a row
+> carries no usable inputs at all — a 1.0 looks harmless because it is f01's
+> arithmetic identity, but it quietly reinstates the pre-v8.5 dataset.
 
 ---
 

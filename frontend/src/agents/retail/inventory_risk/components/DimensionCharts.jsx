@@ -120,7 +120,8 @@ function ValueBarChart({ data, xKey, onSelect, activeKey }) {
           <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<ValueTooltip />} />
           <Bar
             dataKey="value"
-            isAnimationActive={false}
+            isAnimationActive={true}
+            animationDuration={300}
             onClick={onSelect ? (point) => onSelect(point.payload) : undefined}
             cursor={onSelect ? "pointer" : undefined}
           >
@@ -249,8 +250,8 @@ export default function DimensionCharts({
                   axisLine={false}
                 />
                 <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<StoreTooltip />} />
-                <Bar dataKey="stockout_count" stackId="skus" fill="var(--risk-stockout)" isAnimationActive={false} />
-                <Bar dataKey="low_count" stackId="skus" fill="var(--risk-low)" isAnimationActive={false} />
+                <Bar dataKey="stockout_count" stackId="skus" fill="var(--risk-stockout)" isAnimationActive={true} animationDuration={300} />
+                <Bar dataKey="low_count" stackId="skus" fill="var(--risk-low)" isAnimationActive={true} animationDuration={300} />
               </BarChart>
             </ResponsiveContainer>
           </div>

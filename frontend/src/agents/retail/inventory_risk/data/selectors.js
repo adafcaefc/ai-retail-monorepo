@@ -417,18 +417,23 @@ function tallyStore(store, rows) {
  * @param {Function} applyLevers Bound engine, for the chain case.
  * @param {Function} atStore Bound store-pointer, from the same engine.
  */
-function deriveStoreRows(items, stores, storeRow, applyLevers, atStore) {
+function deriveStoreRows(items, stores, storeRow, applyLevers, atStore, levers = BASELINE_LEVERS) {
   // A selected store's rows ARE the board's rows, already derived once by the
   // caller. Running them through `atStore` again would re-point rows that are
   // already pointed, so this only counts them.
-  if (storeRow !== null) return [tallyStore(storeRow, items)];
+  if (storeRow !== null) {
+    const storeItems = isBaseline(levers)
+      ? items
+      : items.map((item) => applyLevers(item, levers));
+    return [tallyStore(storeRow, storeItems)];
+  }
 
   return stores.map((store) =>
     tallyStore(
       store,
       items
         .filter((item) => item.vertical_id === store.vertical_id)
-        .map((item) => applyLevers(atStore(item, store), BASELINE_LEVERS)),
+        .map((item) => applyLevers(atStore(item, store), levers)),
     ),
   );
 }
@@ -873,27 +878,31 @@ export function buildDrilldownFromFixture(
   });
 }
 
-export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
-  const merged = { ...DEFAULT_SCOPE, ...scope };
-  const scopedStores = scopeStores(fixture.stores, merged);
-  const legalEntities = fixture.filter_options.legal_entities;
-
+/**
+ * Scope raw rows down to the items a board's baseline is built from, without
+ * running the whole dashboard payload around them.
+ *
+ * Factored out of `buildDashboardFromFixture` so a caller that only wants a
+ * simulation — the What-If panel's live preview, recomputed on every slider
+ * tick — can get to `computeSimulation` without paying for every chart this
+ * function also builds.
+ *
+ * A named store replaces the chain-net rows with that store's own, derived
+ * through `atStore` and then run through the ordinary engine at rest.
+ *
+ * Running the engine at BASELINE_LEVERS here rather than skipping it is the
+ * point: the stored `state`, `rop` and `dos` on a fixture row describe the
+ * chain, so for one store they have to be re-derived even though no lever has
+ * moved. `computeSimulation` then treats these as its baseline, which is
+ * correct — the scenario is measured against the store you are looking at.
+ *
+ * The vertical filter is implicit: a store belongs to one vertical, so
+ * `scopeItems` narrowing on `legal_entity_id` would be redundant here, and
+ * items from other verticals are dropped by the store's own vertical.
+ */
+function resolveBaselineItems(fixture, merged) {
   const { applyLevers, atStore } = engineFor(fixture.formulas);
 
-  /*
-   * A named store replaces the chain-net rows with that store's own, derived
-   * through `atStore` and then run through the ordinary engine at rest.
-   *
-   * Running the engine at BASELINE_LEVERS here rather than skipping it is the
-   * point: the stored `state`, `rop` and `dos` on a fixture row describe the
-   * chain, so for one store they have to be re-derived even though no lever
-   * has moved. `computeSimulation` then treats these as its baseline, which is
-   * correct — the scenario is measured against the store you are looking at.
-   *
-   * The vertical filter is implicit: a store belongs to one vertical, so
-   * `scopeItems` narrowing on `legal_entity_id` would be redundant here, and
-   * items from other verticals are dropped by the store's own vertical.
-   */
   const storeRow =
     merged.store_id === ALL
       ? null
@@ -906,30 +915,86 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
           .filter((item) => item.vertical_id === storeRow.vertical_id)
           .map((item) => applyLevers(atStore(item, storeRow), BASELINE_LEVERS));
 
-  const baselineItems = scopeItems(sourceItems, merged);
+  return {
+    baselineItems: scopeItems(sourceItems, merged),
+    storeRow,
+    applyLevers,
+    atStore,
+  };
+}
+
+/**
+ * The What-If panel's own live preview: baseline against whatever the sliders
+ * currently hold, recomputed on every tick with no network call and no
+ * rebuild of the rest of the board.
+ *
+ * `fixture` here is the raw rows already fetched for the current scope (see
+ * `loadInventoryRiskRows` in `dashboardData.js`) — not the finished dashboard
+ * payload, which already committed to one lever position. Row aggregation is
+ * in-memory and runs in low single-digit milliseconds over the whole chain,
+ * so calling this straight from a slider's `onChange` is instantaneous.
+ *
+ * @param {object} fixture Parsed rows, same shape `buildDashboardFromFixture` takes.
+ * @param {Partial<import("./contract.js").InventoryRiskScope>} [scope]
+ * @param {object} levers
+ * @param {{horizonWeeks?: number}} [options]
+ */
+export function computeLiveSimulation(fixture, scope = {}, levers, options = {}) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const { baselineItems, applyLevers } = resolveBaselineItems(fixture, merged);
+  const demandModel = resolveDemandModel(fixture);
+  const horizonWeeks = resolveHorizonWeeks(options.horizonWeeks);
+  const projectionDays = horizonDays(horizonWeeks);
+
+  return computeSimulation(
+    baselineItems,
+    levers,
+    applyLevers,
+    projectionDays,
+    demandModel,
+  );
+}
+
+export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
+  const merged = { ...DEFAULT_SCOPE, ...scope };
+  const scopedStores = scopeStores(fixture.stores, merged);
+  const legalEntities = fixture.filter_options.legal_entities;
+
+  const { baselineItems, storeRow, applyLevers, atStore } = resolveBaselineItems(
+    fixture,
+    merged,
+  );
+
+  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const driveWholePage = options.driveWholePage !== false;
 
   /*
    * Does the scope narrow rows WITHIN a store's shelf? Vertical and store do
-   * not — they choose which stores to show, and `fixture.stores` already
+   * not - they choose which stores to show, and `fixture.stores` already
    * covers each of those in full. Category, state and search do, and that is
    * exactly when the stored aggregates stop describing the board.
    *
-   * Reading the aggregates when nothing narrows is not just an optimisation:
-   * they are the workbook's own `ENGINE_STORE` totals, and the derivation
-   * reproduces them row for row, so the two paths agree by construction. It
-   * does save ~16,000 formula evaluations on the opening load, which is why
-   * the cheap branch is the default one.
+   * When levers are active and driveWholePage is true, store rows are also
+   * derived so store, cluster, and legal entity charts follow the simulation.
    */
   const narrowsRows =
     merged.category_group !== ALL ||
     merged.state !== ALL ||
     merged.sku.trim() !== "";
 
-  const stores = narrowsRows
-    ? deriveStoreRows(baselineItems, scopedStores, storeRow, applyLevers, atStore)
-    : scopedStores;
+  const hasLevers = !isBaseline(levers) && driveWholePage;
 
-  const levers = { ...BASELINE_LEVERS, ...options.levers };
+  const stores =
+    narrowsRows || hasLevers
+      ? deriveStoreRows(
+          baselineItems,
+          scopedStores,
+          storeRow,
+          applyLevers,
+          atStore,
+          hasLevers ? levers : BASELINE_LEVERS,
+        )
+      : scopedStores;
 
   /*
    * How far to project (A2 spec section 7a). It is not part of the scope: it
@@ -971,7 +1036,6 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
    * position rather than a scenario — and the reference totals are the
    * workbook's own and belong to the baseline by definition.
    */
-  const driveWholePage = options.driveWholePage !== false;
   const items =
     simulation.applied && driveWholePage
       ? baselineItems.map((item) => applyLevers(item, levers))

@@ -182,15 +182,13 @@ describe("with a lever moved", () => {
     expect(after).toBeGreaterThan(before);
   });
 
-  it("leaves the markdown lever declared but inert, and says so", () => {
-    // A2 spec 8a lists six levers; the workbook's formulas carry a term for
-    // five. Rendering the sixth as if it worked would be the lie.
-    const markdown = LEVER_DEFINITIONS.find((lever) => lever.id === "markdown");
-    expect(markdown.modelled).toBe(false);
-
-    const item = fixture.items[0];
-    expect(applyLevers(item, { ...BASELINE_LEVERS, markdown: 60 })).toEqual(
-      applyLevers(item, BASELINE_LEVERS),
-    );
+  it("carries no markdown lever, because the workbook's formulas have no term for one", () => {
+    // A2 spec 8a lists a markdown lever; this workbook's formulas carry no
+    // term for it. Rendering a lever that cannot move anything would be the
+    // lie the panel used to tell — see MARKDOWN_INSIGHT_NOTE in contract.js
+    // for where markdown-driven recovery is actually modelled.
+    expect(
+      LEVER_DEFINITIONS.find((lever) => lever.id === "markdown"),
+    ).toBeUndefined();
   });
 });

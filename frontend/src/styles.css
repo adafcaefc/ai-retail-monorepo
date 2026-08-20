@@ -5488,6 +5488,18 @@ img.ey-logo {
   background: var(--ey-gray-hover);
 }
 
+.sidebar .agent-button:disabled,
+.sidebar .agent-button:disabled:hover {
+  border-color: var(--ey-line);
+  background: var(--ey-gray-raised);
+  box-shadow: none;
+  color: var(--ey-muted);
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: 0.55;
+  transform: none;
+}
+
 .sidebar .agent-avatar {
   background: rgba(255, 230, 0, 0.14);
   color: var(--ey-yellow);
@@ -8217,15 +8229,11 @@ img.ey-logo {
   line-height: 1.4;
 }
 
-/* The markdown lever: declared by the spec, absent from the workbook's
-   formulas. Dimmed rather than removed, so the question "where is it?" is
-   answered where it is asked. */
-.risk-lever--inert {
-  opacity: 0.5;
-}
-
-.risk-lever--inert input {
-  cursor: not-allowed;
+.risk-simulator-note {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1.4;
 }
 
 .risk-simulator-results {
