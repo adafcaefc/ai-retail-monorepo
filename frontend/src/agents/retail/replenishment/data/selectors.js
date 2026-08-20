@@ -13,6 +13,7 @@ import {
   ALL,
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
+  HISTORY_INBOUND_RATIO,
   REQUIREMENT_WEEKS_BACK,
   REQUIREMENT_WEEKS_FORWARD,
   ROUTE_ORDER,
@@ -414,25 +415,41 @@ export function computeRequirement(
       week: -weekNumber,
       label: `W-${weekNumber}`,
       actual_demand: history[index],
-      // Inbound is a forward statement about supply. No table records what was
-      // delivered 16 weeks ago, and back-casting it would be invention.
+      // Modelled, and the caveat says so. No table records past receipts, but
+      // a chain that neither ran dry nor buried itself over 16 weeks must have
+      // received close to what it sold -- a flat fraction under demand, see
+      // HISTORY_INBOUND_RATIO. Left null it drew the supply line across only
+      // half the chart.
+      inbound: history[index] * HISTORY_INBOUND_RATIO,
+      // Requirement is the forward half of the demand backbone; before today
+      // that same measurement is `actual_demand`, and duplicating it into a
+      // second series would draw one line twice.
       requirement: null,
-      inbound: null,
+      // The past position is not reconstructable from a modelled inbound: it
+      // would compound 16 weeks of assumption into a stock figure the tooltip
+      // would then state as though it were counted.
       on_hand_after: null,
     });
   }
 
-  // The bridge. Today carries last week's measured demand in both demand
-  // series, so the history line and the requirement line pass through one
-  // identical point and read as a single backbone. Inbound stays null: nothing
-  // arrives "today", and drawing a zero would dive the line to the axis.
+  /*
+   * The bridge. Today carries last week's measured demand in both demand
+   * series, so the history line and the requirement line pass through one
+   * identical point and read as a single backbone.
+   *
+   * Inbound bridges here too, on the modelled past-side value. It is the same
+   * boundary the demand series crosses: behind Today the figure is modelled
+   * from history, ahead of it the figure is the delivery schedule, and the
+   * point they share is what keeps the supply line continuous across the
+   * divider instead of restarting at W+1.
+   */
   const lastActual = weeksBack ? history[weeksBack - 1] : 0;
   points.push({
     week: 0,
     label: "Today",
     actual_demand: lastActual,
     requirement: lastActual,
-    inbound: null,
+    inbound: lastActual * HISTORY_INBOUND_RATIO,
     on_hand_after: onHand,
   });
 

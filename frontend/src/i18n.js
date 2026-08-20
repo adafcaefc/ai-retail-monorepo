@@ -402,6 +402,7 @@ const CHROME = {
   "Actual demand": "Permintaan aktual",
   "Inbound + on-hand cover": "Cakupan stok + barang masuk",
   "Inbound supply": "Pasokan masuk",
+  modelled: "dimodelkan",
   "On hand": "Stok di tangan",
   "On hand after": "Stok setelah minggu ini",
   "Builds stock by": "Menambah stok",

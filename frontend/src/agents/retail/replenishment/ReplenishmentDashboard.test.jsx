@@ -352,8 +352,10 @@ describe("requirement versus inbound supply (spec 4)", () => {
     // there is nothing behind "16 weeks ago" to accumulate against.
     for (const point of history) {
       expect(point.requirement).toBeNull();
-      expect(point.inbound).toBeNull();
       expect(point.actual_demand).toBeGreaterThan(0);
+      // Modelled, not measured -- a flat fraction under demand, so the supply
+      // line spans the whole chart instead of only its forecast half.
+      expect(point.inbound).toBeCloseTo(point.actual_demand * 0.97, 6);
     }
 
     /*
@@ -367,9 +369,9 @@ describe("requirement versus inbound supply (spec 4)", () => {
     expect(today.label).toBe("Today");
     expect(today.actual_demand).toBe(lastActual.actual_demand);
     expect(today.requirement).toBe(lastActual.actual_demand);
-    // Nothing arrives "today", so inbound is null rather than a zero that
-    // would dive the line to the axis at the divider.
-    expect(today.inbound).toBeNull();
+    // Inbound bridges the divider on its modelled past-side value, so the
+    // supply line is continuous across Today rather than restarting at W+1.
+    expect(today.inbound).toBeCloseTo(lastActual.actual_demand * 0.97, 6);
     expect(today.on_hand_after).toBeCloseTo(
       fixture.lines.reduce((total, line) => total + line.on_hand, 0),
       6,

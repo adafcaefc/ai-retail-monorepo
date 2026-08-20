@@ -34,12 +34,17 @@ function RequirementTooltip({ active, payload, label }) {
         <span>
           {t("Actual demand")}: {formatUnits(Math.round(point.actual_demand), language)}
         </span>
+        <span>
+          {t("Inbound supply")}: {formatUnits(Math.round(point.inbound), language)}
+          {" · "}
+          {t("modelled")}
+        </span>
       </div>
     );
   }
 
-  // Today carries both demand series but no arrival, so it reads as the
-  // opening position and nothing else.
+  // Defensive: every point carries an inbound figure now, modelled behind
+  // Today and scheduled ahead of it. A null would mean a malformed payload.
   if (point.inbound === null) {
     return (
       <div className="po-chart-tooltip">
