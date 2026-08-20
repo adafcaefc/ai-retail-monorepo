@@ -148,6 +148,47 @@ const AGENTS = [
   },
 ];
 
+const DISABLED_AGENTS = [
+  {
+    id: "retail.assortment_optimization",
+    folder: "retail",
+    display: "Assortment Optimization",
+    description: "Review assortment optimization.",
+    prompt: "Ask Assortment...",
+    starter_prompts: [],
+    // A6 is a working agent, so this test guards that sidebar disabled state
+    // is not derived from dashboard_only.
+    dashboard_only: false,
+  },
+  {
+    id: "retail.workforce_optimizer",
+    folder: "retail",
+    display: "Workforce Optimizer",
+    description: "Review workforce optimization.",
+    prompt: "Ask Workforce...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
+  {
+    id: "retail.vendor_brand_performance",
+    folder: "retail",
+    display: "Vendor & Brand Performance",
+    description: "Review vendor and brand performance.",
+    prompt: "Ask Vendor...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
+  {
+    id: "retail.ai_explanation_summary",
+    folder: "retail",
+    display: "AI Explanation & Summary",
+    description: "Review the AI explanation summary.",
+    prompt: "Ask Summary...",
+    starter_prompts: [],
+    dashboard_only: true,
+  },
+];
+
 function emptyDashboard(agent) {
   return {
     agent,
@@ -595,6 +636,38 @@ describe("Retail dashboard and frontend-only chat", () => {
     // `testTimeout` in vitest.config.js rather than being trimmed: the point
     // of the test is that selecting any module leaves the other three alone,
     // which needs all four.
+  });
+
+  it("disables the four unavailable dashboard buttons without changing the active dashboard", async () => {
+    mocks.fetchAgents.mockResolvedValue([...AGENTS, ...DISABLED_AGENTS]);
+    renderApp();
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".agent-button").length).toBe(
+        AGENTS.length + DISABLED_AGENTS.length + PAGE_COUNT,
+      );
+    });
+
+    for (const agent of DISABLED_AGENTS) {
+      expect(buttonNamed(agent.display)).toBeDisabled();
+    }
+
+    for (const agent of AGENTS) {
+      expect(buttonNamed(agent.display)).toBeEnabled();
+    }
+
+    const initialDashboard = buttonNamed("Formula Manager");
+    expect(initialDashboard).toHaveClass("active");
+
+    for (const agent of DISABLED_AGENTS) {
+      fireEvent.click(buttonNamed(agent.display));
+    }
+
+    expect(initialDashboard).toHaveClass("active");
+    expect(screen.getByTestId("formula-manager")).toBeInTheDocument();
+    for (const agent of DISABLED_AGENTS) {
+      expect(buttonNamed(agent.display)).not.toHaveClass("active");
+    }
   });
 
   it("keeps Finance and Treasury chat execution on their own agent ids", async () => {

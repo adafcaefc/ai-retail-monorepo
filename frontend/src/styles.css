@@ -5488,6 +5488,18 @@ img.ey-logo {
   background: var(--ey-gray-hover);
 }
 
+.sidebar .agent-button:disabled,
+.sidebar .agent-button:disabled:hover {
+  border-color: var(--ey-line);
+  background: var(--ey-gray-raised);
+  box-shadow: none;
+  color: var(--ey-muted);
+  cursor: not-allowed;
+  filter: grayscale(1);
+  opacity: 0.55;
+  transform: none;
+}
+
 .sidebar .agent-avatar {
   background: rgba(255, 230, 0, 0.14);
   color: var(--ey-yellow);

@@ -40,9 +40,13 @@ from src.llm.agents.retail.common.warehouse import (
 
 AGENT_ID = "retail.inventory_risk"
 
-# The eleven expressions A2's What-If engine evaluates, in dependency order.
+# The twelve expressions A2's What-If engine evaluates, in dependency order.
 # It refuses to start without all of them, so the board fails loudly at load
 # rather than silently at the first slider drag.
+#
+# f02 is here because the drill-down evaluates it: `atStore` re-derives on-hand
+# at one store's health and size index rather than reading the chain figure.
+# It used to retype that expression, so this payload did not have to carry it.
 ENGINE_FORMULAS = (
     "f01-ads-per-store",
     "f02-on-hand",
