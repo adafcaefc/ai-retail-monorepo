@@ -961,6 +961,8 @@ export default function App() {
                                   : "agent-button"
                               }
 
+                              disabled={agent.disabled}
+
                               data-busy={chat.busy}
 
                               onClick={() => selectAgent(agent.id)}

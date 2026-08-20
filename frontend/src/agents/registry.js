@@ -18,6 +18,15 @@ const OVERRIDES = Object.fromEntries(
     .map((override) => [override.id, override])
 );
 
+// Frontend-only sidebar state. These modules remain in the backend registry;
+// this set only prevents their dashboard buttons from being selected.
+const DISABLED_DASHBOARD_IDS = new Set([
+  "retail.assortment_optimization",
+  "retail.workforce_optimizer",
+  "retail.vendor_brand_performance",
+  "retail.ai_explanation_summary",
+]);
+
 /** API items -> UI agents, keyed by canonical id. API order is preserved. */
 export function buildAgents(items) {
   return (items || []).map((item) => ({
@@ -28,8 +37,10 @@ export function buildAgents(items) {
     description: item.description || "",
     starterPrompts: item.starter_prompts || [],
     dashboardOnly: Boolean(item.dashboard_only),
-    // An override wins, so a module can customise its own UI.
-    ...(OVERRIDES[item.id] || {})
+    // An override wins for presentation fields, while the sidebar disable list
+    // remains frontend-owned.
+    ...(OVERRIDES[item.id] || {}),
+    disabled: DISABLED_DASHBOARD_IDS.has(item.id),
   }));
 }
 
