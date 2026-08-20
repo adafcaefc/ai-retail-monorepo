@@ -88,17 +88,39 @@ describe("the KPI drill-down drawer", () => {
     expect(within(drawer).getByText(/No history recorded/)).toBeInTheDocument();
   });
 
-  it("refuses to split a typed constant across categories", async () => {
+  it("describes the live Seasonality Index source in its detail drawer", async () => {
     await renderSettled();
 
-    // Accuracy is 92.4 in every vertical, typed into the A1 sheet. It has no
-    // per-SKU basis, so a category split of it would be invented detail.
+    fireEvent.click(screen.getByText("Seasonality index").closest(".demand-kpi"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(
+      within(drawer).getByText(
+        "This value is calculated from the current Azure SQL ENGINE_STORE seasonality data for the selected scope, using AVG(Seas) × 100. It updates with Legal Entity, Category, Store, and SKU filters.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).getByText(
+        "No historical seasonality series is stored. The KPI is calculated from the current SKU × Store snapshot in Azure SQL.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByText(/constant typed into the A1 sheet/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it("explains Forecast Accuracy is only available at Legal Entity level", async () => {
+    await renderSettled();
+
     fireEvent.click(screen.getByText("Forecast accuracy").closest(".demand-kpi"));
 
     const drawer = await screen.findByRole("dialog");
     expect(
-      within(drawer).getByText(/constant typed into the A1 sheet/),
+      within(drawer).getByText(
+        "Forecast Accuracy is currently calculated at the overall Legal Entity level. The current dataset does not yet contain forecast accuracy data at individual Store level, so store selections do not represent store-specific accuracy.",
+      ),
     ).toBeInTheDocument();
+    expect(within(drawer).queryByText(/constant typed into the A1 sheet/i)).not.toBeInTheDocument();
     expect(
       within(drawer).queryByText("This metric by category"),
     ).not.toBeInTheDocument();

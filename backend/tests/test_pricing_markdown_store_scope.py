@@ -1,15 +1,12 @@
 """`store_id` scoping for Agent 5 · Pricing & Markdown -- pure functions only.
 
-Regression for the bug where selecting a store on the board left the
-candidate table, KPIs and best-actions completely unchanged: `items` carried
-each SKU's chain-wide at-risk/recoverable total (summed across every store it
-sits in) regardless of `scope.store_id`, so narrowing to one store visibly
-narrowed only the dimension charts fed by `stores`.
-
-No database needed: `aggregate_markdown_by_sku` and `build_items` are pure
-functions of the rows handed to them, so this exercises `dashboard.build()`'s
-new store-scoping branch directly rather than through a live connection --
-the same shape `build()` filters `store_money_rows` into before calling them.
+`items` is one row per `fact_inventory_daily` record (SKU x store) -- see
+`dashboard.py`'s module docstring. `store_id` is therefore a plain filter on
+an intrinsic field, the same as `legal_entity_id`/`category_group`: no
+SKU-level rollup, no separate recompute path. These tests exercise
+`build_items()` directly (a pure function of the rows handed to it) rather
+than through a live connection or `build()`'s own scoping, which is one-line
+filters over exactly this same shape.
 """
 
 from __future__ import annotations
@@ -22,18 +19,20 @@ sys.path.insert(0, str(REPO / "backend"))
 
 from src.llm.agents.retail.pricing_markdown import dashboard as d  # noqa: E402
 
-CHAIN_ROW_DEFAULTS = {
+ROW_DEFAULTS = {
     "vertical_id": "GRC",
     "category_id": "C1",
     "category_name": "Cat1",
     "brand": "",
     "vendor_account": "",
+    "cluster": "Flagship",
+    "channel": "Physical",
     "position_qty": 10,
     "rop_qty": 5,
     "max_qty": 20,
     "days_cover": 3,
     "ads": 1,
-    "unit_price": 100,
+    "price": 100,
     "inventory_value": 1000,
     "expiry_units": 0,
     "shelf_life_days": 30,
@@ -45,6 +44,8 @@ CHAIN_ROW_DEFAULTS = {
     "on_hand_qty": 10,
     "base_ads": 1,
     "seasonality_index": 1,
+    "arch_horizon_factor": 1,
+    "size_index": 100,
     "stock_factor": 1,
     "onhand_days": 1,
     "is_promo_eligible": False,
@@ -53,33 +54,41 @@ CHAIN_ROW_DEFAULTS = {
 }
 
 
-def _chain_row(sku_id: str, name: str) -> dict:
-    return {"item_key": sku_id, "name": name, "state": "Healthy", **CHAIN_ROW_DEFAULTS}
+def _row(sku_id: str, store_id: str, name: str, state: str, at_risk: float, recoverable: float) -> dict:
+    return {
+        "item_key": sku_id, "store_key": store_id, "name": name, "state": state,
+        "at_risk": at_risk, "recoverable": recoverable,
+        **ROW_DEFAULTS,
+    }
 
 
 # SKU A sits at S1 (Overstock, at-risk 100) and S2 (Healthy, no exposure).
 # SKU B sits only at S2 (Expiry, at-risk 50).
 STORE_MONEY_ROWS = [
-    {"item_key": "A", "store_key": "S1", "state": "Overstock", "at_risk": 100.0, "recoverable": 30.0, "open_po_qty": 0},
-    {"item_key": "A", "store_key": "S2", "state": "Healthy", "at_risk": 0.0, "recoverable": 0.0, "open_po_qty": 0},
-    {"item_key": "B", "store_key": "S2", "state": "Expiry", "at_risk": 50.0, "recoverable": 40.0, "open_po_qty": 0},
+    _row("A", "S1", "Item A", "Overstock", 100.0, 30.0),
+    _row("A", "S2", "Item A", "Healthy", 0.0, 0.0),
+    _row("B", "S2", "Item B", "Expiry", 50.0, 40.0),
 ]
-CHAIN_ROWS = [_chain_row("A", "Item A"), _chain_row("B", "Item B")]
 LEAD_DAYS: dict = {}
-STORE_SIZES = {"GRC": 100.0}
 
 
 def _population(store_money_rows: list[dict]) -> dict[str, dict]:
-    markdown_by_sku = d.aggregate_markdown_by_sku(store_money_rows)
-    items = d.build_items(CHAIN_ROWS, markdown_by_sku, LEAD_DAYS, STORE_SIZES)
-    return {item["sku_id"]: item for item in items}
+    items = d.build_items(store_money_rows, LEAD_DAYS)
+    # Keyed by (sku, store): unlike the old SKU rollup, a SKU can legitimately
+    # appear more than once (at different stores) in this population.
+    return {(item["sku_id"], item["store_id"]): item for item in items}
 
 
-def test_unscoped_sums_at_risk_across_every_store() -> None:
+def test_every_row_keeps_its_own_state_and_candidacy() -> None:
     items = _population(STORE_MONEY_ROWS)
-    assert items["A"]["at_risk_value"] == 100.0
-    assert items["A"]["is_markdown_candidate"] is True
-    assert items["A"]["state"] == "Overstock"
+    assert items[("A", "S1")]["at_risk_value"] == 100.0
+    assert items[("A", "S1")]["is_markdown_candidate"] is True
+    assert items[("A", "S1")]["state"] == "Overstock"
+    assert items[("A", "S2")]["at_risk_value"] == 0.0
+    assert items[("A", "S2")]["is_markdown_candidate"] is False
+    assert items[("A", "S2")]["state"] == "Healthy"
+    assert items[("B", "S2")]["at_risk_value"] == 50.0
+    assert items[("B", "S2")]["is_markdown_candidate"] is True
 
 
 def test_store_scope_drops_a_sku_the_store_does_not_stock() -> None:
@@ -87,25 +96,22 @@ def test_store_scope_drops_a_sku_the_store_does_not_stock() -> None:
     when the board was scoped to S2, where A carries none at all."""
     rows_at_s2 = [r for r in STORE_MONEY_ROWS if r["store_key"] == "S2"]
     items = _population(rows_at_s2)
-    stocked = {r["item_key"] for r in rows_at_s2}
-    population = {sku: item for sku, item in items.items() if sku in stocked}
 
-    assert set(population) == {"A", "B"}
-    assert population["A"]["at_risk_value"] == 0.0
-    assert population["A"]["is_markdown_candidate"] is False
-    assert population["A"]["state"] == "Healthy"
-    assert population["B"]["at_risk_value"] == 50.0
-    assert population["B"]["is_markdown_candidate"] is True
+    assert {sku for sku, _store in items} == {"A", "B"}
+    assert items[("A", "S2")]["at_risk_value"] == 0.0
+    assert items[("A", "S2")]["is_markdown_candidate"] is False
+    assert items[("B", "S2")]["at_risk_value"] == 50.0
+    assert items[("B", "S2")]["is_markdown_candidate"] is True
+    # A's S1-only Overstock exposure must not leak into the S2 scope.
+    assert ("A", "S1") not in items
 
 
 def test_store_scope_excludes_skus_not_stocked_there() -> None:
     rows_at_s1 = [r for r in STORE_MONEY_ROWS if r["store_key"] == "S1"]
     items = _population(rows_at_s1)
-    stocked = {r["item_key"] for r in rows_at_s1}
-    population = {sku: item for sku, item in items.items() if sku in stocked}
 
-    assert set(population) == {"A"}
-    assert population["A"]["at_risk_value"] == 100.0
+    assert {sku for sku, _store in items} == {"A"}
+    assert items[("A", "S1")]["at_risk_value"] == 100.0
 
 
 def test_pricing_markdown_declares_store_id_supported() -> None:

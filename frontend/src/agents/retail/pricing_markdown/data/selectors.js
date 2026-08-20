@@ -232,6 +232,7 @@ export function computeCandidates(items, limit = 300) {
     .slice(0, limit)
     .map((i) => ({
       sku_id: i.sku_id,
+      store_id: i.store_id,
       name: i.name,
       category_label: i.category_label,
       state: i.state,

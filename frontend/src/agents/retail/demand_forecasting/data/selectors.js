@@ -2,11 +2,11 @@
  * Derive a Demand Forecasting payload from the workbook fixture.
  *
  * WHAT IS MEASURED AND WHAT IS MODELLED
- * The A1 sheet types five of its six KPIs as constants; only Forecast 7d is
- * a workbook formula. This board additionally derives the seasonality index
- * from real `fact_gmv_monthly` data rather than presenting the sheet's typed
- * figure (`computeKpis` below) — the other four stay typed. `fixture.derivation`
- * says which tile is which, and the UI labels accordingly.
+ * The live Demand Trend KPI is supplied by the backend's aggregate query over
+ * `synthetic.demand_store_sku_32w`. The remaining forecast-model trend stays
+ * separate below so this focused KPI change does not alter the forecast chart.
+ * The fixture has no synthetic SQL aggregate, so its Demand Trend is shown as
+ * unavailable rather than falling back to the old workbook reference.
  *
  * THE FORECAST MODEL
  * Classical multiplicative decomposition, the ordinary retail one:
@@ -20,7 +20,7 @@
  *   seasonal  twelve indices per vertical, from the monthly GMV profile,
  *             divided by the current month's index so today's factor is 1
  *             and the level stays where f01 put it
- *   trend     the A1 sheet's `Trend %` — a typed constant, compounded daily
+ *   trend     the legacy A1 `Trend %`, used only by the existing chart model
  *
  * PREDICTION INTERVAL
  * Forecast error accumulates with the square root of the horizon, so
@@ -58,6 +58,10 @@ import {
 } from "../../common/demandModel.js";
 import { buildDrilldown } from "./drilldown.js";
 import { createDemandEngine, isDemandBaseline } from "./engine.js";
+import {
+  buildConfidenceSeries,
+  buildDemandChartSeries,
+} from "./chartSeries.js";
 
 const ALL = "ALL";
 
@@ -113,22 +117,29 @@ const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 
 /**
  * The six A1 headline tiles, over exactly the rows in scope.
  *
- * `seasonality_index` used to blend the A1 sheet's typed `seasonality_idx`
- * reference constant — the same number `fixture.reference_by_vertical`
- * carries and the tile now bypasses. It reads the scope's own derived curve
- * (`blendSeasonality`, `fc01-seasonal-index` under the hood) at the current
- * month instead, the same figure the seasonality chart already draws — see
- * `docs/RETAIL_FORMULA_SOURCES.md` for both numbers side by side.
+ * `seasonality_index` is supplied by the backend from the current v8.5
+ * `ENGINE_STORE.Seas` aggregate. It is deliberately not read from
+ * `reference_by_vertical` or derived from the monthly seasonality curve used
+ * by the chart.
  */
-export function computeKpis(items, referenceBy, seasonality) {
-  const curve = blendSeasonality(items, seasonality);
+export function computeKpis(
+  items,
+  referenceBy,
+  seasonality,
+  calculatedDemandTrend = null,
+  seasonalityIndex = null,
+) {
   return {
     forecast_next_7d: sum(items, "forecast_7d"),
     forecast_accuracy: blend(items, referenceBy, "accuracy_pct"),
-    demand_trend: blend(items, referenceBy, "trend_pct"),
+    // This is the card value. It is intentionally not blended from
+    // reference_by_vertical.trend_pct.
+    demand_trend: calculatedDemandTrend?.trend_pct ?? null,
+    // The chart remains on its existing typed model until chart integration.
+    forecast_model_trend: blend(items, referenceBy, "trend_pct"),
     stockout_risk_skus: items.filter((item) => item.is_stockout_risk).length,
     predicted_to_trend: items.filter((item) => item.is_trending).length,
-    seasonality_index: curve[seasonality.current_month_index],
+    seasonality_index: seasonalityIndex,
     sku_count: items.length,
   };
 }
@@ -434,12 +445,32 @@ function engineFor(formulas, weekFactor) {
  * near them — see `unmodelled` below, which the panel reads to say so rather
  * than leaving a reader to wonder why a slider did nothing.
  */
-export function computeSimulation(items, levers, applyLevers, referenceBy, seasonality) {
+export function computeSimulation(
+  items,
+  levers,
+  applyLevers,
+  referenceBy,
+  seasonality,
+  calculatedDemandTrend = null,
+  seasonalityIndex = null,
+) {
   const merged = normalizeDemandLevers(levers);
   const applied = !isDemandBaseline(merged);
-  const baseline = computeKpis(items, referenceBy, seasonality);
+  const baseline = computeKpis(
+    items,
+    referenceBy,
+    seasonality,
+    calculatedDemandTrend,
+    seasonalityIndex,
+  );
   const scenario = applied
-    ? computeKpis(items.map((item) => applyLevers(item, merged)), referenceBy, seasonality)
+    ? computeKpis(
+      items.map((item) => applyLevers(item, merged)),
+      referenceBy,
+      seasonality,
+      calculatedDemandTrend,
+      seasonalityIndex,
+    )
     : baseline;
 
   const shape = (source) => ({
@@ -491,8 +522,36 @@ export function buildDrilldownFromFixture(fixture, query = {}, metricId, options
   );
 }
 
+/**
+ * Resolve the header value supplied by the backend.
+ *
+ * The standalone bundle has no SQL endpoint, so its checked-in rows provide a
+ * deliberately explicit compatibility source. The live/API path always wins
+ * with the backend object and never reaches this fallback. In either case the
+ * monthly GMV curve and `reference_by_vertical` are not KPI inputs.
+ */
+export function resolveSeasonalityIndex(payload, scopedItems) {
+  if (Object.prototype.hasOwnProperty.call(payload ?? {}, "seasonality_index")) {
+    const source = payload.seasonality_index;
+    const rawValue = source && typeof source === "object"
+      ? source.value
+      : source;
+    if (rawValue == null) return null;
+    const value = Number(rawValue);
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (!payload?.is_mock) return null;
+  const values = (scopedItems ?? [])
+    .map((item) => Number(item?.seasonality))
+    .filter((value) => Number.isFinite(value));
+  if (!values.length) return null;
+  return (values.reduce((total, value) => total + value, 0) / values.length) * 100;
+}
+
 export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
   const merged = normalizeDemandQuery({ ...DEFAULT_DEMAND_QUERY, ...query });
+  const calculatedDemandTrend = fixture.demand_trend || null;
   const referenceBy = Object.fromEntries(
     fixture.reference_by_vertical.map((row) => [row.legal_entity_id, row]),
   );
@@ -500,12 +559,15 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
   const applyLevers = engineFor(fixture.formulas, fixture.constants.dow_sum);
   const levers = normalizeDemandLevers(options.levers ?? DEFAULT_DEMAND_LEVERS);
   const baselineItems = scopeItems(fixture.items, merged);
+  const seasonalityIndex = resolveSeasonalityIndex(fixture, baselineItems);
   const simulation = computeSimulation(
     baselineItems,
     levers,
     applyLevers,
     referenceBy,
     fixture.seasonality,
+    calculatedDemandTrend,
+    seasonalityIndex,
   );
 
   const driveWholePage = options.driveWholePage !== false;
@@ -515,9 +577,22 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       : baselineItems;
 
   const stores = scopeStores(fixture.stores, merged);
-  const kpis = computeKpis(items, referenceBy, fixture.seasonality);
+  const kpis = computeKpis(
+    items,
+    referenceBy,
+    fixture.seasonality,
+    calculatedDemandTrend,
+    seasonalityIndex,
+  );
   const curve = blendSeasonality(items, fixture.seasonality);
   const periodDays = GRAIN_DAYS[merged.grain] ?? GRAIN_DAYS.weekly;
+
+  const demandForecastSeries = options.demandForecastSeries
+    || fixture.demand_forecast_series
+    || null;
+  if (options.requireDemandForecastSeries && !demandForecastSeries) {
+    throw new Error("Demand Forecasting API returned no 104W chart series.");
+  }
 
   const seriesOptions = {
     ads: sum(items, "ads"),
@@ -526,11 +601,17 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     profile: fixture.constants.dow_profile,
     curve,
     currentMonth: fixture.seasonality.current_month_index,
-    trendPct: kpis.demand_trend,
+    trendPct: kpis.forecast_model_trend,
     accuracyPct: kpis.forecast_accuracy,
     intervalZ: fixture.constants.interval_z,
   };
-  const forecast = buildForecastSeries(seriesOptions);
+  const forecast = demandForecastSeries
+    ? buildDemandChartSeries(demandForecastSeries, {
+      grain: merged.grain,
+      horizonWeeks: merged.horizon_weeks,
+      dowProfile: fixture.constants.dow_profile,
+    })
+    : buildForecastSeries(seriesOptions);
 
   const categories =
     merged.legal_entity_id === ALL
@@ -563,11 +644,25 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       grains: [...DEMAND_GRAINS],
       horizons_weeks: [...DEMAND_HORIZONS],
     },
-    kpis: buildKpiCards(kpis, curve, fixture.derivation, items, forecast),
+    kpis: buildKpiCards(
+      kpis,
+      curve,
+      fixture.derivation,
+      items,
+      forecast,
+      calculatedDemandTrend,
+    ),
     forecast,
-    // Same series, always weekly, so the confidence panel is comparable across
-    // grain changes rather than re-scaling under the reader.
-    confidence: buildForecastSeries({ ...seriesOptions, grain: "weekly" }),
+    // Same SQL-backed weekly source, always weekly, so the confidence panel is
+    // comparable across grain changes rather than re-scaling under the reader.
+    confidence: demandForecastSeries
+      ? buildConfidenceSeries(
+        demandForecastSeries,
+        merged.horizon_weeks,
+        kpis.forecast_accuracy,
+        fixture.constants.interval_z,
+      )
+      : buildForecastSeries({ ...seriesOptions, grain: "weekly" }),
     dimensions: computeDimensions(items, stores, fixture.seasonality, curve),
     trending_items: computeTrending(items),
     details: computeDetails(items, merged, periodDays),
@@ -581,17 +676,28 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     scenarios: [],
     suggested_actions: computeSuggestedActions(items, kpis),
     reference_by_vertical: fixture.reference_by_vertical,
+    demand_trend: calculatedDemandTrend,
+    demand_forecast_series: demandForecastSeries,
+    seasonality_index: fixture.seasonality_index ?? null,
   };
 }
 
 /**
  * The six tiles.
  *
- * A sparkline is only drawn where a real series exists. Four of these KPIs are
- * single typed constants with no history behind them, and inventing a wiggle
- * for them would be decorating a number with a shape that means nothing.
+ * A sparkline is only drawn where a real series exists. The live Demand Trend
+ * supplies its filtered SQL aggregate series; the remaining typed constants
+ * have no history behind them, so inventing a wiggle for them would be
+ * decorating a number with a shape that means nothing.
  */
-function buildKpiCards(kpis, curve, derivation, items = [], forecast = null) {
+function buildKpiCards(
+  kpis,
+  curve,
+  derivation,
+  items = [],
+  forecast = null,
+  calculatedDemandTrend = null,
+) {
   const seasonalSpark = curve.slice(0, 7);
 
   /*
@@ -615,10 +721,6 @@ function buildKpiCards(kpis, curve, derivation, items = [], forecast = null) {
   const bandSpark = (forecast?.points ?? [])
     .map((point) => (point.confidence_high ?? 0) - (point.confidence_low ?? 0))
     .filter((width) => Number.isFinite(width));
-  const forecastSpark = (forecast?.points ?? [])
-    .map((point) => point.forecast ?? 0)
-    .filter((value) => Number.isFinite(value));
-
   const cover = (item) => (item.ads > 0 ? item.position / item.ads : 0);
   const coverHistogram = (rows) => {
     const edges = [0.5, 2, 5, 8, 12, 15, 21, 30, Infinity];
@@ -630,8 +732,15 @@ function buildKpiCards(kpis, curve, derivation, items = [], forecast = null) {
     }
     return counts;
   };
-  const source = (id) =>
-    derivation?.[id] === "typed-constant" ? "Workbook constant" : "Calculated";
+  const source = (id) => {
+    if (id === "demand_trend") {
+      return calculatedDemandTrend?.trend_pct == null ? "Unavailable" : "Calculated";
+    }
+    if (id === "forecast_accuracy") {
+      return "Calculated";
+    }
+    return derivation?.[id] === "typed-constant" ? "Workbook constant" : "Calculated";
+  };
 
   return [
     {
@@ -662,11 +771,19 @@ function buildKpiCards(kpis, curve, derivation, items = [], forecast = null) {
       value: kpis.demand_trend,
       unit: "%",
       comparison_label: source("demand_trend"),
-      direction: kpis.demand_trend >= 0 ? "up" : "down",
-      status: kpis.demand_trend >= 0 ? "good" : "warn",
-      sparkline: forecastSpark,
+      direction: kpis.demand_trend == null
+        ? "flat"
+        : kpis.demand_trend >= 0 ? "up" : "down",
+      status: kpis.demand_trend == null
+        ? "neutral"
+        : kpis.demand_trend >= 0 ? "good" : "warn",
+      // SQL aggregates actual W-4..W-1 followed by forecast W+1..W+4 for the
+      // selected scope. This is a series, not the old workbook Trend model.
+      sparkline: kpis.demand_trend == null
+        ? []
+        : calculatedDemandTrend?.sparkline ?? [],
       sparkline_kind: "series",
-      sparkline_caption: "Forecast curve the trend compounds into",
+      sparkline_caption: "Actual W-4 to W-1 and forecast W+1 to W+4",
     },
     {
       id: "stockout_risk_skus",

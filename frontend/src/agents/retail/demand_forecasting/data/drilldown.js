@@ -1,11 +1,8 @@
 /**
  * Decompose one A1 KPI tile into the breakdowns its drawer shows.
  *
- * A1 is the awkward one of the three, and honestly so. Three of its six
- * headline figures are constants typed into the `A1 Demand Forecasting` sheet
- * — accuracy, trend, seasonality index — which means they cannot be
- * decomposed at all: there is no per-SKU accuracy to sum, only one number per
- * vertical. Those tiles say that rather than splitting a constant across
+ * Some headline figures cannot be decomposed at this grain. The drawer says
+ * why rather than splitting a constant or snapshot aggregate across
  * categories and presenting the pieces as findings.
  *
  * `derivation` already carries the measured/typed distinction through the
@@ -22,9 +19,8 @@ export const TOP_SKU_COUNT = 6;
 const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 0);
 
 /**
- * `splittable` is the honest flag. False means the figure is one typed
- * constant per vertical, so a category or store split of it would be a number
- * this board invented.
+ * `splittable` is the honest flag. False means this drawer has no supported
+ * category or store breakdown for the figure.
  */
 const METRICS = {
   forecast_next_7d: {
@@ -55,6 +51,8 @@ const METRICS = {
     unit: "percent",
     splittable: false,
     typed: true,
+    description:
+      "Forecast Accuracy is currently calculated at the overall Legal Entity level. The current dataset does not yet contain forecast accuracy data at individual Store level, so store selections do not represent store-specific accuracy.",
   },
   demand_trend: {
     label: "Demand trend",
@@ -66,7 +64,10 @@ const METRICS = {
     label: "Seasonality index",
     unit: "count",
     splittable: false,
-    typed: true,
+    description:
+      "This value is calculated from the current Azure SQL ENGINE_STORE seasonality data for the selected scope, using AVG(Seas) × 100. It updates with Legal Entity, Category, Store, and SKU filters.",
+    history_note:
+      "No historical seasonality series is stored. The KPI is calculated from the current SKU × Store snapshot in Azure SQL.",
   },
 };
 
@@ -84,9 +85,7 @@ const TYPED_NOTE =
  * @param {object[]} items   The scoped item rows the headline was built from.
  * @param {object[]} stores  The scoped per-store aggregates.
  * @param {number} total     The headline value, taken from the KPI card so the
- *                           drawer and the tile cannot disagree — necessary
- *                           for the typed constants, which are blended per
- *                           vertical rather than reduced from rows.
+ *                           drawer and the tile cannot disagree.
  */
 export function buildDrilldown(metricId, items, stores, total) {
   const metric = drilldownMetric(metricId);
@@ -105,7 +104,8 @@ export function buildDrilldown(metricId, items, stores, total) {
   if (!metric.splittable) {
     return {
       ...base,
-      typed_note: TYPED_NOTE,
+      typed_note: metric.description ?? TYPED_NOTE,
+      history_note: metric.history_note ?? null,
       by_category: [],
       by_store: [],
       top_skus: [],

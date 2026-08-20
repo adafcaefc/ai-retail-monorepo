@@ -19,6 +19,11 @@ export const DEMAND_GRAINS = [
 
 export const DEMAND_HORIZONS = [4, 8, 12, 16];
 
+export const DEMAND_CHART_COLUMNS = Object.freeze([
+  ...Array.from({ length: 52 }, (_, index) => `actual_w${52 - index}`),
+  ...Array.from({ length: 52 }, (_, index) => `forecast_w${index + 1}`),
+]);
+
 /**
  * Every lever at rest, which is where `Constants` B16-B21 sit.
  *
@@ -82,16 +87,18 @@ function boundedInteger(value, fallback, min, max) {
 }
 
 export function normalizeDemandQuery(query = {}) {
-  const horizon = Number(query.horizon_weeks);
+  const requestedHorizon = Number(query.horizon_weeks);
+  const horizon = DEMAND_HORIZONS.includes(requestedHorizon) ? requestedHorizon : 8;
   const grain = String(query.grain || "").toLowerCase();
+  const normalizedGrain = DEMAND_GRAINS.includes(grain) ? grain : "weekly";
 
   return {
     legal_entity_id: String(query.legal_entity_id || "ALL"),
     category_group: String(query.category_group || "ALL"),
     store_id: String(query.store_id || "ALL"),
     sku: String(query.sku || "").trim().slice(0, 120),
-    grain: DEMAND_GRAINS.includes(grain) ? grain : "weekly",
-    horizon_weeks: DEMAND_HORIZONS.includes(horizon) ? horizon : 8,
+    grain: normalizedGrain,
+    horizon_weeks: horizon,
     detail_offset: boundedInteger(query.detail_offset, 0, 0, 1000000),
     detail_limit: boundedInteger(query.detail_limit, 100, 1, 100),
   };
@@ -177,6 +184,8 @@ function normalizeSeries(series = {}) {
     history_count: boundedInteger(series.history_count, 0, 0, 1000),
     horizon_weeks: boundedInteger(series.horizon_weeks, 8, 1, 52),
     horizon_label: String(series.horizon_label || ""),
+    source: String(series.source || ""),
+    subtitle: series.subtitle == null ? "" : String(series.subtitle),
     points: (Array.isArray(series.points) ? series.points : []).map(normalizePoint),
     summary: (Array.isArray(series.summary) ? series.summary : []).map((item) => ({
       id: String(item?.id || ""),
@@ -187,6 +196,21 @@ function normalizeSeries(series = {}) {
   };
 }
 
+function normalizeDemandForecastSeries(series) {
+  if (!series || typeof series !== "object") {
+    return null;
+  }
+  const normalized = {
+    source: String(series.source || ""),
+    grain: String(series.grain || "sku_store"),
+    row_count: boundedInteger(series.row_count, 0, 0, 10000000),
+  };
+  DEMAND_CHART_COLUMNS.forEach((column) => {
+    normalized[column] = finiteNumber(series[column], 0);
+  });
+  return normalized;
+}
+
 function normalizeDimensionRows(rows, extra = () => ({})) {
   return (Array.isArray(rows) ? rows : []).map((row) => ({
     id: String(row?.id || ""),
@@ -195,6 +219,37 @@ function normalizeDimensionRows(rows, extra = () => ({})) {
     share_pct: finiteNumber(row?.share_pct, 0),
     ...extra(row),
   }));
+}
+
+function normalizeDemandTrend(trend) {
+  if (!trend || typeof trend !== "object") {
+    return null;
+  }
+  return {
+    trend_pct: finiteNumber(trend.trend_pct),
+    actual_4w_total: finiteNumber(trend.actual_4w_total, 0),
+    forecast_4w_total: finiteNumber(trend.forecast_4w_total, 0),
+    row_count: boundedInteger(trend.row_count, 0, 0, 10000000),
+    source: String(trend.source || ""),
+    horizon_independent: Boolean(trend.horizon_independent),
+    sparkline: (Array.isArray(trend.sparkline) ? trend.sparkline : [])
+      .map((value) => finiteNumber(value))
+      .filter((value) => value != null),
+  };
+}
+
+function normalizeSeasonalityIndex(index) {
+  if (!index || typeof index !== "object") {
+    return null;
+  }
+  return {
+    value: finiteNumber(index.value),
+    average_seas: finiteNumber(index.average_seas),
+    row_count: boundedInteger(index.row_count, 0, 0, 10000000),
+    source: String(index.source || ""),
+    grain: String(index.grain || "sku_store"),
+    aggregation: String(index.aggregation || ""),
+  };
 }
 
 function normalizeSimulation(simulation = {}, fallbackForecast) {
@@ -247,6 +302,36 @@ export function validateDemandDashboardV2(payload) {
   if (Number(payload?.schema_version) < SCHEMA_VERSION) {
     demandContractError("schema_version", `must be ${SCHEMA_VERSION} or newer`);
   }
+
+  if (!payload?.seasonality_index
+    || typeof payload.seasonality_index !== "object") {
+    demandContractError("seasonality_index");
+  }
+  ["value", "average_seas"].forEach((field) => {
+    const value = payload.seasonality_index[field];
+    if (value != null && !Number.isFinite(Number(value))) {
+      demandContractError(`seasonality_index.${field}`, "must be numeric or null");
+    }
+  });
+  if (payload.seasonality_index.row_count == null
+    || !Number.isFinite(Number(payload.seasonality_index.row_count))) {
+    demandContractError("seasonality_index.row_count", "must be numeric");
+  }
+  ["source", "grain", "aggregation"].forEach((field) => {
+    if (typeof payload.seasonality_index[field] !== "string") {
+      demandContractError(`seasonality_index.${field}`);
+    }
+  });
+
+  if (!payload?.demand_forecast_series
+    || typeof payload.demand_forecast_series !== "object") {
+    demandContractError("demand_forecast_series");
+  }
+  DEMAND_CHART_COLUMNS.forEach((column) => {
+    if (!Number.isFinite(Number(payload.demand_forecast_series[column]))) {
+      demandContractError(`demand_forecast_series.${column}`, "must be numeric");
+    }
+  });
 
   const dimensionArrays = [
     "categories",
@@ -393,7 +478,7 @@ export function normalizeDemandDashboard(payload, { requirePhase2 = false } = {}
     kpis: (Array.isArray(payload.kpis) ? payload.kpis : []).map((kpi) => ({
       id: String(kpi?.id || ""),
       label: String(kpi?.label || ""),
-      value: finiteNumber(kpi?.value, 0),
+      value: kpi?.value == null ? null : finiteNumber(kpi.value, 0),
       unit: kpi?.unit == null ? null : String(kpi.unit),
       comparison_label: String(kpi?.comparison_label || ""),
       direction: ["up", "down", "flat"].includes(kpi?.direction)
@@ -406,6 +491,9 @@ export function normalizeDemandDashboard(payload, { requirePhase2 = false } = {}
         .map((value) => finiteNumber(value))
         .filter((value) => value != null),
     })),
+    demand_trend: normalizeDemandTrend(payload.demand_trend),
+    seasonality_index: normalizeSeasonalityIndex(payload.seasonality_index),
+    demand_forecast_series: normalizeDemandForecastSeries(payload.demand_forecast_series),
     forecast,
     confidence: normalizeSeries(payload.confidence || payload.forecast),
     dimensions: {

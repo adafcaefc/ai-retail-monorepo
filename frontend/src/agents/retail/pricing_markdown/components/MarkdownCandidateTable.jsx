@@ -5,8 +5,11 @@ import { formatIdrExact, formatUnits } from "../presentation.js";
 const PAGE_SIZE = 12;
 
 /**
- * The Markdown candidate preview — every SKU in scope with at least one
- * store in Expiry, Overstock or Slow-mover, sorted by at-risk value desc.
+ * The Markdown candidate preview — one row per (SKU, store) in scope whose
+ * own state is Expiry, Overstock or Slow-mover, sorted by at-risk value desc.
+ * The same SKU can appear more than once here, at different stores — that is
+ * the A5 sheet's own grain (see `scripts/build_pricing_markdown_fixture.py`),
+ * so the Store column is what tells two rows for the same SKU apart.
  */
 export default function MarkdownCandidateTable({ candidates, onSelect }) {
   const { t, language } = useLanguage();
@@ -35,6 +38,7 @@ export default function MarkdownCandidateTable({ candidates, onSelect }) {
               <thead>
                 <tr>
                   <th>{t("SKU")}</th>
+                  <th>{t("Store")}</th>
                   <th>{t("Category")}</th>
                   <th>{t("State")}</th>
                   <th>{t("Position")}</th>
@@ -49,8 +53,13 @@ export default function MarkdownCandidateTable({ candidates, onSelect }) {
               </thead>
               <tbody>
                 {pageRows.map((c) => (
-                  <tr key={c.sku_id} className="pricing-candidate-row" onClick={() => onSelect?.(c.sku_id)}>
+                  <tr
+                    key={`${c.sku_id}-${c.store_id}`}
+                    className="pricing-candidate-row"
+                    onClick={() => onSelect?.(c.sku_id)}
+                  >
                     <td>{c.sku_id}</td>
+                    <td>{c.store_id}</td>
                     <td>{c.category_label}</td>
                     <td>
                       <span className={`pricing-state-badge pricing-state-${c.state.toLowerCase()}`}>
