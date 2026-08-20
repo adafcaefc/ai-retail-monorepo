@@ -61,20 +61,24 @@ def get_inventory_risk_snapshot(
             connection,
             f"""
             SELECT c.state,
-                   count(*)                       AS skus,
+                   count(*)                                                     AS skus,
                    -- Carried per state so the total below can count below-ROP
                    -- rows without caring which state they were labelled with.
-                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)
-                                                  AS below_rop_skus,
-                   round(sum(c.at_risk_value), 0)    AS at_risk_value,
-                   round(sum(c.inventory_value), 0)  AS inventory_value,
-                   round(avg(c.days_cover), 2) AS avg_days_cover,
-                   round(sum(c.expiry_units), 0)  AS expiry_units
-            FROM {CHAIN} c
+                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)   AS below_rop_skus,
+                   coalesce(sum(CASE WHEN c.state <> 'Healthy' THEN c.position_qty * i.price ELSE 0 END), 0)
+                                                                                AS at_risk_value,
+                   coalesce(sum(c.position_qty * i.price), 0)                   AS inventory_value,
+                   round(avg(c.days_cover), 2)                                  AS avg_days_cover,
+                   coalesce(sum(
+                       CASE WHEN i.is_perishable = 1 AND c.days_cover > i.shelf_life_days
+                            THEN c.position_qty - c.ads * i.shelf_life_days ELSE 0 END
+                   ), 0)                                                        AS expiry_units
+            FROM {PER_STORE} c
             JOIN {ITEM} i ON i.item_id = c.item_key
+            JOIN {warehouse.SCHEMA}.dim_store s ON s.store_id = c.store_key
             WHERE 1 = 1{clause}
             GROUP BY c.state
-            ORDER BY sum(c.at_risk_value) DESC
+            ORDER BY sum(CASE WHEN c.state <> 'Healthy' THEN c.position_qty * i.price ELSE 0 END) DESC
             """,
             params,
         )
@@ -84,20 +88,18 @@ def get_inventory_risk_snapshot(
             f"""
             SELECT i.vertical_id,
                    v.dashboard_label,
-                   count(*)                      AS skus,
-                   -- Measured, not labelled -- see the note on REPLENISH_STATES.
-                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)
-                                                 AS stockout_risk_skus,
-                   sum(CASE WHEN c.state = 'Overstock' THEN 1 ELSE 0 END)
-                                                 AS overstock_skus,
-                   sum(CASE WHEN c.state = 'Slow-mover' THEN 1 ELSE 0 END)
-                                                 AS slow_mover_skus,
-                   round(sum(c.inventory_value), 0) AS inventory_value,
-                   round(sum(c.at_risk_value), 0)   AS at_risk_value,
-                   round(avg(c.days_cover), 2) AS avg_days_cover
-            FROM {CHAIN} c
+                   count(*)                                                     AS skus,
+                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)   AS stockout_risk_skus,
+                   sum(CASE WHEN c.state = 'Overstock' THEN 1 ELSE 0 END)       AS overstock_skus,
+                   sum(CASE WHEN c.state = 'Slow-mover' THEN 1 ELSE 0 END)      AS slow_mover_skus,
+                   coalesce(sum(c.position_qty * i.price), 0)                   AS inventory_value,
+                   coalesce(sum(CASE WHEN c.state <> 'Healthy' THEN c.position_qty * i.price ELSE 0 END), 0)
+                                                                                AS at_risk_value,
+                   round(avg(c.days_cover), 2)                                  AS avg_days_cover
+            FROM {PER_STORE} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             JOIN {warehouse.SCHEMA}.dim_vertical v ON v.vertical_id = i.vertical_id
+            JOIN {warehouse.SCHEMA}.dim_store s ON s.store_id = c.store_key
             WHERE 1 = 1{clause}
             GROUP BY i.vertical_id, v.dashboard_label, v.sort_order
             ORDER BY v.sort_order

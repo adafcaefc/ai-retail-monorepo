@@ -889,6 +889,39 @@ def main() -> int:
             },
         )
 
+    by_state_map: dict[str, dict[str, Any]] = {}
+    for row in tables["engine_store"]:
+        st = row["state"]
+        if st == "Healthy" or st not in STATE_ORDER:
+            continue
+        if st not in by_state_map:
+            by_state_map[st] = {"state": st, "total": 0, "segments": {}}
+        val = int(round(float(row.get("at_risk", 0) or row.get("inv_value", 0))))
+        by_state_map[st]["total"] += val
+        cat_id = row.get("cat_id", "")
+        if cat_id not in by_state_map[st]["segments"]:
+            cat_label = categories.get(cat_id, {}).get("label", cat_id).split(" · ")[-1]
+            by_state_map[st]["segments"][cat_id] = {
+                "category_id": cat_id,
+                "label": cat_label,
+                "value": 0,
+            }
+        by_state_map[st]["segments"][cat_id]["value"] += val
+
+    at_risk_by_state = [
+        {
+            "state": st,
+            "total": by_state_map[st]["total"],
+            "segments": sorted(
+                by_state_map[st]["segments"].values(),
+                key=lambda seg: seg["value"],
+                reverse=True,
+            ),
+        }
+        for st in STATE_ORDER
+        if st in by_state_map
+    ]
+
     fixture = {
         "schema_version": SCHEMA_VERSION,
         "agent": AGENT_ID,
@@ -901,6 +934,7 @@ def main() -> int:
             "stock levels as illustrative."
         ),
         "state_order": list(STATE_ORDER),
+        "at_risk_by_state": at_risk_by_state,
         # Model parameters the browser needs but must not retype. Keyed off the
         # `Constants` cell rather than its label, because a label is prose and
         # gets reworded; B6 and B7 are addresses and do not.

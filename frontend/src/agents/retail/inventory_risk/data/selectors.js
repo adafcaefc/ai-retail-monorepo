@@ -1091,7 +1091,16 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       horizon_weeks: horizonWeeks,
     },
     simulation,
-    at_risk_by_state: computeAtRiskByState(items),
+    at_risk_by_state:
+      fixture.at_risk_by_state &&
+      fixture.at_risk_by_state.length > 0 &&
+      merged.store_id === ALL &&
+      merged.category_group === ALL &&
+      merged.legal_entity_id === ALL &&
+      merged.state === ALL &&
+      !merged.sku
+        ? fixture.at_risk_by_state
+        : computeAtRiskByState(items),
     value_by_category: computeValueByCategory(items),
     at_risk_by_category: computeAtRiskByCategory(items),
     stockout_by_store: computeStockoutByStore(stores),

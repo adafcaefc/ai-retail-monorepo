@@ -413,6 +413,21 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             store_params,
         )
 
+        at_risk_by_state_rows = _rows(
+            connection,
+            f"""
+            SELECT f.state, i.category_id, i.category_name,
+                   coalesce(sum(f.position_qty * i.price), 0) AS at_risk_value
+            FROM {SCHEMA}.fact_inventory_daily f
+            JOIN {SCHEMA}.dim_store s ON s.store_id = f.store_key
+            JOIN {SCHEMA}.dim_item  i ON i.item_id  = f.item_key
+            WHERE f.cal_date = :day AND f.state <> 'Healthy'{store_where}
+            GROUP BY f.state, i.category_id, i.category_name
+            ORDER BY sum(f.position_qty * i.price) DESC
+            """,
+            store_params,
+        )
+
         options = filter_options(connection)
         # The agent's own KPI sheet, per vertical. Nothing on screen renders
         # it; it is what every figure above is reconciled against.
@@ -438,6 +453,33 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         name: parse(expression) for name, expression in catalogue_formulas.items()
     }
 
+    by_state_buckets: dict[str, dict[str, Any]] = {}
+    for row in at_risk_by_state_rows:
+        st = row["state"]
+        if st not in by_state_buckets:
+            by_state_buckets[st] = {"state": st, "total": 0.0, "segments": []}
+        val = _float(row["at_risk_value"])
+        by_state_buckets[st]["total"] += val
+        by_state_buckets[st]["segments"].append({
+            "category_id": row["category_id"],
+            "label": row["category_name"],
+            "value": val,
+        })
+
+    at_risk_by_state_gross = [
+        {
+            "state": st,
+            "total": by_state_buckets[st]["total"],
+            "segments": sorted(
+                by_state_buckets[st]["segments"],
+                key=lambda s: s["value"],
+                reverse=True,
+            ),
+        }
+        for st in STATE_ORDER
+        if st in by_state_buckets
+    ]
+
     return {
         **envelope(AGENT_ID, NOTE),
         "state_order": list(STATE_ORDER),
@@ -449,6 +491,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "seasonality": seasonal,
         "formulas": catalogue_formulas,
         "filter_options": options,
+        "at_risk_by_state": at_risk_by_state_gross,
         "items": build_items(chain, store_size, asts),
         "stores": [
             {
