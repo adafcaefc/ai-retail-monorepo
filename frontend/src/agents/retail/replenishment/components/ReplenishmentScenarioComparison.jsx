@@ -49,7 +49,7 @@ export default function ReplenishmentScenarioComparison({
 
   if (!baseline?.points?.length) return null;
 
-  // One row per day, one column per series — the shape Recharts wants.
+  // One row per week, one column per series — the shape Recharts wants.
   const data = baseline.points.map((point, index) => {
     const row = { label: point.label, baseline: point.cover };
     for (const [position, scenario] of scenarios.entries()) {
@@ -87,10 +87,7 @@ export default function ReplenishmentScenarioComparison({
               width={56}
               tickFormatter={(value) => formatUnits(value, language)}
             />
-            <Tooltip
-              formatter={(value) => formatUnits(Math.round(value), language)}
-              labelFormatter={(label) => `${t("Day")} ${label}`}
-            />
+            <Tooltip formatter={(value) => formatUnits(Math.round(value), language)} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
             <Line
               type="monotone"

@@ -13,7 +13,8 @@ import {
   ALL,
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
-  REQUIREMENT_DAYS,
+  REQUIREMENT_WEEKS_BACK,
+  REQUIREMENT_WEEKS_FORWARD,
   ROUTE_ORDER,
   SCHEMA_VERSION,
   SIMULATION_METRICS,
@@ -349,52 +350,91 @@ export function computePurchaseOrder(lines) {
 /**
  * A3 spec section 4: what the chain needs against what is already coming.
  *
- * Two cumulative curves over the horizon. *Requirement* is demand accumulating
- * at a flat ADS per day — flat because one ADS per SKU is all the workbook
- * holds. *Cover* is what is on the shelf now plus each SKU's open PO once it
- * lands on its lead day, which is why that curve steps rather than slopes.
+ * Three series over 33 weekly points, W-16 through Today through W+16, real
+ * throughout — `synthetic.demand_store_sku_32w`, summed to chain-net per SKU
+ * on every line (see `scripts/build_replenishment_fixture.py`'s
+ * `load_demand_curves` / `backend/.../replenishment/dashboard.py`'s
+ * `demand_by_sku`). This used to accumulate at one flat ADS per day, forward
+ * only, because a single snapshot ADS was all the workbook held; a real
+ * weekly curve replaces that with what actually varies week to week, and adds
+ * the 16 weeks behind Today the flat model had no way to draw at all.
  *
+ * *Actual demand* (W-16..W-1) is a rate — one week's real demand — not a
+ * running total: there is nothing upstream of "16 weeks ago" to accumulate
+ * against, so a cumulative reading would answer a question nobody asked.
+ *
+ * *Requirement* and *Cover* (Today..W+16) are still the two cumulative curves
+ * A3 spec 4 compares: demand accumulating week over week against what is on
+ * the shelf now plus each SKU's open PO once it lands on its lead day (every
+ * route lands within the first week, so cover steps once, at W+1, then holds).
  * Where requirement overtakes cover is the gap a purchase order exists to
- * fill, and the day it happens is the honest headline: `cover_runs_out`.
+ * fill, and the week it happens is the honest headline: `cover_runs_out`.
  *
  * The mockup multiplies requirement by 1.02. That factor appears nowhere in
  * the workbook and stands for nothing, so it is not reproduced — a 2% lift
  * invented in a prototype would read here as a measured safety margin.
  */
-export function computeRequirement(lines, days = REQUIREMENT_DAYS) {
-  const demandPerDay = sum(lines, "ads");
+export function computeRequirement(
+  lines,
+  weeksBack = REQUIREMENT_WEEKS_BACK,
+  weeksForward = REQUIREMENT_WEEKS_FORWARD,
+) {
   const onHand = sum(lines, "on_hand");
   const points = [];
 
-  for (let day = 0; day <= days; day += 1) {
+  for (let index = 0; index < weeksBack; index += 1) {
+    const weekNumber = weeksBack - index;
+    points.push({
+      week: -weekNumber,
+      label: `W-${weekNumber}`,
+      actual_demand: lines.reduce(
+        (total, line) => total + (line.demand_history?.[index] ?? 0),
+        0,
+      ),
+      requirement: null,
+      cover: null,
+    });
+  }
+
+  points.push({ week: 0, label: "Today", actual_demand: null, requirement: 0, cover: onHand });
+
+  let cumulativeRequirement = 0;
+  for (let weekNumber = 1; weekNumber <= weeksForward; weekNumber += 1) {
+    cumulativeRequirement += lines.reduce(
+      (total, line) => total + (line.demand_forecast?.[weekNumber - 1] ?? 0),
+      0,
+    );
+
+    const day = weekNumber * 7;
     let landed = 0;
     for (const line of lines) {
       if (day >= line.lead_days) landed += line.open_po ?? 0;
     }
 
     points.push({
-      day,
-      label: day === 0 ? "Today" : `D+${day}`,
-      requirement: demandPerDay * day,
+      week: weekNumber,
+      label: `W+${weekNumber}`,
+      actual_demand: null,
+      requirement: cumulativeRequirement,
       cover: onHand + landed,
       inbound_landed: landed,
     });
   }
 
-  const shortfall = points.find((point) => point.requirement > point.cover);
+  const forward = points.filter((point) => point.week >= 0);
+  const shortfall = forward.find((point) => point.requirement > point.cover);
+  const last = forward[forward.length - 1];
 
   return {
-    days,
+    weeks_back: weeksBack,
+    weeks_forward: weeksForward,
     points,
-    demand_per_day: demandPerDay,
-    // The first day cumulative demand exceeds everything on hand and inbound.
-    cover_runs_out: shortfall ? shortfall.day : null,
+    demand_per_week: weeksForward ? cumulativeRequirement / weeksForward : 0,
+    // The first week cumulative demand exceeds everything on hand and inbound.
+    cover_runs_out: shortfall ? shortfall.week : null,
     // The gap at the end of the horizon: what this scope is short by, before
     // any order is raised.
-    gap_at_horizon: Math.max(
-      0,
-      points[points.length - 1].requirement - points[points.length - 1].cover,
-    ),
+    gap_at_horizon: Math.max(0, last.requirement - last.cover),
   };
 }
 

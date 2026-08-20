@@ -129,7 +129,7 @@ def _arch_horizon_factor(
     return ads / denominator if denominator else 1.0
 
 
-def build_lines(rows: list[dict]) -> list[dict]:
+def build_lines(rows: list[dict], demand_by_sku: dict[str, dict[str, list[float]]]) -> list[dict]:
     """One order line per SKU, chain level.
 
     `order_value_retail` comes from the chain ENGINE and `order_value_cost`
@@ -155,6 +155,10 @@ def build_lines(rows: list[dict]) -> list[dict]:
             else _arch_horizon_factor(
                 _float(row["ads"]), base_ads, seasonality, store_size
             )
+        )
+        demand = demand_by_sku.get(
+            row["item_key"],
+            {"demand_history": [0.0] * 16, "demand_forecast": [0.0] * 16},
         )
         lines.append(
             {
@@ -195,6 +199,12 @@ def build_lines(rows: list[dict]) -> list[dict]:
                 # same as inventory_risk/dashboard.py.
                 "horizon_coverage": HORIZON_COVERAGE,
                 "store_size": store_size,
+                # 16 real weeks each way, chain-net (summed across this SKU's
+                # stores) -- see synthetic.demand_store_sku_32w. History is
+                # oldest-first (16 weeks ago -> last week); forecast is
+                # nearest-first (next week -> 16 weeks out).
+                "demand_history": demand["demand_history"],
+                "demand_forecast": demand["demand_forecast"],
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
                 "safety_days": _float(row["safety_days"]),
@@ -333,6 +343,32 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         # it; it is what every figure above is reconciled against.
         reference = agent_reference(connection, AGENT_ID)
 
+        # 16 weeks of real actual demand and 16 of real forecast, store x SKU,
+        # summed to chain-net per SKU (this board's own grain -- see
+        # build_lines). Without this the requirement chart had only one ADS
+        # per SKU to work with and could draw nothing but a straight ramp.
+        demand_where, demand_params = _scope_clause(scope, "i.vertical_id", "i.category_id")
+        demand_rows = _rows(
+            connection,
+            f"""
+            SELECT d.sku_id,
+                   {", ".join(f"sum(d.actual_w{n}) AS actual_w{n}" for n in range(16, 0, -1))},
+                   {", ".join(f"sum(d.forecast_w{n}) AS forecast_w{n}" for n in range(1, 17))}
+            FROM synthetic.demand_store_sku_32w d
+            JOIN {SCHEMA}.dim_item i ON i.item_id = d.sku_id
+            WHERE 1 = 1{demand_where}
+            GROUP BY d.sku_id
+            """,
+            demand_params,
+        )
+        demand_by_sku = {
+            row["sku_id"]: {
+                "demand_history": [_float(row[f"actual_w{n}"]) for n in range(16, 0, -1)],
+                "demand_forecast": [_float(row[f"forecast_w{n}"]) for n in range(1, 17)],
+            }
+            for row in demand_rows
+        }
+
     # A3 filters by route, not by inventory state — that is A2's control.
     options.pop("states", None)
     options["routes"] = [
@@ -349,7 +385,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "derivation": DERIVATION,
         "routes": [dict(route) for route in ROUTES],
         "filter_options": options,
-        "lines": build_lines(rows),
+        "lines": build_lines(rows, demand_by_sku),
         "quote_terms": {
             "currency": terms[0]["currency"],
             "lead_time_days": terms[0]["lead_time_days"],

@@ -399,6 +399,7 @@ const CHROME = {
   // Requirement vs inbound supply (A3 spec section 4).
   "Requirement vs inbound supply": "Kebutuhan vs pasokan masuk",
   Requirement: "Kebutuhan",
+  "Actual demand": "Permintaan aktual",
   "Inbound + on-hand cover": "Cakupan stok + barang masuk",
   "Gap to cover": "Selisih yang harus ditutup",
   Covered: "Tercukupi",

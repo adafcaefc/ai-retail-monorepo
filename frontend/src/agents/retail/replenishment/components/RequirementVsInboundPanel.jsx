@@ -19,6 +19,22 @@ function RequirementTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
 
   const point = payload[0].payload;
+
+  // History points (W-16..W-1) carry actual_demand only — requirement/cover
+  // are null there, not zero, because there is nothing behind them to
+  // accumulate against. Showing a gap reading on a week that predates any
+  // "today" would answer a question this chart never asked.
+  if (point.requirement === null) {
+    return (
+      <div className="po-chart-tooltip">
+        <strong>{label}</strong>
+        <span>
+          {t("Actual demand")}: {formatUnits(Math.round(point.actual_demand), language)}
+        </span>
+      </div>
+    );
+  }
+
   const gap = point.requirement - point.cover;
 
   return (
@@ -42,10 +58,14 @@ function RequirementTooltip({ active, payload, label }) {
 /**
  * A3 spec section 4 (`#ch-main`): what the chain needs against what is coming.
  *
- * Two cumulative curves. Requirement accumulates at a flat ADS per day, which
- * is all one ADS per SKU can support. Cover is today's on-hand plus each SKU's
- * open PO once it lands on its lead day — it steps rather than slopes, because
- * a delivery is an event, not a trickle.
+ * 33 real weekly points, W-16 through Today through W+16 — see
+ * `computeRequirement` in `data/selectors.js` for where the curve comes from
+ * (`synthetic.demand_store_sku_32w`). Three series: *Actual demand* (a rate,
+ * W-16..W-1 only — there is nothing before "16 weeks ago" to accumulate
+ * against); *Requirement*, cumulative demand from Today; *Cover*, today's
+ * on-hand plus each SKU's open PO once it lands on its lead day — it steps
+ * rather than slopes, because a delivery is an event, not a trickle, and every
+ * route lands within the first week.
  *
  * Where requirement crosses cover is the gap a purchase order exists to close,
  * and `gap = requirement − cover → PO` is the spec's own reading of it.
@@ -83,7 +103,7 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
         <span className="po-panel-note">
           {requirement.cover_runs_out === null
             ? t("Cover holds across the horizon")
-            : `${t("Cover runs out at")} D+${requirement.cover_runs_out}`}
+            : `${t("Cover runs out at")} W+${requirement.cover_runs_out}`}
         </span>
       </header>
 
@@ -114,11 +134,11 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
             />
             <Tooltip content={<RequirementTooltip />} />
             <Legend wrapperStyle={{ fontSize: 10 }} />
-            {/* Today. There is no history to divide off — see the caveat. */}
+            {/* The boundary between 16 real weeks of history and 16 of forecast. */}
             <ReferenceLine x="Today" stroke="var(--line)" strokeDasharray="4 4" />
             {requirement.cover_runs_out !== null ? (
               <ReferenceLine
-                x={`D+${requirement.cover_runs_out}`}
+                x={`W+${requirement.cover_runs_out}`}
                 stroke="var(--po-gap, var(--danger))"
                 strokeDasharray="2 3"
                 label={{
@@ -131,12 +151,23 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
             ) : null}
             <Line
               type="monotone"
+              dataKey="actual_demand"
+              name={t("Actual demand")}
+              stroke="var(--muted)"
+              strokeWidth={2}
+              dot={false}
+              isAnimationActive={false}
+              connectNulls={false}
+            />
+            <Line
+              type="monotone"
               dataKey="requirement"
               name={t("Requirement")}
               stroke="var(--po-requirement, var(--danger))"
               strokeWidth={2}
               dot={false}
               isAnimationActive={false}
+              connectNulls={false}
             />
             <Line
               type="monotone"
@@ -147,6 +178,7 @@ export default function RequirementVsInboundPanel({ requirement, kpis }) {
               strokeDasharray="5 4"
               dot={false}
               isAnimationActive={false}
+              connectNulls={false}
             />
           </LineChart>
         </ResponsiveContainer>
