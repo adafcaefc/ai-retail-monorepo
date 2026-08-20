@@ -552,7 +552,11 @@ img.ey-logo {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 6px 24px;
+  /* Only the inline padding here: this block lives in .sidebar-footer, which
+     already supplies the vertical room. A bottom padding left over from when
+     the brand sat above the module list pinned the row to the footer's top
+     edge and left a dead gap underneath. */
+  padding: 0 6px;
 }
 
 .brand-mark {
@@ -2191,10 +2195,6 @@ img.ey-logo {
 
   .sidebar {
     padding: 12px;
-  }
-
-  .brand {
-    padding-bottom: 10px;
   }
 
   .section-label,
