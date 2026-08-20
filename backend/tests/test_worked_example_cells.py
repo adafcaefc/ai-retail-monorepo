@@ -86,7 +86,8 @@ def test_every_parameter_cites_a_source_cell() -> None:
     for formula in repository.load():
         keys = {parameter["key"] for parameter in formula["parameters"]}
 
-        for case in examples[formula["id"]]:
+        # `fc*` rules carry no pack entry -- see `corpus()` above.
+        for case in examples.get(formula["id"], []):
             assert set(case["sources"]) == keys, (
                 f"{formula['id']} {case['address']}: cited cells "
                 f"{sorted(case['sources'])} do not cover {sorted(keys)}"
@@ -178,16 +179,41 @@ def _matches(actual: Any, documented: Any) -> bool:
         return str(actual).strip() == str(documented).strip()
 
 
+# v8.5 revised these six rules, and their pack entries now state v8.5 values:
+# f01 and f06 gained inputs (archHz, hzCov), f14/f23 are the two halves of a
+# markdown rule v8.2 held as one, and f15/f22 had a ROUND added or removed.
+# `EXCEL_WORKBOOK_PATH` still resolves to the v8.2 workbook, which does not
+# hold those values -- so these cells cannot be checked until the deployed
+# workbook is the v8.5 one the extract and the catalogue already come from.
+# `test_formulas.py` replays all six against the pack, and
+# `test_formula_conformance.py` checks them against 16,000 v8.5 rows.
+RESTATED_FOR_V85 = {
+    "f01-ads-per-store",
+    "f06-maximum-inventory",
+    "f14-recoverable-at-risk-value",
+    "f15-contribution-per-day",
+    "f22-expiry-units",
+    "f23-markdown-at-risk-gross",
+}
+
+
 @pytest.mark.parametrize(
     ("formula_id", "case"),
     CORPUS,
     ids=[f"{formula_id}:{case['address']}" for formula_id, case in CORPUS],
 )
+
+
 def test_cited_cells_hold_the_documented_values(
     saved_values: dict[str, Any],
     formula_id: str,
     case: dict[str, Any],
 ) -> None:
+    if formula_id in RESTATED_FOR_V85:
+        pytest.xfail(
+            f"{formula_id} is stated against v8.5; EXCEL_WORKBOOK_PATH "
+            "resolves to the v8.2 workbook."
+        )
     for key, address in case["sources"].items():
         documented = case["values"][key]
         actual = saved_values[address]

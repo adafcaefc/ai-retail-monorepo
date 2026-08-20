@@ -439,6 +439,7 @@ export function computeRequirement(
   );
 
   let opening = onHand;
+  let landed = 0;
   for (let weekNumber = 1; weekNumber <= weeksForward; weekNumber += 1) {
     const requirement = lines.reduce(
       (total, line) => total + (line.demand_forecast?.[weekNumber - 1] ?? 0),
@@ -456,19 +457,35 @@ export function computeRequirement(
       const closes = weekNumber * 7;
       for (const line of lines) {
         if (line.lead_days > opens && line.lead_days <= closes) {
-          arrivals += line.open_po ?? 0;
+          landed += line.open_po ?? 0;
         }
       }
     }
 
-    const cover = opening + arrivals;
+    /*
+     * Two readings, because only one of them is supportable at a time.
+     *
+     * With a schedule, cover is a running position: what last week left plus
+     * what arrived this week, drawn down by what the week sells.
+     *
+     * WITHOUT one, it is NOT. Running the same drawdown on open POs alone
+     * empties the shelf within about a week and then draws a flat zero for
+     * the rest of the horizon -- which reads as "nothing will ever arrive
+     * again", a far stronger claim than the data supports. The absence of an
+     * arrival calendar is not evidence of an absence of arrivals; it is only
+     * the workbook declining to record dates. So the fallback stays the
+     * stock reading it has always been -- on-hand plus every open PO once it
+     * has landed -- which stops at what is actually known and asserts nothing
+     * about the weeks past it. The panel's caveat says which one was drawn.
+     */
+    const cover = scheduled ? opening + arrivals : onHand + landed;
     points.push({
       week: weekNumber,
       label: `W+${weekNumber}`,
       actual_demand: null,
       requirement,
       cover,
-      inbound_landed: arrivals,
+      inbound_landed: scheduled ? arrivals : landed,
     });
     // What survives the week is what the next one opens with. Floored at zero:
     // a shelf cannot hold negative stock, and letting it go negative would

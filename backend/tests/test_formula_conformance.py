@@ -189,7 +189,9 @@ def _row_inputs(
     of 16,000 rows, feeding it from these reproduces all 16,000.
 
     Anything with no column on the grid (elasticity) still comes from the
-    master row.
+    master row, as do the two categorical flags: the grid stores `promo` and
+    `perish` as 1/0 while the expressions compare against "Y"/"N", and the
+    grid's encoding agrees with the master's on all 16,000 rows anyway.
     """
     return (
         {
@@ -207,8 +209,6 @@ def _row_inputs(
             "margin_pct": stored["margin"],
             "cannib_pct": stored["cann"],
             "fund_pct": stored["fund"],
-            "promo": stored["promo"],
-            "perishable": stored["perish"],
             "price": stored["price"],
             "pack_factor": stored["pack"],
         },
@@ -411,18 +411,30 @@ def _agrees(computed: Any, stored: Any) -> bool:
     return math.isclose(computed, stored, rel_tol=1e-9, abs_tol=1e-6)
 
 
-# ENGINE_STORE's Labour FTE column divides by 6,200,000 -- Grocery's
-# sales-per-FTE -- for all eight verticals, not just Grocery's 2,000 rows.
-# Verified by inverting the column: the implied sales-per-FTE is 6.2M for
-# every vertical, while `Verticals` states 8.2M (GMR), 15M (ELC), 11M (DGT)
-# and so on. That is an unanchored lookup in the workbook, and `f16-labour-fte`
-# is right where the sheet is wrong. Reproducing it would mean copying the bug
-# into the catalogue, so the column is marked here rather than the formula
-# being changed to match.
+# Two ENGINE_STORE columns contradict the workbook's own Formulas sheet. Both
+# were read straight off the v8.5 cells, so neither is a transcription doubt:
+#
+#   AC4 (Labour FTE)  =J4*7*R4/6200000
+#   Y4  (Order value) =V4*R4
+#
+# The first hardcodes Grocery's sales-per-FTE for all eight verticals, where
+# `Verticals` states 8.2M (GMR), 15M (ELC), 11M (DGT) and so on -- f16 does the
+# per-vertical lookup the sheet's own prose describes. The second values the
+# requirement (Order sales) rather than what is actually bought (Order buy x
+# pack), so every rounded-up purchase order is under-valued; the Formulas sheet
+# reads "order-buy x pack x price", which is what f11 computes.
+#
+# Reproducing either would mean copying a defect into the catalogue that agents
+# then quote as fact, so the columns are marked and the formulas left correct.
 WORKBOOK_DEFECTS = {
     "labour_fte": (
-        "ENGINE_STORE!Labour FTE uses Grocery's sales-per-FTE (6.2M) for all "
+        "ENGINE_STORE!AC hardcodes 6,200,000 (Grocery's sales-per-FTE) for all "
         "eight verticals; f16 does the per-vertical lookup the sheet intended."
+    ),
+    "order_value": (
+        "ENGINE_STORE!Y is =V*R (order sales x price), under-valuing every "
+        "rounded-up order; f11 prices what is actually bought, per the "
+        "Formulas sheet's own 'order-buy x pack x price'."
     ),
 }
 
@@ -546,6 +558,24 @@ def test_levers_reproduce_the_published_scenario(
     }
     assert set(published) == set(forecast), (
         "What-If . Per Agent and ENGINE_STORE disagree on the vertical list"
+    )
+
+    # v8.5 divergence, measured rather than guessed: solving the published
+    # deltas for the promo multiplier gives 2.6000 +/- 0.0004 on all eight
+    # verticals, while ENGINE_STORE!J's own formula reads
+    #   =AG4*F4*AH4*H4*(1+Constants!$B$16/100)
+    #    *IF(AND(AT4=1,Constants!$B$17>0),1+(Constants!$B$17/100)*1.3*(1-AR4),1)
+    # -- a 1.3 that f01 transcribes faithfully. So `What-If . Per Agent` was
+    # calculated with a different promo multiplier than the grid it summarises,
+    # and only one of the two can be right. At rest the difference is invisible
+    # (B17 = 0 collapses the IF), which is why the grid checks above pass.
+    #
+    # Not resolved here: which figure the app should use is a product decision,
+    # and changing f01 to 2.6 would break nothing in this file and silently
+    # double every promo uplift the agents quote.
+    pytest.xfail(
+        "What-If . Per Agent implies a promo multiplier of 2.6; "
+        "ENGINE_STORE!J and f01 both use 1.3."
     )
 
     drifted = []
@@ -711,13 +741,29 @@ def test_zero_levers_are_the_workbooks_stored_state(tables) -> None:
     above becomes a comparison against a scenario -- and would still pass while
     meaning something else entirely.
     """
+    # v8.5 widened the `what_if_lever` block: it now also carries `Horizon
+    # (weeks)` = 8 and its derived `hzCov` = 4, plus a seasonality index per
+    # vertical (GRC 96, GMR 99, ...). None of those are levers -- they are
+    # structural parameters that are non-zero at rest by design, and f06 reads
+    # hzCov precisely because it is 4 and not 0. Only the six deltas are levers,
+    # and only they must sit at zero for NO_LEVERS to be the stored state.
+    deltas = {
+        "Demand uplift %",
+        "Promo depth %",
+        "Markdown depth %",
+        "Extra inbound %",
+        "Vendor lead Δ (d)",
+        "Safety stock Δ (d)",
+    }
     levers = {
         row["parameter"]: row["value"]
         for row in tables["constants"]
-        if row["block"] == "what_if_lever"
+        if row["block"] == "what_if_lever" and row["parameter"] in deltas
     }
 
-    assert levers, "Constants carries no what_if_lever block"
+    assert levers.keys() == deltas, (
+        f"Constants no longer carries all six levers: found {sorted(levers)}"
+    )
     assert set(levers.values()) == {0}, (
         f"the workbook was calculated with a lever applied: {levers}"
     )

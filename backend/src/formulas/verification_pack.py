@@ -112,8 +112,15 @@ def parse_pack(
 
         corpus[formula["id"]] = _parse_examples(formula, body)
 
+    # Only the workbook transcript is expected here. The catalogue also holds
+    # the `fc*` rules from `resources/custom_formulas.json` -- derived, or
+    # transcribed from v8.5 `*_live` sheets that are not extracted -- and there
+    # is no workbook cell to cite for them. Demanding a pack entry for those
+    # fails the parse outright and takes the Formula Manager's corpus with it.
     missing = [
-        formula["id"] for formula in formulas if formula["id"] not in corpus
+        formula["id"]
+        for formula in formulas
+        if formula["id"] not in corpus and not formula["id"].startswith("fc")
     ]
     if missing:
         raise ValueError(f"formula.md documents no examples for {missing}")
