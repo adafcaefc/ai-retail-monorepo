@@ -33,7 +33,9 @@ def test_store_scope_uses_store_grain_rows_for_all_downstream_inputs() -> None:
     # All Stores retains the existing chain-net source and its 800 item rows.
     assert len(all_stores["items"]) == 800
     assert len(all_stores["stores"]) == 160
-    assert _forecast(all_stores) == pytest.approx(1_656_178.21602674)
+    # v8.5/batch-23's current Forecast 7d source total, also reconciled by
+    # the approved synthetic table, is 1,809,147.2231469.
+    assert _forecast(all_stores) == pytest.approx(1_809_147.2231469)
     assert all("store_id" not in row for row in all_stores["items"])
 
     # A selected Store uses ENGINE_STORE's 100 store x SKU rows. Every item,
@@ -45,8 +47,8 @@ def test_store_scope_uses_store_grain_rows_for_all_downstream_inputs() -> None:
     assert {row["store_id"] for row in s002["items"]} == {"S002"}
     assert {row["store_id"] for row in s001["stores"]} == {"S001"}
     assert {row["store_id"] for row in s002["stores"]} == {"S002"}
-    assert _forecast(s001) == pytest.approx(25_948.941032500927)
-    assert _forecast(s002) == pytest.approx(30_756.578276753902)
+    assert _forecast(s001) == pytest.approx(28_024.77359938824)
+    assert _forecast(s002) == pytest.approx(33_217.00649819611)
     assert _forecast(s001) != pytest.approx(_forecast(s002))
     assert s001["scope"] == {"store_id": "S001"}
     assert s002["scope"] == {"store_id": "S002"}
@@ -145,11 +147,11 @@ def test_api_all_s001_and_s002_return_distinct_scoped_results(
     assert "ignored_filters" not in all_stores
     assert len(all_stores["items"]) == 800
     assert len(all_stores["stores"]) == 160
-    assert _forecast(all_stores) == pytest.approx(1_656_178.21602674)
+    assert _forecast(all_stores) == pytest.approx(1_809_147.2231469)
 
     for payload, store_id, expected in (
-        (s001, "S001", 25_948.941032500927),
-        (s002, "S002", 30_756.578276753902),
+        (s001, "S001", 28_024.77359938824),
+        (s002, "S002", 33_217.00649819611),
     ):
         assert payload["scope"] == {"store_id": store_id}
         assert "ignored_filters" not in payload

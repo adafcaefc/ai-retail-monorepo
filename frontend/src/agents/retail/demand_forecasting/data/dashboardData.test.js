@@ -16,20 +16,57 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEMAND_AGENT_ID, DEFAULT_DEMAND_LEVERS } from "./contract.js";
+import {
+  DEMAND_AGENT_ID,
+  DEFAULT_DEMAND_LEVERS,
+  normalizeDemandQuery,
+  normalizeDemandDashboard,
+} from "./contract.js";
 import {
   demandForecastingDataSource,
   loadDemandForecastingDashboard,
   loadDemandForecastingScenario,
 } from "./dashboardData.js";
-import { computeTrending } from "./selectors.js";
+import { buildDashboardFromFixture, computeTrending } from "./selectors.js";
 import fixture from "./fixture.json";
+
+const apiChartSeries = {
+  source: "synthetic.demand_store_sku_104w",
+  grain: "sku_store",
+  row_count: 16000,
+  ...Object.fromEntries(
+    Array.from({ length: 52 }, (_, index) => [`actual_w${52 - index}`, index + 1]),
+  ),
+  ...Object.fromEntries(
+    Array.from({ length: 52 }, (_, index) => [`forecast_w${index + 1}`, 100 + index]),
+  ),
+};
+const apiFixture = {
+  ...fixture,
+  demand_forecast_series: apiChartSeries,
+  seasonality_index: {
+    value: 103.125,
+    average_seas: 1.03125,
+    row_count: 16000,
+    source: "retail.temp_engine_store.[Seas]",
+    grain: "sku_store",
+    aggregation: "AVG(Seas) * 100",
+  },
+};
 
 const grocery = fixture.reference_by_vertical.find(
   (row) => row.legal_entity_id === "GRC",
 );
 
 describe("the Demand Forecasting gateway", () => {
+  it("preserves Quarterly and Yearly as valid chart grains", () => {
+    for (const grain of ["quarterly", "yearly"]) {
+      for (const horizon_weeks of [4, 8, 12, 16]) {
+        expect(normalizeDemandQuery({ grain, horizon_weeks }).grain).toBe(grain);
+      }
+    }
+  });
+
   it("reads the workbook fixture, not an invented dataset", async () => {
     expect(demandForecastingDataSource()).toBe("fixture");
 
@@ -97,39 +134,96 @@ describe("the Demand Forecasting gateway", () => {
     expect(trending).toBeLessThan(totalInCategory);
   });
 
-  it("passes the typed constants through untouched, and labels them", async () => {
+  it("keeps remaining typed constants separate from the live Demand Trend", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       legal_entity_id: "GRC",
     });
     const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
 
     expect(kpi("forecast_accuracy").value).toBeCloseTo(grocery.accuracy_pct, 6);
-    expect(kpi("demand_trend").value).toBeCloseTo(grocery.trend_pct, 6);
+    // The standalone fixture has no SQL aggregate. It must not fall back to
+    // the old workbook reference just because one is present in the fixture.
+    expect(kpi("demand_trend").value).toBeNull();
+    expect(kpi("demand_trend").comparison_label).toBe("Unavailable");
+    expect(kpi("demand_trend").comparison_label).not.toBe("Workbook constant");
 
-    // The tile says where its number came from rather than implying it was
-    // calculated. Two of the six were keyed in by hand; a third (seasonality
-    // index) used to be but now reads the derived `fc01-seasonal-index`
-    // curve instead — see RETAIL_FORMULA_HARDCODING_AUDIT.md section F.
-    expect(kpi("forecast_accuracy").comparison_label).toBe("Workbook constant");
+    // Forecast Accuracy's scope limitation is explained in its detail drawer;
+    // the card uses the requested presentation label without changing its value.
+    expect(kpi("forecast_accuracy").comparison_label).toBe("Calculated");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
     expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
   });
 
-  it("derives the seasonality index from the monthly GMV curve, not the typed constant", async () => {
+  it("consumes the backend-calculated Trend and keeps it out of workbook blending", () => {
+    const liveTrend = {
+      trend_pct: 5.5954,
+      actual_4w_total: 1000,
+      forecast_4w_total: 1055.954,
+      row_count: 2000,
+      source: "synthetic.demand_store_sku_32w",
+      horizon_independent: true,
+      sparkline: [10, 11, 12, 13, 14, 15, 16, 17],
+    };
+    const dashboard = normalizeDemandDashboard(
+      buildDashboardFromFixture(
+        { ...fixture, demand_trend: liveTrend },
+        { legal_entity_id: "GRC" },
+      ),
+    );
+    const kpi = dashboard.kpis.find((row) => row.id === "demand_trend");
+
+    expect(kpi.value).toBeCloseTo(5.5954, 4);
+    expect(kpi.comparison_label).toBe("Calculated");
+    expect(kpi.sparkline).toEqual([10, 11, 12, 13, 14, 15, 16, 17]);
+    expect(dashboard.demand_trend).toMatchObject(liveTrend);
+    expect(kpi.value).not.toBe(grocery.trend_pct);
+  });
+
+  it.each([
+    ["GRC", 5.5954],
+    ["S001", 6.1440],
+    ["GRC-C01", 5.7945],
+    ["GRC-001", 6.0666],
+    ["S001 + GRC-C01", 6.4092],
+    ["S001 + GRC-001", 3.8397],
+  ])("passes the selected %s scope's calculated Trend to the card", (scope, expected) => {
+    const dashboard = normalizeDemandDashboard(
+      buildDashboardFromFixture(
+        {
+          ...fixture,
+          demand_trend: {
+            trend_pct: expected,
+            actual_4w_total: 100,
+            forecast_4w_total: 100 + expected,
+            row_count: 1,
+            source: "synthetic.demand_store_sku_32w",
+            horizon_independent: true,
+            sparkline: [1, 2, 3, 4, 5, 6, 7, 8],
+          },
+        },
+        { sku: scope },
+      ),
+    );
+
+    expect(dashboard.kpis.find((row) => row.id === "demand_trend").value)
+      .toBeCloseTo(expected, 4);
+  });
+
+  it("uses the standalone rows for seasonality, not the monthly GMV curve or typed constant", async () => {
     const dashboard = await loadDemandForecastingDashboard({
       legal_entity_id: "GRC",
     });
     const kpi = (id) => dashboard.kpis.find((row) => row.id === id);
     const { by_legal_entity, current_month_index } = fixture.seasonality;
 
-    // Scoped to one vertical, the blend is just that vertical's own curve at
-    // the current month -- no weighting across verticals left to do.
-    expect(kpi("seasonality_index").value).toBeCloseTo(
+    // The checked-in standalone rows carry the v8.5 Seas value, so the
+    // scoped SKU average is 1.14 x 100. The monthly profile is chart-only.
+    expect(kpi("seasonality_index").value).toBeCloseTo(114, 6);
+    expect(kpi("seasonality_index").value).not.toBeCloseTo(
       by_legal_entity.GRC[current_month_index],
-      6,
+      1,
     );
-    // The two numbers really do differ -- this is not a no-op switch.
-    expect(kpi("seasonality_index").value).not.toBeCloseTo(grocery.seasonality_idx, 1);
+    expect(kpi("seasonality_index").value).toBeCloseTo(grocery.seasonality_idx, 6);
   });
 
   it("totals the chain to the sum of its verticals", async () => {
@@ -353,7 +447,7 @@ describe("the Demand Forecasting gateway in api mode", () => {
   beforeEach(async () => {
     vi.stubEnv("MODE", "production");
     vi.resetModules();
-    fetchMock = vi.fn(async () => ({ ok: true, json: async () => fixture }));
+    fetchMock = vi.fn(async () => ({ ok: true, json: async () => apiFixture }));
     vi.stubGlobal("fetch", fetchMock);
     ({
       loadDemandForecastingDashboard: load,
@@ -386,6 +480,154 @@ describe("the Demand Forecasting gateway in api mode", () => {
     expect(url).toContain("store_id=S001");
     expect(url).not.toContain("store=S001");
     expect(dashboard.scope.store_id).toBe("S001");
+  });
+
+  it("builds both chart center lines from the API's 104W series", async () => {
+    const dashboard = await load({ horizon_weeks: 4, grain: "weekly" });
+
+    expect(dashboard.demand_forecast_series.source)
+      .toBe("synthetic.demand_store_sku_104w");
+    expect(dashboard.forecast.points.map((point) => point.label))
+      .toEqual([
+        ...Array.from({ length: 52 }, (_, index) => `W-${52 - index}`),
+        "W+1", "W+2", "W+3", "W+4",
+      ]);
+    expect(dashboard.forecast.points.map((point) => point.actual))
+      .toEqual([
+        ...Array.from({ length: 52 }, (_, index) => index + 1),
+        null, null, null, null,
+      ]);
+    expect(dashboard.forecast.points.map((point) => point.forecast))
+      .toEqual([
+        ...Array.from({ length: 52 }, () => null),
+        100, 101, 102, 103,
+      ]);
+
+    expect(dashboard.confidence.points.slice(0, 12).map((point) => point.actual))
+      .toEqual(Array.from({ length: 12 }, (_, index) => 41 + index));
+    expect(dashboard.confidence.points.slice(12).map((point) => point.forecast))
+      .toEqual([100, 101, 102, 103]);
+  });
+
+  it.each([
+    [{}, 103.125, 1.03125, 16000],
+    [{ legal_entity_id: "GRC" }, 114, 1.14, 2000],
+    [{ store_id: "S001" }, 114, 1.14, 100],
+    [{ category_group: "GRC-C01" }, 114, 1.14, 100],
+    [{ sku: "GRC-001" }, 114, 1.14, 20],
+    [{ store_id: "S001", category_group: "GRC-C01" }, 114, 1.14, 5],
+    [{ store_id: "S001", sku: "GRC-001" }, 114, 1.14, 1],
+  ])(
+    "uses the backend Seas aggregate for the %j scope",
+    async (query, value, averageSeas, rowCount) => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          ...apiFixture,
+          seasonality_index: {
+            ...apiFixture.seasonality_index,
+            value,
+            average_seas: averageSeas,
+            row_count: rowCount,
+          },
+        }),
+      });
+
+      const dashboard = await load(query);
+      const kpi = dashboard.kpis.find((row) => row.id === "seasonality_index");
+
+      expect(kpi.value).toBe(value);
+      expect(kpi.comparison_label).toBe("Calculated");
+      expect(dashboard.seasonality_index).toMatchObject({
+        value,
+        average_seas: averageSeas,
+        row_count: rowCount,
+        source: "retail.temp_engine_store.[Seas]",
+        grain: "sku_store",
+        aggregation: "AVG(Seas) * 100",
+      });
+    },
+  );
+
+  it("forwards supported scopes, consumes live Trend, and ignores Horizon for it", async () => {
+    const values = {
+      "GRC": 5.5954,
+      "S001": 6.1440,
+      "GRC-C01": 5.7945,
+      "GRC-001": 6.0666,
+      "S001 + GRC-C01": 6.4092,
+      "S001 + GRC-001": 3.8397,
+    };
+    const sparklineByScope = {
+      "GRC": [10, 11, 12, 13, 14, 15, 16, 17],
+      "S001": [20, 21, 22, 23, 24, 25, 26, 27],
+      "GRC-C01": [30, 31, 32, 33, 34, 35, 36, 37],
+      "GRC-001": [40, 41, 42, 43, 44, 45, 46, 47],
+      "S001 + GRC-C01": [50, 51, 52, 53, 54, 55, 56, 57],
+      "S001 + GRC-001": [60, 61, 62, 63, 64, 65, 66, 67],
+    };
+    fetchMock.mockImplementation(async (url) => {
+      const parsed = new URL(url, "http://localhost");
+      const store = parsed.searchParams.get("store_id");
+      const category = parsed.searchParams.get("category_group");
+      const sku = parsed.searchParams.get("sku");
+      const key = store && category
+        ? "S001 + GRC-C01"
+        : store && sku
+          ? "S001 + GRC-001"
+          : store || category || sku || "GRC";
+      const trend_pct = values[key];
+      return {
+        ok: true,
+        json: async () => ({
+          ...apiFixture,
+          demand_trend: {
+            trend_pct,
+            actual_4w_total: 100,
+            forecast_4w_total: 100 + trend_pct,
+            row_count: 1,
+            source: "synthetic.demand_store_sku_32w",
+            horizon_independent: true,
+            sparkline: sparklineByScope[key],
+          },
+        }),
+      };
+    });
+
+    const cases = [
+      [{ legal_entity_id: "GRC" }, values.GRC, "GRC"],
+      [{ store_id: "S001" }, values.S001, "S001"],
+      [{ category_group: "GRC-C01" }, values["GRC-C01"], "GRC-C01"],
+      [{ sku: "GRC-001" }, values["GRC-001"], "GRC-001"],
+      [
+        { store_id: "S001", category_group: "GRC-C01" },
+        values["S001 + GRC-C01"],
+        "S001 + GRC-C01",
+      ],
+      [
+        { store_id: "S001", sku: "GRC-001" },
+        values["S001 + GRC-001"],
+        "S001 + GRC-001",
+      ],
+    ];
+
+    for (const [query, expected, scopeKey] of cases) {
+      const dashboard = await load(query);
+      const kpi = dashboard.kpis.find((row) => row.id === "demand_trend");
+      expect(kpi.value).toBeCloseTo(expected, 4);
+      expect(kpi.comparison_label).toBe("Calculated");
+      expect(kpi.sparkline).toEqual(sparklineByScope[scopeKey]);
+    }
+
+    const horizonValues = [];
+    for (const horizon_weeks of [4, 8, 12, 16]) {
+      const dashboard = await load({ legal_entity_id: "GRC", horizon_weeks });
+      horizonValues.push(dashboard.kpis.find((kpi) => kpi.id === "demand_trend").value);
+    }
+    expect(horizonValues).toEqual([values.GRC, values.GRC, values.GRC, values.GRC]);
+    const requestedUrls = fetchMock.mock.calls.map(([url]) => url);
+    expect(requestedUrls.some((url) => url.includes("sku=GRC-001"))).toBe(true);
+    expect(requestedUrls.some((url) => url.includes("category_group=GRC-C01"))).toBe(true);
   });
 
   it("runs a scenario over the API rows instead of refusing", async () => {

@@ -52,6 +52,7 @@ export async function loadDemandForecastingDashboard(
       buildDashboardFromFixture(rows, query, {
         levers: simulationLevers,
         driveWholePage: options.driveWholePage,
+        requireDemandForecastSeries: true,
       }),
       { requirePhase2: true },
     );
@@ -94,6 +95,7 @@ export async function loadDemandForecastingScenario(
     buildDashboardFromFixture(rows, query, {
       levers: simulationLevers,
       driveWholePage: true,
+      requireDemandForecastSeries: DATA_SOURCE === "api",
     }),
     { requirePhase2: DATA_SOURCE === "api" },
   );
