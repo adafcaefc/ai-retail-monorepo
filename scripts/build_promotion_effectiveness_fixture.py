@@ -96,6 +96,7 @@ def build_items(
     sku_master: list[dict[str, Any]],
     verticals: list[dict[str, Any]],
     stores: list[dict[str, Any]],
+    engine_store: list[dict[str, Any]],
     f13_ast: Any,
 ) -> list[dict[str, Any]]:
     """Promo-eligible SKUs only, chain-net, with their promo economics.
@@ -108,6 +109,17 @@ def build_items(
     (Rp 21.04B), which is why f13 is the right figure here.
     """
     by_sku = {row["sku_id"]: row for row in sku_master}
+    # v8.5's f01-ads-per-store gained an archetype/horizon factor. It isn't a
+    # SKU_Master column -- it's precomputed onto ENGINE_STORE as `archhz`,
+    # constant across every store for a given SKU -- so it's read off any one
+    # ENGINE_STORE row per SKU, the same way build_inventory_risk_fixture.py
+    # does it. Without this, the browser's What-If engine re-runs f01 with
+    # arch_horizon_factor undefined the moment a lever moves or the Store
+    # filter is used (both call applyLevers unconditionally), and the
+    # formula evaluator throws.
+    archhz_by_sku: dict[str, float] = {}
+    for row in engine_store:
+        archhz_by_sku.setdefault(row["sku_id"], _num(row.get("archhz")))
     # store_size per vertical, summed from the stores table the same way the
     # backend's SQL does it (sum(size_index)). sku_master.sum_vert_size was
     # rounded to 4 places by the workbook, which drifts from the SQL sum.
@@ -171,6 +183,7 @@ def build_items(
                 # What-If inputs the browser re-evaluates f01 / f13 against.
                 "base_ads": _num(master.get("base_ads")),
                 "seasonality": _num(master.get("seasonality")),
+                "arch_horizon_factor": archhz_by_sku.get(row["sku_id"], 1.0),
                 "store_size": vertical_size.get(row["vertical_id"], 0.0),
                 "promo_eligible": "Y",
                 "promo_depth": cannib * 100.0,
@@ -473,7 +486,10 @@ def main() -> int:
 
     expressions, f13_ast = formula_expressions()
 
-    items = build_items(tables["engine"], tables["sku_master"], tables["verticals"], tables["stores"], f13_ast)
+    items = build_items(
+        tables["engine"], tables["sku_master"], tables["verticals"], tables["stores"],
+        tables["engine_store"], f13_ast,
+    )
     campaigns = build_campaigns(tables["promotion_discount_detail"], tables["verticals"])
     reference = build_reference(tables["a4_promotion"], tables["verticals"])
     filter_options = build_filter_options(tables["verticals"], tables["sku_master"], tables["stores"])

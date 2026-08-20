@@ -122,6 +122,35 @@ THRESHOLDS = {
 }
 
 
+def _arch_horizon_factor(
+    ads: float, base_ads: float, seasonality: float, store_size: float
+) -> float:
+    """Recover f01's archetype/horizon factor from the row it was applied to.
+
+    Same reconstruction as `inventory_risk/dashboard.py`'s helper of the same
+    name: the warehouse stores the finished `ads` and the three inputs beside
+    it, but not the factor between them (no table persists v8.5's `archhz`
+    column), so it is divided back out. At the workbook's own lever setting
+    f01 reduces to
+
+        ads = base_ads x seasonality x arch_horizon_factor x store_size
+
+    because the promo branch returns 1 when `Constants` B17 is zero. The
+    division is therefore exact, not a fit.
+
+    Without this, the browser's What-If engine feeds f01
+    `arch_horizon_factor: undefined` the moment a lever moves or the Store
+    filter is used (both re-run f01 unconditionally), and the formula
+    evaluator throws "Operator '*' needs a number, got undefined".
+
+    A zero denominator means the row carries no usable inputs; 1.0 keeps it
+    arithmetically neutral rather than emitting a NaN that would spread
+    through every KPI the moment a lever moved.
+    """
+    denominator = base_ads * seasonality * store_size
+    return ads / denominator if denominator else 1.0
+
+
 def build_items(rows: list[dict]) -> list[dict]:
     """One promo-eligible SKU per row, chain-net, with its promo economics.
 
@@ -140,6 +169,10 @@ def build_items(rows: list[dict]) -> list[dict]:
     for row in rows:
         cannib = _float(row["cannibalisation_pct"])
         funding = _float(row.get("funding_pct") or 0)
+        ads = _float(row["ads"])
+        base_ads = _float(row["base_ads"])
+        seasonality = _float(row["seasonality_index"])
+        store_size = _float(row.get("store_size") or 0)
         items.append(
             {
                 "sku_id": row["item_key"],
@@ -150,7 +183,7 @@ def build_items(rows: list[dict]) -> list[dict]:
                 "brand": row["brand"],
                 "price": _float(row["unit_price"]),
                 "margin_pct": _float(row["margin_pct"]),
-                "ads": _float(row["ads"]),
+                "ads": ads,
                 "incremental_margin": _f13_margin(row),
                 "supplier_funding": _float(row["funding_rp"]),
                 "supplier_funding_pct": funding * 100.0,
@@ -158,9 +191,10 @@ def build_items(rows: list[dict]) -> list[dict]:
                 "state": row.get("state"),
                 "inventory_value": _float(row.get("inventory_value")),
                 # What-If inputs the browser re-evaluates f01 / f13 against.
-                "base_ads": _float(row["base_ads"]),
-                "seasonality": _float(row["seasonality_index"]),
-                "store_size": _float(row.get("store_size") or 0),
+                "base_ads": base_ads,
+                "seasonality": seasonality,
+                "arch_horizon_factor": _arch_horizon_factor(ads, base_ads, seasonality, store_size),
+                "store_size": store_size,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": cannib * 100.0,
                 "promo_funding": funding * 100.0,

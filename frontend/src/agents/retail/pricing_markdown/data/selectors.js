@@ -12,6 +12,7 @@ import {
   ALL,
   BASELINE_LEVERS,
   BEST_ACTION_TABS,
+  DEPTH_BY_STATE,
   SIMULATION_METRICS,
 } from "./contract.js";
 import { createEngine, isBaseline } from "./engine.js";
@@ -60,13 +61,15 @@ export function candidatesOf(items) {
 }
 
 /** Chain-level headline KPIs, from candidates only (spec section 11). */
-export function computeKpis(items) {
+export function computeKpis(items, markdownLever = 0) {
   const candidates = candidatesOf(items);
   const atRisk = sum(candidates, "at_risk_value");
   const recoverable = sum(candidates, "recoverable_value");
   return {
     markdown_candidates: candidates.length,
-    avg_depth_pct: 0, // overwritten from reference_by_vertical by the caller — vertical-level, no per-SKU source
+    // Weighted over THESE candidates, so it moves with every filter (scope
+    // AND lever-driven re-states) rather than a vertical-level constant.
+    avg_depth_pct: round(depthWeightedAvgPct(candidates, markdownLever), 2),
     at_risk_value: round(atRisk),
     recoverable_value: round(recoverable),
     write_off_value: round(Math.max(0, atRisk - recoverable)),
@@ -101,7 +104,7 @@ export function computeKpiSparklines(items) {
 }
 
 /** At-risk/recoverable/write-off rolled up by vertical — the by-vertical chart + table. */
-export function computeByVertical(items, reference) {
+export function computeByVertical(items, reference, markdownLever = 0) {
   const candidates = candidatesOf(items);
   const groups = new Map();
   for (const item of candidates) {
@@ -122,8 +125,12 @@ export function computeByVertical(items, reference) {
         vertical_id: g.vertical_id,
         label: ref.vertical_label ?? g.vertical_id,
         markdown_candidates: g.items.length,
-        // Stored vertical-level figure — no per-SKU depth exists (spec section 11).
-        avg_depth_pct: ref.avg_depth_pct ?? 0,
+        // Weighted over this vertical's OWN scoped candidates (see
+        // `depthWeightedAvgPct`), not read off `ref` — `reference` only
+        // carries the always-unscoped vertical figure, which stayed flat
+        // under every filter until a search/category/state filter could
+        // change what a vertical's row actually stands for.
+        avg_depth_pct: round(depthWeightedAvgPct(g.items, markdownLever), 2),
         at_risk_value: round(g.at_risk_value),
         recoverable_value: round(g.recoverable_value),
         write_off_value: round(Math.max(0, g.at_risk_value - g.recoverable_value)),
@@ -317,21 +324,40 @@ function mean(values) {
 }
 
 /**
- * Weighted mean of `reference[].avg_depth_pct`, weighted by each vertical's
- * LIVE at-risk value from `byVertical` (joined on legal_entity_id) — not by
- * anything read from the reference sheet itself, which carries no reliable
- * money figure post-audit (see contract.js's module docstring).
+ * Per-item markdown depth, f14's own expression: each state's base depth
+ * (`DEPTH_BY_STATE`) scaled by the `markdown` lever and capped at 65%.
+ * `markdownLever` is a delta from baseline (0, matching BASELINE_LEVERS),
+ * so `(25 + markdownLever) / 25` is 1 at rest — same convention f14 and
+ * `engine.js`'s `f14-recoverable-at-risk-value` already use to derive
+ * `recoverable_value`, so this stays consistent with it under a scenario.
  */
-function weightedAvgDepth(reference, byVertical) {
-  const atRiskByVertical = new Map(byVertical.map((v) => [v.vertical_id, v.at_risk_value]));
+function itemDepth(item, markdownLever) {
+  const base = DEPTH_BY_STATE[item.state];
+  if (base == null) return null;
+  return Math.min(0.65, base * ((25 + markdownLever) / 25));
+}
+
+/**
+ * At-risk-value-weighted mean markdown depth over the given candidates —
+ * `Σ(depth × at-risk value) ÷ Σ at-risk value`, the same computation
+ * `reference_by_vertical` was built from (see contract.js and
+ * `scripts/build_pricing_markdown_fixture.py`), but run here on whatever
+ * items are actually in scope and at whatever the markdown lever is
+ * currently set to. Depth is a function of `state` (and the lever), so it
+ * is as available per SKU as `at_risk_value` is — nothing about it required
+ * falling back to a vertical-level, always-unscoped figure.
+ */
+function depthWeightedAvgPct(items, markdownLever = 0) {
   let totalWeight = 0;
   let totalValue = 0;
-  for (const row of reference ?? []) {
-    const weight = atRiskByVertical.get(row.legal_entity_id) ?? 0;
+  for (const item of items) {
+    const depth = itemDepth(item, markdownLever);
+    const weight = Number(item.at_risk_value) || 0;
+    if (depth == null || weight <= 0) continue;
     totalWeight += weight;
-    totalValue += (Number(row.avg_depth_pct) || 0) * weight;
+    totalValue += depth * weight;
   }
-  return totalWeight ? totalValue / totalWeight : 0;
+  return totalWeight ? (totalValue / totalWeight) * 100 : 0;
 }
 
 function round(value, digits = 0) {
@@ -382,12 +408,15 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const engine = engineFor(fixture.formulas ?? {});
   const applyLevers = (item, l) => engine(item, l);
 
-  const drivenItems =
-    options.driveWholePage && !isBaseline(levers) ? items.map((i) => applyLevers(i, levers)) : items;
+  const pageIsDriven = options.driveWholePage && !isBaseline(levers);
+  const drivenItems = pageIsDriven ? items.map((i) => applyLevers(i, levers)) : items;
+  // Depth must agree with whichever levers actually produced `drivenItems`
+  // above -- baseline (0) when the page isn't driven, `levers.markdown`
+  // when it is, never a mix of the two.
+  const markdownLever = pageIsDriven ? levers.markdown : 0;
 
-  const byVertical = computeByVertical(drivenItems, reference);
-  const kpis = computeKpis(drivenItems);
-  kpis.avg_depth_pct = round(weightedAvgDepth(reference, byVertical), 2);
+  const byVertical = computeByVertical(drivenItems, reference, markdownLever);
+  const kpis = computeKpis(drivenItems, markdownLever);
 
   return {
     schema_version: fixture.schema_version ?? 1,

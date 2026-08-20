@@ -52,15 +52,17 @@ describe("with the promo lever moved", () => {
 
 describe("when the formula catalog references a parameter this engine doesn't supply", () => {
   it("defaults the unknown parameter to 1 instead of throwing", () => {
-    // Mirrors a live Formula Manager edit that adds a term (e.g.
-    // arch_horizon_factor) engine.js has no way to know about ahead of time.
-    // The Store filter always re-runs f01 via `atStore`, even at baseline
-    // levers, so this must not crash the board.
+    // Mirrors a live Formula Manager edit that adds a term this engine has no
+    // way to know about ahead of time. `store_horizon_multiplier` is a stand-in
+    // for "some future field" — it must NOT be `arch_horizon_factor`, which
+    // v8.5 made a real f01 term with a real (non-1) value on every item (see
+    // `engine.js`'s `run`), so patching that name back in would not exercise
+    // the "genuinely unknown" fallback this test is about.
     const patched = {
       ...fixture.formulas,
       "f01-ads-per-store": fixture.formulas["f01-ads-per-store"].replace(
         "store_size *",
-        "store_size * arch_horizon_factor *",
+        "store_size * store_horizon_multiplier *",
       ),
     };
     const patchedApplyLevers = createEngine(patched);
@@ -74,6 +76,32 @@ describe("when the formula catalog references a parameter this engine doesn't su
     const patchedResult = patchedApplyLevers(item, BASELINE_LEVERS);
     expect(patchedResult.ads).toBeCloseTo(baseline.ads, 9);
     expect(patchedResult.incremental_margin).toBeCloseTo(baseline.incremental_margin, 9);
+  });
+});
+
+describe("arch_horizon_factor", () => {
+  // Regression test for the Store filter crash: "Operator '*' needs a
+  // number, got undefined". f01 references `arch_horizon_factor` for real
+  // (v8.5), engine.js always supplies the key, and the Store filter (and any
+  // What-If lever) unconditionally re-runs f01 via `atStore`/`applyLevers`
+  // even at baseline — so every fixture item must carry a real numeric value,
+  // not rely on the "unknown parameter" fallback above (that only fires when
+  // the key is absent, not when it's present but undefined).
+  it("is a finite number on every promo-eligible item", () => {
+    for (const item of fixture.items) {
+      expect(Number.isFinite(item.arch_horizon_factor)).toBe(true);
+    }
+  });
+
+  it("does not throw when the Store filter re-runs f01 at baseline levers", () => {
+    const item = fixture.items[0];
+    const store = fixture.stores.find((s) => s.vertical_id === item.vertical_id);
+    expect(() => applyLevers(atStore(item, store), BASELINE_LEVERS)).not.toThrow();
+  });
+
+  it("does not throw when a What-If lever moves", () => {
+    const item = fixture.items[0];
+    expect(() => applyLevers(item, { ...BASELINE_LEVERS, promo: 20 })).not.toThrow();
   });
 });
 

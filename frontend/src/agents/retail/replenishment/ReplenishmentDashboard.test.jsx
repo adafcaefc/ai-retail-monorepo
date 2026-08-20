@@ -333,15 +333,29 @@ describe("requirement versus inbound supply (spec 4)", () => {
     ).toBeInTheDocument();
   });
 
-  it("accumulates requirement and steps cover up as inbound lands", () => {
+  it("draws 16 real weeks of history, Today, and 16 real weeks of forecast", () => {
     const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
-    expect(requirement.points).toHaveLength(requirement.days + 1);
-    expect(requirement.points[0].requirement).toBe(0);
+    // W-16..W-1, Today, W+1..W+16.
+    expect(requirement.points).toHaveLength(requirement.weeks_back + 1 + requirement.weeks_forward);
+    expect(requirement.points.map((point) => point.label)[16]).toBe("Today");
 
-    for (let index = 1; index < requirement.points.length; index += 1) {
-      const previous = requirement.points[index - 1];
-      const point = requirement.points[index];
+    const history = requirement.points.slice(0, 16);
+    const forward = requirement.points.slice(17);
+
+    // History is a real weekly rate, not fabricated, and not cumulative --
+    // there is nothing behind "16 weeks ago" to accumulate against.
+    for (const point of history) {
+      expect(point.requirement).toBeNull();
+      expect(point.cover).toBeNull();
+      expect(point.actual_demand).toBeGreaterThan(0);
+    }
+
+    expect(requirement.points[16].requirement).toBe(0);
+
+    for (let index = 1; index < forward.length; index += 1) {
+      const previous = forward[index - 1];
+      const point = forward[index];
       // Demand only accumulates; cover only ever gains an arrival.
       expect(point.requirement).toBeGreaterThan(previous.requirement);
       expect(point.cover).toBeGreaterThanOrEqual(previous.cover);
@@ -352,11 +366,24 @@ describe("requirement versus inbound supply (spec 4)", () => {
      * answers "can the chain cover its demand", which the reorder subset
      * cannot: those are by definition the lines that cannot.
      */
-    const last = requirement.points[requirement.points.length - 1];
+    const last = forward[forward.length - 1];
     expect(last.cover).toBeCloseTo(
       fixture.lines.reduce((total, line) => total + line.on_hand + line.open_po, 0),
       6,
     );
+  });
+
+  it("reconciles the first forecast week's chain total against ads x week_factor", () => {
+    // The same calibration scripts/build_replenishment_fixture.py's
+    // verify_demand_curves checks at build time -- re-derived here from the
+    // shipped fixture so a hand-edited fixture.json cannot silently drift.
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const week1 = requirement.points[17];
+    expect(week1.label).toBe("W+1");
+    // requirement at W+1 is the cumulative total through week 1, i.e. week 1
+    // alone since Today's requirement is 0.
+    const totalAds = fixture.lines.reduce((total, line) => total + line.ads, 0);
+    expect(week1.requirement).toBeCloseTo(totalAds * fixture.constants.dow_sum, -1);
   });
 });
 

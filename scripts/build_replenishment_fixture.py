@@ -85,6 +85,7 @@ dataset actually has.
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from datetime import datetime, timezone
@@ -111,6 +112,13 @@ TARGET = (
     / "data"
     / "fixture.json"
 )
+# Same CSV `scripts/seed_synthetic_demand_32w.py` loads into
+# `synthetic.demand_store_sku_32w` -- read directly here so the fixture (no
+# database of its own) carries the same real weekly curve the live API path
+# reads, rather than a second, offline-only approximation.
+DEMAND_CSV = REPO / "resources" / "demand_store_sku_32w_poc_v1.csv"
+DEMAND_HISTORY_COLUMNS = [f"actual_w{n}" for n in range(16, 0, -1)]
+DEMAND_FORECAST_COLUMNS = [f"forecast_w{n}" for n in range(1, 17)]
 
 SCHEMA_VERSION = 1
 AGENT_ID = "retail.replenishment"
@@ -339,7 +347,72 @@ def verify_order_chain(engine, sku_master, store_size, hz_cov) -> dict[str, str]
     return expressions
 
 
-def build_lines(engine, sku_master, detail, store_size, hz_cov):
+def load_demand_curves() -> dict[str, dict[str, list[float]]]:
+    """Chain-net weekly demand per SKU, summed across every store that carries it.
+
+    `synthetic.demand_store_sku_32w` is store x SKU (16,000 rows); this board
+    is chain-net (one row per SKU), same grain as `ads`/`on_hand` elsewhere in
+    `build_lines`. History is oldest-first (16 weeks ago -> last week);
+    forecast is nearest-first (next week -> 16 weeks out) -- the order the
+    chart draws them in.
+    """
+    totals: dict[str, dict[str, float]] = {}
+    with DEMAND_CSV.open(newline="", encoding="utf-8-sig") as handle:
+        for row in csv.DictReader(handle):
+            bucket = totals.setdefault(
+                row["sku_id"],
+                {column: 0.0 for column in DEMAND_HISTORY_COLUMNS + DEMAND_FORECAST_COLUMNS},
+            )
+            for column in DEMAND_HISTORY_COLUMNS + DEMAND_FORECAST_COLUMNS:
+                bucket[column] += float(row[column])
+
+    return {
+        sku_id: {
+            "demand_history": [bucket[column] for column in DEMAND_HISTORY_COLUMNS],
+            "demand_forecast": [bucket[column] for column in DEMAND_FORECAST_COLUMNS],
+        }
+        for sku_id, bucket in totals.items()
+    }
+
+
+def verify_demand_curves(
+    engine: list[dict[str, Any]],
+    demand_by_sku: dict[str, dict[str, list[float]]],
+    week_factor: float,
+) -> None:
+    """The curve is calibrated against the workbook, not independent of it.
+
+    `forecast_w1`'s chain total should reproduce `ads x week_factor` (f08) to
+    five significant figures -- the same check the POC manifest itself states
+    it passed at store grain (`w1_reconciliation`, tolerance 1e-6 there). This
+    re-derives it independently at the grain this board actually uses, so a
+    future re-export of the CSV that drifted from the workbook's own ADS would
+    fail the build rather than quietly widen the two boards apart.
+    """
+    failures: list[str] = []
+    for row in engine:
+        sku_id = row["sku_id"]
+        curve = demand_by_sku.get(sku_id)
+        if curve is None:
+            failures.append(f"{sku_id}: no rows in {DEMAND_CSV.name}")
+            continue
+        expected = float(row["ads"]) * week_factor
+        actual = curve["demand_forecast"][0]
+        if expected and abs(actual - expected) / expected > 1e-4:
+            failures.append(
+                f"{sku_id}: forecast_w1 {actual!r}, ads x week_factor {expected!r}"
+            )
+
+    if failures:
+        print(f"FAIL  {len(failures)} SKU(s) disagree between ENGINE and the demand curve:")
+        for line in failures[:5]:
+            print(f"      {line}")
+        raise SystemExit(1)
+
+    print(f"  ok  forecast_w1 reproduces ads x week_factor for all {len(engine)} SKUs")
+
+
+def build_lines(engine, sku_master, detail, store_size, hz_cov, demand_by_sku):
     """One requisition line per SKU, at chain-net level."""
     by_sku = {row["item"]: row for row in detail}
     lines = []
@@ -399,6 +472,9 @@ def build_lines(engine, sku_master, detail, store_size, hz_cov):
                 # one, which is what this board did until now.
                 "arch_horizon_factor": sku["arch_horizon_factor"],
                 "horizon_coverage": hz_cov,
+                # 16 real weeks each way, chain-net -- see load_demand_curves.
+                "demand_history": demand_by_sku[row["sku_id"]]["demand_history"],
+                "demand_forecast": demand_by_sku[row["sku_id"]]["demand_forecast"],
                 "promo_eligible": sku["promo"],
                 "promo_depth": sku["cannib_pct"],
             }
@@ -675,12 +751,16 @@ def main() -> int:
         tables["engine"], sku_master, store_size, constants["hz_cov"]
     )
 
+    demand_by_sku = load_demand_curves()
+    verify_demand_curves(tables["engine"], demand_by_sku, constants["dow_sum"])
+
     lines = build_lines(
         tables["engine"],
         sku_master,
         tables["replenishment_detail"],
         store_size,
         constants["hz_cov"],
+        demand_by_sku,
     )
     store_rows = build_stores(tables["engine_store"], stores, sku_master)
 

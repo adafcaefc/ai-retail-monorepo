@@ -121,14 +121,17 @@ export const SIMULATION_METRICS = Object.freeze([
 export const MAX_SAVED_SCENARIOS = 4;
 
 /**
- * How far the requirement chart looks ahead, in days (A3 spec section 4).
+ * How many weeks of real history and real forecast the requirement chart
+ * draws each side of Today (A3 spec section 4).
  *
- * The same horizon Inventory Risk projects over, so a reader moving between the
- * two boards is comparing the same window. Four times the longest lead in the
- * dataset (7 days, cross-dock), which is enough for every route to land at
- * least once and for the gap the PO fills to be visible.
+ * `synthetic.demand_store_sku_32w` carries exactly this many weeks each way,
+ * store x SKU — see `scripts/seed_synthetic_demand_32w.py`. The chart used to
+ * be capped at 28 days forward and nothing backward, because one ADS per SKU
+ * was all the workbook held; a flat rate has no reason to run past the
+ * longest lead time. A real weekly curve does.
  */
-export const REQUIREMENT_DAYS = 28;
+export const REQUIREMENT_WEEKS_BACK = 16;
+export const REQUIREMENT_WEEKS_FORWARD = 16;
 
 /**
  * The assumption behind the requirement-versus-inbound chart, A3 spec 4.
@@ -141,8 +144,7 @@ export const REQUIREMENT_DAYS = 28;
  */
 export const REQUIREMENT_NOTE =
   "Inbound is placed on each SKU's lead day because the workbook records how " +
-  "much is on order but never when it arrives. Requirement is a flat ADS per " +
-  "day, which is all one ADS per SKU can support.";
+  "much is on order but never when it arrives.";
 
 /** @typedef {object} ReplenishmentScope */
 export const DEFAULT_SCOPE = Object.freeze({
@@ -258,9 +260,10 @@ export function normalizeReplenishmentDashboard(payload) {
      * predates them renders an empty panel instead of crashing the board.
      */
     requirement: {
-      days: payload.requirement?.days ?? 0,
+      weeks_back: payload.requirement?.weeks_back ?? 0,
+      weeks_forward: payload.requirement?.weeks_forward ?? 0,
       points: payload.requirement?.points ?? [],
-      demand_per_day: payload.requirement?.demand_per_day ?? 0,
+      demand_per_week: payload.requirement?.demand_per_week ?? 0,
       cover_runs_out: payload.requirement?.cover_runs_out ?? null,
       gap_at_horizon: payload.requirement?.gap_at_horizon ?? 0,
     },

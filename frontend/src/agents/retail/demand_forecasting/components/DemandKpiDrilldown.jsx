@@ -63,14 +63,6 @@ export default function DemandKpiDrilldown({ drilldown, onClose, onSelectSku }) 
             <DrillBars rows={drilldown.by_category} format={format} />
           </DrillSection>
 
-          <DrillSection icon="🏪" title="This metric by store">
-            {drilldown.store_unavailable_reason ? (
-              <p className="drill-empty">{t(drilldown.store_unavailable_reason)}</p>
-            ) : (
-              <DrillBars rows={drilldown.by_store} format={format} />
-            )}
-          </DrillSection>
-
           <DrillSection icon="🔎" title="Top contributing SKUs">
             {drilldown.top_skus.length === 0 ? (
               <p className="drill-empty">{t("Nothing in scope.")}</p>

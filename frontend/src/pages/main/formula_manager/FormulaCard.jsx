@@ -99,9 +99,6 @@ export default function FormulaCard({ formula, onEdit, onDelete, deleting }) {
     <article className="formula-card" data-testid={`formula-${formula.id}`}>
       <header className="formula-card-head">
         <div className="formula-card-title">
-          <span className="formula-number" aria-hidden="true">
-            {formula.number}
-          </span>
           <div>
             <h3>{formula.name}</h3>
             {formula.logic ? <p>{formula.logic}</p> : null}

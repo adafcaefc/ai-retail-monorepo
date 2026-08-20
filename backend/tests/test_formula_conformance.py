@@ -158,6 +158,7 @@ def _engine_row(
     vertical: dict[str, Any],
     week: float,
     levers: dict[str, Any],
+    arch_horizon_factor: float,
 ) -> dict[str, Any]:
     """One ENGINE_STORE row, rebuilt from the formulas alone.
 
@@ -171,6 +172,7 @@ def _engine_row(
         "f01-ads-per-store",
         base_ads=sku["base_ads"],
         seasonality=sku["seasonality"],
+        arch_horizon_factor=arch_horizon_factor,
         store_size=store["size"],
         demand_lever=levers["demand_lever"],
         promo_eligible=sku["promo"],
@@ -322,6 +324,7 @@ def engine_grid(asts, tables, week_factor) -> list[tuple[dict, dict]]:
                 vertical_by_id[stored["vertical_id"]],
                 week_factor,
                 NO_LEVERS,
+                stored["archhz"],
             ),
         )
         for stored in tables["engine_store"]

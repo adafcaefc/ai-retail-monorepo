@@ -83,6 +83,17 @@ export function createEngine(formulas) {
       promo_depth: line.promo_depth,
     });
 
+    /*
+     * The real 16-week forecast curve (synthetic.demand_store_sku_32w) is not
+     * itself a formula the catalogue knows how to re-run — it is measured,
+     * not derived from base_ads. So a lever that moves ads scales the curve
+     * by the same ratio ads just moved by, rather than leaving it inert while
+     * every other figure on the page responds. History is never touched: it
+     * already happened.
+     */
+    const demandRatio = line.ads ? ads / line.ads : 1;
+    const demandForecast = (line.demand_forecast ?? []).map((value) => value * demandRatio);
+
     const openPo = run("f03-open-po-per-store", {
       // A chain-net line already covers every store, so there is no allocation
       // left to do and the size ratio is one.
@@ -162,6 +173,7 @@ export function createEngine(formulas) {
       position,
       rop,
       max,
+      demand_forecast: demandForecast,
       dos: run("f20-days-of-supply", { ads, position }),
       order_qty_sales: orderSales,
       order_qty_buy: orderBuy,
