@@ -62,7 +62,8 @@ describe("PricingMarkdownDashboard", () => {
 
     const expected = fixture.items.filter((i) => i.is_markdown_candidate).length;
     const tile = kpiTile("Markdown candidates");
-    expect(within(tile).getByText(String(expected))).toBeInTheDocument();
+    // Formatted with a thousands separator, same as every other count tile.
+    expect(within(tile).getByText(expected.toLocaleString("en-US"))).toBeInTheDocument();
   });
 
   it("labels the source rather than presenting workbook figures as live", async () => {
