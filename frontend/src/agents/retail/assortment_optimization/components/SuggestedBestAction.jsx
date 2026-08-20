@@ -14,9 +14,16 @@ import { formatGmroi, formatIdrExact } from "../presentation.js";
  */
 export default function SuggestedBestAction({ groups, onSelect }) {
   const { t, language } = useLanguage();
-  const [tab, setTab] = useState(BEST_ACTION_TABS[0].id);
-  const active = BEST_ACTION_TABS.find((x) => x.id === tab) ?? BEST_ACTION_TABS[0];
-  const rows = groups?.[tab] ?? [];
+  const [tab, setTab] = useState(null);
+
+  const availableTabs = BEST_ACTION_TABS.filter((x) => (groups?.[x.id]?.length ?? 0) > 0);
+  const visibleTabs = availableTabs.length > 0 ? availableTabs : BEST_ACTION_TABS;
+  const activeTabId = visibleTabs.some((x) => x.id === tab)
+    ? tab
+    : (visibleTabs[0]?.id ?? BEST_ACTION_TABS[0].id);
+
+  const active = BEST_ACTION_TABS.find((x) => x.id === activeTabId) ?? BEST_ACTION_TABS[0];
+  const rows = groups?.[activeTabId] ?? [];
 
   return (
     <section className="assortment-best-action" data-testid="assortment-best-action">
@@ -27,13 +34,13 @@ export default function SuggestedBestAction({ groups, onSelect }) {
         </span>
       </header>
       <div className="assortment-tabs" role="tablist">
-        {BEST_ACTION_TABS.map((x) => (
+        {visibleTabs.map((x) => (
           <button
             key={x.id}
             type="button"
             role="tab"
-            aria-selected={x.id === tab}
-            className={`assortment-tab${x.id === tab ? " is-active" : ""}`}
+            aria-selected={x.id === activeTabId}
+            className={`assortment-tab${x.id === activeTabId ? " is-active" : ""}`}
             onClick={() => setTab(x.id)}
           >
             {t(x.label)}

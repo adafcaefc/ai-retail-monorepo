@@ -152,11 +152,13 @@ def build_items(
 
         # f01 at baseline levers -- the same expression, through the same
         # evaluator, that `engine.js` runs in the browser.
+        arch_horizon_factor = _float(row.get("arch_horizon_factor", 1.0)) or 1.0
         ads = evaluate(
             asts["f01-ads-per-store"],
             {
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
+                "arch_horizon_factor": arch_horizon_factor,
                 "store_size": store_size[row["vertical_id"]],
                 "demand_lever": 0,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
@@ -214,6 +216,7 @@ def build_items(
                 # -- What-If parameters, never answers ------------------
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
+                "arch_horizon_factor": arch_horizon_factor,
                 # The vertical's total size index, not one store's: a
                 # chain-net row already covers every store.
                 "store_size": store_size[row["vertical_id"]],

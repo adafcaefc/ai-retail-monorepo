@@ -114,4 +114,25 @@ describe("AssortmentOptimizationDashboard", () => {
 
     expect(await screen.findByText(/Scenario active/)).toBeInTheDocument();
   });
+
+  it("hides empty best-action tabs when narrowed by search or preview selection", async () => {
+    await renderSettled();
+
+    // Initially at full chain, all tabs with items are visible
+    expect(screen.getByRole("tab", { name: /Delist Tail/i })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Grow Winners/i })).toBeInTheDocument();
+
+    // Type a specific SKU into search
+    const searchInput = screen.getByPlaceholderText(/SKU, name, vendor, brand/i);
+    fireEvent.change(searchInput, { target: { value: "ELC-094" } });
+
+    await waitFor(() => {
+      // ELC-094 is a delist tail item, so Delist Tail is visible
+      expect(screen.getByRole("tab", { name: /Delist Tail/i })).toBeInTheDocument();
+      // Tabs with count 0 are hidden
+      expect(screen.queryByRole("tab", { name: /Grow Winners/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("tab", { name: /Rebalance Space/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("tab", { name: /Vendor\/Brand Review/i })).not.toBeInTheDocument();
+    });
+  });
 });
