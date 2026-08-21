@@ -242,7 +242,7 @@ export function computeByState(items) {
 }
 
 /** The Markdown candidate preview table — A5 spec section 5c. */
-export function computeCandidates(items, limit = 300) {
+export function computeCandidates(items, limit = 300, markdownLever = BASELINE_LEVERS.markdown) {
   return candidatesOf(items)
     .sort((a, b) => b.at_risk_value - a.at_risk_value)
     .slice(0, limit)
@@ -264,10 +264,84 @@ export function computeCandidates(items, limit = 300) {
       at_risk_gross: round(i.at_risk_gross),
       recoverable_value: round(i.recoverable_value),
       write_off_value: round(Math.max(0, i.at_risk_value - i.recoverable_value)),
+      // Elasticity vs depth chart: SKU_Master-sourced, raw signed value
+      // (negative = normal demand response to a price cut).
+      elasticity: Number(i.elasticity) || 0,
+      // This candidate's own markdown depth at the current lever (itemDepth,
+      // the same per-item term depthWeightedAvgPct weights and averages) —
+      // not previously exposed per-row, only as a scope-wide weighted mean.
+      depth_pct: round((itemDepth(i, markdownLever) ?? 0) * 100, 1),
       vendor: i.vendor,
       brand: i.brand,
       recommendation: i.recommendation,
     }));
+}
+
+/**
+ * The 33-point (16 back, today, 16 forward) "at-risk value: ladder vs no
+ * action" projection for the current scope. `week -16..-1`/`week 1..16`
+ * come from `fixture.ladder_by_vertical` (built by `scripts/build_pricing_
+ * markdown_fixture.py` / `dashboard.py`'s `_ladder_by_vertical()` from
+ * `synthetic.markdown_ladder_store_sku_16w` -- a fabricated, gate-checked
+ * projection; NEITHER side is a measured history, see that table's
+ * migrations for why at-risk value has no real past to record). `week: 0`
+ * ("today") is NOT read from that table at all -- it is injected here from
+ * `kpis` (`dashboard.kpis.at_risk_value`/`write_off_value`, the same real,
+ * already-computed figures the KPI tiles and the Rescue waterfall show),
+ * because today is never modelled and duplicating a live figure into a
+ * synthetic table would be a second copy of a number that already exists
+ * and already reacts to the full scope (not just legal_entity_id).
+ *
+ * `ladderByVertical` ships pre-aggregated to (legal_entity_id -> 16 weekly
+ * numbers per line, x4 lines: no_action/ladder forward, history_no_action/
+ * history_ladder back) -- the grain `reference_by_vertical` already uses for
+ * this same board. The -16..-1/1..16 weeks react to the `legal_entity_id`
+ * scope filter only (sums every vertical when unscoped, "ALL"), not to
+ * category_group/store_id/state -- a documented limitation, same kind
+ * `reference_by_vertical` already has. `week: 0`, by contrast, reacts to the
+ * FULL scope, since `kpis` already does.
+ *
+ * Returns one array, oldest week first: `week -16..-1` (history, all zero if
+ * the fixture predates migration 013), `week: 0` (today, real), then
+ * `week 1..16` (forecast).
+ */
+export function computeLadderHistory(ladderByVertical, scope = {}, kpis = {}) {
+  if (!ladderByVertical?.length) return [];
+  const rows =
+    scope?.legal_entity_id && scope.legal_entity_id !== ALL
+      ? ladderByVertical.filter((r) => r.legal_entity_id === scope.legal_entity_id)
+      : ladderByVertical;
+  if (!rows.length) return [];
+
+  const weeks = rows[0]?.no_action?.length ?? 0;
+  const sumAt = (field, i) => round(rows.reduce((sum, r) => sum + (Number(r[field]?.[i]) || 0), 0));
+
+  // History: history_no_action[0] is "1 week ago" (hist_w1) .. [weeks-1] is
+  // "`weeks` weeks ago" (hist_w{weeks}) -- reversed here so the array reads
+  // oldest-first, matching a chart's left-to-right axis.
+  const history = Array.from({ length: weeks }, (_, i) => {
+    const n = weeks - i; // n counts down: weeks, weeks-1, ..., 1
+    const idx = n - 1;
+    return {
+      week: -n,
+      no_action: sumAt("history_no_action", idx),
+      ladder: sumAt("history_ladder", idx),
+    };
+  });
+  const today = {
+    week: 0,
+    no_action: round(Number(kpis?.at_risk_value) || 0),
+    ladder: round(Number(kpis?.write_off_value) || 0),
+  };
+  // Forward: no_action[0]/ladder[0] (w1) is +1 week out, not today -- see
+  // this function's own docstring and the generator's "TODAY LIVES OUTSIDE
+  // THIS TABLE" section for why w1..w16 means +1..+16.
+  const forward = Array.from({ length: weeks }, (_, i) => ({
+    week: i + 1,
+    no_action: sumAt("no_action", i),
+    ladder: sumAt("ladder", i),
+  }));
+  return [...history, today, ...forward];
 }
 
 /** Group candidates into the four best-action tabs by their upstream `best_action_tab`. */
@@ -375,7 +449,7 @@ export function mean(values) {
  * to a delta-from-25 at its own formula boundary, so both stay consistent
  * with each other under a scenario.
  */
-function itemDepth(item, markdownLever) {
+export function itemDepth(item, markdownLever) {
   const base = DEPTH_BY_STATE[item.state];
   if (base == null) return null;
   return Math.min(0.65, base * (markdownLever / 25));
@@ -496,10 +570,23 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     by_channel: computeByChannel(stores),
     by_state: computeByState(drivenItems),
     by_legal_entity: computeByLegalEntity(stores, legalEntities),
-    candidates: computeCandidates(drivenItems),
+    candidates: computeCandidates(drivenItems, 300, markdownLever),
     best_actions: computeBestActions(drivenItems),
+    // `candidates_full`: every markdown candidate, not the preview table's
+    // top-300-by-at_risk_value slice above -- the drilldown drawer groups by
+    // category/store/SKU and must see the whole population or it silently
+    // drops most groups and skews every weighted figure (avg_depth_pct
+    // especially, since the top-300 slice is disproportionately Slow-mover).
+    // See dashboardData.js's loadPricingMarkdownDrilldown.
+    candidates_full: computeCandidates(drivenItems, Infinity, markdownLever),
     simulation: computeSimulation(items, levers, applyLevers),
     reference_by_vertical: reference,
+    // 33-point (16 back, today, 16 forward) projection, see
+    // computeLadderHistory's own docstring. The -16..-1/1..16 weeks are
+    // scoped by legal_entity_id only (the grain `ladder_by_vertical` ships
+    // at); `week: 0` (today) reacts to the FULL scope, since it comes
+    // straight from `kpis` above.
+    ladder_history: computeLadderHistory(fixture.ladder_by_vertical ?? [], scope, kpis),
     // Not part of the normalized dashboard schema (see contract.js) — these
     // are read directly off the raw object by loadPricingMarkdownDrilldown.
     // `markdown_lever`: so a drilldown drawer can be built with the same

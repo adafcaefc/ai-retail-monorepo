@@ -11,13 +11,14 @@ import {
   computeBestActions,
   computeCandidates,
   computeKpis,
+  computeLadderHistory,
   computeSimulation,
   depthWeightedAvgPct,
   distinctBySku,
   mean,
   scopeItems,
 } from "./selectors.js";
-import { ALL, BASELINE_LEVERS, BEST_ACTION_TABS, CANDIDATE_STATES } from "./contract.js";
+import { ALL, BASELINE_LEVERS, BEST_ACTION_TABS, CANDIDATE_STATES, DEPTH_BY_STATE } from "./contract.js";
 import { createEngine } from "./engine.js";
 
 describe("candidatesOf", () => {
@@ -160,6 +161,151 @@ describe("computeCandidates", () => {
       expect(row.comp_idx).toBeGreaterThan(0);
       expect(row.at_risk_gross).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it("defaults to the top 300 by at_risk_value, for the preview table", () => {
+    const rows = computeCandidates(fixture.items);
+    expect(rows.length).toBeLessThanOrEqual(300);
+  });
+
+  it("an explicit Infinity limit returns every candidate, unsorted-cap-free", () => {
+    const rows = computeCandidates(fixture.items, Infinity);
+    expect(rows.length).toBe(candidatesOf(fixture.items).length);
+  });
+
+  // Regression test: elasticity and depth_pct used to be dropped entirely,
+  // so the Elasticity vs depth chart had nothing to plot per candidate.
+  it("carries elasticity and depth_pct — the Elasticity vs depth chart's own axes", () => {
+    const rows = computeCandidates(fixture.items, 300, BASELINE_LEVERS.markdown);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(typeof row.elasticity).toBe("number");
+      expect(row.depth_pct).toBeGreaterThan(0);
+      expect(row.depth_pct).toBeLessThanOrEqual(65);
+    }
+    const bySku = new Map(fixture.items.map((i) => [`${i.sku_id}:${i.store_id}`, i]));
+    for (const row of rows.slice(0, 20)) {
+      const raw = bySku.get(`${row.sku_id}:${row.store_id}`);
+      const base = DEPTH_BY_STATE[raw.state];
+      const expected = Math.round(Math.min(0.65, base * (BASELINE_LEVERS.markdown / 25)) * 1000) / 10;
+      expect(row.depth_pct).toBeCloseTo(expected, 1);
+    }
+  });
+
+  it("depth_pct scales with the markdown lever, same as avg_depth_pct", () => {
+    const at40 = computeCandidates(fixture.items, 300, 40);
+    const atBaseline = computeCandidates(fixture.items, 300, BASELINE_LEVERS.markdown);
+    const bySkuAt40 = new Map(at40.map((r) => [`${r.sku_id}:${r.store_id}`, r.depth_pct]));
+    let widened = 0;
+    for (const row of atBaseline) {
+      if (bySkuAt40.get(`${row.sku_id}:${row.store_id}`) > row.depth_pct) widened++;
+    }
+    expect(widened).toBeGreaterThan(0);
+  });
+});
+
+describe("computeLadderHistory", () => {
+  // no_action[0]/ladder[0] is "+1 week" (w1), NOT today -- today (week 0)
+  // is never in this data at all, it is injected from `kpis` (the third
+  // argument). history_no_action[0]/history_ladder[0] is "1 week ago"
+  // (hist_w1) .. [2] is "3 weeks ago" (hist_w3) -- see the generator's own
+  // column ordering. computeLadderHistory reverses history to oldest-first.
+  const ladderByVertical = [
+    {
+      legal_entity_id: "GRC",
+      no_action: [110, 120, 130],
+      ladder: [84, 88, 92],
+      history_no_action: [95, 90, 85],
+      history_ladder: [76, 72, 68],
+    },
+    {
+      legal_entity_id: "DGT",
+      no_action: [55, 60, 65],
+      ladder: [42, 44, 46],
+      history_no_action: [48, 46, 44],
+      history_ladder: [38, 37, 35],
+    },
+  ];
+
+  it("sums every vertical when unscoped, oldest week first, today from kpis", () => {
+    const kpis = { at_risk_value: 150, write_off_value: 120 };
+    const rows = computeLadderHistory(ladderByVertical, { legal_entity_id: ALL }, kpis);
+    expect(rows).toEqual([
+      { week: -3, no_action: 129, ladder: 103 },
+      { week: -2, no_action: 136, ladder: 109 },
+      { week: -1, no_action: 143, ladder: 114 },
+      { week: 0, no_action: 150, ladder: 120 },
+      { week: 1, no_action: 165, ladder: 126 },
+      { week: 2, no_action: 180, ladder: 132 },
+      { week: 3, no_action: 195, ladder: 138 },
+    ]);
+  });
+
+  it("narrows the -16..-1/1..16 weeks to one vertical when scoped; today still comes from kpis, not the vertical", () => {
+    const kpis = { at_risk_value: 100, write_off_value: 80 };
+    const rows = computeLadderHistory(ladderByVertical, { legal_entity_id: "GRC" }, kpis);
+    expect(rows).toEqual([
+      { week: -3, no_action: 85, ladder: 68 },
+      { week: -2, no_action: 90, ladder: 72 },
+      { week: -1, no_action: 95, ladder: 76 },
+      { week: 0, no_action: 100, ladder: 80 },
+      { week: 1, no_action: 110, ladder: 84 },
+      { week: 2, no_action: 120, ladder: 88 },
+      { week: 3, no_action: 130, ladder: 92 },
+    ]);
+  });
+
+  it("today defaults to zero when kpis is omitted", () => {
+    const rows = computeLadderHistory(ladderByVertical, { legal_entity_id: ALL });
+    expect(rows.find((r) => r.week === 0)).toEqual({ week: 0, no_action: 0, ladder: 0 });
+  });
+
+  it("returns an empty array when there is nothing to project", () => {
+    expect(computeLadderHistory([], {})).toEqual([]);
+    expect(computeLadderHistory(undefined, {})).toEqual([]);
+  });
+
+  // Regression proof against the actual fixture: the underlying trend rises
+  // from the oldest history week to the furthest forecast week (the wiggle
+  // this generator now applies lets it dip locally week to week, so this
+  // checks the edges, not every single step), and today (week 0) is the
+  // real, unrounded anchor both computeKpis and the Rescue waterfall read
+  // (injected here from the fixture's own candidate population, the same
+  // way buildDashboardFromFixture wires kpis through). See the gates
+  // scripts/generate_synthetic_markdown_ladder_16w.py enforces before the
+  // CSV is ever written.
+  it("the real fixture's projection rises from oldest to newest and stays separated at the edges", () => {
+    const candidates = candidatesOf(fixture.items);
+    const kpis = {
+      at_risk_value: candidates.reduce((sum, i) => sum + i.at_risk_value, 0),
+      write_off_value: candidates.reduce((sum, i) => sum + Math.max(0, i.at_risk_value - i.recoverable_value), 0),
+    };
+    const rows = computeLadderHistory(fixture.ladder_by_vertical ?? [], { legal_entity_id: ALL }, kpis);
+    if (!rows.length) return; // fixture built before the generator ran; nothing to assert
+    const first = rows[0];
+    const today = rows.find((r) => r.week === 0);
+    const last = rows[rows.length - 1];
+    expect(rows).toHaveLength(33);
+    expect(last.week).toBe(16);
+    expect(first.no_action).toBeLessThan(today.no_action);
+    expect(today.no_action).toBeLessThan(last.no_action);
+    expect(first.ladder).toBeLessThan(first.no_action);
+    expect(last.ladder).toBeLessThan(last.no_action);
+  });
+});
+
+// Regression test for the drilldown drawer reading a value-sorted, 300-row
+// slice: it silently dropped most categories/stores and skewed every
+// weighted figure (avg_depth_pct especially, since the top-300-by-value
+// slice skews toward Slow-mover rows). See dashboardData.js's
+// loadPricingMarkdownDrilldown, which reads candidates_full for exactly
+// this reason.
+describe("buildDashboardFromFixture — candidates_full", () => {
+  it("is the full candidate population, not the preview table's 300-row cap", () => {
+    const dashboard = buildDashboardFromFixture(fixture);
+    const allCandidates = candidatesOf(fixture.items);
+    expect(dashboard.candidates.length).toBeLessThanOrEqual(300);
+    expect(dashboard.candidates_full.length).toBe(allCandidates.length);
   });
 });
 

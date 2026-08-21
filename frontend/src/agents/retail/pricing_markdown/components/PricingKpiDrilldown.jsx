@@ -37,6 +37,13 @@ export default function PricingKpiDrilldown({ drilldown, onClose, onSelectSku })
       <DrillSection icon="🏬" title={t("This metric by vertical")}>
         <DrillBars rows={drilldown.by_vertical} format={format} />
       </DrillSection>
+      <DrillSection icon="🏪" title={t("This metric by store")}>
+        {drilldown.store_unavailable_reason ? (
+          <p className="pricing-empty">{t(drilldown.store_unavailable_reason)}</p>
+        ) : (
+          <DrillBars rows={drilldown.by_store} format={format} />
+        )}
+      </DrillSection>
       <DrillSection icon="📦" title={t("Top contributing SKUs")}>
         {drilldown.top_skus.length === 0 ? (
           <p className="pricing-empty">{t("Nothing in scope.")}</p>

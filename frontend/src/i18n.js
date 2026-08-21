@@ -327,6 +327,7 @@ const CHROME = {
   "Show only lines to reorder": "Tampilkan hanya baris yang perlu dipesan",
   "This metric is a rate, so the breakdowns below are each group's own rate and do not sum to the headline.": "Metrik ini berupa rasio, jadi rincian di bawah adalah rasio tiap grup dan tidak menjumlah ke angka utama.",
   "The per-store grid prices at selling price and holds no vendor split, so this measure has no per-store figure to show.": "Grid per-toko memakai harga jual dan tidak memuat pembagian vendor, jadi ukuran ini tidak punya angka per toko.",
+  "Comp idx is a per-SKU competitiveness figure from SKU_Master with no store dimension, so this measure has no per-store figure to show.": "Comp idx adalah angka kompetitif per SKU dari SKU_Master tanpa dimensi toko, jadi ukuran ini tidak punya angka per toko.",
   "Current value": "Nilai saat ini",
   "across": "mencakup",
   "SKUs in scope": "SKU dalam cakupan",

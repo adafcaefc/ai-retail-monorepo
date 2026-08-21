@@ -1,4 +1,4 @@
-import { ALL, STATE_ORDER } from "../data/contract.js";
+import { ALL, LADDER_HORIZONS, STATE_ORDER } from "../data/contract.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
 /**
@@ -32,6 +32,8 @@ export default function PricingMarkdownFilters({
   onSearch,
   onRefresh,
   onClear,
+  ladderHorizon,
+  onLadderHorizonChange,
 }) {
   const { t } = useLanguage();
   const hasFilter =
@@ -75,6 +77,23 @@ export default function PricingMarkdownFilters({
         disabled={busy}
         onChange={(value) => onPatch({ state: value })}
       />
+      {onLadderHorizonChange ? (
+        <fieldset className="pricing-horizon">
+          <legend>{t("Horizon")}</legend>
+          <div className="pricing-segmented">
+            {LADDER_HORIZONS.map((weeks) => (
+              <button
+                key={weeks}
+                type="button"
+                aria-pressed={ladderHorizon === weeks}
+                onClick={() => onLadderHorizonChange(weeks)}
+              >
+                {weeks}w
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       <label className="pricing-search">
         <span className="pricing-search-label">{t("Search")}</span>
         <input

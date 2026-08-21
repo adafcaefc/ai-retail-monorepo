@@ -91,6 +91,7 @@ formula in this catalogue to model.
 
 from __future__ import annotations
 
+import csv
 import json
 import sys
 from datetime import datetime, timezone
@@ -106,6 +107,21 @@ from src.formulas.expression import evaluate, parse  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
 FORMULA_CATALOGUE = REPO / "resources" / "dbtemp" / "formula.json"
+# scripts/generate_synthetic_markdown_ladder_16w.py's output -- see that
+# script's module docstring for what the two lines represent (a projection
+# both directions from today's real anchor, not a measured history).
+# Optional: an environment that has not run the generator gets an empty
+# `ladder_by_vertical` in the fixture, same fallback `dashboard.py`'s
+# `_ladder_by_vertical()` uses when migrations 012/013 have not run.
+LADDER_CSV = REPO / "resources" / "markdown_ladder_store_sku_16w_v1.csv"
+LADDER_WEEKS = 16
+# Forward block: w1 = today (the calibration anchor) .. w16 = +15 weeks out.
+LADDER_NO_ACTION_COLUMNS = [f"no_action_w{n}" for n in range(1, LADDER_WEEKS + 1)]
+LADDER_COLUMNS = [f"ladder_w{n}" for n in range(1, LADDER_WEEKS + 1)]
+# History block (migration 013): hist_w1 = 1 week before today .. hist_w16 =
+# 16 weeks before.
+LADDER_HIST_NO_ACTION_COLUMNS = [f"no_action_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)]
+LADDER_HIST_COLUMNS = [f"ladder_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)]
 TARGET = (
     REPO
     / "frontend"
@@ -542,6 +558,74 @@ def build_reference(
     return reference
 
 
+def load_ladder_rows() -> dict[tuple[str, str], dict[str, str]]:
+    """`markdown_ladder_store_sku_16w_v1.csv`, keyed by (sku_id, store_id).
+
+    Empty dict if the generator has not been run -- `build_ladder_by_vertical`
+    then returns `[]` and the fixture ships without this (optional) block,
+    same graceful fallback `dashboard.py`'s `_ladder_by_vertical()` uses.
+    """
+    if not LADDER_CSV.exists():
+        return {}
+    with LADDER_CSV.open(newline="", encoding="utf-8-sig") as handle:
+        return {(row["sku_id"], row["store_id"]): row for row in csv.DictReader(handle)}
+
+
+def build_ladder_by_vertical(
+    items: list[dict[str, Any]],
+    ladder_rows: dict[tuple[str, str], dict[str, str]],
+) -> list[dict[str, Any]]:
+    """The 32-week (16 back, 16 forward) markdown-ladder-vs-no-action
+    projection, summed per vertical.
+
+    See `scripts/generate_synthetic_markdown_ladder_16w.py`'s module
+    docstring for what `no_action`/`ladder` (W+1..W+16) and `history_
+    no_action`/`history_ladder` (W-16..W-1) represent -- neither side is a
+    measured history, both are a projection from today's real anchor. Today
+    itself (offset 0) is NOT in either array -- it is never stored in this
+    table at all, see that generator's "TODAY LIVES OUTSIDE THIS TABLE"
+    section; the frontend injects it separately from `dashboard.kpis`.
+    Aggregated here rather than shipped per item: the chart draws
+    one pair of lines per scope, not one per SKU, and 64 extra numbers on
+    all 16,000 items would more than double this fixture's size for data
+    nothing reads at that grain.
+
+    `ladder_rows` may or may not have the history columns yet (migration
+    013/this generator's v2 vs. the earlier forward-only v1) -- missing
+    columns are read as 0.0 rather than raising, so a fixture rebuilt against
+    an older CSV degrades to an all-zero history rather than failing.
+    """
+    if not ladder_rows:
+        return []
+
+    totals: dict[str, dict[str, list[float]]] = {}
+    for item in items:
+        row = ladder_rows.get((item["sku_id"], item["store_id"]))
+        if not row:
+            continue
+        bucket = totals.setdefault(
+            item["vertical_id"],
+            {
+                "no_action": [0.0] * LADDER_WEEKS,
+                "ladder": [0.0] * LADDER_WEEKS,
+                "history_no_action": [0.0] * LADDER_WEEKS,
+                "history_ladder": [0.0] * LADDER_WEEKS,
+            },
+        )
+        for index, column in enumerate(LADDER_NO_ACTION_COLUMNS):
+            bucket["no_action"][index] += float(row[column])
+        for index, column in enumerate(LADDER_COLUMNS):
+            bucket["ladder"][index] += float(row[column])
+        for index, column in enumerate(LADDER_HIST_NO_ACTION_COLUMNS):
+            bucket["history_no_action"][index] += float(row.get(column) or 0.0)
+        for index, column in enumerate(LADDER_HIST_COLUMNS):
+            bucket["history_ladder"][index] += float(row.get(column) or 0.0)
+
+    return [
+        {"legal_entity_id": vertical_id, **bucket} for vertical_id, bucket in sorted(totals.items())
+    ]
+
+
 def build_filter_options(
     verticals: list[dict[str, Any]],
     sku_master: list[dict[str, Any]],
@@ -652,6 +736,7 @@ def main() -> int:
     stores_rollup = build_store_rows(tables["engine_store"], stores_by_id)
     reference = build_reference(items, tables["verticals"])
     filter_options = build_filter_options(tables["verticals"], tables["sku_master"], tables["stores"])
+    ladder_by_vertical = build_ladder_by_vertical(items, load_ladder_rows())
 
     candidates = [i for i in items if i["is_markdown_candidate"]]
     if len(candidates) != EXPECTED_MARKDOWN_CANDIDATES:
@@ -683,6 +768,10 @@ def main() -> int:
         "items": items,
         "stores": stores_rollup,
         "reference_by_vertical": reference,
+        # Additive: see build_ladder_by_vertical()'s docstring. Empty list if
+        # scripts/generate_synthetic_markdown_ladder_16w.py has not been run
+        # -- nothing else here changes shape or values when that happens.
+        "ladder_by_vertical": ladder_by_vertical,
     }
 
     TARGET.parent.mkdir(parents=True, exist_ok=True)

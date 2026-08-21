@@ -46,6 +46,10 @@ describe("PricingMarkdownDashboard", () => {
 
     expect(document.querySelectorAll(".pricing-kpi")).toHaveLength(6);
     expect(screen.getByText("At-risk value vs recoverable markdown")).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="pricing-chart-rescue-waterfall"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="pricing-chart-elasticity-depth"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-testid="pricing-chart-ladder-vs-no-action"]')).toBeInTheDocument();
+    expect(document.querySelector(".pricing-ladder-stats")).toBeInTheDocument();
     expect(screen.getByText("At-risk value by vertical")).toBeInTheDocument();
     expect(screen.getByText("At-risk value by category")).toBeInTheDocument();
     expect(screen.getByText("At-risk value by store")).toBeInTheDocument();
@@ -83,16 +87,45 @@ describe("PricingMarkdownDashboard", () => {
     });
   });
 
+  it("clicking a category filter-shortcut pill narrows the board, and the reset button clears it", async () => {
+    await renderSettled();
+    const beforeRows = document.querySelectorAll(".pricing-candidate-row").length;
+
+    const categoryChart = document.querySelector('[data-testid="pricing-chart-category"]');
+    const firstPill = within(categoryChart).getAllByRole("button")[0];
+    fireEvent.click(firstPill);
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".pricing-candidate-row").length).toBeLessThanOrEqual(beforeRows);
+    });
+    expect(within(categoryChart).getByText("Back to all categories")).toBeInTheDocument();
+
+    fireEvent.click(within(categoryChart).getByText("Back to all categories"));
+
+    await waitFor(() => {
+      expect(document.querySelectorAll(".pricing-candidate-row").length).toBe(beforeRows);
+    });
+    expect(within(categoryChart).queryByText("Back to all categories")).not.toBeInTheDocument();
+  });
+
   it("opens and closes a KPI drilldown", async () => {
     await renderSettled();
 
     fireEvent.click(kpiTile("At-risk value"));
     expect(await screen.findByText("This metric by category")).toBeInTheDocument();
+    expect(screen.getByText("This metric by store")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /close/i }));
     await waitFor(() => {
       expect(screen.queryByText("This metric by category")).not.toBeInTheDocument();
     });
+  });
+
+  it("opens a KPI drilldown from the Markdown candidates tile", async () => {
+    await renderSettled();
+
+    fireEvent.click(kpiTile("Markdown candidates"));
+    expect(await screen.findByText("This metric by category")).toBeInTheDocument();
   });
 
   it("moving a What-If lever updates the scenario banner live, with no Run click", async () => {
@@ -102,6 +135,26 @@ describe("PricingMarkdownDashboard", () => {
     fireEvent.change(demandSlider, { target: { value: "30" } });
 
     expect(await screen.findByText(/Scenario active/)).toBeInTheDocument();
+  });
+
+  it("the ladder chart's Horizon control lives in the filter bar and re-slices the chart client-side", async () => {
+    await renderSettled();
+
+    const filters = screen.getByTestId("pricing-filters");
+    const sixteenWeek = within(filters).getByRole("button", { name: "16w" });
+    const fourWeek = within(filters).getByRole("button", { name: "4w" });
+    expect(sixteenWeek).toHaveAttribute("aria-pressed", "true");
+    expect(fourWeek).toHaveAttribute("aria-pressed", "false");
+
+    const chart = document.querySelector('[data-testid="pricing-chart-ladder-vs-no-action"]');
+    expect(chart).toBeInTheDocument();
+
+    fireEvent.click(fourWeek);
+
+    expect(fourWeek).toHaveAttribute("aria-pressed", "true");
+    expect(sixteenWeek).toHaveAttribute("aria-pressed", "false");
+    // No refetch: the filter bar's own busy state never flips for this control.
+    expect(screen.queryByText(/Refresh/)).toBeInTheDocument();
   });
 
   it("moving the Markdown depth lever moves the Avg depth % KPI tile, live", async () => {

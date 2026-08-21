@@ -208,6 +208,18 @@ export const DEFAULT_SCOPE = Object.freeze({
 });
 
 /**
+ * The "at-risk value: ladder vs no action" chart's horizon (weeks per side
+ * of "today"), mirroring `demand_forecasting`'s own `DEMAND_HORIZONS`. Not
+ * part of `scope`/`serializeScope` on purpose -- every week 4..16 covers is
+ * already computed and shipped in `dashboard.ladder_history`
+ * (computeLadderHistory in selectors.js), so narrowing it is a client-side
+ * slice, never a refetch, unlike demand_forecasting's horizon (which does
+ * change what the backend computes).
+ */
+export const LADDER_HORIZONS = Object.freeze([4, 8, 12, 16]);
+export const DEFAULT_LADDER_HORIZON = 16;
+
+/**
  * A5 spec section 11: chain-net headline vs. store-level gross dimension
  * charts. They will not reconcile 1:1 -- that is by design, not a bug.
  */
@@ -307,6 +319,11 @@ export function normalizePricingDashboard(payload) {
       index: payload.simulation?.index ?? [],
     },
     reference_by_vertical: payload.reference_by_vertical ?? [],
+    // 16-week forward projection (not history) -- see computeLadderHistory
+    // in data/selectors.js. Empty on any source that hasn't run migration
+    // 012 / the ladder generator; the chart's own empty-state guard handles
+    // that, same as every other optional block here.
+    ladder_history: payload.ladder_history ?? [],
   };
 }
 

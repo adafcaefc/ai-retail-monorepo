@@ -13,10 +13,22 @@ import PricingKpiDrilldown from "./components/PricingKpiDrilldown.jsx";
 import PricingKpiGrid from "./components/PricingKpiGrid.jsx";
 import PricingMarkdownFilters from "./components/PricingMarkdownFilters.jsx";
 import PricingMarkdownSkeleton from "./components/PricingMarkdownSkeleton.jsx";
+import {
+  ElasticityVsDepthChart,
+  MarkdownLadderChart,
+  RescueWaterfallChart,
+} from "./components/PricingRescueCharts.jsx";
 import PricingScenarioComparison from "./components/PricingScenarioComparison.jsx";
 import PricingWhatIfSimulator from "./components/PricingWhatIfSimulator.jsx";
 import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
-import { ALL, BASELINE_LEVERS, CANDIDATE_SCOPE_NOTE, DEFAULT_SCOPE, GRAIN_NOTE } from "./data/contract.js";
+import {
+  ALL,
+  BASELINE_LEVERS,
+  CANDIDATE_SCOPE_NOTE,
+  DEFAULT_LADDER_HORIZON,
+  DEFAULT_SCOPE,
+  GRAIN_NOTE,
+} from "./data/contract.js";
 import {
   buildPricingMarkdownDashboard,
   loadPricingMarkdownDrilldown,
@@ -57,6 +69,10 @@ export default function PricingMarkdownDashboard() {
   const [driveWholePage, setDriveWholePage] = useState(true);
   const [scenarios, setScenarios] = useState([]);
   const [drilldown, setDrilldown] = useState(null);
+  // The ladder chart's Horizon control (filter bar) -- a pure client-side
+  // slice of dashboard.ladder_history, never a refetch; see contract.js's
+  // LADDER_HORIZONS docstring.
+  const [ladderHorizon, setLadderHorizon] = useState(DEFAULT_LADDER_HORIZON);
 
   // Fetch depends only on scope: serializeScope never encodes levers, so a
   // slider move never needs a network round-trip (see dashboardData.js).
@@ -115,6 +131,20 @@ export default function PricingMarkdownDashboard() {
     setScope({ ...DEFAULT_SCOPE });
     setDrilldown(null);
   }, []);
+
+  // Chart-click filtering, mirroring demand_forecasting's onCategory/onStore/
+  // onLegalEntity: each dimension chart's bar or filter-shortcut pill calls
+  // one of these (also with ALL, from that chart's own "Back to all X"
+  // reset button). selectVertical resets category/store too, same as
+  // demand_forecasting's onLegalEntity — a category or store valid under one
+  // vertical can be meaningless (or simply absent) under another.
+  const selectCategory = useCallback((category_group) => patchScope({ category_group }), [patchScope]);
+  const selectStore = useCallback((store_id) => patchScope({ store_id }), [patchScope]);
+  const selectState = useCallback((state) => patchScope({ state }), [patchScope]);
+  const selectVertical = useCallback(
+    (legal_entity_id) => patchScope({ legal_entity_id, category_group: ALL, store_id: ALL }),
+    [patchScope],
+  );
 
   const openDrilldown = useCallback(
     async (metricId) => {
@@ -200,6 +230,8 @@ export default function PricingMarkdownDashboard() {
         onSearch={(sku) => patchScope({ sku })}
         onRefresh={() => setRefreshToken((v) => v + 1)}
         onClear={clearScope}
+        ladderHorizon={ladderHorizon}
+        onLadderHorizonChange={setLadderHorizon}
       />
 
       <div className="pricing-scope-row">
@@ -240,9 +272,16 @@ export default function PricingMarkdownDashboard() {
 
       <AtRiskVsRecoverableChart rows={dashboard.by_vertical} />
 
+      <MarkdownLadderChart rows={dashboard.ladder_history} horizon={ladderHorizon} kpis={dashboard.kpis} />
+
       <div className="pricing-chart-grid">
-        <AtRiskByVerticalChart rows={dashboard.by_vertical} />
-        <AtRiskByCategoryChart rows={dashboard.by_category} />
+        <RescueWaterfallChart kpis={dashboard.kpis} />
+        <ElasticityVsDepthChart rows={dashboard.candidates} />
+      </div>
+
+      <div className="pricing-chart-grid">
+        <AtRiskByVerticalChart rows={dashboard.by_vertical} selected={scope.legal_entity_id} onSelect={selectVertical} />
+        <AtRiskByCategoryChart rows={dashboard.by_category} selected={scope.category_group} onSelect={selectCategory} />
       </div>
 
       <p className="pricing-footnote">{t(GRAIN_NOTE)}</p>
@@ -257,6 +296,10 @@ export default function PricingMarkdownDashboard() {
         byChannel={dashboard.by_channel}
         byState={dashboard.by_state}
         byLegalEntity={dashboard.by_legal_entity}
+        scope={scope}
+        onSelectStore={selectStore}
+        onSelectState={selectState}
+        onSelectLegalEntity={selectVertical}
       />
 
       <PricingWhatIfSimulator

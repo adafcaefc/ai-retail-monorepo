@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import text
+
 from src.formulas import repository
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
@@ -133,6 +135,14 @@ NOTE = (
 # (offline/standalone builds) has no request-time recompute step, so it keeps
 # showing each store's full all-category/all-state total for those four
 # charts -- the same documented gap store_id already has on that path.
+
+# Weeks in `synthetic.markdown_ladder_store_sku_16w` -- see that table's
+# migration (sql/retail/012_...) and generator (scripts/generate_synthetic_
+# markdown_ladder_16w.py) for what the two lines represent. Read here as a
+# per-vertical aggregate, unscoped by legal_entity_id/category_group/store_id
+# the way `reference` below is unscoped -- it is a benchmark line, not a
+# figure a filter narrows.
+LADDER_WEEKS = 16
 
 _MONEY_FORMULA_IDS = (
     "f12-at-risk-value",
@@ -380,6 +390,82 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     return reference
 
 
+def _ladder_by_vertical(connection: Any) -> list[dict[str, Any]]:
+    """The 32-week (16 back, 16 forward) markdown-ladder-vs-no-action
+    projection, per vertical.
+
+    Reads `synthetic.markdown_ladder_store_sku_16w` if it exists (migration
+    012) -- a fabricated, gate-checked projection from today's real
+    at_risk_value/write_off_value, NOT a measured history on either side (at-
+    risk value has no real past to record; see that table's own migration
+    for why the history side is modelled the same way the forward side
+    already was). Guarded the same way replenishment/dashboard.py guards
+    `synthetic.inbound_store_sku_16w`: an environment that has not run
+    migration 012 simply gets an empty list back and the chart does not
+    render, rather than the request failing. The history columns (migration
+    013) are guarded separately -- an environment with 012 but not yet 013
+    gets `history_no_action`/`history_ladder` as all-zero rather than a
+    failed query.
+
+    Aggregated to (sku_id, store_id) -> vertical here, in SQL, rather than
+    shipped at the raw 16,000-row grain: the chart draws one pair of lines
+    per scope, not one per SKU, so there is nothing for a client-side
+    selector to do with the per-row detail that summing here doesn't already
+    do -- and shipping 64 extra numbers on all 16,000 items would bloat the
+    payload for data nothing reads at that grain.
+    """
+    has_table = connection.execute(
+        text("SELECT OBJECT_ID(N'synthetic.markdown_ladder_store_sku_16w', N'U')")
+    ).scalar()
+    if has_table is None:
+        return []
+
+    has_history = connection.execute(
+        text("SELECT COL_LENGTH(N'synthetic.markdown_ladder_store_sku_16w', N'no_action_hist_w1')")
+    ).scalar()
+
+    no_action_cols = ", ".join(f"sum(m.no_action_w{n}) AS no_action_w{n}" for n in range(1, LADDER_WEEKS + 1))
+    ladder_cols = ", ".join(f"sum(m.ladder_w{n}) AS ladder_w{n}" for n in range(1, LADDER_WEEKS + 1))
+    select_cols = f"i.vertical_id, {no_action_cols}, {ladder_cols}"
+    if has_history is not None:
+        hist_no_action_cols = ", ".join(
+            f"sum(m.no_action_hist_w{n}) AS no_action_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)
+        )
+        hist_ladder_cols = ", ".join(
+            f"sum(m.ladder_hist_w{n}) AS ladder_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)
+        )
+        select_cols += f", {hist_no_action_cols}, {hist_ladder_cols}"
+
+    rows = _rows(
+        connection,
+        f"""
+        SELECT {select_cols}
+        FROM synthetic.markdown_ladder_store_sku_16w m
+        JOIN {ITEM} i ON i.item_id = m.sku_id
+        GROUP BY i.vertical_id
+        """,
+        {},
+    )
+    return [
+        {
+            "legal_entity_id": row["vertical_id"],
+            "no_action": [_float(row[f"no_action_w{n}"]) for n in range(1, LADDER_WEEKS + 1)],
+            "ladder": [_float(row[f"ladder_w{n}"]) for n in range(1, LADDER_WEEKS + 1)],
+            "history_no_action": (
+                [_float(row[f"no_action_hist_w{n}"]) for n in range(1, LADDER_WEEKS + 1)]
+                if has_history is not None
+                else [0.0] * LADDER_WEEKS
+            ),
+            "history_ladder": (
+                [_float(row[f"ladder_hist_w{n}"]) for n in range(1, LADDER_WEEKS + 1)]
+                if has_history is not None
+                else [0.0] * LADDER_WEEKS
+            ),
+        }
+        for row in rows
+    ]
+
+
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     scope = scope or DashboardScope()
 
@@ -415,6 +501,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         store_money_rows = [{**row, **_store_money(row)} for row in store_rows]
 
         options = filter_options(connection)
+        ladder_by_vertical = _ladder_by_vertical(connection)
 
     all_items = build_items(store_money_rows)
     # Reference stays unscoped: it is a benchmark (avg markdown depth per
@@ -457,6 +544,10 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "items": items,
         "stores": stores,
         "reference_by_vertical": reference,
+        # Additive: see _ladder_by_vertical()'s docstring. Empty list on an
+        # environment that has not run migration 012 -- nothing else here
+        # changes shape or values when that happens.
+        "ladder_by_vertical": ladder_by_vertical,
     }
 
 
