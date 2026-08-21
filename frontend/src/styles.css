@@ -604,10 +604,13 @@ img.ey-logo {
 /* Agents are grouped by their backend folder (the `folder` in folder.agent). */
 
 /*
- * The list scrolls rather than the sidebar, so the language footer below it
- * stays pinned to the bottom instead of being pushed off-screen by a long
- * agent list. `min-height: 0` is what lets a flex child shrink below its
- * content and actually scroll.
+ * The list scrolls rather than the sidebar, so the user block below it stays
+ * pinned to the bottom instead of being pushed off-screen by a long agent
+ * list. `min-height: 0` is what lets a flex child shrink below its content
+ * and actually scroll. It deliberately does not grow: this is a grid, and a
+ * flex-grown box stretches its rows, which blows the agent buttons up to fill
+ * the sidebar whenever the list is short. .sidebar-footer takes the leftover
+ * space in an auto margin instead.
  */
 .agent-groups {
   display: grid;
@@ -779,11 +782,13 @@ img.ey-logo {
 }
 
 .sidebar-footer {
-  /* No margin-top: auto here — .agent-groups already pins this to the
-     bottom during a long list via flex-shrink (its min-height: 0 is what
-     lets it shrink below content and scroll). An auto margin additionally
-     force-pushed the footer to the sidebar's bottom edge even when the
-     list is short, leaving a large dead gap above the divider. */
+  /* Bottom edge of the sidebar, whatever sits above: nothing else in this
+     column grows, so without the auto margin the leftover space collects
+     below the footer and the user block rides up under the list. Works the
+     same for the loading and error branches, which render a skeleton or a
+     notice in place of the list — so the block does not jump once the real
+     modules arrive. Collapses to 0 when a long list fills the column. */
+  margin-top: auto;
   padding: 16px 8px 18px;
   border-top: 1px solid var(--line);
   color: var(--muted);
