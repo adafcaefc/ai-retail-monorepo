@@ -8935,11 +8935,29 @@ img.ey-logo {
   font-size: 0.72rem;
 }
 
-.po-toggle {
+/*
+ * `.po-filters .po-toggle` rather than `.po-toggle` alone: the bare class lost
+ * `flex-direction` to `.po-filters label`'s column rule (class+type beats a
+ * lone class), so the checkbox rendered stacked above its own text instead of
+ * beside it — the layout bug behind why this control read as out of place.
+ */
+.po-filters .po-toggle {
   align-items: center;
   flex-direction: row;
+  flex-shrink: 0;
   gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--ink);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.po-toggle input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 .po-filter-actions {
