@@ -6,16 +6,22 @@ return a finished dashboard: `selectors.js` derives every KPI, dimension
 breakdown, quadrant and action preview from these rows, and a second
 implementation in Python would have to be kept in step with it forever.
 
-TWO GRAINS, AND THEY ARE NOT INTERCHANGEABLE
-`items` is chain-net, from `fact_inventory_chain_daily` -- the workbook's
-ENGINE sheet, which is not the per-store grid rolled up. `stores` and
-`by_state_value` aggregate `fact_inventory_daily` and are GROSS: they sum
-local pockets and will not reconcile 1:1 with the chain-level headline. A6
-spec section 11 says so, and the board labels it rather than reconciling it
-away.
+ONE GRAIN NOW
+`items`, `stores` and `by_state_value` all read `fact_inventory_daily` -- the
+workbook's ENGINE_STORE grid, one row per SKU per store. `items` used to read
+`fact_inventory_chain_daily` (the netted ENGINE sheet) while its two
+neighbours read the grid, so the board carried a chain-level headline above
+two GROSS panels that could not reconcile with it, and A6 spec section 11
+existed to explain the gap. The gap is gone; so is the explanation.
+
+What that cost is real and recorded in
+docs/CHAIN_GRAIN_RETIREMENT_DELTA.md: a row is now a SKU IN ONE STORE, so
+delist/grow/hold are per-store decisions and every count rises about 20x
+against the old netted figures. The money does not move -- contribution,
+GMV and margin are linear in ADS, which sums exactly across stores.
 
 WHY THE QUARTILES ARE COMPUTED HERE AND NOT IN SQL
-`classify` needs P25/P75 over the whole 800-row population, and the cutoffs
+`classify` needs P25/P75 over the whole population, and the cutoffs
 must be the ones the browser re-classifies against. Computing them in SQL
 would put the boundary in two places -- a `PERCENTILE_CONT` here and a
 `percentile()` there -- and the one SKU sitting on a cutoff would flip
@@ -129,11 +135,16 @@ def build_items(
     store_size: dict[str, float],
     asts: dict[str, Any],
 ) -> list[dict]:
-    """One row per SKU at chain-net level, every predicate pre-resolved.
+    """One row per SKU PER STORE, every predicate pre-resolved.
 
     Ordered by vertical, then by contribution DESCENDING -- the register opens
     on what earns most within each book, which is the order the fixture ships
     and the order the board's own tests assert.
+
+    `contribution` stays keyed by SKU rather than by SKU-store, deliberately:
+    it sorts, and keying it per row would scatter one SKU's twenty stores up
+    and down the register instead of keeping them together under their SKU's
+    total. Ordering is the only thing it decides.
     """
     ordered = sorted(
         rows,
@@ -150,6 +161,19 @@ def build_items(
         margin_pct = _float(row["margin_pct"])
         inv_value = _float(row["inventory_value"])
 
+        # The row's own store weighting. `store_size` (the per-vertical dict)
+        # remains only as the fallback for a row that predates the store-grain
+        # query -- handing f01 a vertical total for a single-store row would
+        # multiply its ADS by roughly 20.
+        #
+        # Resolved ONCE and reused below in the What-If block, because the
+        # browser re-runs f01 from those parameters: if the value shipped there
+        # differed from the value used here, the board would open on one ADS and
+        # jump to another the moment a lever moved.
+        row_store_size = _float(
+            row.get("store_size") or store_size[row["vertical_id"]]
+        )
+
         # f01 at baseline levers -- the same expression, through the same
         # evaluator, that `engine.js` runs in the browser.
         arch_horizon_factor = _float(row.get("arch_horizon_factor", 1.0)) or 1.0
@@ -159,7 +183,7 @@ def build_items(
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
                 "arch_horizon_factor": arch_horizon_factor,
-                "store_size": store_size[row["vertical_id"]],
+                "store_size": row_store_size,
                 "demand_lever": 0,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_lever": 0,
@@ -170,6 +194,12 @@ def build_items(
         # The productivity chain, in the engine's own order of operations.
         weekly_gmv = ads * 7 * price
         margin_rp = weekly_gmv * margin_pct
+        # Was read off the chain table's stored `funding_rp`. Derived here from
+        # the SAME recomputed `ads` the two lines above use, so all three move
+        # together when a lever does -- reading one from a column and deriving
+        # its neighbours is how they drift apart. Reproduces the retired column
+        # to the cent chain-wide (docs/CHAIN_GRAIN_RETIREMENT_DELTA.md).
+        funding_rp = weekly_gmv * _float(row["funding_pct"])
         gmroi = (margin_rp / inv_value) if inv_value else 0.0
 
         items.append(
@@ -190,7 +220,7 @@ def build_items(
                 "inv_value": inv_value,
                 "weekly_gmv": weekly_gmv,
                 "margin_rp": margin_rp,
-                "funding_rp": _float(row["funding_rp"]),
+                "funding_rp": funding_rp,
                 # `gmroi` stays unrounded -- it has no catalogue formula. Not
                 # so for `contribution_per_day`: it was hand-typed unrounded
                 # to avoid moving the percentile boundary out from under the
@@ -217,9 +247,11 @@ def build_items(
                 "base_ads": _float(row["base_ads"]),
                 "seasonality": _float(row["seasonality_index"]),
                 "arch_horizon_factor": arch_horizon_factor,
-                # The vertical's total size index, not one store's: a
-                # chain-net row already covers every store.
-                "store_size": store_size[row["vertical_id"]],
+                # This store's own size index. It was the vertical's total back
+                # when a row was chain-net and already covered every store; the
+                # same value the baseline ADS above was computed from, so the
+                # browser reproduces it exactly at rest.
+                "store_size": row_store_size,
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
                 # `dim_item.lead_time_days`, which is the column this
@@ -353,15 +385,28 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
             f"""
             SELECT c.item_key, c.ads, c.on_hand_qty, c.open_po_qty,
                    c.position_qty, c.rop_qty, c.max_qty, c.days_cover,
-                   c.state, c.unit_price, c.inventory_value, c.funding_rp,
+                   c.state,
+                   -- Three columns the retired chain table used to carry.
+                   -- `price` is identical in `dim_item` on every row; the other
+                   -- two are f21 and the funding rule, derived rather than
+                   -- stored so there is one place each number is decided.
+                   -- See docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
+                   i.price                    AS unit_price,
+                   c.position_qty * i.price   AS inventory_value,
+                   i.funding_pct,
                    i.name, i.vertical_id, i.category_id, i.category_name,
                    i.brand, i.is_perishable, i.shelf_life_days, i.base_ads,
                    i.seasonality_index, i.lead_time_days, i.safety_days,
                    i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
                    i.margin_pct,
                    vt.sort_order,
-                   v.vendor_short
-            FROM {SCHEMA}.fact_inventory_chain_daily c
+                   v.vendor_short,
+                   -- This store's own weighting, not the vertical's total: a
+                   -- row is one SKU in one store now, and handing f01 the
+                   -- vertical sum would inflate every ADS by ~20x.
+                   s.store_id, s.size_index   AS store_size
+            FROM {SCHEMA}.fact_inventory_daily c
+            JOIN {SCHEMA}.dim_store s ON s.store_id = c.store_key
             JOIN {SCHEMA}.dim_item i ON i.item_id = c.item_key
             JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
             LEFT JOIN {SCHEMA}.dim_vendor v ON v.vendor_account = i.vendor_account

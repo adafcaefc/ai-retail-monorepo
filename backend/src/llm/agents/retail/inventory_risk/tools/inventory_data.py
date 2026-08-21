@@ -10,9 +10,10 @@ COUNTS ARE DISTINCT SKUs, VALUES ARE ROW SUMS, exactly as `computeKpis` does
 client-side. `count(*)` here would answer "how many SKU-store rows are
 slow-moving" (755) to a question about SKUs (75).
 
-`worst_at_risk_skus` and `expiring_skus` still read the chain table: they rank
-whole SKUs by total exposure, which is a chain-net question, and ranking rows
-would fill the list with one SKU's twenty branches.
+`worst_at_risk_skus` and `expiring_skus` rank whole SKUs by total exposure, so
+they aggregate to `item_key` in a CTE before ranking. They read the chain table
+until it was retired -- ranking rows directly would fill the list with one
+SKU's twenty branches, which is the trap the CTE exists to avoid.
 """
 
 from __future__ import annotations
@@ -25,7 +26,6 @@ from src.llm.agents.retail.inventory_risk.dashboard import (
     ENGINE_FORMULAS,
 )
 
-CHAIN = f"{warehouse.SCHEMA}.fact_inventory_chain_daily"
 PER_STORE = f"{warehouse.SCHEMA}.fact_inventory_daily"
 ITEM = f"{warehouse.SCHEMA}.dim_item"
 
@@ -34,16 +34,17 @@ def get_inventory_risk_snapshot(
     legal_entity_id: str | None = None,
     category_group: str | None = None,
 ) -> dict[str, Any]:
-    """Current chain-net inventory risk: states, at-risk value, worst SKUs.
+    """Current inventory risk: states, at-risk value, worst SKUs.
 
     The standard portfolio view for Agent 2. Call this before answering
     anything about stock states, days of supply, trapped capital, expiry, or
     where inventory value is at risk. Use query_retail_inventory only for a
     cut this does not already carry.
 
-    Every figure is chain-net (one row per item, netted across stores). Where
-    per-store detail appears it is prefixed `store_gross_` and is a GROSS
-    figure that legitimately exceeds the chain-net headline.
+    Every figure is measured over SKU x store rows, the grain the board's own
+    cards use. COUNTS ARE DISTINCT SKUs and money sums rows, so a count and a
+    value on the same line describe the same population at different
+    resolutions. `store_gross_` figures break the same rows out per store.
 
     Args:
         legal_entity_id: Vertical to narrow to (GRC, GMR, FSH, HNB, ELC, HNL,
@@ -152,46 +153,108 @@ def get_inventory_risk_snapshot(
             params,
         )
 
+        # AGGREGATE THEN RANK. A SKU's twenty store rows are summed to one line
+        # first, and the ranking runs over those lines.
+        #
+        # NOT `ROW_NUMBER() OVER (PARTITION BY item_key ORDER BY ... DESC)`
+        # filtered to 1, which is the obvious-looking alternative. That answers
+        # "the worst single store for each of the worst SKUs" -- a different
+        # question -- and the column it returns would not add up to the
+        # `at_risk_value` total on the card directly above it. Aggregating
+        # first reconciles with that card by construction.
+        #
+        # These two lists read the chain table until it was retired, for
+        # exactly this reason: ranking rows fills the list with one SKU's
+        # twenty branches. The CTE recovers the SKU-level question without the
+        # second grain. See docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
+        per_item = f"""
+            WITH per_item AS (
+                SELECT c.item_key,
+                       -- f12-at-risk-value and f21-inventory-value, summed.
+                       sum(CASE WHEN c.state <> 'Healthy'
+                                THEN c.position_qty * i.price ELSE 0 END)
+                                                             AS at_risk_value,
+                       sum(c.position_qty * i.price)         AS inventory_value,
+                       sum(c.position_qty)                   AS position_qty,
+                       sum(c.rop_qty)                        AS rop_qty,
+                       sum(c.ads)                            AS ads,
+                       -- f22-expiry-units. ROUND sits inside the sum, per row,
+                       -- because that is what f22 does -- see `by_state` above.
+                       sum(round(
+                           CASE WHEN i.is_perishable = 1
+                                     AND c.days_cover > i.shelf_life_days
+                                THEN c.position_qty - c.ads * i.shelf_life_days
+                                ELSE 0 END
+                       , 0))                                 AS expiry_units,
+                       count(*)                              AS store_rows,
+                       sum(CASE WHEN c.state <> 'Healthy' THEN 1 ELSE 0 END)
+                                                             AS at_risk_stores
+                FROM {PER_STORE} c
+                JOIN {ITEM} i ON i.item_id = c.item_key
+                WHERE 1 = 1{clause}
+                GROUP BY c.item_key
+            )
+        """
+
+        # `state` is deliberately gone from both lists. It cannot be
+        # aggregated -- a SKU is Stockout in six stores and Healthy in fourteen
+        # -- so any single verdict here would be a fiction. `at_risk_stores` of
+        # `store_rows` says what the state column used to imply, and says it
+        # more precisely: "14 of 20 stores at risk" rather than one label.
         worst = snapshot._rows(
             connection,
-            f"""
+            per_item
+            + f"""
             SELECT TOP (:top_n)
-                   c.item_key,
+                   p.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
                    i.brand,
-                   c.state,
-                   round(c.position_qty, 0)               AS position,
-                   round(c.rop_qty, 0)                    AS rop,
-                   round(c.days_cover, 2)     AS days_cover,
-                   round(c.at_risk_value, 0)              AS at_risk_value,
-                   round(c.inventory_value, 0)            AS inventory_value,
+                   round(p.position_qty, 0)               AS position,
+                   round(p.rop_qty, 0)                    AS rop,
+                   -- f20-days-of-supply over the SUMMED inputs. Days of cover
+                   -- is a ratio: summing or averaging twenty stores' own
+                   -- values answers nothing. Position over ADS at SKU level is
+                   -- the only reading that stays consistent with the position
+                   -- and ROP columns beside it.
+                   CASE WHEN p.ads > 0
+                        THEN round(p.position_qty / p.ads, 2)
+                        ELSE 0 END                         AS days_cover,
+                   round(p.at_risk_value, 0)               AS at_risk_value,
+                   round(p.inventory_value, 0)             AS inventory_value,
+                   p.at_risk_stores,
+                   p.store_rows,
                    i.is_perishable,
                    i.shelf_life_days
-            FROM {CHAIN} c
-            JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE c.at_risk_value > 0{clause}
-            ORDER BY c.at_risk_value DESC
+            FROM per_item p
+            JOIN {ITEM} i ON i.item_id = p.item_key
+            WHERE p.at_risk_value > 0
+            ORDER BY p.at_risk_value DESC
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
 
         expiring = snapshot._rows(
             connection,
-            f"""
+            per_item
+            + f"""
             SELECT TOP (:top_n)
-                   c.item_key,
+                   p.item_key,
                    i.name,
                    i.vertical_id,
                    i.shelf_life_days,
-                   round(c.days_cover, 2)  AS days_cover,
-                   round(c.expiry_units, 0)   AS expiry_units,
-                   round(c.at_risk_value, 0)           AS at_risk_value
-            FROM {CHAIN} c
-            JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE c.expiry_units > 0{clause}
-            ORDER BY c.expiry_units DESC
+                   CASE WHEN p.ads > 0
+                        THEN round(p.position_qty / p.ads, 2)
+                        ELSE 0 END                         AS days_cover,
+                   round(p.expiry_units, 0)                AS expiry_units,
+                   round(p.at_risk_value, 0)               AS at_risk_value,
+                   p.at_risk_stores,
+                   p.store_rows
+            FROM per_item p
+            JOIN {ITEM} i ON i.item_id = p.item_key
+            WHERE p.expiry_units > 0
+            ORDER BY p.expiry_units DESC
             """,
             {**params, "top_n": snapshot.TOP_N},
         )
@@ -249,7 +312,10 @@ def get_inventory_risk_snapshot(
             category_group=category,
             formulas=ENGINE_FORMULAS,
         ),
-        "grain": "chain_net",
+        # Was "chain_net", which stopped being true when the cards moved to
+        # ENGINE_STORE and became a flat lie once the chain table was retired.
+        # The model reads this to describe its own numbers.
+        "grain": "store_sku",
         "totals": totals,
         "state_order": list(warehouse.STATE_ORDER),
         "by_state": by_state,
@@ -258,9 +324,10 @@ def get_inventory_risk_snapshot(
         "expiring_skus": expiring,
         "store_gross_worst": stores,
         "store_gross_note": (
-            "Per-store counts, GROSS. They sum each store's own local risk and "
-            "will exceed the chain-net figures above, which net surplus "
-            "against shortage. Never present these as chain totals."
+            "Per-store ROW counts. The totals above count DISTINCT SKUs, so "
+            "these are larger by roughly the number of stores a SKU sits in -- "
+            "7,090 below-ROP rows against 524 below-ROP SKUs. Never present a "
+            "row count as a SKU count."
         ),
         "reference_by_vertical": reference,
         "reference_note": (

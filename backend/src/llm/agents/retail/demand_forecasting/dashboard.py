@@ -557,61 +557,47 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     scope = scope or DashboardScope()
 
     with get_engine().connect() as connection:
-        if scope.store_id:
-            # ENGINE_STORE is the real store x SKU source.  It carries the
-            # workbook's own f08 forecast_7d, inventory position and inbound
-            # quantities at the same grain, so all downstream calculations run
-            # over the selected Store's inputs rather than a filtered response.
-            where, params = _scope_clause(
-                scope, "s.vertical_id", "i.category_id", "s.store_id"
-            )
-            params["day"] = SNAPSHOT_DATE
-            chain = _rows(
-                connection,
-                f"""
-                SELECT f.item_key, f.ads, f.forecast_7d,
-                       f.on_hand_qty, f.open_po_qty, f.position_qty, f.rop_qty,
-                       f.state, i.price AS unit_price,
-                       i.name, i.vertical_id, i.category_id, i.category_name,
-                       i.is_perishable, i.shelf_life_days, i.base_ads,
-                       i.seasonality_index, i.arch_horizon_factor,
-                       i.lead_time_days, i.safety_days,
-                       i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
-                       i.is_viral, s.store_id, s.size_index AS store_size
-                FROM {SCHEMA}.fact_inventory_daily f
-                JOIN {SCHEMA}.dim_store s ON s.store_id = f.store_key
-                JOIN {SCHEMA}.dim_item i ON i.item_id = f.item_key
-                JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
-                WHERE f.cal_date = :day{where}
-                -- The workbook's own order: vertical first, SKU within it.
-                ORDER BY vt.sort_order, f.item_key
-                """,
-                params,
-            )
-        else:
-            where, params = _scope_clause(scope, "i.vertical_id", "i.category_id")
-            params["day"] = SNAPSHOT_DATE
-            chain = _rows(
-                connection,
-                f"""
-                SELECT c.item_key, c.ads, c.on_hand_qty, c.open_po_qty,
-                       c.position_qty, c.rop_qty, c.state, c.unit_price,
-                       i.name, i.vertical_id, i.category_id, i.category_name,
-                       i.is_perishable, i.shelf_life_days, i.base_ads,
-                       i.seasonality_index, i.arch_horizon_factor,
-                       i.lead_time_days, i.safety_days,
-                       i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
-                       i.is_viral
-                FROM {SCHEMA}.fact_inventory_chain_daily c
-                JOIN {SCHEMA}.dim_item i ON i.item_id = c.item_key
-                JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
-                WHERE c.cal_date = :day{where}
-                -- The workbook's own order: vertical first, SKU within it.
-                -- Alphabetical would open every board on Digital.
-                ORDER BY vt.sort_order, c.item_key
-                """,
-                params,
-            )
+        # ENGINE_STORE is the real store x SKU source, and now the only one.
+        # It carries the workbook's own f08 forecast_7d, inventory position and
+        # inbound quantities at one grain, so every calculation downstream runs
+        # over the same rows whether or not a Store is selected.
+        #
+        # This used to branch: a store filter read here, and everything else
+        # read `fact_inventory_chain_daily`. That made "SKUs at stockout risk"
+        # mean 345 unfiltered and something else entirely once a store was
+        # picked, for no reason a reader could see. One grain, one answer -- see
+        # docs/CHAIN_GRAIN_RETIREMENT_DELTA.md for what that moved (this board's
+        # headline count 345 -> 524; forecast_7d unchanged, being linear in ADS).
+        #
+        # `_scope_clause` adds no store predicate when `scope.store_id` is unset,
+        # so the unfiltered board is this same query minus one AND.
+        where, params = _scope_clause(
+            scope, "s.vertical_id", "i.category_id", "s.store_id"
+        )
+        params["day"] = SNAPSHOT_DATE
+        chain = _rows(
+            connection,
+            f"""
+            SELECT f.item_key, f.ads, f.forecast_7d,
+                   f.on_hand_qty, f.open_po_qty, f.position_qty, f.rop_qty,
+                   f.state, i.price AS unit_price,
+                   i.name, i.vertical_id, i.category_id, i.category_name,
+                   i.is_perishable, i.shelf_life_days, i.base_ads,
+                   i.seasonality_index, i.arch_horizon_factor,
+                   i.lead_time_days, i.safety_days,
+                   i.growth_index, i.is_promo_eligible, i.cannibalisation_pct,
+                   i.is_viral, s.store_id, s.size_index AS store_size
+            FROM {SCHEMA}.fact_inventory_daily f
+            JOIN {SCHEMA}.dim_store s ON s.store_id = f.store_key
+            JOIN {SCHEMA}.dim_item i ON i.item_id = f.item_key
+            JOIN {SCHEMA}.dim_vertical vt ON vt.vertical_id = i.vertical_id
+            WHERE f.cal_date = :day{where}
+            -- The workbook's own order: vertical first, SKU within it.
+            -- Alphabetical would open every board on Digital.
+            ORDER BY vt.sort_order, f.item_key
+            """,
+            params,
+        )
 
         store_where, store_params = _scope_clause(
             scope, "s.vertical_id", None, "s.store_id"

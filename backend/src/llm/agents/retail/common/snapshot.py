@@ -51,10 +51,12 @@ DATASET_NOTES: dict[str, str] = {
         "figure drawn from them as unavailable rather than substituting one."
     ),
     "grain": (
-        "Chain-net (fact_inventory_chain_daily, 800 rows) already nets surplus "
-        "in one store against shortage in another. Per-store "
-        "(fact_inventory_daily, 16,000 rows) sums to a gross figure about "
-        "1.25x larger. Different questions; never compared."
+        "One grain: fact_inventory_daily, 16,000 rows, one per SKU per store. "
+        "COUNTS ARE DISTINCT SKUs and money sums rows -- a SKU sits in about "
+        "twenty stores, so a row count is roughly 20x any SKU figure (7,090 "
+        "below-ROP rows against 524 below-ROP SKUs). Distinct counts do not "
+        "add up across states or stores, because a SKU healthy in fourteen "
+        "stores and stocked out in six is counted in both."
     ),
 }
 

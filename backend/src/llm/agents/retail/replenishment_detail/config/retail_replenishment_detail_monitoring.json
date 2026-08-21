@@ -113,7 +113,7 @@
                 "Turn a planned action spec into a temporary database simulation and summarize the estimated impact.",
                 "Parent domain is retail_replenishment_detail. Only simulate line-level replenishment, sourcing and data-correction actions.",
                 "INPUTS: action_name, spec, agent, optional impact, allowed_tables, domain_snapshot, table_schema, import_batch_id, optional previous_error.",
-                "Use only tables listed in allowed_tables. This domain does not include fact_inventory_chain_daily or fact_inventory_daily; a simulation that needs either is not this agent's to run.",
+                "Use only tables listed in allowed_tables. This domain does not include fact_inventory_daily; a simulation that needs it is not this agent's to run.",
                 "retail tables have no import_batch_id worth filtering on and only one snapshot date, 2026-07-01. Scope a where_clause by item_key, designated_vendor, buy_uom, is_reorder, or a join-free column on the target table instead.",
                 "UNITS. retail.replenishment_proposal carries order_qty_sales and order_qty_buy, and they are not interchangeable: buy units are CEILING(sales / pack_factor). A simulation that moves one without the other leaves the row internally inconsistent, so say which you changed and what it implies for the other.",
                 "PRICE BASIS. unit_price_ta is per sales unit, so amount = order_qty_buy * pack_factor * unit_price_ta. A simulation that recomputes amount as quantity times price without the pack factor understates the line by that factor, which on a Crate SKU is twelvefold.",

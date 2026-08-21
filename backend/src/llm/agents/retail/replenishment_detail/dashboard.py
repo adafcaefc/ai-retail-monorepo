@@ -7,9 +7,9 @@ shows comes from there plus the two dimensions that give a code a name —
 `dim_item` for the item name, category, vertical and pack factor, `dim_vendor`
 for the vendor short names behind the two vendor accounts.
 
-Deliberately *not* read here: `fact_inventory_chain_daily`. Agent 3 joins it
-for the What-If parameters its simulator drives (base ADS, seasonality, promo
-depth, store size) and for the retail-priced order value. This board has no
+Deliberately *not* read here: the inventory facts. Agent 3 reads
+`fact_inventory_daily` for the ADS behind the What-If parameters its simulator
+drives (base ADS, seasonality, promo depth, store size). This board has no
 simulator and prices at cost, so joining that fact would pull in columns
 nothing renders and quietly make the two boards' row counts depend on a join
 that has nothing to do with either question.

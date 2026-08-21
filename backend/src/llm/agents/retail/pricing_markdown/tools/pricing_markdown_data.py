@@ -43,9 +43,9 @@ def get_pricing_markdown_snapshot(
 
     A markdown candidate is a SKU with at least one store in state Expiry,
     Overstock or Slow-mover -- Stockout and Low belong to Replenishment
-    (Agent 3). At-risk and recoverable value are summed from the store grain
-    (fact_inventory_daily), not the chain fact's own at_risk_value column,
-    which is a different, chain-net figure -- see the `grain` dataset note.
+    (Agent 3). At-risk and recoverable value are summed from
+    `fact_inventory_daily` and computed via f23 and f14 -- see the `grain`
+    dataset note.
 
     Args:
         legal_entity_id: Vertical to narrow to (GRC, GMR, FSH, HNB, ELC, HNL,
@@ -77,10 +77,11 @@ def get_pricing_markdown_snapshot(
         ),
         "grain": (
             "At-risk/recoverable value are summed from fact_inventory_daily "
-            "(store grain, ~16,000 rows): a SKU with any non-Healthy store "
-            "carries exposure there. This is a GROSS figure and legitimately "
-            "exceeds a chain-net sum -- never compare it against "
-            "fact_inventory_chain_daily's own at_risk_value column."
+            "(~16,000 rows, one per SKU per store): a SKU with any non-Healthy "
+            "store carries exposure there. Counts beside them are DISTINCT "
+            "SKUs, so a count and a value on the same line describe the same "
+            "population at different resolutions -- never present a row count "
+            "as a SKU count."
         ),
         "thresholds": {},
         "totals": totals,

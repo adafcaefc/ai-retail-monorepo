@@ -41,6 +41,15 @@ GRAIN_LABELS: dict[str, str] = {
     "vendor": "Per vendor - one supplier account's own figure",
 }
 
+# `chain_sku` is retained because `retail.formula` still carries rules declared
+# at that grain and this maps a stored value to its table -- dropping the key
+# would blank the table column in the Formula Manager for those rows. It no
+# longer describes anything the application reads: every board moved to
+# `fact_inventory_daily` (docs/CHAIN_GRAIN_RETIREMENT_DELTA.md), and the chain
+# table survives only as a seeded, unread copy of the workbook's ENGINE sheet.
+# A rule left at `chain_sku` is therefore evaluated against store-grain inputs
+# by every caller; the expressions are grain-agnostic arithmetic, so that is
+# safe, but a NEW rule should be declared `store_sku`.
 GRAIN_TABLES: dict[str, str] = {
     "store_sku": "retail.fact_inventory_daily",
     "chain_sku": "retail.fact_inventory_chain_daily",

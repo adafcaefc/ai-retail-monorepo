@@ -1,11 +1,18 @@
 """Agent 6 · Assortment Optimization — the snapshots its chat and monitors read.
 
-Chain-net throughout, from `fact_inventory_chain_daily`: one row per item, 800
-of them, with surplus in one store already netted against shortage in another.
-Where per-store detail appears it is named `store_gross_*`, because summing the
-16,000-row grid answers a different question and a snapshot that carried both
-unlabelled would invite exactly the comparison that makes two answers look like
-a discrepancy.
+ENGINE_STORE grain throughout, from `fact_inventory_daily`: one row per SKU per
+store, 16,000 of them, matching the board's own cards. It was chain-net (800
+netted rows, from `fact_inventory_chain_daily`) until that table was retired
+from application code -- see docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
+
+TWO COUNTS, AND THEY ANSWER DIFFERENT QUESTIONS
+`*_lines` count SKU-store rows and partition exactly: every line is delist,
+grow or hold, and the three sum to `line_count`. `*_skus` count DISTINCT SKUs
+and DO NOT partition -- a SKU delisted in six stores and held in fourteen
+appears in both, so the three SKU counts sum to more than `sku_count`. That is
+not a defect; it is the fact chain-netting used to hide, and it is the whole
+reason a per-store decision is more actionable than a netted one. Money always
+sums rows.
 
 EVERY QUERY HERE IS A CTE, AND THAT IS NOT STYLE
 The productivity chain -- ADS, weekly GMV, margin, GMROI -- is four expressions
@@ -38,7 +45,6 @@ from src.llm.agents.retail.assortment_optimization.dashboard import (
     ENGINE_FORMULAS,
 )
 
-CHAIN = f"{warehouse.SCHEMA}.fact_inventory_chain_daily"
 PER_STORE = f"{warehouse.SCHEMA}.fact_inventory_daily"
 ITEM = f"{warehouse.SCHEMA}.dim_item"
 STORE = f"{warehouse.SCHEMA}.dim_store"
@@ -51,27 +57,32 @@ DELIST_STATES_SQL = "('Slow-mover', 'Overstock', 'Expiry')"
 
 # The productivity chain, once. Every tool below selects from this.
 #
-# `store_size` is the vertical's summed store-size index, NOT
-# `sku_master.sum_vert_size` -- that column is rounded to four decimals and is
-# not in the warehouse at all. See `warehouse.chain_store_size`.
-_CHAIN_CTE = f"""
-WITH size AS (
-    SELECT vertical_id, sum(size_index) AS total
-    FROM {STORE}
-    GROUP BY vertical_id
-),
-base AS (
-    SELECT c.item_key, c.state, c.position_qty, c.days_cover,
-           c.unit_price, c.inventory_value,
+# A row is one SKU IN ONE STORE. It was chain-net until the chain table was
+# retired from application code, so `store_size` was the vertical's summed
+# store-size index; it is now the row's own store weighting, which is what f01
+# takes at this grain. The vertical sum would inflate every ADS by ~20x.
+#
+# What that moved is in docs/CHAIN_GRAIN_RETIREMENT_DELTA.md: the percentile
+# cutoffs below recompute over the new population automatically -- which is
+# exactly why they were written as `percentile_cont` rather than constants --
+# so delist/grow/hold become per-store decisions and their counts rise with the
+# row count while the money they describe does not move.
+_PRODUCTIVITY_CTE = f"""
+WITH base AS (
+    SELECT c.item_key, c.store_key, c.state, c.position_qty, c.days_cover,
+           -- `price` is identical in dim_item; `inventory_value` is f21.
+           -- Both were columns on the retired chain table.
+           i.price                  AS unit_price,
+           c.position_qty * i.price AS inventory_value,
            i.name, i.vertical_id, i.category_id, i.category_name,
            i.brand, i.vendor_account, i.margin_pct, i.growth_index,
-           i.base_ads * i.seasonality_index * z.total AS ads
-    FROM {CHAIN} c
-    JOIN {ITEM} i ON i.item_id = c.item_key
-    JOIN size z   ON z.vertical_id = i.vertical_id
+           i.base_ads * i.seasonality_index * s.size_index AS ads
+    FROM {PER_STORE} c
+    JOIN {ITEM} i  ON i.item_id  = c.item_key
+    JOIN {STORE} s ON s.store_id = c.store_key
     WHERE c.cal_date = :day{{clause}}
 ),
-chain AS (
+productivity AS (
     SELECT b.*,
            b.ads * 7 * b.unit_price                       AS weekly_gmv,
            b.ads * 7 * b.unit_price * b.margin_pct        AS margin_rp,
@@ -85,7 +96,7 @@ cuts AS (
     SELECT DISTINCT
            percentile_cont(0.25) WITHIN GROUP (ORDER BY gmroi)                OVER () AS p25_gmroi,
            percentile_cont(0.25) WITHIN GROUP (ORDER BY contribution_per_day) OVER () AS p25_contribution
-    FROM chain
+    FROM productivity
 ),
 -- Grow compares against the HEALTHY subset, not the chain. In this dataset high
 -- GMROI concentrates in Stockout/Low SKUs -- fast movers running short -- so a
@@ -95,7 +106,7 @@ healthy_cuts AS (
     SELECT DISTINCT
            percentile_cont(0.75) WITHIN GROUP (ORDER BY gmroi)                OVER () AS p75_gmroi_healthy,
            percentile_cont(0.75) WITHIN GROUP (ORDER BY contribution_per_day) OVER () AS p75_contribution_healthy
-    FROM chain
+    FROM productivity
     WHERE state = 'Healthy'
 ),
 scored AS (
@@ -111,7 +122,7 @@ scored AS (
                      AND c.gmroi >= h.p75_gmroi_healthy
                      AND c.growth_index >= 1.0
                 THEN 1 ELSE 0 END AS is_grow_candidate
-    FROM chain c
+    FROM productivity c
     CROSS JOIN cuts k
     -- LEFT, not CROSS: a scope with no Healthy SKU leaves `healthy_cuts` empty,
     -- and a CROSS JOIN would then return no rows at all rather than no grow
@@ -149,7 +160,7 @@ def _scoped(legal_entity_id: str | None, category_group: str | None):
         category_name_column="i.category_name",
     )
     params["day"] = warehouse.SNAPSHOT_DATE
-    return _CHAIN_CTE.format(clause=clause), params, clause, entity, category
+    return _PRODUCTIVITY_CTE.format(clause=clause), params, clause, entity, category
 
 
 def get_assortment_performance_snapshot(
@@ -164,9 +175,10 @@ def get_assortment_performance_snapshot(
     `get_delist_recommendations` for the named candidates and
     `simulate_assortment_rationalization` for what a decision is worth.
 
-    Every figure is chain-net (one row per item, netted across stores). Where
-    per-store detail appears it is prefixed `store_gross_` and legitimately
-    exceeds the chain-net headline.
+    Every figure is measured over SKU x store rows -- a decision here is
+    "delist this line in this store", not "delist this SKU everywhere".
+    `*_lines` partition the population; `*_skus` count DISTINCT SKUs and
+    overlap, because a SKU can be delisted in some stores and held in others.
 
     Args:
         legal_entity_id: Vertical to narrow to (GRC, GMR, FSH, HNB, ELC, HNL,
@@ -181,7 +193,13 @@ def get_assortment_performance_snapshot(
             connection,
             cte
             + """
-            SELECT count(*)                                            AS sku_count,
+            SELECT count(DISTINCT item_key)                            AS sku_count,
+                   count(*)                                            AS line_count,
+                   -- Lines partition; SKUs do not. See the module docstring.
+                   count(DISTINCT CASE WHEN is_delist = 1 THEN item_key END)
+                                                                       AS delist_skus,
+                   count(DISTINCT CASE WHEN is_grow = 1 THEN item_key END)
+                                                                       AS grow_skus,
                    sum(is_delist)                                      AS delist_candidates,
                    sum(is_grow)                                        AS grow_candidates,
                    sum(is_hold)                                        AS hold_skus,
@@ -206,7 +224,8 @@ def get_assortment_performance_snapshot(
             cte
             + """
             SELECT vertical_id,
-                   count(*)                            AS sku_count,
+                   count(DISTINCT item_key)            AS sku_count,
+                   count(*)                            AS line_count,
                    sum(is_delist)                      AS delist_candidates,
                    round(avg(gmroi), 4)                AS avg_gmroi,
                    round(sum(contribution_per_day), 0) AS contribution_per_day,
@@ -222,7 +241,9 @@ def get_assortment_performance_snapshot(
             connection,
             cte
             + """
-            SELECT state, count(*) AS sku_count,
+            SELECT state,
+                   count(DISTINCT item_key)       AS sku_count,
+                   count(*)                       AS line_count,
                    round(sum(inventory_value), 0) AS inventory_value
             FROM verdict
             GROUP BY state
@@ -323,7 +344,8 @@ def get_delist_recommendations(
             + """
             , chain_rate AS (SELECT avg(CAST(is_delist AS float)) AS rate FROM verdict)
             SELECT v.vendor_account,
-                   count(*)                                  AS sku_count,
+                   count(DISTINCT v.item_key)                AS sku_count,
+                   count(*)                                  AS line_count,
                    sum(v.is_delist)                          AS delist_candidates,
                    round(avg(CAST(v.is_delist AS float)), 4) AS delist_rate,
                    round(sum(CASE WHEN v.is_delist = 1 THEN v.inventory_value ELSE 0 END), 0)
@@ -341,7 +363,8 @@ def get_delist_recommendations(
             + """
             , chain_rate AS (SELECT avg(CAST(is_delist AS float)) AS rate FROM verdict)
             SELECT v.category_id, v.category_name,
-                   count(*)                                  AS sku_count,
+                   count(DISTINCT v.item_key)                AS sku_count,
+                   count(*)                                  AS line_count,
                    sum(v.is_delist)                          AS delist_candidates,
                    round(avg(CAST(v.is_delist AS float)), 4) AS delist_rate,
                    round(sum(CASE WHEN v.is_delist = 1 THEN v.inventory_value ELSE 0 END), 0)
@@ -419,7 +442,8 @@ def simulate_assortment_rationalization(
                 FROM verdict v
                 WHERE v.is_delist = 1
             )
-            SELECT count(*)                                  AS skus_acted_on,
+            SELECT count(DISTINCT item_key)                  AS skus_acted_on,
+                   count(*)                                  AS lines_acted_on,
                    round(sum(inventory_value), 0)            AS capital_freed,
                    round(sum(weekly_gmv), 0)                 AS weekly_gmv_given_up,
                    round(sum(margin_rp), 0)                  AS weekly_margin_given_up,
@@ -433,7 +457,8 @@ def simulate_assortment_rationalization(
             connection,
             cte
             + """
-            SELECT count(*)                        AS skus_kept,
+            SELECT count(DISTINCT item_key)        AS skus_kept,
+                   count(*)                        AS lines_kept,
                    round(sum(inventory_value), 0)  AS inventory_value_kept,
                    round(avg(gmroi), 4)            AS avg_gmroi_kept
             FROM verdict

@@ -8,10 +8,13 @@ exception.
 
 FOUR SOURCES, ONE GRAIN EACH
 -----------------------------
-`items` are the promo-eligible SKUs, chain-net (one row per item, 800 of which
-roughly a quarter carry the promo flag). Each carries the chain-net margin_rp
-and funding_rp the workbook's ENGINE_STORE holds, plus the cannibalisation,
-margin and price inputs behind f13-incremental-promotion-margin.
+`items` are the promo-eligible SKUs at STORE grain -- one row per SKU per
+store, from the workbook's ENGINE_STORE grid. Each carries a derived margin
+and funding figure plus the cannibalisation, margin and price inputs behind
+f13-incremental-promotion-margin. They were chain-net, read from
+`fact_inventory_chain_daily`, until that table was retired from application
+code; the headline money is unchanged by the move because f13 is linear in
+ADS. See docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
 
 `campaigns` are the 48 Promotion & Discount Detail rows verbatim, with their
 vertical resolved to vertical_id through dim_vertical.dashboard_label. Their
@@ -113,7 +116,8 @@ KPI_FORMULAS = (
     "fc12-promo-net-uplift-pct",
 )
 
-CHAIN = f"{SCHEMA}.fact_inventory_chain_daily"
+PER_STORE = f"{SCHEMA}.fact_inventory_daily"
+STORE = f"{SCHEMA}.dim_store"
 ITEM = f"{SCHEMA}.dim_item"
 PROMO_DETAIL = f"{SCHEMA}.promotion_detail"
 PROMO_KPI = f"{SCHEMA}.promotion_vertical_kpi"
@@ -174,10 +178,16 @@ def build_items(rows: list[dict]) -> list[dict]:
     `cannibalisation_pct` / `promo_funding` are carried as display percentages
     (26 meaning 26%); the frontend What-If engine divides by 100 when feeding f13.
 
-    `state` / `inventory_value` ride along from `fact_inventory_chain_daily`
-    for the inventory-state-exposure chart (spec section 6): that measure is
-    inventory value, not incremental margin, and intentionally does not
-    reconcile to the headline (spec section 11).
+    `state` / `inventory_value` ride along from `fact_inventory_daily` for the
+    inventory-state-exposure chart (spec section 6): that measure is inventory
+    value, not incremental margin, and intentionally does not reconcile to the
+    headline (spec section 11).
+
+    A row is one promo-eligible SKU IN ONE STORE. It was chain-net until the
+    chain table was retired; the money is unmoved by that (f13 is linear in
+    ADS, which sums exactly across stores) but `state` is per-store now, so the
+    exposure chart counts store rows rather than netted SKUs. See
+    docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
     """
     items = []
     for row in rows:
@@ -303,21 +313,34 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         items_rows = _rows(
             connection,
             f"""
-            SELECT c.item_key, c.ads, c.unit_price, c.margin_rp, c.funding_rp,
-                   c.state, c.inventory_value,
+            SELECT c.item_key, c.ads, c.state,
+                   -- Four columns the retired chain table used to carry.
+                   -- `price` is identical in `dim_item`; the rest are derived,
+                   -- and reproduce the stored columns to the cent chain-wide
+                   -- (docs/CHAIN_GRAIN_RETIREMENT_DELTA.md). `funding_pct`
+                   -- comes from `dim_item`, NEVER from ENGINE_STORE's `fund`,
+                   -- which is rounded to 3dp and wrong on 723 of 800 SKUs.
+                   i.price                                    AS unit_price,
+                   c.ads * 7 * i.price * i.funding_pct        AS funding_rp,
+                   c.position_qty * i.price                   AS inventory_value,
                    i.name, i.vertical_id, i.category_id, i.category_name, i.brand,
                    i.margin_pct, i.base_ads, i.seasonality_index,
                    i.is_promo_eligible, i.cannibalisation_pct, i.funding_pct,
-                   sz.total AS store_size
-            FROM {CHAIN} c
+                   -- THIS STORE's size index, not the vertical's total. A row
+                   -- is one SKU in one store now, and `_arch_horizon_factor`
+                   -- recovers f01's factor by DIVIDING the row's ads by this --
+                   -- so handing it the vertical sum against a single store's
+                   -- ads would shrink every recovered factor by roughly 20x and
+                   -- drag every What-If lever with it.
+                   s.size_index                               AS store_size
+            FROM {PER_STORE} c
+            JOIN {STORE} s ON s.store_id = c.store_key
             JOIN {ITEM} i ON i.item_id = c.item_key
             JOIN {VERTICAL} vt ON vt.vertical_id = i.vertical_id
-            JOIN (
-                SELECT vertical_id, sum(size_index) AS total
-                FROM {SCHEMA}.dim_store GROUP BY vertical_id
-            ) sz ON sz.vertical_id = i.vertical_id
             WHERE c.cal_date = :day AND i.is_promo_eligible = 1{where}
-            ORDER BY vt.sort_order, c.margin_rp DESC
+            -- Was `c.margin_rp DESC`, the stored weekly margin. Same ordering
+            -- rule, spelled out now that the column is gone.
+            ORDER BY vt.sort_order, c.ads * 7 * i.price * i.margin_pct DESC
             """,
             params,
         )

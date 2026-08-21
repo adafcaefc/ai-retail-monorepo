@@ -30,13 +30,22 @@ def test_store_scope_uses_store_grain_rows_for_all_downstream_inputs() -> None:
     s001 = _build_or_skip(DashboardScope.from_query(store_id="S001"))
     s002 = _build_or_skip(DashboardScope.from_query(store_id="S002"))
 
-    # All Stores retains the existing chain-net source and its 800 item rows.
-    assert len(all_stores["items"]) == 800
+    # All Stores is the SAME store-grain source, minus the store predicate.
+    # It was chain-net (800 netted rows from `fact_inventory_chain_daily`)
+    # until that table was retired from application code, which is why this
+    # used to assert 800 and no `store_id`. See
+    # docs/CHAIN_GRAIN_RETIREMENT_DELTA.md.
+    assert len(all_stores["items"]) == 16_000
     assert len(all_stores["stores"]) == 160
-    # v8.5/batch-23's current Forecast 7d source total, also reconciled by
-    # the approved synthetic table, is 1,809,147.2231469.
+    assert all("store_id" in row for row in all_stores["items"])
+    assert len({row["sku_id"] for row in all_stores["items"]}) == 800
+
+    # THE POINT OF THE MIGRATION, ASSERTED. Forecast is `ads x DOW_SUM` and
+    # ADS is additive across stores, so summing 16,000 store rows reproduces
+    # the chain-net total to the seventh decimal -- the same constant this
+    # test asserted before the grain changed. Money and demand are flat; only
+    # counts move.
     assert _forecast(all_stores) == pytest.approx(1_809_147.2231469)
-    assert all("store_id" not in row for row in all_stores["items"])
 
     # A selected Store uses ENGINE_STORE's 100 store x SKU rows. Every item,
     # inventory input, inbound input, risk calculation, and ranking input is
@@ -145,7 +154,8 @@ def test_api_all_s001_and_s002_return_distinct_scoped_results(
 
     assert all_stores["scope"] == {}
     assert "ignored_filters" not in all_stores
-    assert len(all_stores["items"]) == 800
+    # Store grain over the whole chain -- see the builder test above.
+    assert len(all_stores["items"]) == 16_000
     assert len(all_stores["stores"]) == 160
     assert _forecast(all_stores) == pytest.approx(1_809_147.2231469)
 

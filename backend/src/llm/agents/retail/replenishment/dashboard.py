@@ -231,8 +231,11 @@ def build_lines(
         # already covers every store, which is why f01 still applies to it.
         vertical_size = _float(row["store_size"])
         # f01's archetype/horizon multiplier (v8.5), preferred from `dim_item`
-        # and recovered from the stored `ads` when that column is NULL -- which
-        # it is until sql/retail/008 has been applied AND the dims re-seeded.
+        # and recovered by dividing it back out of the measured ADS when that
+        # column is NULL -- which it is until sql/retail/008 has been applied
+        # AND the dims re-seeded. That ADS now arrives summed from the store
+        # grain rather than read off the retired chain table; the two agree
+        # exactly, so the recovery is unchanged.
         #
         # NOT a 1.0 fallback. One would be f01's arithmetic identity and would
         # therefore look harmless, but it silently reproduces the pre-v8.5
@@ -417,8 +420,8 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    p.max_qty, p.is_reorder, p.order_qty_sales, p.order_qty_buy,
                    p.buy_uom, p.unit_price_ta, p.amount, p.best_price,
                    p.saving_vs_designated,
-                   c.position_qty, c.days_cover, c.ads, c.unit_price,
-                   c.order_value,
+                   i.price         AS unit_price,
+                   fa.ads,
                    i.name, i.vertical_id, i.category_id, i.category_name,
                    i.is_perishable, i.lead_time_days, i.safety_days,
                    i.arch_horizon_factor,
@@ -429,8 +432,19 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    sz.total        AS store_size
             FROM {SCHEMA}.replenishment_proposal p
             JOIN {SCHEMA}.dim_item i ON i.item_id = p.item_key
-            JOIN {SCHEMA}.fact_inventory_chain_daily c
-              ON c.item_key = p.item_key AND c.cal_date = p.as_of_date
+            -- ADS summed from the store grain, for the `arch_horizon_factor`
+            -- fallback below and nothing else. Chain ADS and Σ store ADS are
+            -- equal to six decimal places on this dataset (242,838.55 both --
+            -- see docs/CHAIN_GRAIN_RETIREMENT_DELTA.md), so this reproduces
+            -- what the retired chain column carried rather than approximating
+            -- it. Kept rather than dropped because the fallback guards a real
+            -- deployment state -- see build_lines.
+            JOIN (
+                SELECT item_key, sum(ads) AS ads
+                FROM {SCHEMA}.fact_inventory_daily
+                WHERE cal_date = :day
+                GROUP BY item_key
+            ) fa ON fa.item_key = p.item_key
             LEFT JOIN {SCHEMA}.dim_vendor dv
               ON dv.vendor_account = p.designated_vendor
             LEFT JOIN {SCHEMA}.dim_vendor bv

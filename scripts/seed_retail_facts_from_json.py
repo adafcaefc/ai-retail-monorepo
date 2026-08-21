@@ -166,15 +166,23 @@ def build_inventory_chain(
 ) -> list[dict[str, Any]]:
     """`ENGINE` (800 rows) — the chain-level position, stored not derived.
 
-    Summing `fact_inventory_daily` per item does NOT reproduce these figures,
-    which is why they get their own table. Each store row rounds on its own, so
-    twenty rounded quantities add up a few percent away from the chain total
-    rounded once — `rop` drifts by up to 4.5% on this dataset. And the chain
-    `state` is evaluated on chain inputs rather than voted across stores, which
-    moves `at_risk_value` by orders of magnitude.
+    NOTHING IN THE APPLICATION READS THIS TABLE ANY MORE. Every board moved to
+    `fact_inventory_daily` — see docs/CHAIN_GRAIN_RETIREMENT_DELTA.md for what
+    that moved and why. It is still loaded, deliberately: it is the workbook's
+    ENGINE sheet as written, `test_a2_a6_workbook_baseline.py` still asserts all
+    800 rows against it column-for-column, and keeping it fresh means the
+    retirement can be reverted with a `git revert` and no reseed. Retiring the
+    load as well would make that a one-way door for no gain.
 
-    Every A-sheet reconciles against these, so a derived approximation would
-    put the boards a few percent away from the workbook they claim to show.
+    Summing `fact_inventory_daily` per item does NOT reproduce these figures,
+    which is why they got their own table in the first place. Each store row
+    rounds on its own, so twenty rounded quantities add up a few percent away
+    from the chain total rounded once — `rop` drifts by up to 4.5% on this
+    dataset. And the chain `state` is evaluated on chain inputs rather than
+    voted across stores, which moves `at_risk_value` by orders of magnitude.
+    That irreducible gap is precisely why one grain had to be chosen rather
+    than both kept: two tables meant two defensible answers to "SKUs to
+    reorder", 345 and 524, decided by which one an author happened to query.
     """
     return [
         {

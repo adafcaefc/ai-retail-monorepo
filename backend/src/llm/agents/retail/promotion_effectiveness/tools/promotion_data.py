@@ -14,9 +14,11 @@ uplift and pre-buy units. The campaign planned uplift here (~47 % average) is a
 different number from the modeled net uplift on the KPI cards (~26 %), and the
 snapshot labels both so one is not read as the other.
 
-The per-SKU promo margin rollup is chain-net from `fact_inventory_chain_daily`
-(margin_rp / funding_rp, one row per item), scoped to promo-eligible items via
-`dim_item.is_promo_eligible`. There is no separate promo-investment column
+The per-SKU promo margin rollup is derived from `fact_inventory_daily` at SKU x
+store grain (margin and funding computed from `dim_item`'s own rates), scoped to
+promo-eligible items via `dim_item.is_promo_eligible`. Both figures are linear
+in ADS, so the money is identical to the chain-net figures this replaced; the
+counts are DISTINCT SKUs. There is no separate promo-investment column
 exposed: ROI is the stored KPI, and `investment = incremental_margin / roi_x`
 is a derived figure the snapshot offers only when asked, never as a fact.
 """
@@ -31,7 +33,7 @@ from src.llm.agents.retail.promotion_effectiveness.dashboard import (
     ENGINE_FORMULAS,
 )
 
-CHAIN = f"{warehouse.SCHEMA}.fact_inventory_chain_daily"
+PER_STORE = f"{warehouse.SCHEMA}.fact_inventory_daily"
 ITEM = f"{warehouse.SCHEMA}.dim_item"
 PROMO_DETAIL = f"{warehouse.SCHEMA}.promotion_detail"
 PROMO_KPI = f"{warehouse.SCHEMA}.promotion_vertical_kpi"
@@ -61,10 +63,10 @@ def get_promotion_effectiveness_snapshot(
     query_retail_promotion only for a cut this does not already carry.
 
     Headline KPIs are read from the workbook's own A4 Promotion sheet
-    (`promotion_vertical_kpi`); the per-SKU margin rollup is chain-net from
-    `fact_inventory_chain_daily` scoped to promo-eligible items. "Uplift" has
-    two meanings here — the modeled net uplift on the KPI cards versus the
-    campaign planned uplift on each promotion — and both are labelled.
+    (`promotion_vertical_kpi`); the per-SKU margin rollup is derived from
+    `fact_inventory_daily` scoped to promo-eligible items. "Uplift" has two
+    meanings here — the modeled net uplift on the KPI cards versus the campaign
+    planned uplift on each promotion — and both are labelled.
 
     Args:
         legal_entity_id: Vertical to narrow to (GRC, GMR, FSH, HNB, ELC, HNL,
@@ -90,7 +92,7 @@ def get_promotion_effectiveness_snapshot(
         entity_column="v.vertical_id",
     )
 
-    # Per-SKU margin rollup is chain-net and scopes on the item's vertical.
+    # Per-SKU margin rollup scopes on the item's vertical.
     item_clause, item_params = snapshot.where(
         entity,
         category,
@@ -119,44 +121,68 @@ def get_promotion_effectiveness_snapshot(
             kpi_params,
         )
 
-        # Promo-eligible SKUs only, chain-net. margin_rp is the workbook's own
-        # ENGINE_STORE promo incremental margin equivalent; summed it is the
-        # gross incremental margin the by-vertical/category/channel charts draw.
+        # Promo-eligible SKUs only. `margin_rp` and `funding_rp` were columns on
+        # the retired chain table; they are derived here from `dim_item`'s own
+        # rates, which reproduce the stored columns to the cent chain-wide
+        # (docs/CHAIN_GRAIN_RETIREMENT_DELTA.md). `funding_pct` comes from
+        # `dim_item`, NEVER from ENGINE_STORE's `fund` -- that column is rounded
+        # to 3dp and reconstructs funding wrongly on 723 of 800 SKUs.
+        #
+        # Both figures are linear in ADS, which sums exactly across stores, so
+        # the money on this board did not move when the grain did. The counts
+        # did: they are DISTINCT SKUs now, matching A2's convention.
         by_category = snapshot._rows(
             connection,
             f"""
             SELECT TOP (:top_n)
                    i.category_id,
                    i.category_name,
-                   count(*)                    AS promo_skus,
-                   round(sum(c.margin_rp), 0)     AS incremental_margin,
-                   round(sum(c.funding_rp), 0)    AS supplier_funding
-            FROM {CHAIN} c
+                   count(DISTINCT c.item_key)  AS promo_skus,
+                   count(*)                    AS rows_at_store_grain,
+                   round(sum(c.ads * 7 * i.price * i.margin_pct), 0)
+                                               AS incremental_margin,
+                   round(sum(c.ads * 7 * i.price * i.funding_pct), 0)
+                                               AS supplier_funding
+            FROM {PER_STORE} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             WHERE i.is_promo_eligible = 1{item_clause}
             GROUP BY i.category_id, i.category_name
-            ORDER BY sum(c.margin_rp) DESC
+            ORDER BY sum(c.ads * 7 * i.price * i.margin_pct) DESC
             """,
             {**item_params, "top_n": snapshot.TOP_N},
         )
 
+        # AGGREGATE THEN RANK -- one line per SKU, summed across its stores,
+        # before the ordering runs. Ranking rows would return the same handful
+        # of SKUs once per store they sit in.
         largest_margin = snapshot._rows(
             connection,
             f"""
+            WITH per_item AS (
+                SELECT c.item_key,
+                       sum(c.ads * 7 * i.price * i.margin_pct)  AS margin_rp,
+                       sum(c.ads * 7 * i.price * i.funding_pct) AS funding_rp,
+                       count(*)                                 AS store_rows
+                FROM {PER_STORE} c
+                JOIN {ITEM} i ON i.item_id = c.item_key
+                WHERE i.is_promo_eligible = 1{item_clause}
+                GROUP BY c.item_key
+            )
             SELECT TOP (:top_n)
-                   c.item_key,
+                   p.item_key,
                    i.name,
                    i.vertical_id,
                    i.category_name,
                    i.brand,
-                   round(c.margin_rp, 0)   AS incremental_margin,
-                   round(c.funding_rp, 0)  AS supplier_funding,
+                   round(p.margin_rp, 0)   AS incremental_margin,
+                   round(p.funding_rp, 0)  AS supplier_funding,
+                   p.store_rows,
                    i.cannibalisation_pct,
                    i.margin_pct
-            FROM {CHAIN} c
-            JOIN {ITEM} i ON i.item_id = c.item_key
-            WHERE i.is_promo_eligible = 1 AND c.margin_rp > 0{item_clause}
-            ORDER BY c.margin_rp DESC
+            FROM per_item p
+            JOIN {ITEM} i ON i.item_id = p.item_key
+            WHERE p.margin_rp > 0
+            ORDER BY p.margin_rp DESC
             """,
             {**item_params, "top_n": snapshot.TOP_N},
         )
@@ -239,7 +265,9 @@ def get_promotion_effectiveness_snapshot(
             category_group=category,
             formulas=ENGINE_FORMULAS,
         ),
-        "grain": "chain_net",
+        # Was "chain_net" -- untrue since this tool moved to ENGINE_STORE. The
+        # model reads this to describe its own numbers.
+        "grain": "store_sku",
         "thresholds": {
             "roi_target": ROI_TARGET,
             "uplift_target_pct": UPLIFT_TARGET_PCT,

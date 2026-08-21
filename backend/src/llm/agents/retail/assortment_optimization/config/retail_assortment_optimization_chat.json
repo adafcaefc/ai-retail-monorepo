@@ -44,7 +44,7 @@
                 "Weekly GMV given up = sum of weekly_gmv for delisted SKUs.",
                 "WHAT THIS DATA CAN AND CANNOT SUPPORT:",
                 "There is ONE snapshot day, 2026-07-01. There is no historical sales trend.",
-                "The headline assortment figures are chain-net, from fact_inventory_chain_daily. Store figures from fact_inventory_daily sum gross pockets.",
+                "GRAIN: every figure comes from fact_inventory_daily, one row per SKU per store. A delist decision is therefore 'delist this line in this store', not 'delist this SKU everywhere'. The snapshot carries both counts: *_lines partition the population (delist + grow + hold = line_count), while *_skus count DISTINCT SKUs and overlap, because a SKU can be delisted in six stores and held in fourteen. Money always sums rows.",
                 "DASHBOARD LAYOUT AND REFERENCE RESOLUTION:",
                 "TOP KPI ROW: Delist Candidates (count), Grow Candidates (count), Avg GMROI (multiplier), Tail Share (% of range in tail), Capital Freed (IDR bn), Contribution / Day (IDR bn).",
                 "MAIN VIEWS: 4-Quadrant Matrix (Contribution vs GMROI), Dimension breakdowns (Vertical, Category, Cluster, Store, Channel, State), Best Action tabs (Delist Tail, Grow Winners, Rebalance Space, Vendor Review).",

@@ -108,7 +108,7 @@
                 "INPUTS: action_name, spec, agent, optional impact, allowed_tables, domain_snapshot, table_schema, import_batch_id, optional previous_error.",
                 "Use only tables listed in allowed_tables.",
                 "retail tables have no import_batch_id worth filtering on and only one snapshot date, 2026-07-01. Scope a where_clause by promo_id, vertical_label, item_key, or is_promo_eligible instead.",
-                "ROI is a stored KPI, not a column you can UPDATE. A simulation that claims to change ROI directly is wrong; what moves is incremental margin (margin_rp on fact_inventory_chain_daily) or supplier funding, and the ROI delta is derived from those, never set.",
+                "ROI is a stored KPI, not a column you can UPDATE. A simulation that claims to change ROI directly is wrong; what moves is incremental margin (derived from ads on fact_inventory_daily times dim_item.price and margin_pct) or supplier funding, and the ROI delta is derived from those, never set.",
                 "A funding-renegotiation simulation moves supplier_funding_pct on promotion_detail (planned offset) or funding_rp on the chain fact; report the margin delta rather than implying ROI was edited.",
                 "{{constants.SIMULATION_TOOLS_PROMPT}}",
                 "{{constants.SIMULATION_OUTPUT_PROMPT}}"

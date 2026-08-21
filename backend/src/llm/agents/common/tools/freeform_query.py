@@ -110,9 +110,16 @@ RETAIL_SHARED_TABLES: tuple[str, ...] = (
     "retail.formula",
 )
 
+# `retail.fact_inventory_chain_daily` appears in NONE of the tuples below, and
+# that is deliberate rather than incidental. The table still exists in the
+# database and is still seeded, but no board reads it any more -- see
+# docs/CHAIN_GRAIN_RETIREMENT_DELTA.md. Leaving it reachable here would let an
+# agent answer from the one grain the boards no longer use, which is exactly
+# how a second answer walks back into a conversation after the boards have
+# agreed on one. A SELECT against it is now refused.
+
 DEMAND_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
-    "retail.fact_inventory_chain_daily",
     "retail.fact_inventory_daily",
     "retail.assortment",
     "retail.fact_gmv_monthly",
@@ -120,7 +127,6 @@ DEMAND_ALLOWED_TABLES = (
 
 INVENTORY_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
-    "retail.fact_inventory_chain_daily",
     "retail.fact_inventory_daily",
     "retail.assortment",
 )
@@ -130,7 +136,9 @@ REPLENISHMENT_ALLOWED_TABLES = (
     "retail.replenishment_proposal",
     "retail.trade_agreement",
     "retail.dim_vendor",
-    "retail.fact_inventory_chain_daily",
+    # Agent 3's own rows are `replenishment_proposal`, which is per-SKU; this
+    # is where its ADS comes from now that the chain fact is gone.
+    "retail.fact_inventory_daily",
 )
 
 # Agent 3.1 · Replenishment Detail. The same tables as Agent 3, because it is
@@ -141,10 +149,10 @@ REPLENISHMENT_ALLOWED_TABLES = (
 # one agent id: two boards sharing a domain would make each one's alerts
 # resolve to the other.
 #
-# It does not read `fact_inventory_chain_daily`. Agent 3 joins it for What-If
-# parameters and the retail-priced order value; this board has no simulator and
-# prices at cost, so an agent given it would be told it may read a fact nothing
-# on the board is derived from.
+# It does not read the inventory facts at all. Agent 3 reads
+# `fact_inventory_daily` for the ADS behind its What-If parameters; this board
+# has no simulator and prices at cost, so an agent given it would be told it may
+# read a fact nothing on the board is derived from.
 REPLENISHMENT_DETAIL_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
     "retail.replenishment_proposal",
@@ -153,21 +161,22 @@ REPLENISHMENT_DETAIL_ALLOWED_TABLES = (
 )
 
 # Agent 4 · Promotion Effectiveness. The two promo tables are its own; the
-# chain-net inventory fact is where per-SKU promo margin is rolled up from
-# (margin_rp / funding_rp), joined to dim_item for the promo-eligible flag,
-# cannibalisation and margin_pct behind f13-incremental-promotion-margin.
+# store-grain inventory fact is where per-SKU promo margin is rolled up from
+# (ads x 7 x price x margin_pct / funding_pct -- the stored margin_rp and
+# funding_rp columns went with the chain table), joined to dim_item for the
+# promo-eligible flag, cannibalisation and margin_pct behind
+# f13-incremental-promotion-margin.
 PROMOTION_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
     "retail.promotion_detail",
     "retail.promotion_vertical_kpi",
-    "retail.fact_inventory_chain_daily",
+    "retail.fact_inventory_daily",
     "retail.dim_item",
 )
 
-# Agent 5 · Pricing & Markdown. Markdown candidacy and its money figures are
-# store-grain (fact_inventory_daily, the ENGINE_STORE equivalent); the
-# chain-net fact carries the descriptive/reconciliation fields (position,
-# rop, max, ads, dos, state) the candidate table and KPI cards read.
+# Agent 5 · Pricing & Markdown. Markdown candidacy, its money figures AND the
+# descriptive/reconciliation fields (position, rop, max, ads, dos, state) are
+# all store-grain now (fact_inventory_daily, the ENGINE_STORE equivalent).
 # f05-rop's lead time is dim_item.lead_time_days (seeded from
 # SKU_Master.lead_d) -- trade_agreement is kept in the allowlist for vendor
 # terms queries in general, not because f05 reads it; it does not, see
@@ -175,17 +184,15 @@ PROMOTION_ALLOWED_TABLES = (
 PRICING_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
     "retail.fact_inventory_daily",
-    "retail.fact_inventory_chain_daily",
     "retail.trade_agreement",
     "retail.dim_item",
 )
 
-# Agent 6 · Assortment Optimization. Chains net inventory, assortment master,
+# Agent 6 · Assortment Optimization. Store-grain inventory, assortment master,
 # and per-store rollups for GMROI, tail analysis and delist rationalization.
 ASSORTMENT_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
     "retail.assortment",
-    "retail.fact_inventory_chain_daily",
     "retail.fact_inventory_daily",
     "retail.dim_vendor",
 )
@@ -1077,13 +1084,21 @@ _RETAIL_QUERY_NOTES = """
     the workbook never carried them. Say a figure is unavailable rather than
     inferring it from something else.
 
-    GRAIN. `fact_inventory_chain_daily` is chain-net: one row per item, 800
-    rows, with surplus in one store already netted against shortage in another.
-    `fact_inventory_daily` is per store x item, 16,000 rows, and summing it
-    gives a GROSS figure that legitimately exceeds the chain-net one -- at-risk
-    value differs by about 1.25x. They are different questions. Never compare
-    one against the other, and never present a sum of the per-store table as a
-    chain KPI.
+    GRAIN. `fact_inventory_daily` is the only inventory fact you can read: per
+    store x item, 16,000 rows, one row per SKU in one store. Every board reads
+    it, so a figure you compute from it matches what the user is looking at.
+
+    COUNT DISTINCT SKUs, SUM ROWS FOR MONEY. A SKU sits in about twenty stores,
+    so `count(*)` answers a question about rows and will be roughly 20x any
+    figure the user expects -- 7,090 below-ROP rows against the 524 below-ROP
+    SKUs the card shows. Use `count(DISTINCT item_key)` for anything described
+    as a number of SKUs. Money and demand are additive across stores and should
+    sum rows.
+
+    DISTINCT COUNTS DO NOT ADD UP across states or stores, and that is not an
+    error: a SKU healthy in fourteen stores and stocked out in six is counted in
+    both. They do add up across categories and verticals, since a SKU belongs to
+    one of each.
 """
 
 
@@ -1098,8 +1113,8 @@ def query_retail_demand(queries: list[str]) -> dict[str, Any]:
 
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.assortment, retail.agent_kpi_reference,
-    retail.formula, retail.fact_inventory_chain_daily,
-    retail.fact_inventory_daily, retail.fact_gmv_monthly, audit.import_batches.
+    retail.formula, retail.fact_inventory_daily, retail.fact_gmv_monthly,
+    audit.import_batches.
 
     Scope by vertical_id (GRC, GMR, FSH, HNB, ELC, HNL, DGT, OMN) or by
     category_id. `ads` is the daily demand rate; the 7-day forecast is
@@ -1119,8 +1134,7 @@ def query_retail_inventory(queries: list[str]) -> dict[str, Any]:
 
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.assortment, retail.agent_kpi_reference,
-    retail.formula, retail.fact_inventory_chain_daily,
-    retail.fact_inventory_daily, audit.import_batches.
+    retail.formula, retail.fact_inventory_daily, audit.import_batches.
 
     `state` is one of Stockout, Low, Expiry, Overstock, Slow-mover, Healthy,
     classified by formula f07-inventory-state. `at_risk_value` is zero for
@@ -1142,7 +1156,7 @@ def query_retail_replenishment(queries: list[str]) -> dict[str, Any]:
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.dim_vendor, retail.agent_kpi_reference,
     retail.formula, retail.replenishment_proposal, retail.trade_agreement,
-    retail.fact_inventory_chain_daily, audit.import_batches.
+    retail.fact_inventory_daily, audit.import_batches.
 
     `replenishment_proposal.is_reorder` marks the lines below reorder point.
     Order quantities come in two units: order_qty_sales (how customers buy) and
@@ -1260,14 +1274,17 @@ def query_retail_promotion(queries: list[str]) -> dict[str, Any]:
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
     retail.promotion_detail, retail.promotion_vertical_kpi,
-    retail.fact_inventory_chain_daily, audit.import_batches.
+    retail.fact_inventory_daily, audit.import_batches.
 
     `promotion_detail` holds the 48 planned campaign constructs (one row per
     promo id, with supplier_funding_pct, expected_uplift_pct and
     pre_buy_uplift_units). `promotion_vertical_kpi` holds the six A4 headline
-    KPIs per vertical. `fact_inventory_chain_daily` carries per-SKU margin_rp
-    and funding_rp for the promo-eligible rollups; join dim_item on
-    is_promo_eligible to scope them. `vertical_label` on the promo tables is
+    KPIs per vertical. There is NO stored margin_rp or funding_rp column any
+    more: compute weekly margin as `ads * 7 * dim_item.price *
+    dim_item.margin_pct` and supplier funding as the same with
+    `dim_item.funding_pct`, summing over `fact_inventory_daily` rows. Join
+    dim_item on is_promo_eligible to scope them. `vertical_label` on the promo
+    tables is
     the sheet's wording and resolves to vertical_id via dim_vertical.dashboard_label.
     """
     return _domain_query(queries, allowed_tables=PROMOTION_ALLOWED_TABLES)
@@ -1299,8 +1316,7 @@ def query_retail_pricing(queries: list[str]) -> dict[str, Any]:
 
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
-    retail.fact_inventory_daily, retail.fact_inventory_chain_daily,
-    retail.trade_agreement, audit.import_batches.
+    retail.fact_inventory_daily, retail.trade_agreement, audit.import_batches.
 
     A markdown candidate is a SKU with at least one STORE (fact_inventory_daily)
     in state Expiry, Overstock or Slow-mover -- Stockout and Low belong to
@@ -1308,11 +1324,11 @@ def query_retail_pricing(queries: list[str]) -> dict[str, Any]:
     at-risk or recoverable column of its own; compute it from state, position_qty,
     rop_qty, max_qty, ads and dim_item's price, shelf_life_days, is_perishable,
     elasticity via f23-markdown-at-risk-gross and f14-recoverable-at-risk-value
-    (call get_formula, do not restate them from memory). The chain-net fact
-    (fact_inventory_chain_daily) carries the reconciliation figures -- position,
-    rop, max, ads, days_cover, state -- at one row per item; summing the store
-    grain gives a GROSS figure that legitimately exceeds it, same as Inventory
-    Risk's at-risk value. dim_item.competitor_index is the Competitive index KPI.
+    (call get_formula, do not restate them from memory). position, rop, max,
+    ads, days_cover and state all live on fact_inventory_daily at one row per
+    SKU per store; aggregate to item_key before ranking whole SKUs, or a top-N
+    list returns one SKU's twenty branches.
+    dim_item.competitor_index is the Competitive index KPI.
     A designated vendor's lead time (f05-rop) comes from
     trade_agreement.lead_time_days WHERE is_designated = 1, not
     dim_item.lead_time_days.
@@ -1346,8 +1362,8 @@ def query_retail_assortment(queries: list[str]) -> dict[str, Any]:
 
     Allowed tables: retail.dim_vertical, retail.dim_item, retail.dim_store,
     retail.dim_calendar, retail.agent_kpi_reference, retail.formula,
-    retail.assortment, retail.fact_inventory_chain_daily,
-    retail.fact_inventory_daily, retail.dim_vendor, audit.import_batches.
+    retail.assortment, retail.fact_inventory_daily, retail.dim_vendor,
+    audit.import_batches.
     """
     return _domain_query(queries, allowed_tables=ASSORTMENT_ALLOWED_TABLES)
 
