@@ -113,6 +113,7 @@ describe("KPIs reconcile with the workbook", () => {
       expect(`${name}=${kpis[name]}`).toBe(`${name}=${expected}`);
     }
     expect(Math.round(kpis.stockout_value)).toBe(148200588900);
+    expect(Math.round(kpis.stockout_risk_value)).toBe(572951781700);
     expect(Math.round(kpis.overstock_excess_value)).toBe(47633362800);
     expect(Math.round(kpis.expiry_value)).toBe(124355878);
     expect(Number(kpis.avg_dos.toFixed(2))).toBe(7.85);

@@ -299,7 +299,8 @@ export const DEFAULT_SCOPE = Object.freeze({
 
 /**
  * @typedef {object} InventoryRiskKpis
- * @property {number} stockout_risk_skus Count of `Position < ROP`.
+ * @property {number} stockout_risk_skus  Count of `Position < ROP`.
+ * @property {number} stockout_risk_value Sum of value where `Position < ROP`.
  * @property {number} overstock_skus     Count of state Overstock.
  * @property {number} expiry_units       Sum of units past shelf-life cover.
  * @property {number} slow_mover_skus    Count of state Slow-mover.
@@ -377,11 +378,16 @@ export const DOS_TARGET = Object.freeze({ min: 7, max: 21 });
  * `data-fx` attributes did.
  */
 export const KPI_FORMULAS = Object.freeze({
-  // The tile counts DISTINCT SKUs in the Stockout state; `stockout_risk_skus`
-  // below is the wider below-ROP zone the drill-through scopes to.
+  // The headline tile counts the whole reorder zone -- `Position < ROP` --
+  // the same predicate Replenishment's `skus_to_reorder` and Demand
+  // Forecasting's `stockout_risk_skus` tile count, so the three boards agree
+  // on the definition. `stockout_skus` (state = Stockout alone, the more
+  // severe `Position < 0.6 x ROP` subset) is kept as data for the risk
+  // register's state filter but is no longer surfaced as its own tile.
   stockout_skus: "count distinct SKU( state = Stockout: Position < 0.6 x ROP )"
     + " · at risk = Σ Position × price",
-  stockout_risk_skus: "count distinct SKU( Position < ROP )",
+  stockout_risk_skus: "count distinct SKU( Position < ROP )"
+    + " · at risk = Σ Position × price",
   overstock_skus:
     "count( state = Overstock: non-perishable, DoS > 15 )" +
     " · at-risk = Σ (Position − Max) × price, or 30% × Position × price" +
@@ -477,6 +483,7 @@ export function normalizeInventoryRiskDashboard(payload) {
     kpi_sparklines: payload.kpi_sparklines ?? {},
     kpis: {
       stockout_risk_skus: 0,
+      stockout_risk_value: 0,
       overstock_skus: 0,
       overstock_excess_value: 0,
       expiry_units: 0,

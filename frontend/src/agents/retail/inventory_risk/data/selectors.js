@@ -136,11 +136,16 @@ function sum(rows, key) {
  * chain-net and one row meant one SKU; at this grain that same `.length`
  * reports 755 slow-moving rows for 75 slow-moving SKUs.
  *
- * `stockout_skus` counts the Stockout state alone (247), which is what the
- * workbook's card shows. `stockout_risk_skus` is the wider below-ROP measure
- * (Stockout + Low, 524) and is kept because Agent 3 routing and the store
- * segments both read it — the two answer different questions and are
- * deliberately not folded together. `low_skus` (457) completes the split.
+ * `stockout_risk_skus` is the headline reorder-zone measure (Stockout + Low,
+ * 524, `Position < ROP`) — the same predicate Replenishment's
+ * `skus_to_reorder` and Demand Forecasting's `stockout_risk_skus` count, so
+ * all three boards agree on which SKUs are "at stockout risk" even though
+ * this board counts them at ENGINE_STORE grain. `stockout_skus` counts the
+ * narrower Stockout state alone (247, `Position < 0.6 x ROP`) and is kept as
+ * a distinct, more severe measure — the risk register's own state filter
+ * reads it — but it is no longer what the board's headline tile shows,
+ * because a reader comparing tabs would see three different numbers for what
+ * reads as the same question. `low_skus` (457) completes the split.
  *
  * Two tiles carry a money figure under their count, and both sum
  * `markdown_at_risk_gross` — `f23-markdown-at-risk-gross`, evaluated per item
@@ -166,6 +171,11 @@ export function computeKpis(items) {
     ),
     low_skus: distinctSkus(items, (item) => item.state === "Low"),
     stockout_risk_skus: distinctSkus(items, (item) => item.is_stockout_risk),
+    stockout_risk_value: items.reduce(
+      (total, item) =>
+        item.is_stockout_risk ? total + item.at_risk_value : total,
+      0,
+    ),
     overstock_skus: distinctSkus(items, (item) => item.is_overstock),
     overstock_excess_value: items.reduce(
       (total, item) =>
@@ -203,11 +213,10 @@ export function computeKpis(items) {
  */
 export function computeKpiSparklines(items) {
   return {
-    // Keyed to the tile it sits on, which shows the Stockout state rather than
-    // the wider below-ROP zone. The histogram still spans the whole reorder
-    // zone: a tile showing the severe end is best read against the shape of
-    // the population it was cut from.
-    stockout_skus: {
+    // Keyed to the tile it sits on, which shows the whole reorder zone —
+    // Stockout and Low together, `Position < ROP` — so the histogram spans
+    // exactly the population the headline number counts.
+    stockout_risk_skus: {
       kind: "distribution",
       caption: "Days of cover, at-risk SKUs",
       values: dosHistogram(items.filter((item) => item.is_stockout_risk)),

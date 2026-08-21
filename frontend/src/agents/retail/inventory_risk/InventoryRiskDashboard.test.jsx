@@ -144,18 +144,21 @@ describe("InventoryRiskDashboard", () => {
   });
 
   /*
-   * 247 distinct SKUs sit in the Stockout state across the ENGINE_STORE grid.
-   * This deliberately does NOT read `reference_by_vertical`, which carries the
-   * chain-net A2 summary sheet (345 below-ROP SKUs over a netted population) —
-   * a benchmark from the other grain, not what this tile counts.
+   * 524 distinct SKUs sit below their reorder point (Stockout + Low states)
+   * across the ENGINE_STORE grid -- the same `Position < ROP` predicate
+   * Replenishment's "SKUs to reorder" and Demand Forecasting's
+   * "Stockout-risk SKUs" tile count. This deliberately does NOT read
+   * `reference_by_vertical`, which carries the chain-net A2 summary sheet (345
+   * below-ROP SKUs over a netted population) — a benchmark from the other
+   * grain, not what this tile counts.
    */
-  it("shows the whole grid's stockout count, matching the workbook dropdown", async () => {
+  it("shows the whole grid's stockout-risk count, matching the workbook dropdown", async () => {
     renderDashboard();
 
-    const tile = (await screen.findAllByText("Stockout SKUs"))[0];
+    const tile = (await screen.findAllByText("Stockout-risk SKUs"))[0];
 
     expect(
-      within(tile.closest(".risk-kpi")).getByText("247"),
+      within(tile.closest(".risk-kpi")).getByText("524"),
     ).toBeInTheDocument();
   });
 
@@ -183,10 +186,10 @@ describe("InventoryRiskDashboard", () => {
 
     await waitFor(() => {
       const tile = screen
-        .getAllByText("Stockout SKUs")[0]
+        .getAllByText("Stockout-risk SKUs")[0]
         .closest(".risk-kpi");
-      // Grocery's own ENGINE_STORE rows, not the A2 sheet's chain-net 51.
-      expect(within(tile).getByText("37")).toBeInTheDocument();
+      // Grocery's own ENGINE_STORE rows, not the A2 sheet's chain-net figure.
+      expect(within(tile).getByText("78")).toBeInTheDocument();
     });
 
     // The scope chip names the active vertical, and clearing restores the
@@ -254,12 +257,12 @@ describe("InventoryRiskDashboard", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Store")).toHaveValue("S001");
     });
-    // ENGINE_STORE's own tally for S001: 21 rows in the Stockout state.
+    // ENGINE_STORE's own tally for S001: 51 SKUs below their reorder point.
     await waitFor(() => {
       const tile = screen
-        .getAllByText("Stockout SKUs")[0]
+        .getAllByText("Stockout-risk SKUs")[0]
         .closest(".risk-kpi");
-      expect(within(tile).getByText("21")).toBeInTheDocument();
+      expect(within(tile).getByText("51")).toBeInTheDocument();
     });
   });
 
@@ -309,12 +312,13 @@ describe("InventoryRiskDashboard", () => {
 
     // The formula rides the tile face, which is the button that opens the
     // drill-down — the article around it is the frame, not the control.
-    const face = kpiTile("Stockout SKUs").querySelector(".risk-kpi-open");
-    // The tile counts the Stockout state, so its formula is f07's first
-    // branch rather than the wider below-ROP predicate the drill-through uses.
+    const face = kpiTile("Stockout-risk SKUs").querySelector(".risk-kpi-open");
+    // The tile counts the whole reorder zone -- `Position < ROP` -- the same
+    // predicate Replenishment and Demand Forecasting use for their own
+    // stockout-risk tiles.
     expect(face).toHaveAttribute(
       "title",
-      expect.stringContaining("Position < 0.6 x ROP"),
+      expect.stringContaining("Position < ROP"),
     );
     expect(face).toHaveAttribute("title", expect.stringContaining("distinct SKU"));
   });
@@ -329,7 +333,7 @@ describe("InventoryRiskDashboard", () => {
      * guessing which they were about to get.
      */
     const scopeButton = () =>
-      within(kpiTile("Stockout SKUs")).getByRole("button", {
+      within(kpiTile("Stockout-risk SKUs")).getByRole("button", {
         name: "Show only the reorder zone",
       });
 
@@ -502,7 +506,7 @@ describe("InventoryRiskDashboard", () => {
   it("moves the simulator and board live as the slider moves", async () => {
     await renderSettled();
 
-    const boardBefore = kpiTile("Stockout SKUs").textContent;
+    const boardBefore = kpiTile("Stockout-risk SKUs").textContent;
     const simBefore = simMetric("Stockout-risk SKUs").textContent;
 
     fireEvent.change(screen.getByLabelText("Demand surge"), {
@@ -512,7 +516,7 @@ describe("InventoryRiskDashboard", () => {
     // Both the panel's own preview and the board follow the slider immediately
     await waitFor(() => {
       expect(simMetric("Stockout-risk SKUs").textContent).not.toBe(simBefore);
-      expect(kpiTile("Stockout SKUs").textContent).not.toBe(boardBefore);
+      expect(kpiTile("Stockout-risk SKUs").textContent).not.toBe(boardBefore);
     });
   });
 
