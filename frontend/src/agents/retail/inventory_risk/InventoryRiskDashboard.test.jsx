@@ -162,13 +162,6 @@ describe("InventoryRiskDashboard", () => {
     ).toBeInTheDocument();
   });
 
-  it("labels the source rather than presenting workbook figures as live", async () => {
-    renderDashboard();
-
-    expect(await screen.findByText(/Workbook data/)).toBeInTheDocument();
-    expect(screen.getByText(/not a live ERP position/)).toBeInTheDocument();
-  });
-
   it("carries the rows-versus-SKUs caveat on the board", async () => {
     renderDashboard();
 

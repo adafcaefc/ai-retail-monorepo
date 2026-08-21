@@ -7558,14 +7558,6 @@ img.ey-logo {
   color: var(--muted);
 }
 
-.risk-data-note {
-  padding: 3px 9px;
-  border: 1px solid var(--accent-warning-border);
-  border-radius: var(--radius-pill);
-  background: var(--accent-warning-soft);
-  color: var(--accent-warning-strong);
-}
-
 .risk-scope-summary {
   display: flex;
   align-items: center;

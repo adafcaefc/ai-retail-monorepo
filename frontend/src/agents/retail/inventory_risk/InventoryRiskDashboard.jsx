@@ -278,9 +278,6 @@ export default function InventoryRiskDashboard() {
       />
 
       <div className="risk-scope-row">
-        <span className="risk-data-note">
-          {display.is_mock ? t("Workbook data") : t("Live data")} · {t(display.note)}
-        </span>
         <div className="risk-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? (
