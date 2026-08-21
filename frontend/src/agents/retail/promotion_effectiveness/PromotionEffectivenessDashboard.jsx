@@ -8,8 +8,8 @@ import {
   MarginByClusterChart,
   MarginByStoreChart,
   MarginByVerticalChart,
+  PromoDemandUpliftChart,
   SeasonMixChart,
-  UpliftVsMarginChart,
 } from "./components/PromoCharts.jsx";
 import MarginLeadersTable from "./components/MarginLeadersTable.jsx";
 import PromoAppliedScenarioBanner from "./components/PromoAppliedScenarioBanner.jsx";
@@ -25,6 +25,7 @@ import {
   ALL,
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
+  DEMAND_NOTE,
   GRAIN_NOTE,
   STORE_GRAIN_NOTE,
   UPLIFT_NOTE,
@@ -247,8 +248,9 @@ export default function PromotionEffectivenessDashboard() {
         onSelectSku={(sku) => patchScope({ sku })}
       />
 
-      <UpliftVsMarginChart rows={dashboard.by_vertical} />
+      <PromoDemandUpliftChart demand={dashboard.demand_uplift} />
 
+      <p className="promo-footnote">{t(DEMAND_NOTE)}</p>
       <p className="promo-footnote">{t(UPLIFT_NOTE)}</p>
 
       {/* mainHTML block — A4 spec section 5: by-vertical + by-channel, then

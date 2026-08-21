@@ -103,7 +103,7 @@ describe("PromotionEffectivenessDashboard", () => {
     await screen.findByTestId("promotion-effectiveness-dashboard");
 
     expect(document.querySelectorAll(".promo-kpi")).toHaveLength(6);
-    expect(screen.getByText("Promotion uplift vs margin quality")).toBeInTheDocument();
+    expect(screen.getByText("Baseline vs promo demand")).toBeInTheDocument();
     expect(screen.getByText("Incremental margin by vertical")).toBeInTheDocument();
     expect(screen.getByText("Incremental margin by channel")).toBeInTheDocument();
     expect(screen.getByText("Promotion calendar preview")).toBeInTheDocument();

@@ -165,6 +165,44 @@ export const UPLIFT_NOTE =
   "Two uplifts: the cards carry the modeled NET uplift (~26% chain); each " +
   "campaign's expected uplift is its PLANNED figure (~47% average).";
 
+/**
+ * How many weeks the Baseline-vs-promo demand chart draws each side of Today.
+ *
+ * Narrower than Replenishment's 16/16 (A3 spec section 4) on purpose: that
+ * window exists to carry a SKU through its lead time, and a promo campaign has
+ * no lead time to cover — it is read here purely as a before/after comparison,
+ * so a shorter window keeps the two flat segments legible instead of stretching
+ * them across dozens of identical points.
+ */
+export const DEMAND_WEEKS_BACK = 8;
+export const DEMAND_WEEKS_FORWARD = 8;
+
+/**
+ * The forward baseline demand discount — the promo board's own version of
+ * Replenishment's `HISTORY_INBOUND_RATIO` (0.97): a flat, named ratio applied
+ * to a figure this board cannot measure directly, instead of either inventing
+ * a week-by-week shape or presenting a flat projection as carrying no
+ * uncertainty at all.
+ *
+ * No table in this workbook records a promo campaign's week-by-week pull on
+ * demand, so the chain's measured daily rate (`item.ads`, real and
+ * formula-reproducible — see `engine.js`) is held flat across the window and
+ * marked down a conservative 4% for the weeks past Today. With-promo demand is
+ * then this same discounted baseline times (1 + the scope's own measured
+ * uplift %), which is the "promo = baseline × (1 + uplift)" the chart's
+ * tooltip states outright.
+ */
+export const DEMAND_FORWARD_RATIO = 0.96;
+
+/** Printed under the Baseline-vs-promo demand chart. */
+export const DEMAND_NOTE =
+  "Baseline is this scope's measured daily demand rate (ads × 7), held flat " +
+  "across the window since no table records a promo campaign's week-by-week " +
+  "effect on demand. Weeks past Today are modelled at 96% of that rate — the " +
+  "same discipline Replenishment applies to its own modelled inbound supply. " +
+  "With-promo demand is that modelled baseline times (1 + the scope's " +
+  "measured uplift %).";
+
 /** Per-tile hover labels, sourced from the workbook's own formulas. */
 export const KPI_FORMULAS = Object.freeze({
   active_promo_skus: "SUM(fc11 promo SKU flag)",
@@ -254,6 +292,15 @@ export function normalizePromotionDashboard(payload) {
       baseline: payload.simulation?.baseline ?? null,
       scenario: payload.simulation?.scenario ?? null,
       index: payload.simulation?.index ?? [],
+    },
+    // Additive, like Replenishment's `requirement` block: a payload that
+    // predates this chart renders an empty panel rather than crashing the board.
+    demand_uplift: {
+      weeks_back: payload.demand_uplift?.weeks_back ?? 0,
+      weeks_forward: payload.demand_uplift?.weeks_forward ?? 0,
+      points: payload.demand_uplift?.points ?? [],
+      weekly_baseline: payload.demand_uplift?.weekly_baseline ?? 0,
+      uplift_pct: payload.demand_uplift?.uplift_pct ?? 0,
     },
     reference_by_vertical: payload.reference_by_vertical ?? [],
   };

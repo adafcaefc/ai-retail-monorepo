@@ -10595,6 +10595,24 @@ button.po-kpi {
   text-align: center;
 }
 
+.promo-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.promo-chart-tooltip em {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-style: normal;
+}
+
 /* --- calendar / campaign / margin-leaders tables --------------------------- */
 
 .promo-calendar,

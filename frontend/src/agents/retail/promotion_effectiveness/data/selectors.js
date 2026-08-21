@@ -16,6 +16,9 @@ import {
   ALL,
   BASELINE_LEVERS,
   BEST_ACTION_TABS,
+  DEMAND_FORWARD_RATIO,
+  DEMAND_WEEKS_BACK,
+  DEMAND_WEEKS_FORWARD,
   SIMULATION_METRICS,
 } from "./contract.js";
 import { atStore, createEngine, isBaseline } from "./engine.js";
@@ -490,6 +493,70 @@ export function computeSimulation(items, levers, applyLevers, reference) {
   return { applied: true, levers, baseline, scenario, index };
 }
 
+/**
+ * The Baseline-vs-promo demand chart. Mirrors the shape of Replenishment's
+ * `computeRequirement` — flat weekly points either side of a "Today" bridge —
+ * but plots two demand curves for one population instead of demand against
+ * supply.
+ *
+ * `baseline` is `items`' own measured daily rate (`ads`, real and
+ * formula-reproducible per SKU — see `engine.js`) summed to a weekly figure
+ * and held flat, since no table records how a promo campaign's pull on demand
+ * varies week to week. Weeks past Today carry `DEMAND_FORWARD_RATIO`'s modest
+ * discount rather than the naive flat continuation, the same discipline
+ * Replenishment applies via `HISTORY_INBOUND_RATIO`.
+ *
+ * `with_promo` is null before Today — duplicating the identical baseline
+ * figure into a second series would draw one line twice — then Today's own
+ * value bridges the two lines exactly as `computeRequirement`'s does, and each
+ * week after states the discounted baseline times (1 + `upliftPct`/100): the
+ * "promo = baseline × (1 + uplift)" the chart's tooltip states outright.
+ */
+export function computeDemandUplift(
+  items,
+  upliftPct,
+  weeksBack = DEMAND_WEEKS_BACK,
+  weeksForward = DEMAND_WEEKS_FORWARD,
+) {
+  const weeklyBaseline = sum(items, "ads") * 7;
+  const upliftFraction = (Number(upliftPct) || 0) / 100;
+  const points = [];
+
+  for (let weekNumber = weeksBack; weekNumber >= 1; weekNumber -= 1) {
+    points.push({
+      week: -weekNumber,
+      label: `W-${weekNumber}`,
+      baseline: weeklyBaseline,
+      with_promo: null,
+    });
+  }
+
+  points.push({
+    week: 0,
+    label: "Today",
+    baseline: weeklyBaseline,
+    with_promo: weeklyBaseline,
+  });
+
+  for (let weekNumber = 1; weekNumber <= weeksForward; weekNumber += 1) {
+    const forwardBaseline = weeklyBaseline * DEMAND_FORWARD_RATIO;
+    points.push({
+      week: weekNumber,
+      label: `W+${weekNumber}`,
+      baseline: forwardBaseline,
+      with_promo: forwardBaseline * (1 + upliftFraction),
+    });
+  }
+
+  return {
+    weeks_back: weeksBack,
+    weeks_forward: weeksForward,
+    points,
+    weekly_baseline: round(weeklyBaseline),
+    uplift_pct: round(Number(upliftPct) || 0, 2),
+  };
+}
+
 // --------------------------------------------------------------------- helpers
 
 function rows0Label(items, key, keyField, labelField) {
@@ -615,6 +682,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const byVertical = computeByVertical(drivenItems, reference);
   const stores = scopeStores(allStores, scope);
   const byStore = computeByStore(drivenItems, stores);
+  const demandUplift = computeDemandUplift(drivenItems, kpis.uplift_pct);
 
   return {
     schema_version: fixture.schema_version ?? 1,
@@ -651,6 +719,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     campaigns,
     best_actions: computeBestActions(campaigns),
     simulation: computeSimulation(drivenItems, levers, applyLevers, referenceInScope),
+    demand_uplift: demandUplift,
     reference_by_vertical: reference,
   };
 }
