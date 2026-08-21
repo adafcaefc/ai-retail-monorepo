@@ -65,12 +65,22 @@ TARGET = (
 )
 SOURCE_WORKBOOK = "AI_360_Retail_Suite_v8.5_General_9Agents 20260819.xlsx"
 
-# The two expressions the browser What-If engine evaluates. Read from the
-# catalogue rather than restated, so the fixture and the agents can never
-# disagree about what a formula says.
+# The expressions the browser evaluates. Read from the catalogue rather than
+# restated, so the fixture and the agents can never disagree about what a
+# formula says.
+#
+# The first two are the What-If engine's: f01 sizes ADS, f13 prices the
+# incremental margin. The last two are KPI rules the selectors reduce over the
+# scoped rows -- fc11 is summed to count promo SKUs, fc12 is averaged for the
+# Uplift % tile. Both are per-row by design: the expression language has no
+# aggregate functions, so the rule states what one SKU contributes and the
+# caller does the arithmetic over the set (the same division of labour
+# fc03-avg-markdown-depth documents).
 CATALOGUE_FORMULAS = (
     "f01-ads-per-store",
     "f13-incremental-promotion-margin",
+    "fc11-promo-sku-flag",
+    "fc12-promo-net-uplift-pct",
 )
 
 THRESHOLDS = {

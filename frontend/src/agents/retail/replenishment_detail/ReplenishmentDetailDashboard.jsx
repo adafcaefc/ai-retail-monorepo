@@ -11,7 +11,6 @@ import {
   ALL,
   DEFAULT_SCOPE,
   DEFAULT_SORT,
-  GRAIN_NOTE,
   PACK_ROUNDING_NOTE,
 } from "./data/contract.js";
 import { loadReplenishmentDetailDashboard } from "./data/dashboardData.js";
@@ -170,14 +169,6 @@ export default function ReplenishmentDetailDashboard() {
           setSort(DEFAULT_SORT);
         }}
       />
-
-      <div className="rdet-scope-row">
-        <span className="rdet-source">
-          {view.is_mock ? t("Workbook demonstration data") : t("Live data")}
-        </span>
-        <span className="rdet-note">{view.note}</span>
-        <span className="rdet-note">{GRAIN_NOTE}</span>
-      </div>
 
       {/*
         An inline strip rather than the full error branch: a refresh that fails

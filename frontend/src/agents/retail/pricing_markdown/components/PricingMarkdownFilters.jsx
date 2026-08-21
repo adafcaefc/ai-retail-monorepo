@@ -1,9 +1,11 @@
-import { ALL, STATE_ORDER } from "../data/contract.js";
+import { ALL, LADDER_HORIZONS } from "../data/contract.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 
 /**
- * The top filter row: vertical, category, store, inventory state, and a
- * free-text search across SKU, name, vendor and brand.
+ * The top filter row: vertical, category, store, and a free-text search
+ * across SKU, name, vendor and brand. `state` has no control here — it is
+ * set only by drilling into a state segment on the dimension charts (see
+ * PricingMarkdownDashboard's selectState/onSelectState).
  *
  * `store_id` narrows `by_store`/`by_cluster`/`by_channel`
  * (selectors.js's scopeStores) AND, when the board is reading from the API
@@ -32,13 +34,14 @@ export default function PricingMarkdownFilters({
   onSearch,
   onRefresh,
   onClear,
+  ladderHorizon,
+  onLadderHorizonChange,
 }) {
   const { t } = useLanguage();
   const hasFilter =
     scope.legal_entity_id !== ALL ||
     scope.category_group !== ALL ||
     scope.store_id !== ALL ||
-    scope.state !== ALL ||
     (scope.sku && scope.sku.trim());
 
   return (
@@ -68,13 +71,23 @@ export default function PricingMarkdownFilters({
         disabled={busy}
         onChange={(value) => onPatch({ store_id: value })}
       />
-      <SelectField
-        label={t("State")}
-        value={scope.state}
-        options={STATE_ORDER.map((state) => ({ value: state, label: t(state) }))}
-        disabled={busy}
-        onChange={(value) => onPatch({ state: value })}
-      />
+      {onLadderHorizonChange ? (
+        <fieldset className="pricing-horizon">
+          <legend>{t("Horizon")}</legend>
+          <div className="pricing-segmented">
+            {LADDER_HORIZONS.map((weeks) => (
+              <button
+                key={weeks}
+                type="button"
+                aria-pressed={ladderHorizon === weeks}
+                onClick={() => onLadderHorizonChange(weeks)}
+              >
+                {weeks}w
+              </button>
+            ))}
+          </div>
+        </fieldset>
+      ) : null}
       <label className="pricing-search">
         <span className="pricing-search-label">{t("Search")}</span>
         <input

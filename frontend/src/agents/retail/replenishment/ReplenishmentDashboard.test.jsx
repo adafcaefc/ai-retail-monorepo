@@ -114,14 +114,15 @@ describe("the fixture reconciles with the A3 sheet", () => {
   });
 });
 
-describe("the two order values", () => {
-  it("prices the same order at cost and at retail, and they differ", () => {
+describe("order value at cost and at retail", () => {
+  it("prices the same order two ways, and they differ", () => {
     const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
     expect(kpis.order_value_cost).toBeGreaterThan(0);
     expect(kpis.order_value_retail).toBeGreaterThan(kpis.order_value_cost);
-    // Roughly a fifth apart on this dataset. The board shows both because
-    // approving a PO at retail value would overstate the commitment.
+    // Roughly a fifth apart on this dataset. Cost prices the purchase order
+    // line by line elsewhere on this board (route, vendor and scenario
+    // panels); retail is the one headline figure the KPI grid shows.
     expect(kpis.order_value_cost / kpis.order_value_retail).toBeLessThan(0.95);
   });
 
@@ -183,7 +184,7 @@ describe("the KPI drill-down drawer", () => {
   it("decomposes the tile it was opened from, with no invented history", async () => {
     await renderSettled();
 
-    const tile = screen.getByText("Order value at retail").closest(".po-kpi");
+    const tile = screen.getByText("Order value").closest(".po-kpi");
     fireEvent.click(tile.querySelector(".po-kpi-open"));
 
     const drawer = await screen.findByRole("dialog");
@@ -199,9 +200,9 @@ describe("the KPI drill-down drawer", () => {
   it("says why a measure has no per-store split rather than allocating one", async () => {
     await renderSettled();
 
-    // Cost is priced from trade agreements, which the per-store grid has none
+    // The saving is attributed per vendor, which the per-store grid has none
     // of. Inventing a split here is exactly what the mockup did.
-    const tile = screen.getByText("Order value at cost").closest(".po-kpi");
+    const tile = screen.getByText("Recoverable").closest(".po-kpi");
     fireEvent.click(tile.querySelector(".po-kpi-open"));
 
     const drawer = await screen.findByRole("dialog");
@@ -215,7 +216,7 @@ describe("ReplenishmentDashboard", () => {
   it("renders the KPIs, the route split, sourcing and the order", async () => {
     await renderSettled();
 
-    expect(document.querySelectorAll(".po-kpi")).toHaveLength(6);
+    expect(document.querySelectorAll(".po-kpi")).toHaveLength(5);
     expect(screen.getByText("Order value by route")).toBeInTheDocument();
     expect(screen.getByText("Vendor sourcing")).toBeInTheDocument();
     expect(screen.getByText("Order value by category")).toBeInTheDocument();
@@ -228,16 +229,6 @@ describe("ReplenishmentDashboard", () => {
     // 345 of 800 lines sit below ROP; a buyer opening this board wants those.
     expect(screen.getByLabelText("Only what needs ordering")).toBeChecked();
     expect(within(kpiTile("SKUs to reorder")).getByText("345")).toBeInTheDocument();
-  });
-
-  it("labels the source rather than presenting workbook figures as live", async () => {
-    await renderSettled();
-
-    expect(screen.getByText(/Workbook data/)).toBeInTheDocument();
-    // Twice on purpose: the payload's own note and the standing footnote both
-    // say it, because the two order values are the thing most likely to be
-    // misread on this board.
-    expect(screen.getAllByText(/at selling price/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("scopes to one vertical and reports that vertical's numbers", async () => {
@@ -317,11 +308,13 @@ describe("requirement versus inbound supply (spec 4)", () => {
       .closest(".po-panel");
     expect(panel).toBeInTheDocument();
 
-    // The four figures spec 4 puts under the chart.
-    const strip = panel.querySelector(".po-metric-strip");
-    for (const label of ["Reorder", "Order qty", "PO value", "Fill"]) {
-      expect(within(strip).getByText(label)).toBeInTheDocument();
-    }
+    /*
+     * Spec 4 puts a four-figure strip under the chart. It is deliberately not
+     * drawn: the KPI cards above the panel already carry those same four
+     * numbers off the same selector, so the strip was a second copy for the
+     * eye to reconcile against.
+     */
+    expect(panel.querySelector(".po-metric-strip")).toBeNull();
   });
 
   it("says the delivery calendar is generated, because the workbook has none", async () => {
@@ -350,8 +343,10 @@ describe("requirement versus inbound supply (spec 4)", () => {
     // there is nothing behind "16 weeks ago" to accumulate against.
     for (const point of history) {
       expect(point.requirement).toBeNull();
-      expect(point.cover).toBeNull();
       expect(point.actual_demand).toBeGreaterThan(0);
+      // Modelled, not measured -- a flat fraction under demand, so the supply
+      // line spans the whole chart instead of only its forecast half.
+      expect(point.inbound).toBeCloseTo(point.actual_demand * 0.97, 6);
     }
 
     /*
@@ -365,7 +360,10 @@ describe("requirement versus inbound supply (spec 4)", () => {
     expect(today.label).toBe("Today");
     expect(today.actual_demand).toBe(lastActual.actual_demand);
     expect(today.requirement).toBe(lastActual.actual_demand);
-    expect(today.cover).toBeCloseTo(
+    // Inbound bridges the divider on its modelled past-side value, so the
+    // supply line is continuous across Today rather than restarting at W+1.
+    expect(today.inbound).toBeCloseTo(lastActual.actual_demand * 0.97, 6);
+    expect(today.on_hand_after).toBeCloseTo(
       fixture.lines.reduce((total, line) => total + line.on_hand, 0),
       6,
     );
@@ -378,29 +376,80 @@ describe("requirement versus inbound supply (spec 4)", () => {
       expect(point.requirement).toBeLessThan(lastActual.actual_demand * 2);
       expect(point.actual_demand).toBeNull();
     }
+    expect(requirement.points[16].label).toBe("Today");
   });
 
-  it("draws a cover line that both rises and falls", () => {
+  it("draws an inbound line that both rises and falls", () => {
     /*
-     * The point of the synthetic arrival calendar. Cover is a running position
-     * -- last week's leftover plus this week's arrivals -- and the routes
-     * deliver on a cadence, so it sawtooths. The curve it replaced was flat
-     * from W+1 onward, because every open PO landed inside the first week and
-     * nothing ever arrived again.
+     * The point of the synthetic arrival calendar. The routes deliver on a
+     * cadence, so arrivals per week rise and fall. The curve it replaced was
+     * flat from W+1 onward, because every open PO landed inside the first week
+     * and nothing ever arrived again.
      */
     const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     expect(requirement.inbound_scheduled).toBe(true);
 
     const forward = requirement.points.slice(17);
-    const rises = forward.some((point, index) => index > 0 && point.cover > forward[index - 1].cover);
-    const falls = forward.some((point, index) => index > 0 && point.cover < forward[index - 1].cover);
+    const rises = forward.some(
+      (point, index) => index > 0 && point.inbound > forward[index - 1].inbound,
+    );
+    const falls = forward.some(
+      (point, index) => index > 0 && point.inbound < forward[index - 1].inbound,
+    );
     expect(rises).toBe(true);
     expect(falls).toBe(true);
 
-    // And it moves by a visible amount, not by float noise. The generator
-    // enforces the same floor before it will write the CSV.
-    const covers = forward.map((point) => point.cover);
-    expect(Math.max(...covers) / Math.min(...covers)).toBeGreaterThan(1.15);
+    /*
+     * And it moves by a readable amount -- far enough off demand to see, near
+     * enough to read as one comparison. Both bounds matter: the schedule was
+     * once batched hard enough to stray 8% either side, and staggering it to
+     * load evenly collapsed it to 0.3%, which draws inbound straight on top of
+     * demand. The generator gates the same band before it writes the CSV.
+     */
+    const gaps = forward.map(
+      (point) => Math.abs(point.inbound - point.requirement) / point.requirement,
+    );
+    expect(Math.max(...gaps)).toBeGreaterThan(0.005);
+    expect(Math.max(...gaps)).toBeLessThan(0.04);
+  });
+
+  it("keeps inbound beside demand, not towering over it", () => {
+    /*
+     * Both plotted series are units per week, so they have to be legible on
+     * one axis. An earlier shape put a STOCK on this axis against a rate --
+     * a shelf restocked fortnightly holds about two weeks of demand, so the
+     * line sat 2.9x above the one beside it and the gap read as a 3M surplus
+     * rather than as ordinary batching. The generator gates the same ratio.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const forward = requirement.points.slice(17);
+
+    const meanDemand =
+      forward.reduce((total, point) => total + point.requirement, 0) / forward.length;
+    for (const point of forward) {
+      expect(point.inbound).toBeGreaterThan(meanDemand * 0.65);
+      expect(point.inbound).toBeLessThan(meanDemand * 1.35);
+    }
+  });
+
+  it("reads shortfall off the stock, not off the gap between the lines", () => {
+    /*
+     * A week where inbound dips under demand is ordinary -- the shelf absorbs
+     * it. Only an empty shelf is a shortfall, so cover_runs_out is derived
+     * from on_hand_after. On this fixture the shelf holds all 16 weeks, and
+     * inbound still dips under demand in some of them; if those two ever
+     * agreed by accident this test would stop proving anything.
+     */
+    const { requirement } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const forward = requirement.points.slice(17);
+
+    const dips = forward.filter((point) => point.inbound < point.requirement);
+    expect(dips.length).toBeGreaterThan(0);
+
+    for (const point of forward) {
+      expect(point.on_hand_after).toBeGreaterThan(0);
+    }
+    expect(requirement.cover_runs_out).toBeNull();
   });
 
   it("keeps total inbound anchored to total demand, so no gap runs away", () => {
@@ -413,7 +462,7 @@ describe("requirement versus inbound supply (spec 4)", () => {
     const forward = requirement.points.slice(17);
 
     const demand = forward.reduce((total, point) => total + point.requirement, 0);
-    const arrivals = forward.reduce((total, point) => total + point.inbound_landed, 0);
+    const arrivals = forward.reduce((total, point) => total + point.inbound, 0);
     expect(arrivals / demand).toBeGreaterThan(0.98);
     expect(arrivals / demand).toBeLessThan(1.02);
   });

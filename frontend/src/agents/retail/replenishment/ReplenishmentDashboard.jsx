@@ -20,7 +20,6 @@ import {
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
   MAX_SAVED_SCENARIOS,
-  ORDER_VALUE_NOTE,
 } from "./data/contract.js";
 import {
   DATA_SOURCE,
@@ -206,9 +205,6 @@ export default function ReplenishmentDashboard() {
       />
 
       <div className="po-scope-row">
-        <span className="po-data-note">
-          {dashboard.is_mock ? t("Workbook data") : t("Live data")} · {t(dashboard.note)}
-        </span>
         <div className="po-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? (
@@ -260,11 +256,8 @@ export default function ReplenishmentDashboard() {
         onSelectSku={(sku) => patchScope({ sku })}
       />
 
-      <p className="po-footnote">{t(ORDER_VALUE_NOTE)}</p>
-
       <RequirementVsInboundPanel
         requirement={dashboard.requirement}
-        kpis={dashboard.kpis}
       />
 
       <div className="po-chart-grid">

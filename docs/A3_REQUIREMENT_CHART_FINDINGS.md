@@ -1,5 +1,15 @@
 # A3 "Requirement vs inbound supply" — why the chart differs from the prototype
 
+> **Superseded, kept as history.** This note describes the chart as it stood on
+> 2026-08-19: a 28-day forward-only view accumulating a flat ADS
+> (`REQUIREMENT_DAYS`, `demandPerDay * day`). None of that code survives. The
+> chart is now 33 weekly points with three series in units per week, drawing on
+> two synthetic tables that did not exist when this was written. For the current
+> shape and the reasoning behind it, see
+> [A3_REQUIREMENT_CHART_DECISIONS.md](./A3_REQUIREMENT_CHART_DECISIONS.md).
+>
+> Section 1 is still worth reading: it is the diagnosis that led to the rewrite.
+
 Investigation note, 2026-08-19. Prompted by the question: why does the React panel not
 look like the prototype's version of the same chart?
 

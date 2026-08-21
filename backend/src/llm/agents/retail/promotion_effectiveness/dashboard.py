@@ -99,6 +99,20 @@ ENGINE_FORMULAS = (
     "f13-incremental-promotion-margin",
 )
 
+# The KPI rules the browser's selectors reduce over the scoped rows: fc11 is
+# summed to count promo SKUs, fc12 is averaged for the Uplift % tile. They are
+# shipped through the same `formulas` block as the engine's, because the
+# selectors evaluate them the same way -- but they are not engine rules, so
+# they are named apart rather than folded into the tuple above.
+#
+# Per-row by design. The expression language has no aggregate functions, so
+# each rule states what one SKU contributes and the caller does the arithmetic
+# over the set.
+KPI_FORMULAS = (
+    "fc11-promo-sku-flag",
+    "fc12-promo-net-uplift-pct",
+)
+
 CHAIN = f"{SCHEMA}.fact_inventory_chain_daily"
 ITEM = f"{SCHEMA}.dim_item"
 PROMO_DETAIL = f"{SCHEMA}.promotion_detail"
@@ -349,7 +363,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
     return {
         **envelope(AGENT_ID, NOTE),
         "thresholds": THRESHOLDS,
-        "formulas": formulas(ENGINE_FORMULAS),
+        "formulas": formulas(ENGINE_FORMULAS + KPI_FORMULAS),
         "filter_options": {
             key: options[key] for key in ("legal_entities", "categories", "stores")
         },

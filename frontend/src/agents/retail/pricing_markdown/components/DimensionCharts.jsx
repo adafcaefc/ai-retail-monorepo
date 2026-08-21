@@ -10,10 +10,57 @@ import {
 } from "recharts";
 
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { GRAIN_NOTE } from "../data/contract.js";
+import { ALL, GRAIN_NOTE } from "../data/contract.js";
 import { formatIdr, formatUnits, stateColor } from "../presentation.js";
 
 const TOP_STORES = 12;
+
+/**
+ * A panel title, its usual note (e.g. "Gross · top 12"), and an optional
+ * "Back to all X" reset button — shown alongside the note, not instead of it.
+ */
+function PanelHead({ title, note, noteTitle, selected, resetLabel, onSelect }) {
+  const { t } = useLanguage();
+  const hasSelection = Boolean(onSelect) && Boolean(selected) && selected !== ALL;
+  return (
+    <header className="pricing-panel-head">
+      <h3>{t(title)}</h3>
+      <div className="pricing-panel-head-actions">
+        {note ? (
+          <span className="pricing-panel-note" title={noteTitle ? t(noteTitle) : undefined}>
+            {note}
+          </span>
+        ) : null}
+        {hasSelection ? (
+          <button type="button" className="pricing-chart-reset" onClick={() => onSelect(ALL)}>
+            {t(resetLabel)}
+          </button>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+/**
+ * A row of filter-shortcut pills mirroring the chart above it — the primary
+ * click target in tests (Recharts bar clicks are mocked out there), same
+ * role as demand_forecasting's DrilldownButtons. A local copy of
+ * PricingCharts.jsx's own DrilldownPills — this file already keeps its own
+ * copy of ScopeCollapseNote rather than sharing one across the two files.
+ */
+function DrilldownPills({ rows, idKey, onSelect, label }) {
+  const { t } = useLanguage();
+  if (!onSelect || !rows.length) return null;
+  return (
+    <div className="pricing-chart-drilldowns" aria-label={t(label)}>
+      {rows.map((row) => (
+        <button key={row[idKey]} type="button" onClick={() => onSelect(row[idKey])}>
+          {row.label ?? row.name}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function ValueTooltip({ active, payload, label }) {
   const { language, t } = useLanguage();
@@ -63,7 +110,7 @@ function ScopeCollapseNote({ data, labelKey = "name" }) {
   );
 }
 
-function ValueBarChart({ data, xKey }) {
+function ValueBarChart({ data, xKey, onSelect }) {
   const { language, t } = useLanguage();
   return (
     <div className="pricing-chart" role="img" aria-label={t("At-risk value")}>
@@ -88,7 +135,12 @@ function ValueBarChart({ data, xKey }) {
             tickFormatter={(value) => formatIdr(value, language, { digits: 0 })}
           />
           <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<ValueTooltip />} />
-          <Bar dataKey="value" isAnimationActive={false}>
+          <Bar
+            dataKey="value"
+            isAnimationActive={false}
+            onClick={onSelect ? (entry) => onSelect(entry?.payload ?? entry) : undefined}
+            cursor={onSelect ? "pointer" : undefined}
+          >
             {data.map((point, i) => (
               <Cell key={point[xKey] ?? i} fill="var(--accent-info)" />
             ))}
@@ -103,7 +155,17 @@ function ValueBarChart({ data, xKey }) {
  * A5 spec section 6. Five breakdowns: store, cluster, channel, inventory
  * state (full population), legal entity.
  */
-export default function DimensionCharts({ byStore, byCluster, byChannel, byState, byLegalEntity }) {
+export default function DimensionCharts({
+  byStore,
+  byCluster,
+  byChannel,
+  byState,
+  byLegalEntity,
+  scope,
+  onSelectStore,
+  onSelectState,
+  onSelectLegalEntity,
+}) {
   const { language, t } = useLanguage();
 
   const storeData = byStore.slice(0, TOP_STORES).map((row) => ({ ...row, name: row.label }));
@@ -115,12 +177,14 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
   return (
     <section className="pricing-dimension-grid" aria-label={t("Pricing & Markdown by dimension")}>
       <article className="pricing-panel">
-        <header className="pricing-panel-head">
-          <h3>{t("At-risk value by store")}</h3>
-          <span className="pricing-panel-note" title={t(GRAIN_NOTE)}>
-            {t("Gross · top 12")}
-          </span>
-        </header>
+        <PanelHead
+          title="At-risk value by store"
+          note={t("Gross · top 12")}
+          noteTitle={GRAIN_NOTE}
+          selected={scope?.store_id}
+          resetLabel="Back to all stores"
+          onSelect={onSelectStore}
+        />
         <ScopeCollapseNote data={storeData} />
         <div className="pricing-chart" role="img" aria-label={t("At-risk value by store")}>
           <ResponsiveContainer width="100%" height="100%">
@@ -129,10 +193,38 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
               <XAxis dataKey="store_id" tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={{ stroke: "var(--line)" }} interval={0} height={30} />
               <YAxis tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} width={34} tickFormatter={(v) => formatUnits(v, language)} />
               <Tooltip cursor={{ fill: "var(--gray-100)", fillOpacity: 0.4 }} content={<StoreTooltip />} />
-              <Bar dataKey="expiry_count" stackId="skus" fill="var(--red-700)" isAnimationActive={false} />
-              <Bar dataKey="overstock_count" stackId="skus" fill="var(--blue-500)" isAnimationActive={false} />
-              <Bar dataKey="slow_mover_count" stackId="skus" fill="var(--amber-600)" isAnimationActive={false} />
-              <Bar dataKey="other_count" stackId="skus" fill="var(--gray-200)" isAnimationActive={false} />
+              <Bar
+                dataKey="expiry_count"
+                stackId="skus"
+                fill="var(--red-700)"
+                isAnimationActive={false}
+                onClick={onSelectStore ? (entry) => onSelectStore(entry?.store_id ?? entry?.payload?.store_id) : undefined}
+                cursor={onSelectStore ? "pointer" : undefined}
+              />
+              <Bar
+                dataKey="overstock_count"
+                stackId="skus"
+                fill="var(--blue-500)"
+                isAnimationActive={false}
+                onClick={onSelectStore ? (entry) => onSelectStore(entry?.store_id ?? entry?.payload?.store_id) : undefined}
+                cursor={onSelectStore ? "pointer" : undefined}
+              />
+              <Bar
+                dataKey="slow_mover_count"
+                stackId="skus"
+                fill="var(--amber-600)"
+                isAnimationActive={false}
+                onClick={onSelectStore ? (entry) => onSelectStore(entry?.store_id ?? entry?.payload?.store_id) : undefined}
+                cursor={onSelectStore ? "pointer" : undefined}
+              />
+              <Bar
+                dataKey="other_count"
+                stackId="skus"
+                fill="var(--gray-200)"
+                isAnimationActive={false}
+                onClick={onSelectStore ? (entry) => onSelectStore(entry?.store_id ?? entry?.payload?.store_id) : undefined}
+                cursor={onSelectStore ? "pointer" : undefined}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -142,6 +234,7 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
           <li><i style={{ background: "var(--amber-600)" }} />{t("Slow-mover")}</li>
           <li><i style={{ background: "var(--gray-200)" }} />{t("Other")}</li>
         </ul>
+        <DrilldownPills rows={storeData} idKey="store_id" onSelect={onSelectStore} label="Store filter shortcuts" />
       </article>
 
       <article className="pricing-panel">
@@ -163,10 +256,13 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
       </article>
 
       <article className="pricing-panel">
-        <header className="pricing-panel-head">
-          <h3>{t("Inventory value by state")}</h3>
-          <span className="pricing-panel-note">{t("All states, not only markdown candidates")}</span>
-        </header>
+        <PanelHead
+          title="Inventory value by state"
+          note={t("All states, not only markdown candidates")}
+          selected={scope?.state}
+          resetLabel="Back to all states"
+          onSelect={onSelectState}
+        />
         <ScopeCollapseNote data={stateData} />
         <div className="pricing-chart" role="img" aria-label={t("Inventory value by state")}>
           <ResponsiveContainer width="100%" height="100%">
@@ -175,7 +271,12 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
               <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={{ stroke: "var(--line)" }} interval={0} />
               <YAxis tick={{ fontSize: 10, fill: "var(--muted)" }} tickLine={false} axisLine={false} width={58} tickFormatter={(v) => formatIdr(v, language, { digits: 0 })} />
               <Tooltip formatter={(v) => formatIdr(v, language)} />
-              <Bar dataKey="value" isAnimationActive={false}>
+              <Bar
+                dataKey="value"
+                isAnimationActive={false}
+                onClick={onSelectState ? (entry) => onSelectState(entry?.state ?? entry?.payload?.state) : undefined}
+                cursor={onSelectState ? "pointer" : undefined}
+              >
                 {stateData.map((row) => (
                   <Cell key={row.state} fill={stateColor(row.state)} />
                 ))}
@@ -183,15 +284,25 @@ export default function DimensionCharts({ byStore, byCluster, byChannel, byState
             </BarChart>
           </ResponsiveContainer>
         </div>
+        <DrilldownPills rows={stateData} idKey="state" onSelect={onSelectState} label="State filter shortcuts" />
       </article>
 
       <article className="pricing-panel">
-        <header className="pricing-panel-head">
-          <h3>{t("At-risk value by legal entity")}</h3>
-          <span className="pricing-panel-note" title={t(GRAIN_NOTE)}>{t("Gross")}</span>
-        </header>
+        <PanelHead
+          title="At-risk value by legal entity"
+          note={t("Gross")}
+          noteTitle={GRAIN_NOTE}
+          selected={scope?.legal_entity_id}
+          resetLabel="Back to all legal entities"
+          onSelect={onSelectLegalEntity}
+        />
         <ScopeCollapseNote data={entityData} />
-        <ValueBarChart data={entityData} xKey="name" />
+        <ValueBarChart
+          data={entityData}
+          xKey="name"
+          onSelect={onSelectLegalEntity ? (row) => onSelectLegalEntity(row.legal_entity_id) : undefined}
+        />
+        <DrilldownPills rows={entityData} idKey="legal_entity_id" onSelect={onSelectLegalEntity} label="Legal entity filter shortcuts" />
       </article>
     </section>
   );

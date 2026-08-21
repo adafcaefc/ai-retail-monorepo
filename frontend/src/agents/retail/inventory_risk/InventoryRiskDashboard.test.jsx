@@ -143,17 +143,22 @@ describe("InventoryRiskDashboard", () => {
     expect(entity.parentElement).toBe(grid);
   });
 
-  it("shows the whole chain's stockout count, matching the workbook total", async () => {
+  /*
+   * 524 distinct SKUs sit below their reorder point (Stockout + Low states)
+   * across the ENGINE_STORE grid -- the same `Position < ROP` predicate
+   * Replenishment's "SKUs to reorder" and Demand Forecasting's
+   * "Stockout-risk SKUs" tile count. This deliberately does NOT read
+   * `reference_by_vertical`, which carries the chain-net A2 summary sheet (345
+   * below-ROP SKUs over a netted population) — a benchmark from the other
+   * grain, not what this tile counts.
+   */
+  it("shows the whole grid's stockout-risk count, matching the workbook dropdown", async () => {
     renderDashboard();
 
-    const expected = fixture.reference_by_vertical.reduce(
-      (running, row) => running + row.stockout_risk_skus,
-      0,
-    );
     const tile = (await screen.findAllByText("Stockout-risk SKUs"))[0];
 
     expect(
-      within(tile.closest(".risk-kpi")).getByText(String(expected)),
+      within(tile.closest(".risk-kpi")).getByText("524"),
     ).toBeInTheDocument();
   });
 
@@ -164,11 +169,11 @@ describe("InventoryRiskDashboard", () => {
     expect(screen.getByText(/not a live ERP position/)).toBeInTheDocument();
   });
 
-  it("carries the gross-versus-chain-net caveat on the board", async () => {
+  it("carries the rows-versus-SKUs caveat on the board", async () => {
     renderDashboard();
 
     expect(
-      await screen.findByText(/Store and cluster breakdowns are gross/),
+      await screen.findByText(/count SKU-per-store rows/),
     ).toBeInTheDocument();
   });
 
@@ -183,9 +188,8 @@ describe("InventoryRiskDashboard", () => {
       const tile = screen
         .getAllByText("Stockout-risk SKUs")[0]
         .closest(".risk-kpi");
-      expect(
-        within(tile).getByText(String(grocery.stockout_risk_skus)),
-      ).toBeInTheDocument();
+      // Grocery's own ENGINE_STORE rows, not the A2 sheet's chain-net figure.
+      expect(within(tile).getByText("78")).toBeInTheDocument();
     });
 
     // The scope chip names the active vertical, and clearing restores the
@@ -215,7 +219,7 @@ describe("InventoryRiskDashboard", () => {
     });
   });
 
-  it("submits a SKU search and narrows to the single matching row", async () => {
+  it("submits a SKU search and narrows to that SKU's rows across its stores", async () => {
     await renderSettled();
 
     // jsdom does not dispatch submit from a submit-button click, so submit the
@@ -224,26 +228,24 @@ describe("InventoryRiskDashboard", () => {
     fireEvent.change(input, { target: { value: "GRC-001" } });
     fireEvent.submit(input.closest("form"));
 
+    // One row per store the SKU is stocked in — 20 of them — not one row.
+    // The register pages at 50, so all twenty fit on the first page.
     await waitFor(() => {
-      expect(document.querySelectorAll(".risk-row")).toHaveLength(1);
+      expect(document.querySelectorAll(".risk-row")).toHaveLength(20);
     });
     // The term also appears in the search box and the scope chip, so assert
-    // against the register row itself. The code shares a line with the
-    // category, so match the meta line rather than a bare text node.
+    // against the register row itself. The code shares a line with the store
+    // and category, so match the meta line rather than a bare text node.
     const row = document.querySelector(".risk-row");
     expect(row.querySelector(".risk-sku-meta").textContent).toMatch(/^GRC-001 · /);
   });
 
   it("scopes the board to one store, showing that store's own position", async () => {
     /*
-     * This filter used to be disabled, on the grounds that scoping to a store
-     * needed the 16,000-row grid. It does not: `atStore` regenerates any row
-     * of that grid from four attributes, and the fixture builder checks the
-     * reconstruction against every one of them.
-     *
-     * S001 is a Grocery store carrying 100 SKUs, against the chain's 800, so
-     * the register shrinking is the visible proof the scope reached the rows
-     * and not just the chip.
+     * The board ships the 16,000-row grid now, so a store scope is a filter on
+     * `store_id` rather than a reconstruction. S001 is a Grocery store
+     * carrying 100 SKUs, so the register shrinking is the visible proof the
+     * scope reached the rows and not just the chip.
      */
     await renderSettled();
 
@@ -255,25 +257,25 @@ describe("InventoryRiskDashboard", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Store")).toHaveValue("S001");
     });
-    // ENGINE_STORE's own tally for S001: 19 Stockout + 27 Low sit below ROP.
+    // ENGINE_STORE's own tally for S001: 51 SKUs below their reorder point.
     await waitFor(() => {
       const tile = screen
         .getAllByText("Stockout-risk SKUs")[0]
         .closest(".risk-kpi");
-      expect(within(tile).getByText("46")).toBeInTheDocument();
+      expect(within(tile).getByText("51")).toBeInTheDocument();
     });
   });
 
-  it("pages the register rather than rendering all 800 rows at once", async () => {
+  it("pages the register rather than rendering all 16,000 rows at once", async () => {
     await renderSettled();
 
     expect(document.querySelectorAll(".risk-row")).toHaveLength(50);
-    expect(screen.getByText(/Page 1 \/ 16/)).toBeInTheDocument();
+    expect(screen.getByText(/Page 1 \/ 320/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Page 2 \/ 16/)).toBeInTheDocument();
+      expect(screen.getByText(/Page 2 \/ 320/)).toBeInTheDocument();
     });
   });
 
@@ -311,7 +313,14 @@ describe("InventoryRiskDashboard", () => {
     // The formula rides the tile face, which is the button that opens the
     // drill-down — the article around it is the frame, not the control.
     const face = kpiTile("Stockout-risk SKUs").querySelector(".risk-kpi-open");
-    expect(face).toHaveAttribute("title", expect.stringContaining("Position < ROP"));
+    // The tile counts the whole reorder zone -- `Position < ROP` -- the same
+    // predicate Replenishment and Demand Forecasting use for their own
+    // stockout-risk tiles.
+    expect(face).toHaveAttribute(
+      "title",
+      expect.stringContaining("Position < ROP"),
+    );
+    expect(face).toHaveAttribute("title", expect.stringContaining("distinct SKU"));
   });
 
   it("drills to the reorder zone from the stockout tile, and back again", async () => {

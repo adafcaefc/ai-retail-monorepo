@@ -6,6 +6,7 @@ import {
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -297,55 +298,102 @@ export function SeasonMixChart({ rows }) {
   );
 }
 
-/**
- * The "uplift vs margin quality" main chart — incremental margin as bars with
- * modeled uplift as an overlaid line. A simplified combo view of the A4 spec
- * section 4 main chart, per-vertical.
- */
-export function UpliftVsMarginChart({ rows }) {
+function DemandUpliftTooltip({ active, payload, label }) {
   const { t, language } = useLanguage();
-  const data = [...rows]
-    .filter((r) => r.incremental_margin > 0)
-    .sort((a, b) => b.incremental_margin - a.incremental_margin)
-    .map((r) => ({
-      label: r.label ?? r.vertical_id,
-      margin: r.incremental_margin,
-      uplift: r.uplift_pct,
-    }));
+  if (!active || !payload?.length) return null;
 
-  if (!data.length) return <p className="promo-empty">{t("No promo margin in scope.")}</p>;
+  const point = payload[0].payload;
+
+  return (
+    <div className="promo-chart-tooltip">
+      <strong>{label}</strong>
+      <span>
+        {t("Baseline")}: {formatUnits(Math.round(point.baseline), language)}
+      </span>
+      {point.with_promo !== null ? (
+        <span>
+          {t("With promo")}: {formatUnits(Math.round(point.with_promo), language)}
+        </span>
+      ) : null}
+      <em>ƒ promo = baseline × (1 + uplift)</em>
+    </div>
+  );
+}
+
+/**
+ * Baseline vs promo demand — replaces the "uplift vs margin quality" combo
+ * chart. Two weekly demand curves, `weeks_back`/`weeks_forward` either side of
+ * a "Today" divider: `demand` is `dashboard.demand_uplift`, built by
+ * `computeDemandUplift` in `data/selectors.js` from whichever items the active
+ * scope narrowed to, so the Vertical/Category/Store/SKU filters and the
+ * What-If levers all reach this chart the same way they reach every other one
+ * on this board — no filter wiring of its own.
+ *
+ * `Baseline` is Replenishment's own real weekly curve for these SKUs, not a
+ * flat estimate (see `computeDemandUplift`'s doc for the join). `With promo`
+ * is null before Today, so the two lines read as one shared curve up to the
+ * divider instead of drawing an identical line twice, then bridges at Today
+ * and runs dashed to the horizon.
+ *
+ * The y-axis is framed on the data rather than anchored at zero, exactly as
+ * `RequirementVsInboundPanel` frames its own — both series move within a
+ * narrow band relative to their own size, and a zero-anchored axis would
+ * spend most of its height on empty space below the lines and flatten the
+ * real week-to-week movement into a couple of pixels.
+ */
+export function PromoDemandUpliftChart({ demand }) {
+  const { t, language } = useLanguage();
+
+  if (!demand?.points?.length) {
+    return <p className="promo-empty">{t("No promo demand in scope.")}</p>;
+  }
+
+  const plotted = demand.points.flatMap((point) =>
+    [point.baseline, point.with_promo].filter((value) => typeof value === "number"),
+  );
+  const low = plotted.length ? Math.min(...plotted) : 0;
+  const high = plotted.length ? Math.max(...plotted) : 0;
+  const padding = (high - low) * 0.2 || high * 0.05 || 1;
+  const domain = [Math.max(0, low - padding), high + padding];
 
   return (
     <section className="promo-chart-block" data-testid="promo-chart-main">
-      <h4>{t("Promotion uplift vs margin quality")}</h4>
+      <h4>{t("Baseline vs promo demand")}</h4>
       <ResponsiveContainer width="100%" height={300}>
-        <BarChart data={data} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
+        <LineChart data={demand.points} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-          <YAxis yAxisId="margin" tickFormatter={(v) => formatIdr(v, language)} tick={{ fontSize: 11 }} />
-          <YAxis yAxisId="uplift" orientation="right" tickFormatter={(v) => formatPercent(v / 100, language)} tick={{ fontSize: 11 }} />
-          <Tooltip
-            formatter={(value, name) =>
-              name === t("Modeled uplift")
-                ? formatPercent(value / 100, language)
-                : formatIdr(value, language)
-            }
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={6} />
+          <YAxis
+            domain={domain}
+            tickFormatter={(v) => formatUnits(v, language)}
+            tick={{ fontSize: 11 }}
+            width={56}
           />
-          <Legend />
-          <Bar yAxisId="margin" dataKey="margin" name={t("Incremental margin")}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={categoryColor(i)} />
-            ))}
-          </Bar>
+          <Tooltip content={<DemandUpliftTooltip />} />
+          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <ReferenceLine x="Today" stroke="var(--line)" strokeDasharray="4 4" />
           <Line
-            yAxisId="uplift"
             type="monotone"
-            dataKey="uplift"
-            name={t("Modeled uplift")}
-            stroke="var(--gray-700)"
+            dataKey="baseline"
+            name={t("Baseline")}
+            stroke="var(--gray-500, var(--muted))"
             strokeWidth={2}
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
           />
-        </BarChart>
+          <Line
+            type="monotone"
+            dataKey="with_promo"
+            name={t("With promo")}
+            stroke="var(--success)"
+            strokeWidth={2}
+            strokeDasharray="5 4"
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+        </LineChart>
       </ResponsiveContainer>
     </section>
   );

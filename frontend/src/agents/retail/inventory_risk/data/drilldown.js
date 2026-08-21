@@ -21,14 +21,25 @@
  * workbook has no history at any grain -- `derivation.history` says
  * "unavailable" and A1 already refuses to back-cast a line for the same reason
  * -- so this module returns no history at all and the drawer says so. The
- * per-store panel here is real: `atStore` derives each store's own rows, which
- * the fixture builder checks against all 16,000 ENGINE_STORE rows.
+ * per-store panel here is real: the rows ARE the 16,000 ENGINE_STORE rows, so a
+ * store's bar is that store's own, grouped rather than derived or allocated.
  */
-
-import { BASELINE_LEVERS } from "./engine.js";
 
 /** How many rows the "top contributing SKUs" list shows. */
 export const TOP_SKU_COUNT = 6;
+
+/**
+ * Distinct SKUs among the rows a predicate accepts — the same rule the tiles
+ * follow (see `selectors.js`'s `computeKpis`). Counting rows here would make
+ * every bar disagree with the headline it decomposes, by roughly 10x.
+ */
+function countSkus(rows, predicate) {
+  const seen = new Set();
+  for (const row of rows) {
+    if (predicate(row)) seen.add(row.sku_id);
+  }
+  return seen.size;
+}
 
 /**
  * One entry per KPI tile.
@@ -36,29 +47,45 @@ export const TOP_SKU_COUNT = 6;
  * `additive` is the honest bit: a mean cannot be split across categories and
  * added back up, so the drawer labels those breakdowns as averages rather than
  * letting a reader sum the bars and wonder why they miss the headline.
+ *
+ * It stays true for the counts, because a SKU belongs to exactly one category
+ * and one vertical, so those bars still sum to the tile. The STORE split is
+ * the exception this grain forces — a SKU slow-moving at six stores appears in
+ * six bars — which is the same gross-versus-net caveat the board already
+ * carries for its store charts.
  */
 const METRICS = {
+  stockout_skus: {
+    label: "Stockout SKUs",
+    reduce: (rows) => countSkus(rows, (row) => row.state === "Stockout"),
+    unit: "count",
+    additive: true,
+  },
   stockout_risk_skus: {
     label: "Stockout-risk SKUs",
-    reduce: (rows) => rows.filter((row) => row.is_stockout_risk).length,
+    reduce: (rows) => countSkus(rows, (row) => row.is_stockout_risk),
     unit: "count",
     additive: true,
   },
   overstock_skus: {
     label: "Overstock SKUs",
-    reduce: (rows) => rows.filter((row) => row.is_overstock).length,
+    reduce: (rows) => countSkus(rows, (row) => row.is_overstock),
     unit: "count",
     additive: true,
   },
   expiry_units: {
     label: "Expiry-risk units",
-    reduce: (rows) => rows.reduce((total, row) => total + row.expiry_units, 0),
+    reduce: (rows) =>
+      rows.reduce(
+        (total, row) => (row.state === "Expiry" ? total + row.expiry_units : total),
+        0,
+      ),
     unit: "units",
     additive: true,
   },
   slow_mover_skus: {
     label: "Slow-moving SKUs",
-    reduce: (rows) => rows.filter((row) => row.is_slow_mover).length,
+    reduce: (rows) => countSkus(rows, (row) => row.is_slow_mover),
     unit: "count",
     additive: true,
   },
@@ -117,14 +144,6 @@ function ranked(groups, reduce) {
  * @param {object[]} items    The scoped, already-simulated item rows.
  * @param {object[]} stores   The scoped store rows, for the store split.
  * @param {object} [options]
- * @param {Function} [options.applyLevers] Bound engine. Required for the store
- *   split: `atStore` only re-points a row's INPUTS, and the metrics read
- *   `state`, `dos` and the `is_*` flags, which exist only after the formula
- *   chain has run. Without it the store split is omitted rather than computed
- *   from chain-net values wearing a store's name.
- * @param {Function} [options.atStore] Bound store-pointer from the same
- *   engine as `applyLevers` — the two are parsed together and must be a
- *   matched pair.
  * @param {object[]} [options.allItems] Unscoped items for the store split, so a
  *   store's bar covers its whole shelf rather than the current filter.
  */
@@ -132,7 +151,7 @@ export function buildDrilldown(metricId, items, stores, options = {}) {
   const metric = drilldownMetric(metricId);
   if (!metric) return null;
 
-  const { applyLevers = null, atStore = null, allItems = items } = options;
+  const { allItems = items } = options;
 
   const byCategory = ranked(
     groupBy(items, "category_id", (row) => row.category_name),
@@ -140,42 +159,55 @@ export function buildDrilldown(metricId, items, stores, options = {}) {
   );
 
   /*
-   * The store split is DERIVED, not allocated.
+   * The store split is READ, not derived.
    *
-   * Each store's rows are regenerated with `atStore` and run through the
-   * engine at rest, exactly as a store-scoped board does — so a bar here is
-   * that store's own position, and selecting that store in the filter bar
-   * reproduces the same figure. The mockup allocated this from `charCodeAt`
-   * and a health factor; that reads as measurement and is not one.
-   *
-   * The cost is real: one engine pass per SKU per store, so a whole-chain
-   * scope is ~16,000 evaluations. It runs on a click rather than a render,
-   * and the What-If slider already sustains 800 per frame, so this lands well
-   * inside a frame budget it never has to meet.
+   * Rows arrive at ENGINE_STORE grain, so a store's bar is just its own rows
+   * grouped by `store_id`. This used to regenerate every store's shelf with
+   * `atStore` and a full engine pass — ~16,000 evaluations per click — to
+   * rebuild exactly what the fixture now ships.
    */
-  const byStore = applyLevers && atStore
-    ? ranked(
-        stores.map((store) => ({
-          id: store.store_id,
-          label: store.name,
-          rows: allItems
-            .filter((item) => item.vertical_id === store.vertical_id)
-            .map((item) => applyLevers(atStore(item, store), BASELINE_LEVERS)),
-        })),
-        metric.reduce,
-      )
-    : [];
+  const rowsByStore = new Map();
+  for (const item of allItems) {
+    const bucket = rowsByStore.get(item.store_id);
+    if (bucket) bucket.push(item);
+    else rowsByStore.set(item.store_id, [item]);
+  }
+  const byStore = ranked(
+    stores.map((store) => ({
+      id: store.store_id,
+      label: store.name,
+      rows: rowsByStore.get(store.store_id) ?? [],
+    })),
+    metric.reduce,
+  );
 
-  const topSkus = items
-    .map((item) => ({ item, value: metric.reduce([item]) }))
+  /*
+   * Ranked by SKU, not by row. A SKU sits in ~20 stores, so ranking rows would
+   * fill all six slots with one SKU's worst stores and call it a top-six.
+   * Values are summed across the SKU's rows, matching how the tile above
+   * counts SKUs and sums money.
+   */
+  const bySku = new Map();
+  for (const item of items) {
+    const existing = bySku.get(item.sku_id);
+    const value = metric.reduce([item]);
+    if (existing) {
+      existing.value += value;
+      existing.stores += 1;
+    } else {
+      bySku.set(item.sku_id, { item, value, stores: 1 });
+    }
+  }
+  const topSkus = [...bySku.values()]
     .filter((row) => Math.abs(row.value) > 1e-9)
     .sort((a, b) => b.value - a.value)
     .slice(0, TOP_SKU_COUNT)
-    .map(({ item, value }) => ({
+    .map(({ item, value, stores: storeCount }) => ({
       id: item.sku_id,
       name: item.name,
       category_name: item.category_name,
       state: item.state,
+      store_count: storeCount,
       value,
     }));
 
@@ -185,7 +217,10 @@ export function buildDrilldown(metricId, items, stores, options = {}) {
     unit: metric.unit,
     additive: metric.additive,
     total: metric.reduce(items),
-    sku_count: items.length,
+    // DISTINCT SKUs, not `items.length` — the drawer prints this beside a
+    // tile that counts SKUs, and rows would read ~20x higher.
+    sku_count: countSkus(items, () => true),
+    row_count: items.length,
     by_category: byCategory,
     by_store: byStore,
     top_skus: topSkus,

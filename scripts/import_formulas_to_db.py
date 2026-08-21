@@ -97,7 +97,7 @@ GRAIN_FROM_SHEET: dict[str, str] = {
 # written under it.
 EXPECTED_SPLIT: dict[str, int] = {
     "store_sku": 17,
-    "chain_sku": 6,
+    "chain_sku": 8,
     "store_roster": 3,
     "vertical": 6,
     "vendor": 1,

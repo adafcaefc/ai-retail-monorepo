@@ -168,9 +168,10 @@ PROMOTION_ALLOWED_TABLES = (
 # store-grain (fact_inventory_daily, the ENGINE_STORE equivalent); the
 # chain-net fact carries the descriptive/reconciliation fields (position,
 # rop, max, ads, dos, state) the candidate table and KPI cards read.
-# trade_agreement is where the designated vendor's lead time comes from
-# (f05-rop), not dim_item.lead_time_days -- see designated_lead_times() in
-# scripts/build_pricing_markdown_fixture.py for why.
+# f05-rop's lead time is dim_item.lead_time_days (seeded from
+# SKU_Master.lead_d) -- trade_agreement is kept in the allowlist for vendor
+# terms queries in general, not because f05 reads it; it does not, see
+# build_items()'s docstring in dashboard.py.
 PRICING_ALLOWED_TABLES = (
     *RETAIL_SHARED_TABLES,
     "retail.fact_inventory_daily",

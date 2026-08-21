@@ -299,7 +299,8 @@ export const DEFAULT_SCOPE = Object.freeze({
 
 /**
  * @typedef {object} InventoryRiskKpis
- * @property {number} stockout_risk_skus Count of `Position < ROP`.
+ * @property {number} stockout_risk_skus  Count of `Position < ROP`.
+ * @property {number} stockout_risk_value Sum of value where `Position < ROP`.
  * @property {number} overstock_skus     Count of state Overstock.
  * @property {number} expiry_units       Sum of units past shelf-life cover.
  * @property {number} slow_mover_skus    Count of state Slow-mover.
@@ -332,18 +333,24 @@ export const DEFAULT_SCOPE = Object.freeze({
  */
 
 /**
- * Chain-net headline versus gross breakdowns.
+ * One grain now, and one thing left to say about it.
  *
- * A2 spec section 10 note 1: `kpis` are chain-net — surplus in one store nets
- * off shortage in another. `stockout_by_store` and `at_risk_by_cluster` are
- * gross: they add up local pockets of risk and will therefore total HIGHER
- * than the headline. That gap is intentional and is not a reconciliation bug.
- * Any UI that shows both must say so, or a reader will report it as an error.
+ * A2 spec section 10 note 1 described a gap that no longer exists: `kpis` used
+ * to be chain-net while `stockout_by_store` and `at_risk_by_cluster` were
+ * gross, so the bars totalled HIGHER than the headline and the board had to
+ * label the difference. Both sides read the same ENGINE_STORE rows now, and
+ * the money adds up exactly — `selectors.test.js` asserts the equality that
+ * replaced the old "must exceed" assertion.
+ *
+ * What still needs saying is the COUNTS. A SKU in trouble at six stores is one
+ * SKU in the tile and six rows in the charts below, so the store and cluster
+ * bars cannot be summed to reach a tile that counts SKUs. Any UI showing both
+ * must say so, or a reader will report it as an error.
  */
 export const GROSS_VS_NET_NOTE =
-  "Store and cluster breakdowns are gross: they sum local risk pockets and " +
-  "exceed the chain-net headline, which nets surplus against shortage across " +
-  "stores.";
+  "Store and cluster breakdowns count SKU-per-store rows: a SKU in trouble " +
+  "at several stores appears in each of their bars, so the bars total higher " +
+  "than the tiles, which count each SKU once. Value figures do reconcile.";
 
 /**
  * A2 spec section 10 note 2. `at_risk_value` is the full position value of
@@ -371,7 +378,16 @@ export const DOS_TARGET = Object.freeze({ min: 7, max: 21 });
  * `data-fx` attributes did.
  */
 export const KPI_FORMULAS = Object.freeze({
-  stockout_risk_skus: "count( Position < ROP )",
+  // The headline tile counts the whole reorder zone -- `Position < ROP` --
+  // the same predicate Replenishment's `skus_to_reorder` and Demand
+  // Forecasting's `stockout_risk_skus` tile count, so the three boards agree
+  // on the definition. `stockout_skus` (state = Stockout alone, the more
+  // severe `Position < 0.6 x ROP` subset) is kept as data for the risk
+  // register's state filter but is no longer surfaced as its own tile.
+  stockout_skus: "count distinct SKU( state = Stockout: Position < 0.6 x ROP )"
+    + " · at risk = Σ Position × price",
+  stockout_risk_skus: "count distinct SKU( Position < ROP )"
+    + " · at risk = Σ Position × price",
   overstock_skus:
     "count( state = Overstock: non-perishable, DoS > 15 )" +
     " · at-risk = Σ (Position − Max) × price, or 30% × Position × price" +
@@ -467,6 +483,7 @@ export function normalizeInventoryRiskDashboard(payload) {
     kpi_sparklines: payload.kpi_sparklines ?? {},
     kpis: {
       stockout_risk_skus: 0,
+      stockout_risk_value: 0,
       overstock_skus: 0,
       overstock_excess_value: 0,
       expiry_units: 0,

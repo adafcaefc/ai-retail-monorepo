@@ -7,9 +7,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AGENT_ID, ALL, BASELINE_LEVERS, DEFAULT_SCOPE } from "./contract.js";
+import { AGENT_ID, ALL, BASELINE_LEVERS, DEFAULT_SCOPE, DEMAND_FORWARD_RATIO } from "./contract.js";
 import { loadPromotionDashboard, loadPromotionDrilldown } from "./dashboardData.js";
 import fixture from "./fixture.json";
+import replenishmentFixture from "../../replenishment/data/fixture.json";
 import {
   buildDashboardFromFixture,
   computeByChannel,
@@ -17,6 +18,7 @@ import {
   computeBySeason,
   computeByState,
   computeByStore,
+  computeDemandUplift,
   computeKpis,
   computeLargestMarginSkus,
   scopeCampaigns,
@@ -39,6 +41,11 @@ describe("fixture integrity", () => {
   it("carries the two formula expressions the What-If engine needs", () => {
     expect(fixture.formulas["f01-ads-per-store"]).toBeTruthy();
     expect(fixture.formulas["f13-incremental-promotion-margin"]).toBeTruthy();
+  });
+
+  it("carries the two KPI rules the tiles are reduced from", () => {
+    expect(fixture.formulas["fc11-promo-sku-flag"]).toBeTruthy();
+    expect(fixture.formulas["fc12-promo-net-uplift-pct"]).toBeTruthy();
   });
 
   it("marks every shipped item promo-eligible", () => {
@@ -64,16 +71,45 @@ describe("KPIs reconcile with the workbook", () => {
     expect(dashboard.kpis.pre_buy_uplift_units).toBe(totalPreBuy);
   });
 
-  it("reads uplift and ROI from the reference, not from per-SKU rows", () => {
+  it("reads ROI from the reference, not from per-SKU rows", () => {
     const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
-    const expectedUplift =
-      fixture.reference_by_vertical.reduce((t, r) => t + r.uplift_pct, 0) /
-      fixture.reference_by_vertical.length;
     const expectedRoi =
       fixture.reference_by_vertical.reduce((t, r) => t + r.roi_x, 0) /
       fixture.reference_by_vertical.length;
-    expect(dashboard.kpis.uplift_pct).toBeCloseTo(expectedUplift, 1);
     expect(dashboard.kpis.roi_x).toBeCloseTo(expectedRoi, 1);
+  });
+
+  it("computes uplift from fc12 and still lands on the workbook's figure", () => {
+    // The chain tile is the mean over all 241 promo SKUs; the reference is a
+    // mean of eight per-vertical means over unequal SKU counts. Those differ
+    // by ~0.001pp, which is why this compares at 1 decimal — the per-vertical
+    // check below is the exact one.
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const referenceUplift =
+      fixture.reference_by_vertical.reduce((t, r) => t + r.uplift_pct, 0) /
+      fixture.reference_by_vertical.length;
+    expect(dashboard.kpis.uplift_pct).toBeCloseTo(referenceUplift, 1);
+  });
+
+  it("narrows uplift to the scoped category, which a stored KPI cannot do", () => {
+    // The point of moving uplift onto a per-row rule: a vertical-grain stored
+    // KPI has no category dimension, so this tile used to sit still while the
+    // other five narrowed.
+    const category = fixture.items[0].category_id;
+    const scoped = buildDashboardFromFixture(fixture, scopeOf({ category_group: category }));
+    const scopedItems = fixture.items.filter((i) => i.category_id === category);
+    const expected =
+      scopedItems.reduce((t, i) => t + 0.15 * 2.2 * (1 - i.cannibalisation_pct / 100) * 100, 0) /
+      scopedItems.length;
+    expect(scoped.kpis.uplift_pct).toBeCloseTo(expected, 2);
+  });
+
+  it("counts active promo SKUs by summing fc11, not by row count", () => {
+    // Same number today (every shipped row is promo-eligible), but sourced
+    // from the catalogue predicate rather than implied by the query.
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const byFlag = fixture.items.filter((i) => i.promo_eligible === "Y").length;
+    expect(dashboard.kpis.active_promo_skus).toBe(byFlag);
   });
 
   it("narrows uplift and ROI to the selected vertical, not the chain average", () => {
@@ -86,8 +122,12 @@ describe("KPIs reconcile with the workbook", () => {
     const groceryReference = fixture.reference_by_vertical.find(
       (r) => r.legal_entity_id === "GRC",
     );
-    expect(dashboard.kpis.uplift_pct).toBeCloseTo(groceryReference.uplift_pct, 6);
-    expect(dashboard.kpis.roi_x).toBeCloseTo(groceryReference.roi_x, 6);
+    // Compared at 2 decimals because that is what the selectors round these
+    // KPIs to (`round(value, 2)`, as for cannib and funding). This assertion
+    // used to demand 6 and failed on the rounding alone. It still discriminates
+    // at 2: the chain uplift is 25.60 against Grocery's 25.74.
+    expect(dashboard.kpis.uplift_pct).toBeCloseTo(groceryReference.uplift_pct, 2);
+    expect(dashboard.kpis.roi_x).toBeCloseTo(groceryReference.roi_x, 2);
 
     const chainDashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     expect(dashboard.kpis.uplift_pct).not.toBeCloseTo(chainDashboard.kpis.uplift_pct, 3);
@@ -294,5 +334,58 @@ describe("the data gateway", () => {
     const drilldown = await loadPromotionDrilldown(DEFAULT_SCOPE, "incremental_margin");
     expect(drilldown.by_category.length).toBeGreaterThan(0);
     expect(drilldown.by_vertical.length).toBeGreaterThan(0);
+  });
+});
+
+describe("computeDemandUplift", () => {
+  it("joins every promo SKU to a Replenishment line — the whole chart depends on this", () => {
+    // Regression guard: a miss here silently drops that SKU's demand rather
+    // than throwing, so a real join failure would just read as a smaller
+    // number, never a test failure, unless something asserts the join itself.
+    const bySku = new Map(replenishmentFixture.lines.map((l) => [l.sku_id, l]));
+    const missing = fixture.items.filter((item) => !bySku.has(item.sku_id));
+    expect(missing).toEqual([]);
+  });
+
+  it("draws a real curve, not a flat line — history varies week to week", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const history = dashboard.demand_uplift.points
+      .filter((p) => p.week < 0)
+      .map((p) => p.baseline);
+    const distinctValues = new Set(history.map((v) => Math.round(v)));
+    expect(distinctValues.size).toBeGreaterThan(1);
+  });
+
+  it("bridges at Today: baseline and with_promo carry the same value there", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const today = dashboard.demand_uplift.points.find((p) => p.week === 0);
+    expect(today.with_promo).toBe(today.baseline);
+    expect(dashboard.demand_uplift.points.filter((p) => p.week < 0).every((p) => p.with_promo === null)).toBe(true);
+  });
+
+  it("with_promo is the discounted forward baseline times (1 + uplift), per the tooltip's own formula", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const weekPlus1 = dashboard.demand_uplift.points.find((p) => p.week === 1);
+    const expected = weekPlus1.baseline * (1 + dashboard.kpis.uplift_pct / 100);
+    expect(weekPlus1.with_promo).toBeCloseTo(expected, 6);
+  });
+
+  it("discounts forward baseline weeks by DEMAND_FORWARD_RATIO against Replenishment's own forecast", () => {
+    const items = scopeItems(fixture.items, { legal_entity_id: "GRC" });
+    const demand = computeDemandUplift(items, 0);
+    const bySku = new Map(replenishmentFixture.lines.map((l) => [l.sku_id, l]));
+    const rawForecastWeek1 = items.reduce(
+      (total, item) => total + (bySku.get(item.sku_id)?.demand_forecast?.[0] ?? 0),
+      0,
+    );
+    const weekPlus1 = demand.points.find((p) => p.week === 1);
+    expect(weekPlus1.baseline).toBeCloseTo(rawForecastWeek1 * DEMAND_FORWARD_RATIO, 6);
+  });
+
+  it("narrows with the scope, like every other chart on this board", () => {
+    const chain = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const grocery = buildDashboardFromFixture(fixture, { ...DEFAULT_SCOPE, legal_entity_id: "GRC" });
+    expect(grocery.demand_uplift.weekly_baseline).not.toBe(chain.demand_uplift.weekly_baseline);
+    expect(grocery.demand_uplift.weekly_baseline).toBeLessThan(chain.demand_uplift.weekly_baseline);
   });
 });

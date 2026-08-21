@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from sqlalchemy import text
+
 from src.formulas import repository
 from src.formulas.expression import evaluate, parse
 from src.llm.agents.common.dashboard_scope import DashboardScope
@@ -70,7 +72,6 @@ STORE_FACT = f"{SCHEMA}.fact_inventory_daily"
 ITEM = f"{SCHEMA}.dim_item"
 STORE_DIM = f"{SCHEMA}.dim_store"
 VERTICAL = f"{SCHEMA}.dim_vertical"
-TRADE_AGREEMENT = f"{SCHEMA}.trade_agreement"
 
 # Formulas the browser What-If engine re-evaluates (see
 # frontend/.../pricing_markdown/data/engine.js's REQUIRED_FORMULAS). f12, f23
@@ -134,6 +135,14 @@ NOTE = (
 # (offline/standalone builds) has no request-time recompute step, so it keeps
 # showing each store's full all-category/all-state total for those four
 # charts -- the same documented gap store_id already has on that path.
+
+# Weeks in `synthetic.markdown_ladder_store_sku_16w` -- see that table's
+# migration (sql/retail/012_...) and generator (scripts/generate_synthetic_
+# markdown_ladder_16w.py) for what the two lines represent. Read here as a
+# per-vertical aggregate, unscoped by legal_entity_id/category_group/store_id
+# the way `reference` below is unscoped -- it is a benchmark line, not a
+# figure a filter narrows.
+LADDER_WEEKS = 16
 
 _MONEY_FORMULA_IDS = (
     "f12-at-risk-value",
@@ -213,15 +222,15 @@ def classify(state: str | None, is_candidate: bool, open_po: float) -> str | Non
     return BEST_ACTION_BY_STATE.get(state)
 
 
-def build_items(
-    store_money_rows: list[dict[str, Any]],
-    lead_days: dict[str, float],
-) -> list[dict[str, Any]]:
+def build_items(store_money_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per `fact_inventory_daily` record (SKU x store) -- this board's
     real grain, matching `scripts/build_pricing_markdown_fixture.py`'s own
     rewrite to the same grain. No SKU-level rollup: candidacy, state, and
     every money figure are this row's own, already merged in via
-    `_store_money`.
+    `_store_money`. `lead_time_days` comes straight off the `dim_item` join
+    in `build()`'s query, same as `safety_days`/`shelf_life_days` below --
+    see the removed `_designated_lead_times()` for why that used to be a
+    separate query against the wrong table.
     """
     items = []
     for row in store_money_rows:
@@ -252,6 +261,13 @@ def build_items(
                 "price": _float(row["price"]),
                 "inv_value": round(row["inventory_value"], 2),
                 "at_risk_value": round(row["at_risk"], 2),
+                # f23's own at-risk-portion output -- NOT at_risk_value (f12,
+                # the row's full position x price for any non-Healthy
+                # state). avg_depth_pct's weight, both here and in
+                # build_reference() below -- at_risk_value overstates it
+                # 3x-20x per row and must not be used as a depth weight. See
+                # the matching fix in scripts/build_pricing_markdown_fixture.py.
+                "at_risk_gross": round(row["gross"], 2),
                 "recoverable_value": round(row["recoverable"], 2),
                 "write_off_value": round(max(0.0, row["at_risk"] - row["recoverable"]), 2),
                 "expiry_units": round(row["expiry_units"], 2),
@@ -277,9 +293,9 @@ def build_items(
                 "onhand_days": _float(row["onhand_days"]),
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
-                # The designated trade agreement's lead time, not
-                # dim_item.lead_time_days -- see the lead_days query below.
-                "lead_days": lead_days.get(row["item_key"], 0.0),
+                # dim_item.lead_time_days, seeded from SKU_Master.lead_d --
+                # see build_items()'s own docstring for why.
+                "lead_days": _float(row["lead_time_days"]),
                 "safety_days": _float(row["safety_days"]),
                 "best_action_tab": best_action_tab,
                 "recommendation": RECOMMENDATION_BY_TAB.get(best_action_tab, "Hold price"),
@@ -331,7 +347,7 @@ def build_stores(store_money_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Avg markdown depth per vertical, weighted by candidate at-risk value.
+    """Avg markdown depth per vertical, weighted by candidate at-risk GROSS.
 
     No `retail.agent_kpi_reference` row exists for this agent (the seeder's
     `build_agent_kpi_reference` only wires agents 1-4), so this is computed
@@ -340,6 +356,12 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     the fixture's `avg_depth_pct` was standing in for as reference-only
     context. `items` here is the FULL, unscoped population, matching how
     `agent_kpi_reference` is never scoped either.
+
+    The weight is `at_risk_gross` (f23's own at-risk-portion output), not
+    `at_risk_value` (f12's full position value for any non-Healthy row) --
+    the latter overstates the weight 3x-20x per row and was the entire
+    source of a 34%-vs-35% gap against a from-scratch, hand-checked
+    recompute of this exact figure. See build_items()'s `_store_money`.
     """
     label_by_vertical = {row["value"]: row["label"] for row in legal_entities}
     depth_by_state = {"Expiry": 0.4, "Overstock": 0.25, "Slow-mover": 0.3}
@@ -348,7 +370,7 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     for item in items:
         if not item["is_markdown_candidate"]:
             continue
-        weight = item["at_risk_value"]
+        weight = item["at_risk_gross"]
         depth = depth_by_state.get(item["state"])
         if depth is None or weight <= 0:
             continue
@@ -368,24 +390,80 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     return reference
 
 
-def _designated_lead_times(connection: Any) -> dict[str, float]:
-    """Vendor lead time per item, from the DESIGNATED trade agreement.
+def _ladder_by_vertical(connection: Any) -> list[dict[str, Any]]:
+    """The 32-week (16 back, 16 forward) markdown-ladder-vs-no-action
+    projection, per vertical.
 
-    NOT dim_item.lead_time_days -- audit fix T-05/T-06 ("ROP pakai lead
-    statis di SKU master, bukan lead vendor"). See
-    scripts/build_pricing_markdown_fixture.py::designated_lead_times() for
-    the full account; this is the same SUMIFS, in SQL.
+    Reads `synthetic.markdown_ladder_store_sku_16w` if it exists (migration
+    012) -- a fabricated, gate-checked projection from today's real
+    at_risk_value/write_off_value, NOT a measured history on either side (at-
+    risk value has no real past to record; see that table's own migration
+    for why the history side is modelled the same way the forward side
+    already was). Guarded the same way replenishment/dashboard.py guards
+    `synthetic.inbound_store_sku_16w`: an environment that has not run
+    migration 012 simply gets an empty list back and the chart does not
+    render, rather than the request failing. The history columns (migration
+    013) are guarded separately -- an environment with 012 but not yet 013
+    gets `history_no_action`/`history_ladder` as all-zero rather than a
+    failed query.
+
+    Aggregated to (sku_id, store_id) -> vertical here, in SQL, rather than
+    shipped at the raw 16,000-row grain: the chart draws one pair of lines
+    per scope, not one per SKU, so there is nothing for a client-side
+    selector to do with the per-row detail that summing here doesn't already
+    do -- and shipping 64 extra numbers on all 16,000 items would bloat the
+    payload for data nothing reads at that grain.
     """
+    has_table = connection.execute(
+        text("SELECT OBJECT_ID(N'synthetic.markdown_ladder_store_sku_16w', N'U')")
+    ).scalar()
+    if has_table is None:
+        return []
+
+    has_history = connection.execute(
+        text("SELECT COL_LENGTH(N'synthetic.markdown_ladder_store_sku_16w', N'no_action_hist_w1')")
+    ).scalar()
+
+    no_action_cols = ", ".join(f"sum(m.no_action_w{n}) AS no_action_w{n}" for n in range(1, LADDER_WEEKS + 1))
+    ladder_cols = ", ".join(f"sum(m.ladder_w{n}) AS ladder_w{n}" for n in range(1, LADDER_WEEKS + 1))
+    select_cols = f"i.vertical_id, {no_action_cols}, {ladder_cols}"
+    if has_history is not None:
+        hist_no_action_cols = ", ".join(
+            f"sum(m.no_action_hist_w{n}) AS no_action_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)
+        )
+        hist_ladder_cols = ", ".join(
+            f"sum(m.ladder_hist_w{n}) AS ladder_hist_w{n}" for n in range(1, LADDER_WEEKS + 1)
+        )
+        select_cols += f", {hist_no_action_cols}, {hist_ladder_cols}"
+
     rows = _rows(
         connection,
         f"""
-        SELECT item_key, sum(lead_time_days) AS lead_days
-        FROM {TRADE_AGREEMENT}
-        WHERE is_designated = 1
-        GROUP BY item_key
+        SELECT {select_cols}
+        FROM synthetic.markdown_ladder_store_sku_16w m
+        JOIN {ITEM} i ON i.item_id = m.sku_id
+        GROUP BY i.vertical_id
         """,
+        {},
     )
-    return {row["item_key"]: _float(row["lead_days"]) for row in rows}
+    return [
+        {
+            "legal_entity_id": row["vertical_id"],
+            "no_action": [_float(row[f"no_action_w{n}"]) for n in range(1, LADDER_WEEKS + 1)],
+            "ladder": [_float(row[f"ladder_w{n}"]) for n in range(1, LADDER_WEEKS + 1)],
+            "history_no_action": (
+                [_float(row[f"no_action_hist_w{n}"]) for n in range(1, LADDER_WEEKS + 1)]
+                if has_history is not None
+                else [0.0] * LADDER_WEEKS
+            ),
+            "history_ladder": (
+                [_float(row[f"ladder_hist_w{n}"]) for n in range(1, LADDER_WEEKS + 1)]
+                if has_history is not None
+                else [0.0] * LADDER_WEEKS
+            ),
+        }
+        for row in rows
+    ]
 
 
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
@@ -408,6 +486,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    i.elasticity, i.base_ads, i.seasonality_index,
                    i.arch_horizon_factor, i.stock_factor, i.onhand_days,
                    i.is_promo_eligible, i.cannibalisation_pct, i.safety_days,
+                   i.lead_time_days,
                    s.name AS store_name, s.vertical_id AS store_vertical_id,
                    s.cluster, s.channel, s.size_index
             FROM {STORE_FACT} f
@@ -421,10 +500,10 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         )
         store_money_rows = [{**row, **_store_money(row)} for row in store_rows]
 
-        lead_days = _designated_lead_times(connection)
         options = filter_options(connection)
+        ladder_by_vertical = _ladder_by_vertical(connection)
 
-    all_items = build_items(store_money_rows, lead_days)
+    all_items = build_items(store_money_rows)
     # Reference stays unscoped: it is a benchmark (avg markdown depth per
     # vertical), not a figure any filter claims to narrow, same as
     # agent_kpi_reference is never scoped for the sibling boards.
@@ -465,6 +544,10 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         "items": items,
         "stores": stores,
         "reference_by_vertical": reference,
+        # Additive: see _ladder_by_vertical()'s docstring. Empty list on an
+        # environment that has not run migration 012 -- nothing else here
+        # changes shape or values when that happens.
+        "ladder_by_vertical": ladder_by_vertical,
     }
 
 

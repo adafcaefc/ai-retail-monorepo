@@ -177,10 +177,12 @@ describe("ReplenishmentDetailDashboard", () => {
 
   it("counts reorder SKUs against the whole scope, not the visible rows", async () => {
     await renderSettled();
-    const strip = screen.getByTestId("replenishment-detail-kpis");
+    const tile = within(screen.getByTestId("replenishment-detail-kpis"))
+      .getByText("Reorder SKUs")
+      .closest("button");
 
     // Two of three, even though the grid shows only the two.
-    expect(within(strip).getByText("of 3 SKUs in scope")).toBeInTheDocument();
+    expect(within(tile).getByText("2")).toBeInTheDocument();
   });
 
   it("narrows the grid by a client-side filter without refetching", async () => {

@@ -552,7 +552,11 @@ img.ey-logo {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 6px 24px;
+  /* Only the inline padding here: this block lives in .sidebar-footer, which
+     already supplies the vertical room. A bottom padding left over from when
+     the brand sat above the module list pinned the row to the footer's top
+     edge and left a dead gap underneath. */
+  padding: 0 6px;
 }
 
 .brand-mark {
@@ -600,10 +604,13 @@ img.ey-logo {
 /* Agents are grouped by their backend folder (the `folder` in folder.agent). */
 
 /*
- * The list scrolls rather than the sidebar, so the language footer below it
- * stays pinned to the bottom instead of being pushed off-screen by a long
- * agent list. `min-height: 0` is what lets a flex child shrink below its
- * content and actually scroll.
+ * The list scrolls rather than the sidebar, so the user block below it stays
+ * pinned to the bottom instead of being pushed off-screen by a long agent
+ * list. `min-height: 0` is what lets a flex child shrink below its content
+ * and actually scroll. It deliberately does not grow: this is a grid, and a
+ * flex-grown box stretches its rows, which blows the agent buttons up to fill
+ * the sidebar whenever the list is short. .sidebar-footer takes the leftover
+ * space in an auto margin instead.
  */
 .agent-groups {
   display: grid;
@@ -775,11 +782,13 @@ img.ey-logo {
 }
 
 .sidebar-footer {
-  /* No margin-top: auto here — .agent-groups already pins this to the
-     bottom during a long list via flex-shrink (its min-height: 0 is what
-     lets it shrink below content and scroll). An auto margin additionally
-     force-pushed the footer to the sidebar's bottom edge even when the
-     list is short, leaving a large dead gap above the divider. */
+  /* Bottom edge of the sidebar, whatever sits above: nothing else in this
+     column grows, so without the auto margin the leftover space collects
+     below the footer and the user block rides up under the list. Works the
+     same for the loading and error branches, which render a skeleton or a
+     notice in place of the list — so the block does not jump once the real
+     modules arrive. Collapses to 0 when a long list fills the column. */
+  margin-top: auto;
   padding: 16px 8px 18px;
   border-top: 1px solid var(--line);
   color: var(--muted);
@@ -2037,6 +2046,22 @@ img.ey-logo {
   height: 100% !important;
 }
 
+/*
+ * Recharts portals the legend and the tooltip into the same wrapper div and
+ * gives neither a z-index, so painting order falls to DOM order — and since
+ * <Tooltip> is written before <Legend> in every chart here, the legend wins.
+ * On a board with a legend deep enough to wrap (the A4 campaign mix runs to
+ * eleven discount types) a tooltip opening over it comes out with the legend
+ * labels struck through it. Naming both settles it for every chart at once.
+ */
+.recharts-wrapper .recharts-legend-wrapper {
+  z-index: 1;
+}
+
+.recharts-wrapper .recharts-tooltip-wrapper {
+  z-index: 2;
+}
+
 .chart-card--fill .chart-note {
   flex: 0 0 auto;
   margin-top: 4px;
@@ -2191,10 +2216,6 @@ img.ey-logo {
 
   .sidebar {
     padding: 12px;
-  }
-
-  .brand {
-    padding-bottom: 10px;
   }
 
   .section-label,
@@ -7272,6 +7293,9 @@ img.ey-logo {
   /* One accent per KPI tile, matching the mockup's six-colour strip. Two hues
      have no existing token because nothing else in the app uses them; they are
      declared here rather than as globals so they stay this board's business. */
+  --risk-kpi-stockout-skus: var(--red-500);
+  /* Kept alongside: the drill-through and the simulator still address the
+     wider below-ROP measure by its own id. */
   --risk-kpi-stockout-risk-skus: var(--red-500);
   --risk-kpi-overstock-skus: #5c2d91;
   --risk-kpi-expiry-units: var(--amber-600);
@@ -9381,11 +9405,29 @@ img.ey-logo {
   font-size: 0.72rem;
 }
 
-.po-toggle {
+/*
+ * `.po-filters .po-toggle` rather than `.po-toggle` alone: the bare class lost
+ * `flex-direction` to `.po-filters label`'s column rule (class+type beats a
+ * lone class), so the checkbox rendered stacked above its own text instead of
+ * beside it — the layout bug behind why this control read as out of place.
+ */
+.po-filters .po-toggle {
   align-items: center;
   flex-direction: row;
+  flex-shrink: 0;
   gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   color: var(--ink);
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.po-toggle input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
 }
 
 .po-filter-actions {
@@ -9422,10 +9464,6 @@ img.ey-logo {
   justify-content: space-between;
   gap: var(--space-2);
   font-size: 0.62rem;
-}
-
-.po-data-note {
-  color: var(--muted);
 }
 
 .po-scope-summary {
@@ -9808,7 +9846,10 @@ button.po-kpi {
    ========================================================================== */
 
 .po-chart--tall {
-  height: 280px;
+  /* Requirement vs inbound supply plots three weekly rates in one narrow band
+     across 33 points. It needs the extra height for the curves to separate --
+     see the panel's own note on why its y-axis is framed on the data. */
+  height: 380px;
 }
 .po-chart--sim {
   height: 200px;
@@ -11024,6 +11065,24 @@ button.po-kpi {
   text-align: center;
 }
 
+.promo-chart-tooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  font-size: 0.64rem;
+}
+
+.promo-chart-tooltip em {
+  color: var(--muted);
+  font-size: 0.58rem;
+  font-style: normal;
+}
+
 /* --- calendar / campaign / margin-leaders tables --------------------------- */
 
 .promo-calendar,
@@ -11485,6 +11544,88 @@ button.po-kpi {
   cursor: not-allowed;
 }
 
+/* The ladder chart's Horizon control, in the filter bar -- mirrors
+   demand_forecasting's .demand-horizon/.demand-segmented exactly (own copy,
+   not a cross-agent import; see pricing_markdown/presentation.js's own
+   docstring on that convention). */
+.pricing-horizon {
+  min-width: max-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pricing-horizon legend {
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pricing-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
+}
+
+.pricing-segmented button {
+  min-width: 34px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.pricing-segmented button[aria-pressed="true"] {
+  background: var(--surface-strong);
+  color: var(--primary-deep);
+  box-shadow: var(--shadow-sm);
+}
+
+.pricing-segmented button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The ladder chart's AT RISK / RECOVER / WRITE-OFF / DEPTH stat strip --
+   restates the KPI tiles above (a deliberate exception for this chart, see
+   docs/A5_LADDER_CHART_DECISIONS.md). */
+.pricing-ladder-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.pricing-ladder-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pricing-ladder-stat span {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pricing-ladder-stat strong {
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
 /* --- scope and data notes ------------------------------------------------ */
 
 .pricing-scope-row {
@@ -11652,6 +11793,63 @@ button.pricing-kpi:hover {
   color: var(--ink);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.pricing-panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Chart-click filtering: a chart's own "Back to all X" reset button, and the
+   filter-shortcut pill row beneath it. Mirrors demand_forecasting's
+   .demand-panel-reset / .demand-dimension-drilldowns. */
+.pricing-chart-reset {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pricing-chart-reset:hover,
+.pricing-chart-reset:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
+}
+
+.pricing-chart-drilldowns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pricing-chart-drilldowns button {
+  max-width: 180px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricing-chart-drilldowns button:hover,
+.pricing-chart-drilldowns button:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
 }
 
 .pricing-panel-note {
@@ -12997,26 +13195,8 @@ button.assortment-kpi:hover {
   cursor: not-allowed;
 }
 
-/* ---------- Scope and data notes ---------- */
+/* ---------- Data notes ---------- */
 
-.rdet-scope-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 14px;
-}
-
-.rdet-source {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--accent-info-soft);
-  color: var(--accent-info-strong);
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.rdet-note,
 .rdet-footnote,
 .rdet-grid-note {
   color: var(--muted);
@@ -13077,11 +13257,6 @@ button.assortment-kpi:hover {
   font-size: 1.32rem;
   font-weight: 700;
   line-height: 1.15;
-}
-
-.rdet-kpi-sub {
-  color: var(--muted);
-  font-size: 0.64rem;
 }
 
 /* ---------- Detail grid ---------- */

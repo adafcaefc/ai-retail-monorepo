@@ -40,6 +40,21 @@ describe("at the workbook's own lever setting (baseline)", () => {
       expect(STATE_ORDER).toContain(result.state);
     }
   });
+
+  // Regression test: `lead_days` used to come from a designated-trade-agreement
+  // sum that didn't match the workbook's own ROP/Max for several SKUs. At rest
+  // that silently reclassified roughly half of GRC's rows the moment ANY
+  // lever moved and "Drive whole page" re-ran f01-f07 (mostly Expiry -> Low/
+  // Stockout, the state with the largest lead-time gap) — this asserts the
+  // cascade reproduces the shipped state for the WHOLE population, not a
+  // hand-picked item or a 100-row slice.
+  it("reproduces the shipped state for every item in the fixture", () => {
+    let mismatches = 0;
+    for (const item of fixture.items) {
+      if (applyLevers(item, BASELINE_LEVERS).state !== item.state) mismatches++;
+    }
+    expect(mismatches).toBe(0);
+  });
 });
 
 describe("with the demand lever moved", () => {
@@ -81,6 +96,29 @@ describe("with the markdown lever moved", () => {
     const scenario = applyLevers(item, { ...BASELINE_LEVERS, markdown: 40 });
     expect(scenario.state).toBe(baseline.state);
     expect(scenario.position).toBe(baseline.position);
+  });
+
+  // The exact scenario the lead_days regression above guards: moving ONLY
+  // the markdown lever, with "Drive whole page" re-running the full cascade,
+  // must not reclassify a single item chain-wide.
+  it("leaves every item's state untouched, chain-wide", () => {
+    let mismatches = 0;
+    for (const item of fixture.items) {
+      if (applyLevers(item, { ...BASELINE_LEVERS, markdown: 40 }).state !== item.state) mismatches++;
+    }
+    expect(mismatches).toBe(0);
+  });
+
+  // Regression test: a driven item used to have no at_risk_gross field at
+  // all, so depthWeightedAvgPct's weight (selectors.js) fell back to 0 for
+  // every driven row under an active scenario. It's f14's own first input
+  // (`gross`), so it must not move with the markdown lever itself.
+  it("exposes at_risk_gross, f14's own gross input — unaffected by the markdown lever itself", () => {
+    const item = fixture.items.find((i) => i.is_markdown_candidate);
+    const baseline = applyLevers(item, BASELINE_LEVERS);
+    const scenario = applyLevers(item, { ...BASELINE_LEVERS, markdown: 40 });
+    expect(baseline.at_risk_gross).toBeGreaterThanOrEqual(0);
+    expect(scenario.at_risk_gross).toBeCloseTo(baseline.at_risk_gross, 6);
   });
 });
 

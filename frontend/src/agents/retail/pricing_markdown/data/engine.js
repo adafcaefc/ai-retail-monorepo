@@ -120,7 +120,14 @@ export function createEngine(formulas) {
       gross,
       state,
       elasticity: item.elasticity,
-      markdown_lever: lever.markdown,
+      // f14's own formula text embeds `(25 + markdown_lever) / 25` (a delta
+      // from 25, 0 = rest). `lever.markdown` is UI-facing and reads exactly
+      // like the workbook's B6 cell instead (25 = rest) -- see
+      // LEVER_DEFINITIONS in contract.js -- so it's converted back to a
+      // delta right here, at the formula boundary, rather than touching the
+      // formula text itself (which fixture.json, the fixture builder script,
+      // and the backend's Python mirror all carry duplicated copies of).
+      markdown_lever: lever.markdown - 25,
     });
     const isCandidate = CANDIDATE_STATES.includes(state);
 
@@ -134,6 +141,13 @@ export function createEngine(formulas) {
       dos,
       state,
       at_risk_value: atRiskValue,
+      // f23's own at-risk-portion output -- NOT at_risk_value (f12, the
+      // row's full position x price for any non-Healthy state). This is the
+      // weight depthWeightedAvgPct must use (selectors.js), not
+      // at_risk_value, which overstates it 3x-20x per row. Kept alongside
+      // `gross` (the fixture builder's and dashboard.py's own field name)
+      // so a driven item and a baseline item carry the same shape.
+      at_risk_gross: gross,
       recoverable_value: recoverableValue,
       write_off_value: Math.max(0, atRiskValue - recoverableValue),
       is_markdown_candidate: isCandidate,

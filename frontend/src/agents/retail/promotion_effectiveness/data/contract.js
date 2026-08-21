@@ -165,10 +165,45 @@ export const UPLIFT_NOTE =
   "Two uplifts: the cards carry the modeled NET uplift (~26% chain); each " +
   "campaign's expected uplift is its PLANNED figure (~47% average).";
 
+/**
+ * How many weeks the Baseline-vs-promo demand chart draws each side of Today.
+ *
+ * Matches Replenishment's own 16/16 (A3 spec section 4) because the chart
+ * reads that exact curve — `synthetic.demand_store_sku_32w`, 16 real weeks
+ * each way per SKU — rather than a window sized for this board. See
+ * `REPLENISHMENT_DEMAND_BY_SKU` in `selectors.js`.
+ */
+export const DEMAND_WEEKS_BACK = 16;
+export const DEMAND_WEEKS_FORWARD = 16;
+
+/**
+ * The forward demand discount — the promo board's own version of
+ * Replenishment's `HISTORY_INBOUND_RATIO` (0.97): a flat, named ratio applied
+ * to a real figure this board did not itself measure, instead of presenting
+ * a borrowed forecast as carrying no extra uncertainty at all.
+ *
+ * Weeks past Today are Replenishment's own `demand_forecast` curve — a real,
+ * SKU-level projection, not a flat estimate — marked down a conservative 4%
+ * because it is a chain forecast standing in for a promo-specific one this
+ * workbook never modelled. With-promo demand is that discounted forecast
+ * times (1 + the scope's own measured uplift %), which is the
+ * "promo = baseline × (1 + uplift)" the chart's tooltip states outright.
+ */
+export const DEMAND_FORWARD_RATIO = 0.96;
+
+/** Printed under the Baseline-vs-promo demand chart. */
+export const DEMAND_NOTE =
+  "Baseline demand is Replenishment's own weekly curve for this scope's promo " +
+  "SKUs (synthetic.demand_store_sku_32w) — Promotion's own tables carry no " +
+  "per-week shape. Weeks past Today are modelled at 96% of that forecast, " +
+  "the same discipline Replenishment applies to its own modelled inbound " +
+  "supply. With-promo demand is that modelled baseline times (1 + the " +
+  "scope's measured uplift %).";
+
 /** Per-tile hover labels, sourced from the workbook's own formulas. */
 export const KPI_FORMULAS = Object.freeze({
-  active_promo_skus: "count(dim_item.is_promo_eligible = Y)",
-  uplift_pct: "weighted avg modeled net uplift / promo lever B17",
+  active_promo_skus: "SUM(fc11 promo SKU flag)",
+  uplift_pct: "AVG(fc12 promo net uplift %)",
   incremental_margin: "SUM(f13 incremental promotion margin)",
   roi_x: "stored KPI — no exposed investment column",
   cannib_pct: "avg dim_item.cannibalisation_pct for promo SKUs",
@@ -254,6 +289,15 @@ export function normalizePromotionDashboard(payload) {
       baseline: payload.simulation?.baseline ?? null,
       scenario: payload.simulation?.scenario ?? null,
       index: payload.simulation?.index ?? [],
+    },
+    // Additive, like Replenishment's `requirement` block: a payload that
+    // predates this chart renders an empty panel rather than crashing the board.
+    demand_uplift: {
+      weeks_back: payload.demand_uplift?.weeks_back ?? 0,
+      weeks_forward: payload.demand_uplift?.weeks_forward ?? 0,
+      points: payload.demand_uplift?.points ?? [],
+      weekly_baseline: payload.demand_uplift?.weekly_baseline ?? 0,
+      uplift_pct: payload.demand_uplift?.uplift_pct ?? 0,
     },
     reference_by_vertical: payload.reference_by_vertical ?? [],
   };

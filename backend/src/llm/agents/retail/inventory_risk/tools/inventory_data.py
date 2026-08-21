@@ -1,14 +1,18 @@
 """Agent 2 · Inventory Risk — the snapshot its chat and monitors read.
 
-Chain-net throughout, from `fact_inventory_chain_daily`: one row per item, 800
-of them, with surplus in one store already netted against shortage in another.
-The per-store table is deliberately not summed here. It is a legitimate second
-grain, roughly 1.25x larger in at-risk value, and a snapshot that carried both
-without labelling them would invite exactly the comparison that makes the two
-look like a discrepancy rather than two answers to two questions.
+ENGINE_STORE grain, from `fact_inventory_daily`: one row per SKU x store,
+16,000 of them, matching the board's KPI cards row for row. It was chain-net
+(`fact_inventory_chain_daily`, 800 netted rows) until the cards moved, and a
+chat answer drawn from the other grain is the discrepancy a reader notices
+first -- they are looking at the tile while they ask.
 
-The store block below is the one place per-store data appears, and it is named
-`store_gross_*` for that reason.
+COUNTS ARE DISTINCT SKUs, VALUES ARE ROW SUMS, exactly as `computeKpis` does
+client-side. `count(*)` here would answer "how many SKU-store rows are
+slow-moving" (755) to a question about SKUs (75).
+
+`worst_at_risk_skus` and `expiring_skus` still read the chain table: they rank
+whole SKUs by total exposure, which is a chain-net question, and ranking rows
+would fill the list with one SKU's twenty branches.
 """
 
 from __future__ import annotations
@@ -61,18 +65,31 @@ def get_inventory_risk_snapshot(
             connection,
             f"""
             SELECT c.state,
-                   count(*)                                                     AS skus,
+                   -- DISTINCT SKUs, matching the board's KPI cards. A SKU sits
+                   -- in ~20 stores and can be Slow-mover in several, so count(*)
+                   -- reports 755 slow-moving ROWS where the card reports the 75
+                   -- SKUs they belong to -- and a reader comparing the chat
+                   -- answer with the tile would find them disagreeing 10x.
+                   count(DISTINCT c.item_key)                                    AS skus,
+                   count(*)                                                      AS rows_at_store_grain,
                    -- Carried per state so the total below can count below-ROP
                    -- rows without caring which state they were labelled with.
-                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)   AS below_rop_skus,
+                   count(DISTINCT CASE WHEN c.position_qty < c.rop_qty
+                                       THEN c.item_key END)                      AS below_rop_skus,
                    coalesce(sum(CASE WHEN c.state <> 'Healthy' THEN c.position_qty * i.price ELSE 0 END), 0)
                                                                                 AS at_risk_value,
                    coalesce(sum(c.position_qty * i.price), 0)                   AS inventory_value,
                    round(avg(c.days_cover), 2)                                  AS avg_days_cover,
-                   coalesce(sum(
+                   -- ROUND per row, inside the sum, because that is what
+                   -- f22-expiry-units does: `MAX(0, ROUND(position - ads *
+                   -- shelf_life_days, 0))`. Rounding only the total drifts
+                   -- from the board by a few units per vertical -- small
+                   -- enough to look like noise and wrong for a reason nobody
+                   -- would go looking for.
+                   coalesce(sum(round(
                        CASE WHEN i.is_perishable = 1 AND c.days_cover > i.shelf_life_days
                             THEN c.position_qty - c.ads * i.shelf_life_days ELSE 0 END
-                   ), 0)                                                        AS expiry_units
+                   , 0)), 0)                                                    AS expiry_units
             FROM {PER_STORE} c
             JOIN {ITEM} i ON i.item_id = c.item_key
             JOIN {warehouse.SCHEMA}.dim_store s ON s.store_id = c.store_key
@@ -83,15 +100,43 @@ def get_inventory_risk_snapshot(
             params,
         )
 
+        # Computed in one pass rather than summed from `by_state`, because
+        # distinct-SKU counts do not add up across states: a SKU below ROP in
+        # one store and Slow-mover in another appears in both rows, and adding
+        # them would report more SKUs than the chain stocks.
+        headline = snapshot._rows(
+            connection,
+            f"""
+            SELECT count(DISTINCT c.item_key)                                    AS skus,
+                   count(*)                                                      AS rows_at_store_grain,
+                   count(DISTINCT CASE WHEN c.position_qty < c.rop_qty
+                                       THEN c.item_key END)                      AS stockout_risk_skus,
+                   count(DISTINCT CASE WHEN c.state = 'Stockout'
+                                       THEN c.item_key END)                      AS stockout_skus,
+                   count(DISTINCT CASE WHEN c.state = 'Overstock'
+                                       THEN c.item_key END)                      AS overstock_skus,
+                   count(DISTINCT CASE WHEN c.state = 'Slow-mover'
+                                       THEN c.item_key END)                      AS slow_mover_skus
+            FROM {PER_STORE} c
+            JOIN {ITEM} i ON i.item_id = c.item_key
+            JOIN {warehouse.SCHEMA}.dim_store s ON s.store_id = c.store_key
+            WHERE 1 = 1{clause}
+            """,
+            params,
+        )[0]
+
         by_vertical = snapshot._rows(
             connection,
             f"""
             SELECT i.vertical_id,
                    v.dashboard_label,
-                   count(*)                                                     AS skus,
-                   sum(CASE WHEN c.position_qty < c.rop_qty THEN 1 ELSE 0 END)   AS stockout_risk_skus,
-                   sum(CASE WHEN c.state = 'Overstock' THEN 1 ELSE 0 END)       AS overstock_skus,
-                   sum(CASE WHEN c.state = 'Slow-mover' THEN 1 ELSE 0 END)      AS slow_mover_skus,
+                   count(DISTINCT c.item_key)                                    AS skus,
+                   count(DISTINCT CASE WHEN c.position_qty < c.rop_qty
+                                       THEN c.item_key END)                      AS stockout_risk_skus,
+                   count(DISTINCT CASE WHEN c.state = 'Overstock'
+                                       THEN c.item_key END)                      AS overstock_skus,
+                   count(DISTINCT CASE WHEN c.state = 'Slow-mover'
+                                       THEN c.item_key END)                      AS slow_mover_skus,
                    coalesce(sum(c.position_qty * i.price), 0)                   AS inventory_value,
                    coalesce(sum(CASE WHEN c.state <> 'Healthy' THEN c.position_qty * i.price ELSE 0 END), 0)
                                                                                 AS at_risk_value,
@@ -182,19 +227,19 @@ def get_inventory_risk_snapshot(
         reference = snapshot.reference(connection, AGENT_ID)
 
     totals = {
-        "skus": sum(row["skus"] for row in by_state),
+        # Counts come from `headline` (one DISTINCT pass); money and units are
+        # additive and still sum from `by_state`.
+        "skus": headline["skus"],
+        "rows_at_store_grain": headline["rows_at_store_grain"],
         "inventory_value": sum(row["inventory_value"] or 0 for row in by_state),
         "at_risk_value": sum(row["at_risk_value"] or 0 for row in by_state),
         "expiry_units": sum(row["expiry_units"] or 0 for row in by_state),
-        # Summed across every state, not filtered to Stockout/Low: an Expiry row
-        # can be below ROP too, now that Expiry is tested first.
-        "stockout_risk_skus": sum(row["below_rop_skus"] or 0 for row in by_state),
-        "overstock_skus": sum(
-            row["skus"] for row in by_state if row["state"] == "Overstock"
-        ),
-        "slow_mover_skus": sum(
-            row["skus"] for row in by_state if row["state"] == "Slow-mover"
-        ),
+        # Below ROP wherever it happens, not filtered to Stockout/Low: an Expiry
+        # row can be below ROP too, now that Expiry is tested first.
+        "stockout_risk_skus": headline["stockout_risk_skus"],
+        "stockout_skus": headline["stockout_skus"],
+        "overstock_skus": headline["overstock_skus"],
+        "slow_mover_skus": headline["slow_mover_skus"],
     }
 
     return {

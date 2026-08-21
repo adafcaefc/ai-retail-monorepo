@@ -100,10 +100,29 @@ def get_pricing_markdown_snapshot(
     }
 
 
+def _distinct_by_sku(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per distinct SKU. `comp_idx` (like every SKU_Master field) is
+    constant across a SKU's ~20 store rows, so this is the population
+    SKU_Master's own AVERAGEIFS operates over -- `candidates` is a biased
+    ~20% subset (only Expiry/Overstock/Slow-mover rows) and must not be used
+    for a per-SKU figure like comp_idx.
+    """
+    seen: dict[str, dict[str, Any]] = {}
+    for item in items:
+        sku_id = item.get("sku_id")
+        if sku_id is not None and sku_id not in seen:
+            seen[sku_id] = item
+    return list(seen.values())
+
+
 def _totals(items: list[dict[str, Any]], candidates: list[dict[str, Any]]) -> dict[str, Any]:
     at_risk = sum(item["at_risk_value"] for item in candidates)
     recoverable = sum(item["recoverable_value"] for item in candidates)
-    comp_idx_values = [item["comp_idx"] for item in candidates if item.get("comp_idx")]
+    # comp_idx is a per-SKU competitiveness figure, not an at-risk metric --
+    # averaged over every distinct SKU in scope (matching SKU_Master's own
+    # AVERAGEIFS), not just markdown candidates. See _distinct_by_sku and the
+    # matching fix in frontend/.../pricing_markdown/data/selectors.js.
+    comp_idx_values = [item["comp_idx"] for item in _distinct_by_sku(items) if item.get("comp_idx")]
     return {
         "markdown_candidates": len(candidates),
         "at_risk_value": round(at_risk, 2),

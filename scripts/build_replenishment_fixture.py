@@ -99,6 +99,9 @@ sys.path.insert(0, str(REPO / "scripts"))  # `scripts/` is not a package
 import workbook_guard  # noqa: E402
 from retail_demand_model import DOW_PROFILE, check_profile  # noqa: E402
 from src.formulas import repository  # noqa: E402
+from src.llm.agents.retail.replenishment.dashboard import (  # noqa: E402
+    join_history_to_forecast,
+)
 from src.formulas.expression import evaluate, parse  # noqa: E402
 
 SOURCE = REPO / "resources" / "dbtemp" / "schema_with_data.json"
@@ -372,13 +375,17 @@ def load_demand_curves() -> dict[str, dict[str, list[float]]]:
             for column in DEMAND_HISTORY_COLUMNS + DEMAND_FORECAST_COLUMNS:
                 bucket[column] += float(row[column])
 
-    return {
-        sku_id: {
-            "demand_history": [bucket[column] for column in DEMAND_HISTORY_COLUMNS],
-            "demand_forecast": [bucket[column] for column in DEMAND_FORECAST_COLUMNS],
+    curves = {}
+    for sku_id, bucket in totals.items():
+        forecast = [bucket[column] for column in DEMAND_FORECAST_COLUMNS]
+        history = [bucket[column] for column in DEMAND_HISTORY_COLUMNS]
+        curves[sku_id] = {
+            # The same levelling the API path applies, from the same function,
+            # so the two cannot drift -- see join_history_to_forecast.
+            "demand_history": join_history_to_forecast(history, forecast),
+            "demand_forecast": forecast,
         }
-        for sku_id, bucket in totals.items()
-    }
+    return curves
 
 
 def verify_demand_curves(
@@ -416,6 +423,35 @@ def verify_demand_curves(
         raise SystemExit(1)
 
     print(f"  ok  forecast_w1 reproduces ads x week_factor for all {len(engine)} SKUs")
+
+
+def verify_demand_seam(demand_by_sku: dict[str, dict[str, list[float]]]) -> None:
+    """The step across Today must look like any other week.
+
+    `join_history_to_forecast` levels the synthetic history onto the measured
+    `forecast_w1`. This checks it worked at the grain the chart draws: the
+    chain's actual_w1 -> forecast_w1 step should sit within a whisker of its
+    actual_w2 -> actual_w1 step, rather than the 5.9x it was before.
+    """
+    history = [0.0] * 16
+    forecast = [0.0] * 16
+    for curve in demand_by_sku.values():
+        for index, value in enumerate(curve["demand_history"]):
+            history[index] += value
+        for index, value in enumerate(curve["demand_forecast"]):
+            forecast[index] += value
+
+    if history[-2] <= 0 or history[-1] <= 0:
+        return
+    prior = history[-1] / history[-2] - 1
+    seam = forecast[0] / history[-1] - 1
+    if abs(seam - prior) > 0.005:
+        print(
+            f"FAIL  the step across Today is {seam:+.2%},"
+            f" against {prior:+.2%} for the week before it"
+        )
+        raise SystemExit(1)
+    print(f"  ok  the step across Today is {seam:+.2%}, in line with {prior:+.2%}")
 
 
 def load_inbound_schedule() -> dict[str, list[float]]:
@@ -812,6 +848,8 @@ def main() -> int:
 
     demand_by_sku = load_demand_curves()
     verify_demand_curves(tables["engine"], demand_by_sku, constants["dow_sum"])
+
+    verify_demand_seam(demand_by_sku)
 
     inbound_by_sku = load_inbound_schedule()
     verify_inbound_schedule(inbound_by_sku, demand_by_sku)

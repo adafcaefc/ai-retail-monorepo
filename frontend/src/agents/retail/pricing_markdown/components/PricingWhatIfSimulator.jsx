@@ -9,12 +9,14 @@ import {
   YAxis,
 } from "recharts";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
-import { LEVER_DEFINITIONS, SIMULATION_STRIP_METRICS } from "../data/contract.js";
+import { BASELINE_LEVERS, LEVER_DEFINITIONS, SIMULATION_STRIP_METRICS } from "../data/contract.js";
 import { formatIdr, formatPercent } from "../presentation.js";
 
 /** How each metrics-strip tile reads as text — A5 spec section 9c (#sim-metrics). */
 function stripMetricValue(id, value, language) {
-  if (id === "recovery_rate_pct") return formatPercent(value / 100, language, { digits: 1 });
+  if (id === "recovery_rate_pct" || id === "avg_depth_pct") {
+    return formatPercent(value / 100, language, { digits: 1 });
+  }
   return formatIdr(value, language);
 }
 
@@ -25,14 +27,17 @@ function stripMetricValue(id, value, language) {
  * applies to f23's gross exposure. `is-inert` styling stays available for a
  * future lever this formula set genuinely does not model.
  *
- * Draft levers vs applied levers: the sliders hold draft, "Run" applies.
- * Moving a slider is an assumption, never a result.
+ * Live, not draft-and-apply: every slider move recomputes baseline/scenario
+ * (and, with "Drive whole page" on, the rest of the dashboard) immediately —
+ * `levers` IS the current value, not a draft awaiting a Run click. This is
+ * cheap because `buildPricingMarkdownDashboard` is pure/synchronous over
+ * already-fetched rows (see dashboardData.js); the parent wraps the derived
+ * dashboard in `useDeferredValue` so dragging itself stays smooth.
  */
 export default function PricingWhatIfSimulator({
   simulation,
-  draftLevers,
+  levers,
   onLeverChange,
-  onRun,
   onReset,
   onSave,
   driveWholePage,
@@ -71,12 +76,12 @@ export default function PricingWhatIfSimulator({
                 min={lever.min}
                 max={lever.max}
                 step={lever.step}
-                value={Number(draftLevers?.[lever.id] ?? 0)}
+                value={Number(levers?.[lever.id] ?? BASELINE_LEVERS[lever.id])}
                 disabled={busy}
                 onChange={(event) => onLeverChange(lever.id, Number(event.target.value))}
               />
               <output>
-                {draftLevers?.[lever.id] ?? 0}
+                {levers?.[lever.id] ?? BASELINE_LEVERS[lever.id]}
                 {lever.unit}
               </output>
             </span>
@@ -85,9 +90,6 @@ export default function PricingWhatIfSimulator({
       </div>
 
       <div className="pricing-simulator-actions">
-        <button type="button" className="pricing-button" onClick={onRun} disabled={busy}>
-          {t("Run")}
-        </button>
         <button type="button" className="pricing-button" onClick={onReset} disabled={busy}>
           {t("Reset")}
         </button>
@@ -96,7 +98,7 @@ export default function PricingWhatIfSimulator({
           className="pricing-button"
           onClick={onSave}
           disabled={!canSave || busy}
-          title={!canSave ? t("Move a lever and Run, then save") : ""}
+          title={!canSave ? t("Move a lever, then save") : ""}
         >
           {t("Save scenario")}
         </button>

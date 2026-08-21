@@ -283,8 +283,10 @@ const CHROME = {
   Next: "Berikutnya",
   Page: "Halaman",
 
-  // Replenishment (Agent 3). Order value appears twice on purpose — at cost
-  // and at retail — because the workbook states it twice and the two differ.
+  // Replenishment (Agent 3). The KPI grid's headline order value is retail
+  // only; cost still appears elsewhere on the board (route, vendor and
+  // scenario panels), and "Order value at retail" stays a separate string
+  // for the drilldown drawer's label.
   "Replenishment dashboard": "Dasbor pengisian ulang",
   "Replenishment summary": "Ringkasan pengisian ulang",
   "Unable to load Replenishment.": "Gagal memuat Pengisian Ulang.",
@@ -294,10 +296,9 @@ const CHROME = {
   "SKUs to reorder": "SKU perlu dipesan",
   "Order units": "Unit pesanan",
   "sales units": "unit jual",
-  "Order value at cost": "Nilai pesanan (harga beli)",
-  "what the PO pays": "yang dibayar PO",
+  "Order value": "Nilai pesanan",
+  "purchase plan": "rencana pembelian",
   "Order value at retail": "Nilai pesanan (harga jual)",
-  "what it is worth": "nilai jualnya",
   "Fill rate": "Tingkat pemenuhan",
   cover: "cakupan",
   Recoverable: "Bisa dihemat",
@@ -327,6 +328,7 @@ const CHROME = {
   "Show only lines to reorder": "Tampilkan hanya baris yang perlu dipesan",
   "This metric is a rate, so the breakdowns below are each group's own rate and do not sum to the headline.": "Metrik ini berupa rasio, jadi rincian di bawah adalah rasio tiap grup dan tidak menjumlah ke angka utama.",
   "The per-store grid prices at selling price and holds no vendor split, so this measure has no per-store figure to show.": "Grid per-toko memakai harga jual dan tidak memuat pembagian vendor, jadi ukuran ini tidak punya angka per toko.",
+  "Comp idx is a per-SKU competitiveness figure from SKU_Master with no store dimension, so this measure has no per-store figure to show.": "Comp idx adalah angka kompetitif per SKU dari SKU_Master tanpa dimensi toko, jadi ukuran ini tidak punya angka per toko.",
   "Current value": "Nilai saat ini",
   "across": "mencakup",
   "SKUs in scope": "SKU dalam cakupan",
@@ -401,6 +403,13 @@ const CHROME = {
   Requirement: "Kebutuhan",
   "Actual demand": "Permintaan aktual",
   "Inbound + on-hand cover": "Cakupan stok + barang masuk",
+  "Inbound supply": "Pasokan masuk",
+  modelled: "dimodelkan",
+  "On hand": "Stok di tangan",
+  "On hand after": "Stok setelah minggu ini",
+  "Builds stock by": "Menambah stok",
+  "Draws stock by": "Mengurangi stok",
+  "Shelf empty": "Stok habis",
   "Gap to cover": "Selisih yang harus ditutup",
   Covered: "Tercukupi",
   "Cover runs out at": "Cakupan habis pada",

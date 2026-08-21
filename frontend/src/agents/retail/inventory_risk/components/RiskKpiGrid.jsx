@@ -41,11 +41,21 @@ export default function RiskKpiGrid({
   const dosAbove = kpis.avg_dos > DOS_TARGET.max;
 
   const tiles = [
+    // Every count below is DISTINCT SKUs over the ENGINE_STORE grid, which is
+    // what the workbook's own dropdown reports. A SKU in trouble at six stores
+    // is one SKU here, six rows in the register beneath.
     {
+      // `Position < ROP`, the same predicate Replenishment's
+      // `skus_to_reorder` and Demand Forecasting's `stockout_risk_skus` tile
+      // count, so the three boards read the same number for "at stockout
+      // risk". The narrower Stockout-state-alone count (`stockout_skus`)
+      // still exists as data for the risk register's state filter, but is not
+      // this tile.
       id: "stockout_risk_skus",
       label: "Stockout-risk SKUs",
       value: formatUnits(kpis.stockout_risk_skus, language),
-      caption: t("Position below reorder point"),
+      caption: `${formatIdr(kpis.stockout_risk_value, language)} ${t("at risk")}`,
+      captionTone: kpis.stockout_risk_skus > 0 ? "bad" : "",
       // The mockup's KPI #1 drills into the at-risk breakdown; here that means
       // scoping the board to the two states that make up the reorder zone.
       onClick: onDrillStockoutRisk,

@@ -521,9 +521,13 @@ def test_every_stored_formula_carries_a_usable_grain() -> None:
         assert grain in GRAIN_LABELS, f"{row['id']} has unusable grain {grain!r}"
         split[grain] = split.get(grain, 0) + 1
 
+    # chain_sku gained fc11-promo-sku-flag and fc12-promo-net-uplift-pct, the
+    # per-SKU rules the A4 board reduces into its Active promo SKUs and
+    # Uplift % tiles. Both read per-SKU columns off the chain fact, so
+    # chain_sku is their grain.
     assert split == {
         "store_sku": 17,
-        "chain_sku": 6,
+        "chain_sku": 8,
         "store_roster": 3,
         "vertical": 6,
         "vendor": 1,

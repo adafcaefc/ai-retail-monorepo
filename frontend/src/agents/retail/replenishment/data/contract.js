@@ -151,7 +151,28 @@ export const REQUIREMENT_WEEKS_FORWARD = 16;
  */
 export const REQUIREMENT_NOTE =
   "Inbound follows a generated delivery calendar — the workbook records how " +
-  "much is on order but never when it arrives.";
+  "much is on order but never when it arrives, and records no past receipts " +
+  "at all, so weeks before today are drawn at a flat 97% of demand. Both " +
+  "lines are units per week; the stock they imply is in the tooltip.";
+
+/**
+ * Historical inbound, as a fraction of that week's measured demand.
+ *
+ * No table records what was actually received 16 weeks ago -- the warehouse
+ * carries no receipts at all, which is the same gap
+ * `synthetic.inbound_store_sku_16w` fills going forward. But leaving the past
+ * blank drew the inbound line only across the forecast half, and a reader
+ * comparing supply against demand got half a picture.
+ *
+ * What can be said about the past is narrow and worth stating exactly: over 16
+ * weeks the chain neither ran dry nor buried itself, so receipts must have
+ * tracked sales closely. Slightly under, because the position the board opens
+ * with today is lower than it was -- stock was drawn down, not built up. Hence
+ * a flat fraction rather than a shape: a fabricated wiggle would imply weekly
+ * receipt data nobody has, while a flat line reads as what it is, an
+ * assumption applied evenly.
+ */
+export const HISTORY_INBOUND_RATIO = 0.97;
 
 /** Shown instead when no arrival schedule reached the browser. */
 export const REQUIREMENT_FALLBACK_NOTE =
@@ -179,7 +200,6 @@ export const KPI_FORMULAS = Object.freeze({
   skus_to_reorder: "count( Position < ROP )",
   order_units: "Σ max(0, Max − Position), sales units",
   order_value_retail: "Σ order units × selling price",
-  order_value_cost: "Σ buy units × pack × trade-agreement price",
   inbound_open_po: "Σ Open PO units",
   fill_rate_pct: "SKUs at or above ROP ÷ all SKUs",
   avg_cover_days: "mean( Position ÷ ADS )",
@@ -197,19 +217,6 @@ export const LINE_FORMULAS = Object.freeze({
   order_qty_buy: "Buy = CEILING(Order ÷ pack factor)",
   order_value_cost: "Line cost = Buy × pack × trade price",
 });
-
-/**
- * The two order values, and why the board never shows one alone.
- *
- * A buyer approving the PO needs the cost. A merchandiser sizing the
- * commitment needs the retail value. They differ by roughly a fifth on this
- * dataset, so naming either one simply "order value" invites the wrong
- * decision from whichever reader was thinking of the other.
- */
-export const ORDER_VALUE_NOTE =
-  "Order value is shown twice: at selling price, which is what the A3 sheet " +
-  "totals, and at trade-agreement price, which is what the purchase order " +
-  "would actually cost.";
 
 /**
  * Whole cases, not exact requirements.
@@ -279,6 +286,7 @@ export function normalizeReplenishmentDashboard(payload) {
       // panel's caveat to the one that describes what it actually drew.
       inbound_scheduled: payload.requirement?.inbound_scheduled ?? false,
       demand_per_week: payload.requirement?.demand_per_week ?? 0,
+      inbound_per_week: payload.requirement?.inbound_per_week ?? 0,
       cover_runs_out: payload.requirement?.cover_runs_out ?? null,
       gap_at_horizon: payload.requirement?.gap_at_horizon ?? 0,
     },
