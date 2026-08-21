@@ -1,6 +1,6 @@
 import { useLanguage } from "../../../../LanguageProvider.jsx";
 import DrillDrawer, { DrillBars, DrillSection } from "../../../../components/DrillDrawer.jsx";
-import { formatIdr } from "../presentation.js";
+import { formatIdr, formatIndex, formatPercent } from "../presentation.js";
 
 /**
  * The KPI tile drill-down drawer. `history` is always null: the workbook
@@ -12,8 +12,14 @@ export default function PricingKpiDrilldown({ drilldown, onClose, onSelectSku })
 
   if (!drilldown) return null;
 
-  const format = (value) =>
-    drilldown.unit === "IDR" ? formatIdr(value, language) : Math.round(Number(value) || 0);
+  const format = (value) => {
+    if (drilldown.unit === "IDR") return formatIdr(value, language);
+    // Both stored as whole-number-scale (28.4 -> 28.4%), same convention
+    // PricingKpiGrid.jsx's formatValue uses for the headline tile.
+    if (drilldown.unit === "percent") return formatPercent(value / 100, language);
+    if (drilldown.unit === "index") return formatIndex(value, language);
+    return Math.round(Number(value) || 0);
+  };
 
   return (
     <DrillDrawer

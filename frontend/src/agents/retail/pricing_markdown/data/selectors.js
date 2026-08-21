@@ -60,8 +60,14 @@ export function candidatesOf(items) {
   return items.filter((item) => item.is_markdown_candidate);
 }
 
-/** Chain-level headline KPIs, from candidates only (spec section 11). */
-export function computeKpis(items, markdownLever = 0) {
+/**
+ * Chain-level headline KPIs (spec section 11). Every figure here is
+ * candidate-scoped EXCEPT comp_idx: that's a per-SKU competitiveness index,
+ * not an at-risk metric, so it's averaged over every distinct SKU in scope
+ * (matching SKU_Master's own AVERAGEIFS) rather than just markdown
+ * candidates — see `distinctBySku`.
+ */
+export function computeKpis(items, markdownLever = BASELINE_LEVERS.markdown) {
   const candidates = candidatesOf(items);
   const atRisk = sum(candidates, "at_risk_value");
   const recoverable = sum(candidates, "recoverable_value");
@@ -73,7 +79,7 @@ export function computeKpis(items, markdownLever = 0) {
     at_risk_value: round(atRisk),
     recoverable_value: round(recoverable),
     write_off_value: round(Math.max(0, atRisk - recoverable)),
-    comp_idx: round(mean(candidates.map((i) => i.comp_idx)), 1),
+    comp_idx: round(mean(distinctBySku(items).map((i) => i.comp_idx)), 1),
     recovery_rate_pct: atRisk ? round((recoverable / atRisk) * 100, 2) : 0,
   };
 }
@@ -104,7 +110,7 @@ export function computeKpiSparklines(items) {
 }
 
 /** At-risk/recoverable/write-off rolled up by vertical — the by-vertical chart + table. */
-export function computeByVertical(items, reference, markdownLever = 0) {
+export function computeByVertical(items, reference, markdownLever = BASELINE_LEVERS.markdown) {
   const candidates = candidatesOf(items);
   const groups = new Map();
   for (const item of candidates) {
@@ -117,6 +123,16 @@ export function computeByVertical(items, reference, markdownLever = 0) {
     g.at_risk_value += Number(item.at_risk_value) || 0;
     g.recoverable_value += Number(item.recoverable_value) || 0;
   }
+  // Comp idx per vertical, over every distinct SKU in that vertical — not
+  // just this vertical's candidates (see computeKpis).
+  const compIdxByVertical = new Map(
+    topGroups(
+      distinctBySku(items),
+      "vertical_id",
+      (rows) => round(mean(rows.map((r) => r.comp_idx)), 1),
+      Infinity,
+    ).map((g) => [g.key, g.value]),
+  );
   const refById = new Map((reference ?? []).map((r) => [r.legal_entity_id, r]));
   return [...groups.values()]
     .map((g) => {
@@ -134,7 +150,7 @@ export function computeByVertical(items, reference, markdownLever = 0) {
         at_risk_value: round(g.at_risk_value),
         recoverable_value: round(g.recoverable_value),
         write_off_value: round(Math.max(0, g.at_risk_value - g.recoverable_value)),
-        comp_idx: round(mean(g.items.map((i) => i.comp_idx)), 1),
+        comp_idx: compIdxByVertical.get(g.vertical_id) ?? 0,
       };
     })
     .sort((a, b) => b.at_risk_value - a.at_risk_value);
@@ -234,12 +250,18 @@ export function computeCandidates(items, limit = 300) {
       sku_id: i.sku_id,
       store_id: i.store_id,
       name: i.name,
+      category_id: i.category_id,
       category_label: i.category_label,
+      vertical_id: i.vertical_id,
+      comp_idx: i.comp_idx,
       state: i.state,
       position: i.position,
       dos: round(i.dos, 1),
       price: i.price,
       at_risk_value: round(i.at_risk_value),
+      // avg_depth_pct's drilldown weight (see depthWeightedAvgPct) — a
+      // different figure from at_risk_value, not a display column.
+      at_risk_gross: round(i.at_risk_gross),
       recoverable_value: round(i.recoverable_value),
       write_off_value: round(Math.max(0, i.at_risk_value - i.recoverable_value)),
       vendor: i.vendor,
@@ -287,8 +309,11 @@ export function computeSimulation(items, levers, applyLevers) {
     };
   }
 
-  const baseline = summarize(candidatesOf(items.map((i) => applyLevers(i, BASELINE_LEVERS))));
-  const scenario = summarize(candidatesOf(items.map((i) => applyLevers(i, levers))));
+  const baseline = summarize(
+    candidatesOf(items.map((i) => applyLevers(i, BASELINE_LEVERS))),
+    BASELINE_LEVERS.markdown,
+  );
+  const scenario = summarize(candidatesOf(items.map((i) => applyLevers(i, levers))), levers.markdown);
 
   const index = SIMULATION_METRICS.map((m) => {
     const b = baseline[m.id] ?? 0;
@@ -300,7 +325,7 @@ export function computeSimulation(items, levers, applyLevers) {
   return { applied: true, levers, baseline, scenario, index };
 }
 
-function summarize(items) {
+function summarize(items, markdownLever = BASELINE_LEVERS.markdown) {
   const atRisk = sum(items, "at_risk_value");
   const recoverable = sum(items, "recoverable_value");
   return {
@@ -309,6 +334,7 @@ function summarize(items) {
     recoverable_value: round(recoverable),
     write_off_value: round(Math.max(0, atRisk - recoverable)),
     recovery_rate_pct: atRisk ? round((recoverable / atRisk) * 100, 2) : 0,
+    avg_depth_pct: round(depthWeightedAvgPct(items, markdownLever), 2),
   };
 }
 
@@ -319,7 +345,22 @@ function labelFor(items, key, keyField, labelField) {
   return found?.[labelField] ?? key;
 }
 
-function mean(values) {
+/**
+ * One row per distinct SKU. `comp_idx` (like every SKU_Master field) is
+ * constant across a SKU's ~20 ENGINE_STORE rows, so this is the population
+ * SKU_Master's own AVERAGEIFS operates over — `candidatesOf(items)` is a
+ * biased ~20% subset (only Expiry/Overstock/Slow-mover rows) and must not
+ * be used for a per-SKU figure like comp_idx.
+ */
+export function distinctBySku(items) {
+  const seen = new Map();
+  for (const item of items) {
+    if (!seen.has(item.sku_id)) seen.set(item.sku_id, item);
+  }
+  return [...seen.values()];
+}
+
+export function mean(values) {
   const present = values.map((v) => Number(v) || 0);
   return present.length ? present.reduce((a, b) => a + b, 0) / present.length : 0;
 }
@@ -327,33 +368,43 @@ function mean(values) {
 /**
  * Per-item markdown depth, f14's own expression: each state's base depth
  * (`DEPTH_BY_STATE`) scaled by the `markdown` lever and capped at 65%.
- * `markdownLever` is a delta from baseline (0, matching BASELINE_LEVERS),
- * so `(25 + markdownLever) / 25` is 1 at rest — same convention f14 and
- * `engine.js`'s `f14-recoverable-at-risk-value` already use to derive
- * `recoverable_value`, so this stays consistent with it under a scenario.
+ * `markdownLever` is UI-facing and reads exactly like the workbook's "A5
+ * Markdown live" B6 cell (25 = rest, matching `BASELINE_LEVERS.markdown`),
+ * so `markdownLever / 25` is 1 at rest. `engine.js`'s
+ * `f14-recoverable-at-risk-value` binding converts this same UI value back
+ * to a delta-from-25 at its own formula boundary, so both stay consistent
+ * with each other under a scenario.
  */
 function itemDepth(item, markdownLever) {
   const base = DEPTH_BY_STATE[item.state];
   if (base == null) return null;
-  return Math.min(0.65, base * ((25 + markdownLever) / 25));
+  return Math.min(0.65, base * (markdownLever / 25));
 }
 
 /**
- * At-risk-value-weighted mean markdown depth over the given candidates —
- * `Σ(depth × at-risk value) ÷ Σ at-risk value`, the same computation
+ * At-risk-GROSS-weighted mean markdown depth over the given candidates —
+ * `Σ(depth × at-risk gross) ÷ Σ at-risk gross`, the same computation
  * `reference_by_vertical` was built from (see contract.js and
  * `scripts/build_pricing_markdown_fixture.py`), but run here on whatever
  * items are actually in scope and at whatever the markdown lever is
  * currently set to. Depth is a function of `state` (and the lever), so it
- * is as available per SKU as `at_risk_value` is — nothing about it required
+ * is as available per SKU as `at_risk_gross` is — nothing about it required
  * falling back to a vertical-level, always-unscoped figure.
+ *
+ * The weight is `at_risk_gross` (f23-markdown-at-risk-gross's own output),
+ * NOT `at_risk_value` (f12: the row's full position x price for any
+ * non-Healthy state, ENGINE_STORE's own "At-risk" column). `at_risk_value`
+ * overstates the true at-risk portion 3x-20x per row (it's the whole
+ * position's value, not the excess-over-Max/expiry-units slice a markdown
+ * actually targets) — using it here was the entire cause of this board's
+ * markdown depth reading 34% against a from-scratch, hand-checked 35%.
  */
-function depthWeightedAvgPct(items, markdownLever = 0) {
+export function depthWeightedAvgPct(items, markdownLever = BASELINE_LEVERS.markdown) {
   let totalWeight = 0;
   let totalValue = 0;
   for (const item of items) {
     const depth = itemDepth(item, markdownLever);
-    const weight = Number(item.at_risk_value) || 0;
+    const weight = Number(item.at_risk_gross) || 0;
     if (depth == null || weight <= 0) continue;
     totalWeight += weight;
     totalValue += depth * weight;
@@ -412,9 +463,10 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
   const pageIsDriven = options.driveWholePage && !isBaseline(levers);
   const drivenItems = pageIsDriven ? items.map((i) => applyLevers(i, levers)) : items;
   // Depth must agree with whichever levers actually produced `drivenItems`
-  // above -- baseline (0) when the page isn't driven, `levers.markdown`
+  // above -- baseline (BASELINE_LEVERS.markdown, 25 -- matching the
+  // workbook's own B6 default) when the page isn't driven, `levers.markdown`
   // when it is, never a mix of the two.
-  const markdownLever = pageIsDriven ? levers.markdown : 0;
+  const markdownLever = pageIsDriven ? levers.markdown : BASELINE_LEVERS.markdown;
 
   const byVertical = computeByVertical(drivenItems, reference, markdownLever);
   const kpis = computeKpis(drivenItems, markdownLever);
@@ -448,5 +500,21 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     best_actions: computeBestActions(drivenItems),
     simulation: computeSimulation(items, levers, applyLevers),
     reference_by_vertical: reference,
+    // Not part of the normalized dashboard schema (see contract.js) — these
+    // are read directly off the raw object by loadPricingMarkdownDrilldown.
+    // `markdown_lever`: so a drilldown drawer can be built with the same
+    // lever that produced the KPI tile it was opened from.
+    markdown_lever: markdownLever,
+    // `sku_index`: one row per distinct SKU in scope, for comp_idx's
+    // drilldown — that metric averages over every SKU, not just markdown
+    // candidates (see computeKpis), so it can't reuse `candidates` below.
+    sku_index: distinctBySku(drivenItems).map((i) => ({
+      sku_id: i.sku_id,
+      name: i.name,
+      category_id: i.category_id,
+      category_label: i.category_label,
+      vertical_id: i.vertical_id,
+      comp_idx: i.comp_idx,
+    })),
   };
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { useLanguage } from "../../../LanguageProvider.jsx";
 import DimensionCharts from "./components/DimensionCharts.jsx";
@@ -17,7 +17,11 @@ import PricingScenarioComparison from "./components/PricingScenarioComparison.js
 import PricingWhatIfSimulator from "./components/PricingWhatIfSimulator.jsx";
 import SuggestedBestAction from "./components/SuggestedBestAction.jsx";
 import { ALL, BASELINE_LEVERS, CANDIDATE_SCOPE_NOTE, DEFAULT_SCOPE, GRAIN_NOTE } from "./data/contract.js";
-import { loadPricingMarkdownDashboard, loadPricingMarkdownDrilldown } from "./data/dashboardData.js";
+import {
+  buildPricingMarkdownDashboard,
+  loadPricingMarkdownDrilldown,
+  loadPricingMarkdownRows,
+} from "./data/dashboardData.js";
 
 const MAX_SAVED_SCENARIOS = 4;
 
@@ -44,17 +48,18 @@ function optionLabel(options, value) {
 export default function PricingMarkdownDashboard() {
   const { t } = useLanguage();
   const [scope, setScope] = useState({ ...DEFAULT_SCOPE });
-  const [dashboard, setDashboard] = useState(null);
+  const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
 
-  const [draftLevers, setDraftLevers] = useState({ ...BASELINE_LEVERS });
-  const [appliedLevers, setAppliedLevers] = useState({ ...BASELINE_LEVERS });
+  const [levers, setLevers] = useState({ ...BASELINE_LEVERS });
   const [driveWholePage, setDriveWholePage] = useState(true);
   const [scenarios, setScenarios] = useState([]);
   const [drilldown, setDrilldown] = useState(null);
 
+  // Fetch depends only on scope: serializeScope never encodes levers, so a
+  // slider move never needs a network round-trip (see dashboardData.js).
   useEffect(() => {
     let cancelled = false;
 
@@ -62,11 +67,8 @@ export default function PricingMarkdownDashboard() {
       setLoading(true);
       setError("");
       try {
-        const result = await loadPricingMarkdownDashboard(scope, {
-          levers: appliedLevers,
-          driveWholePage,
-        });
-        if (!cancelled) setDashboard(result);
+        const result = await loadPricingMarkdownRows(scope);
+        if (!cancelled) setRows(result);
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError.message || t("Unable to load Pricing & Markdown."));
@@ -80,7 +82,29 @@ export default function PricingMarkdownDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [scope, appliedLevers, driveWholePage, refreshToken, t]);
+  }, [scope, refreshToken, t]);
+
+  // Deferred so dragging a lever stays smooth even though the rebuild below
+  // touches up to 16,000 rows — the simulator and (with "Drive whole page")
+  // the rest of the dashboard still update live, no Run click, just a frame
+  // behind the input rather than blocking it.
+  const deferredLevers = useDeferredValue(levers);
+
+  const { dashboard, buildError } = useMemo(() => {
+    if (!rows) return { dashboard: null, buildError: null };
+    try {
+      return {
+        dashboard: buildPricingMarkdownDashboard(rows, scope, { levers: deferredLevers, driveWholePage }),
+        buildError: null,
+      };
+    } catch (buildErr) {
+      return { dashboard: null, buildError: buildErr.message || t("Unable to load Pricing & Markdown.") };
+    }
+  }, [rows, scope, deferredLevers, driveWholePage, t]);
+
+  useEffect(() => {
+    if (buildError) setError(buildError);
+  }, [buildError]);
 
   const patchScope = useCallback((patch) => {
     setScope((current) => ({ ...current, ...patch }));
@@ -96,7 +120,7 @@ export default function PricingMarkdownDashboard() {
     async (metricId) => {
       try {
         const built = await loadPricingMarkdownDrilldown(scope, metricId, {
-          levers: appliedLevers,
+          levers: deferredLevers,
           driveWholePage,
         });
         setDrilldown(built);
@@ -105,12 +129,11 @@ export default function PricingMarkdownDashboard() {
         setError(loadError.message || t("Unable to open the drill-down."));
       }
     },
-    [appliedLevers, driveWholePage, scope, t],
+    [deferredLevers, driveWholePage, scope, t],
   );
 
   const resetLevers = useCallback(() => {
-    setDraftLevers({ ...BASELINE_LEVERS });
-    setAppliedLevers({ ...BASELINE_LEVERS });
+    setLevers({ ...BASELINE_LEVERS });
   }, []);
 
   const saveScenario = useCallback(() => {
@@ -238,9 +261,8 @@ export default function PricingMarkdownDashboard() {
 
       <PricingWhatIfSimulator
         simulation={dashboard.simulation}
-        draftLevers={draftLevers}
-        onLeverChange={(id, value) => setDraftLevers((current) => ({ ...current, [id]: value }))}
-        onRun={() => setAppliedLevers({ ...draftLevers })}
+        levers={levers}
+        onLeverChange={(id, value) => setLevers((current) => ({ ...current, [id]: value }))}
         onSave={saveScenario}
         onReset={resetLevers}
         driveWholePage={driveWholePage}

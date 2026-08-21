@@ -95,13 +95,26 @@ describe("PricingMarkdownDashboard", () => {
     });
   });
 
-  it("running the What-If simulator updates the paired index chart and shows the scenario banner", async () => {
+  it("moving a What-If lever updates the scenario banner live, with no Run click", async () => {
     await renderSettled();
 
     const demandSlider = screen.getByRole("slider", { name: /Demand uplift/i });
     fireEvent.change(demandSlider, { target: { value: "30" } });
-    fireEvent.click(screen.getByRole("button", { name: "Run" }));
 
     expect(await screen.findByText(/Scenario active/)).toBeInTheDocument();
+  });
+
+  it("moving the Markdown depth lever moves the Avg depth % KPI tile, live", async () => {
+    await renderSettled();
+
+    const before = kpiTile("Avg depth %").querySelector(".pricing-kpi-value").textContent;
+
+    const markdownSlider = screen.getByRole("slider", { name: /Markdown depth/i });
+    fireEvent.change(markdownSlider, { target: { value: "60" } });
+
+    await waitFor(() => {
+      const after = kpiTile("Avg depth %").querySelector(".pricing-kpi-value").textContent;
+      expect(after).not.toBe(before);
+    });
   });
 });

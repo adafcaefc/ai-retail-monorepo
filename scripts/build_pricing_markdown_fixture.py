@@ -183,30 +183,31 @@ def _num(value: Any) -> float:
         return 0.0
 
 
-def designated_lead_times(trade_agreements: list[dict[str, Any]]) -> dict[str, float]:
-    """Vendor lead time per item, from the DESIGNATED trade agreement.
+def sku_master_lead_times(sku_master: list[dict[str, Any]]) -> dict[str, float]:
+    """Vendor lead time per item, from `SKU_Master.lead_d`.
 
-    NOT `sku_master.lead_d`. The workbook's own ROP formula (ENGINE!G, read
-    directly from the file) is:
-
-        ROUND(ADS * (MAX(1, SUMIFS('Trade Agreement'!H, item, designated="Y")
-                            + Constants!B20)
-                     + MAX(0, SKU_Master.safety_d + Constants!B21)))
-
-    -- the lead term is the trade agreement's, which is audit fix T-05/T-06
+    A prior version of this function summed the DESIGNATED trade agreement's
+    lead time instead (`SUMIFS('Trade Agreement'!H, item, designated="Y")`),
+    on the strength of a docstring claiming that was audit fix T-05/T-06
     ("ROP pakai lead statis di SKU master, bukan lead vendor") already ported
-    into this workbook. Feeding f05 `sku_master.lead_d` instead reproduces
-    neither ROP nor Max, so the browser engine's re-derived state would
-    disagree with the shipped one the moment a lever moves.
+    into this workbook, and that `sku_master.lead_d` reproduced neither ROP
+    nor Max.
 
-    SUMIFS, not a lookup, because that is what the workbook does.
+    That claim does not hold for the currently pinned workbook extraction.
+    `verify_reorder_inputs()` — which re-derives every stored ROP/Max via
+    f05/f06 and insists they match — FAILS for 7 SKUs against the
+    trade-agreement sum (e.g. GRC-091: designated vendor's lead is 6, but the
+    workbook's own shipped ROP can only be reproduced with lead=2) and PASSES
+    with zero failures, for every row, using `sku_master.lead_d` instead.
+    Feeding the wrong source here doesn't touch any shipped/baseline figure
+    (state/position/rop/max are read straight off ENGINE_STORE, never
+    recomputed here) but silently wrecks the browser's What-If cascade the
+    moment ANY lever moves and "Drive whole page" re-runs f01-f07: roughly
+    half of GRC's rows reclassified state, mostly Expiry SKUs (the largest
+    lead-time gap) flipping to Low/Stockout and dropping out of the markdown
+    candidate population entirely.
     """
-    totals: dict[str, float] = {}
-    for row in trade_agreements:
-        if str(row.get("designated", "")).strip().upper() != "Y":
-            continue
-        totals[row["item"]] = totals.get(row["item"], 0.0) + _num(row.get("lead_time_d"))
-    return totals
+    return {row["sku_id"]: _num(row.get("lead_d")) for row in sku_master}
 
 
 def verify_reorder_inputs(
@@ -318,6 +319,7 @@ def build_items(
         shelf_life_days = _num(master.get("expiry_d"))
         elasticity = _num(master.get("elasticity"))
         at_risk_value = _num(row["at_risk"])
+        perishable = row.get("perish", master.get("perishable", "N"))
 
         gross = evaluate(
             asts["f23-markdown-at-risk-gross"],
@@ -332,6 +334,10 @@ def build_items(
             {"gross": gross, "state": state, "elasticity": elasticity, "markdown_lever": 0},
         )
         write_off_value = max(0.0, at_risk_value - recoverable_value)
+        expiry_units = evaluate(
+            asts["f22-expiry-units"],
+            {"perishable": perishable, "position": position, "ads": ads, "shelf_life_days": shelf_life_days},
+        )
 
         # This row already IS one store, so f01's store_size is that store's
         # own size_index (not the vertical total a chain-net item would need),
@@ -363,10 +369,24 @@ def build_items(
                 "at_risk_value": round(at_risk_value, 2),
                 "recoverable_value": round(recoverable_value, 2),
                 "write_off_value": round(write_off_value, 2),
-                "expiry_units": _num(row.get("expiry")),
+                # f23's own "at-risk portion" output -- NOT the same figure as
+                # at_risk_value (f12, the row's full position x price for any
+                # non-Healthy state). This is the weight avg_depth_pct must
+                # use (see build_reference() and selectors.js's
+                # depthWeightedAvgPct): at_risk_value overstates it 3x-20x per
+                # row depending on state, which is exactly what made this
+                # board's markdown depth read 34% against a from-scratch
+                # 35% recompute.
+                "at_risk_gross": round(gross, 2),
+                # ENGINE_STORE's own "expiry" column holds each SKU's
+                # shelf-life-days (a SKU_Master constant), not per-store
+                # UnitsExp -- a mislabeled-column bug in the workbook extract.
+                # Computed via f22 instead, the same way engine.js's
+                # applyLevers() already does for a driven item.
+                "expiry_units": round(expiry_units, 2),
                 "shelf_life_days": shelf_life_days,
-                "is_perishable": str(row.get("perish", master.get("perishable", "N"))).strip().upper() == "Y",
-                "perishable": row.get("perish", master.get("perishable", "N")),
+                "is_perishable": str(perishable).strip().upper() == "Y",
+                "perishable": perishable,
                 "growth": _num(master.get("growth")),
                 "comp_idx": _num(master.get("comp_idx")),
                 # f14-recoverable-at-risk-value's own input, for the browser
@@ -390,8 +410,7 @@ def build_items(
                 "onhand_days": _num(master.get("onhand_days")),
                 "promo_eligible": master.get("promo", "N"),
                 "promo_depth": _num(master.get("cannib_pct")),
-                # The designated trade agreement's lead time -- see
-                # designated_lead_times() for why this is not sku_master.lead_d.
+                # SKU_Master.lead_d -- see sku_master_lead_times() for why.
                 "lead_days": lead_times.get(row["sku_id"], 0.0),
                 "safety_days": _num(master.get("safety_d")),
             }
@@ -474,7 +493,7 @@ def build_reference(
     items: list[dict[str, Any]],
     verticals: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Avg markdown depth per vertical, weighted by candidate at-risk value.
+    """Avg markdown depth per vertical, weighted by candidate at-risk GROSS.
 
     Previously this read avg_depth_pct verbatim off the workbook's "A5
     Pricing & Markdown" sheet -- the same stale-hardcode issue AUDIT Root
@@ -486,7 +505,13 @@ def build_reference(
     backend/src/llm/agents/retail/pricing_markdown/dashboard.py's own
     build_reference() already does for the live path, weighting f14's
     baseline depth constants (DEPTH_BY_STATE) by each candidate SKU's
-    at_risk_value.
+    at_risk_gross.
+
+    The weight is `at_risk_gross` (f23's own at-risk-portion output), not
+    `at_risk_value` (f12's full position value for any non-Healthy row) --
+    the latter overstates the weight 3x-20x per row and was the entire
+    source of a 34%-vs-35% gap against a from-scratch, hand-checked
+    recompute of this exact figure.
     """
     label_by_vertical = {
         row["vertical_id"]: row.get("dashboard_label") or row.get("vertical") or row["vertical_id"]
@@ -497,7 +522,7 @@ def build_reference(
     for item in items:
         if not item["is_markdown_candidate"]:
             continue
-        weight = item["at_risk_value"]
+        weight = item["at_risk_gross"]
         depth = DEPTH_BY_STATE.get(item["state"])
         if depth is None or weight <= 0:
             continue
@@ -602,7 +627,7 @@ def main() -> int:
             print(f"      {line}")
         return 1
 
-    lead_times = designated_lead_times(tables["trade_agreements"])
+    lead_times = sku_master_lead_times(tables["sku_master"])
     reorder_failures = verify_reorder_inputs(
         tables["engine"],
         {r["sku_id"]: r for r in tables["sku_master"]},

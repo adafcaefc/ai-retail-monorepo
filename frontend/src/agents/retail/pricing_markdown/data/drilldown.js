@@ -5,7 +5,8 @@
  * largest contributing SKUs.
  */
 
-import { KPI_FORMULAS } from "./contract.js";
+import { BASELINE_LEVERS, KPI_FORMULAS } from "./contract.js";
+import { depthWeightedAvgPct, mean } from "./selectors.js";
 
 export const TOP_SKU_COUNT = 6;
 
@@ -25,22 +26,30 @@ export function drillableMetrics() {
 /**
  * @param {string} metricId
  * @param {object[]} items  Markdown candidates in scope.
+ * @param {object} [context]  Extra inputs a reducer may need (e.g. the
+ *   markdown lever), passed through unchanged to every `reduce` call. The
+ *   three original (additive) reducers ignore it.
  */
-export function buildDrilldown(metricId, items) {
+export function buildDrilldown(metricId, items, context = {}) {
   const metric = drilldownMetric(metricId);
-  const total = round(metric.reduce(items));
+  const digits = metric.digits ?? 0;
+  const total = round(metric.reduce(items, context), digits);
 
-  const byCategory = topGroups(items, "category_id", (rows) => round(metric.reduce(rows))).map((g) => ({
-    category_id: g.key,
-    label: labelFor(items, g.key, "category_id", "category_label"),
-    value: g.value,
-  }));
+  const byCategory = topGroups(items, "category_id", (rows) => round(metric.reduce(rows, context), digits)).map(
+    (g) => ({
+      category_id: g.key,
+      label: labelFor(items, g.key, "category_id", "category_label"),
+      value: g.value,
+    }),
+  );
 
-  const byVertical = topGroups(items, "vertical_id", (rows) => round(metric.reduce(rows))).map((g) => ({
-    vertical_id: g.key,
-    label: g.key,
-    value: g.value,
-  }));
+  const byVertical = topGroups(items, "vertical_id", (rows) => round(metric.reduce(rows, context), digits)).map(
+    (g) => ({
+      vertical_id: g.key,
+      label: g.key,
+      value: g.value,
+    }),
+  );
 
   // Named SKUs, not (SKU, store) rows: `items` is one row per ENGINE_STORE
   // record, so a single SKU present at several candidate stores is grouped
@@ -48,15 +57,18 @@ export function buildDrilldown(metricId, items) {
   // by_category/by_vertical above already group many rows into one label.
   // Without this, "Top contributing SKUs" could fill its six slots with the
   // same SKU repeated at different stores.
-  const topSkus = topGroups(items, "sku_id", (rows) => round(metric.reduce(rows)), TOP_SKU_COUNT).map(
-    (g) => ({
-      sku_id: g.key,
-      name: labelFor(items, g.key, "sku_id", "name"),
-      vertical_id: labelFor(items, g.key, "sku_id", "vertical_id"),
-      category_label: labelFor(items, g.key, "sku_id", "category_label"),
-      value: g.value,
-    }),
-  );
+  const topSkus = topGroups(
+    items,
+    "sku_id",
+    (rows) => round(metric.reduce(rows, context), digits),
+    TOP_SKU_COUNT,
+  ).map((g) => ({
+    sku_id: g.key,
+    name: labelFor(items, g.key, "sku_id", "name"),
+    vertical_id: labelFor(items, g.key, "sku_id", "vertical_id"),
+    category_label: labelFor(items, g.key, "sku_id", "category_label"),
+    value: g.value,
+  }));
 
   return {
     id: metricId,
@@ -92,6 +104,26 @@ const METRICS = {
     unit: "IDR",
     additive: true,
     reduce: (rows) => sum(rows, "at_risk_value") - sum(rows, "recoverable_value"),
+  },
+  // A mean cannot be split across categories/verticals and added back up —
+  // each breakdown row below is that group's own average, not a share of the
+  // headline. See PricingKpiDrilldown.jsx's `additive` subtitle.
+  avg_depth_pct: {
+    label: "Avg depth %",
+    unit: "percent",
+    additive: false,
+    digits: 2,
+    // Same at-risk-value-weighted formula as the KPI tile (selectors.js's
+    // `computeKpis`), re-run on whatever subset of rows this call is scoped
+    // to, at the lever the tile itself was showing when the drawer opened.
+    reduce: (rows, { markdownLever = BASELINE_LEVERS.markdown } = {}) => depthWeightedAvgPct(rows, markdownLever),
+  },
+  comp_idx: {
+    label: "Comp idx",
+    unit: "index",
+    additive: false,
+    digits: 1,
+    reduce: (rows) => mean(rows.map((r) => r.comp_idx)),
   },
 };
 

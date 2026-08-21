@@ -70,7 +70,6 @@ STORE_FACT = f"{SCHEMA}.fact_inventory_daily"
 ITEM = f"{SCHEMA}.dim_item"
 STORE_DIM = f"{SCHEMA}.dim_store"
 VERTICAL = f"{SCHEMA}.dim_vertical"
-TRADE_AGREEMENT = f"{SCHEMA}.trade_agreement"
 
 # Formulas the browser What-If engine re-evaluates (see
 # frontend/.../pricing_markdown/data/engine.js's REQUIRED_FORMULAS). f12, f23
@@ -213,15 +212,15 @@ def classify(state: str | None, is_candidate: bool, open_po: float) -> str | Non
     return BEST_ACTION_BY_STATE.get(state)
 
 
-def build_items(
-    store_money_rows: list[dict[str, Any]],
-    lead_days: dict[str, float],
-) -> list[dict[str, Any]]:
+def build_items(store_money_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """One row per `fact_inventory_daily` record (SKU x store) -- this board's
     real grain, matching `scripts/build_pricing_markdown_fixture.py`'s own
     rewrite to the same grain. No SKU-level rollup: candidacy, state, and
     every money figure are this row's own, already merged in via
-    `_store_money`.
+    `_store_money`. `lead_time_days` comes straight off the `dim_item` join
+    in `build()`'s query, same as `safety_days`/`shelf_life_days` below --
+    see the removed `_designated_lead_times()` for why that used to be a
+    separate query against the wrong table.
     """
     items = []
     for row in store_money_rows:
@@ -252,6 +251,13 @@ def build_items(
                 "price": _float(row["price"]),
                 "inv_value": round(row["inventory_value"], 2),
                 "at_risk_value": round(row["at_risk"], 2),
+                # f23's own at-risk-portion output -- NOT at_risk_value (f12,
+                # the row's full position x price for any non-Healthy
+                # state). avg_depth_pct's weight, both here and in
+                # build_reference() below -- at_risk_value overstates it
+                # 3x-20x per row and must not be used as a depth weight. See
+                # the matching fix in scripts/build_pricing_markdown_fixture.py.
+                "at_risk_gross": round(row["gross"], 2),
                 "recoverable_value": round(row["recoverable"], 2),
                 "write_off_value": round(max(0.0, row["at_risk"] - row["recoverable"]), 2),
                 "expiry_units": round(row["expiry_units"], 2),
@@ -277,9 +283,9 @@ def build_items(
                 "onhand_days": _float(row["onhand_days"]),
                 "promo_eligible": "Y" if row["is_promo_eligible"] else "N",
                 "promo_depth": _float(row["cannibalisation_pct"]),
-                # The designated trade agreement's lead time, not
-                # dim_item.lead_time_days -- see the lead_days query below.
-                "lead_days": lead_days.get(row["item_key"], 0.0),
+                # dim_item.lead_time_days, seeded from SKU_Master.lead_d --
+                # see build_items()'s own docstring for why.
+                "lead_days": _float(row["lead_time_days"]),
                 "safety_days": _float(row["safety_days"]),
                 "best_action_tab": best_action_tab,
                 "recommendation": RECOMMENDATION_BY_TAB.get(best_action_tab, "Hold price"),
@@ -331,7 +337,7 @@ def build_stores(store_money_rows: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Avg markdown depth per vertical, weighted by candidate at-risk value.
+    """Avg markdown depth per vertical, weighted by candidate at-risk GROSS.
 
     No `retail.agent_kpi_reference` row exists for this agent (the seeder's
     `build_agent_kpi_reference` only wires agents 1-4), so this is computed
@@ -340,6 +346,12 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     the fixture's `avg_depth_pct` was standing in for as reference-only
     context. `items` here is the FULL, unscoped population, matching how
     `agent_kpi_reference` is never scoped either.
+
+    The weight is `at_risk_gross` (f23's own at-risk-portion output), not
+    `at_risk_value` (f12's full position value for any non-Healthy row) --
+    the latter overstates the weight 3x-20x per row and was the entire
+    source of a 34%-vs-35% gap against a from-scratch, hand-checked
+    recompute of this exact figure. See build_items()'s `_store_money`.
     """
     label_by_vertical = {row["value"]: row["label"] for row in legal_entities}
     depth_by_state = {"Expiry": 0.4, "Overstock": 0.25, "Slow-mover": 0.3}
@@ -348,7 +360,7 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     for item in items:
         if not item["is_markdown_candidate"]:
             continue
-        weight = item["at_risk_value"]
+        weight = item["at_risk_gross"]
         depth = depth_by_state.get(item["state"])
         if depth is None or weight <= 0:
             continue
@@ -366,26 +378,6 @@ def build_reference(items: list[dict[str, Any]], legal_entities: list[dict[str, 
     ]
     reference.sort(key=lambda r: r["legal_entity_id"])
     return reference
-
-
-def _designated_lead_times(connection: Any) -> dict[str, float]:
-    """Vendor lead time per item, from the DESIGNATED trade agreement.
-
-    NOT dim_item.lead_time_days -- audit fix T-05/T-06 ("ROP pakai lead
-    statis di SKU master, bukan lead vendor"). See
-    scripts/build_pricing_markdown_fixture.py::designated_lead_times() for
-    the full account; this is the same SUMIFS, in SQL.
-    """
-    rows = _rows(
-        connection,
-        f"""
-        SELECT item_key, sum(lead_time_days) AS lead_days
-        FROM {TRADE_AGREEMENT}
-        WHERE is_designated = 1
-        GROUP BY item_key
-        """,
-    )
-    return {row["item_key"]: _float(row["lead_days"]) for row in rows}
 
 
 def build(scope: DashboardScope | None = None) -> dict[str, Any]:
@@ -408,6 +400,7 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
                    i.elasticity, i.base_ads, i.seasonality_index,
                    i.arch_horizon_factor, i.stock_factor, i.onhand_days,
                    i.is_promo_eligible, i.cannibalisation_pct, i.safety_days,
+                   i.lead_time_days,
                    s.name AS store_name, s.vertical_id AS store_vertical_id,
                    s.cluster, s.channel, s.size_index
             FROM {STORE_FACT} f
@@ -421,10 +414,9 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         )
         store_money_rows = [{**row, **_store_money(row)} for row in store_rows]
 
-        lead_days = _designated_lead_times(connection)
         options = filter_options(connection)
 
-    all_items = build_items(store_money_rows, lead_days)
+    all_items = build_items(store_money_rows)
     # Reference stays unscoped: it is a benchmark (avg markdown depth per
     # vertical), not a figure any filter claims to narrow, same as
     # agent_kpi_reference is never scoped for the sibling boards.
