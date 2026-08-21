@@ -41,13 +41,15 @@ function kpiTile(label) {
 }
 
 describe("PricingMarkdownDashboard", () => {
-  it("renders six KPIs, the main chart, both custom charts, and every dimension panel", async () => {
+  it("renders six KPIs, the main chart, the ladder chart, and every dimension panel", async () => {
     await renderSettled();
 
     expect(document.querySelectorAll(".pricing-kpi")).toHaveLength(6);
     expect(screen.getByText("At-risk value vs recoverable markdown")).toBeInTheDocument();
-    expect(document.querySelector('[data-testid="pricing-chart-rescue-waterfall"]')).toBeInTheDocument();
-    expect(document.querySelector('[data-testid="pricing-chart-elasticity-depth"]')).toBeInTheDocument();
+    // Rescue waterfall / Elasticity vs depth are commented out on the
+    // dashboard (PricingMarkdownDashboard.jsx) per request -- not rendered.
+    expect(document.querySelector('[data-testid="pricing-chart-rescue-waterfall"]')).not.toBeInTheDocument();
+    expect(document.querySelector('[data-testid="pricing-chart-elasticity-depth"]')).not.toBeInTheDocument();
     expect(document.querySelector('[data-testid="pricing-chart-ladder-vs-no-action"]')).toBeInTheDocument();
     expect(document.querySelector(".pricing-ladder-stats")).toBeInTheDocument();
     expect(screen.getByText("At-risk value by vertical")).toBeInTheDocument();

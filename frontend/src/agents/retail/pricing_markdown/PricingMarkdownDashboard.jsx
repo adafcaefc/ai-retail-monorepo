@@ -14,9 +14,12 @@ import PricingKpiGrid from "./components/PricingKpiGrid.jsx";
 import PricingMarkdownFilters from "./components/PricingMarkdownFilters.jsx";
 import PricingMarkdownSkeleton from "./components/PricingMarkdownSkeleton.jsx";
 import {
-  ElasticityVsDepthChart,
+  // ElasticityVsDepthChart, RescueWaterfallChart -- commented out below,
+  // per request, alongside their JSX. Keep the exports intact so this is a
+  // one-line uncomment away from coming back.
+  // ElasticityVsDepthChart,
   MarkdownLadderChart,
-  RescueWaterfallChart,
+  // RescueWaterfallChart,
 } from "./components/PricingRescueCharts.jsx";
 import PricingScenarioComparison from "./components/PricingScenarioComparison.jsx";
 import PricingWhatIfSimulator from "./components/PricingWhatIfSimulator.jsx";
@@ -274,10 +277,12 @@ export default function PricingMarkdownDashboard() {
 
       <MarkdownLadderChart rows={dashboard.ladder_history} horizon={ladderHorizon} kpis={dashboard.kpis} />
 
+      {/* Rescue waterfall / Elasticity vs depth — commented out per request.
       <div className="pricing-chart-grid">
         <RescueWaterfallChart kpis={dashboard.kpis} />
         <ElasticityVsDepthChart rows={dashboard.candidates} />
       </div>
+      */}
 
       <div className="pricing-chart-grid">
         <AtRiskByVerticalChart rows={dashboard.by_vertical} selected={scope.legal_entity_id} onSelect={selectVertical} />
