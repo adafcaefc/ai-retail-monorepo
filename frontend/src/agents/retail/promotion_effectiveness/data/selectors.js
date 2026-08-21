@@ -11,6 +11,7 @@
  * count and sum; they never re-decide a campaign's tab.
  */
 
+import { evaluate, parse } from "../../../../formulas/expression.js";
 import {
   ALL,
   BASELINE_LEVERS,
@@ -18,6 +19,48 @@ import {
   SIMULATION_METRICS,
 } from "./contract.js";
 import { atStore, createEngine, isBaseline } from "./engine.js";
+
+/**
+ * The two KPI rules the catalogue states per SKU, bound once per build.
+ *
+ * The expression language has no aggregate functions, so a rule says what one
+ * SKU contributes and the reduction happens here: fc11 is summed to count
+ * promo SKUs, fc12 is averaged for Uplift %. That split is deliberate, not a
+ * workaround — a per-row rule composes under any scope filter, so the Category
+ * and Store filters narrow these tiles for free, which a stored vertical-grain
+ * KPI could never do.
+ *
+ * Returns null when the payload predates these formulas (an older fixture, or
+ * a backend that has not been redeployed). Callers fall back to the previous
+ * behaviour rather than crashing the board — the fixture is a build artifact
+ * and is allowed to lag the catalogue.
+ */
+function bindKpiFormulas(formulas) {
+  const flag = formulas?.["fc11-promo-sku-flag"];
+  const uplift = formulas?.["fc12-promo-net-uplift-pct"];
+  if (!flag || !uplift) return null;
+
+  const flagAst = parse(flag);
+  const upliftAst = parse(uplift);
+  return {
+    /** 1 when the SKU counts towards the Active promo SKUs tile, else 0. */
+    isPromo: (item) =>
+      Number(evaluate(flagAst, { promo_eligible: item.promo_eligible })) || 0,
+    /**
+     * One SKU's net promo uplift, already a percentage (25.79 meaning 25.79%).
+     * The fixture carries `cannibalisation_pct` as a DISPLAY percentage while
+     * the formula takes a FRACTION — the same conversion `engine.js` makes at
+     * f13's boundary, and for the same reason.
+     */
+    upliftPct: (item) =>
+      Number(
+        evaluate(upliftAst, {
+          promo_eligible: item.promo_eligible,
+          cannibalization: (Number(item.cannibalisation_pct) || 0) / 100,
+        }),
+      ) || 0,
+  };
+}
 
 /**
  * No per-store fact join needed to scope this board to one store. `f01` is
@@ -99,23 +142,40 @@ export const sum = (rows, key) =>
   rows.reduce((total, row) => total + (Number(row?.[key]) || 0), 0);
 
 /**
- * Chain-level headline KPIs. `uplift_pct` and `roi_x` are STORED workbook KPIs:
- * they are not derivable from the per-SKU chain rows (the workbook computes
- * them at vertical grain on the A4 Promotion sheet), so they arrive here as 0
- * and are overwritten from `reference_by_vertical` in `buildDashboardFromFixture`.
+ * Chain-level headline KPIs.
  *
- * The genuinely-computed fields are: active_promo_skus (count of promo-eligible
- * items), incremental_margin (sum of f13), cannib_pct / funding_pct (means over
- * promo SKUs), and the campaign counts.
+ * `roi_x` is a STORED workbook KPI: no promo-investment column is exposed
+ * anywhere in the schema, and the stored figure does not reconcile to any
+ * combination of the columns that are (it does not even rank with them —
+ * Grocery holds the highest stored ROI on the lowest mean margin). So it
+ * arrives here as 0 and is overwritten from `reference_by_vertical` in
+ * `buildDashboardFromFixture`.
+ *
+ * `uplift_pct` used to be read the same way. It no longer is: fc12 states the
+ * rule per SKU and reproduces the A4 Promotion sheet's stored figure exactly
+ * at vertical grain, because the rule is linear in cannibalisation and the
+ * sheet's value is the mean over the vertical's promo SKUs. Computing it buys
+ * the Category and Store filters, which a vertical-grain read cannot narrow.
+ *
+ * `active_promo_skus` is fc11 summed rather than `items.length`, so the
+ * eligibility predicate lives in the catalogue beside the one f13 guards on
+ * instead of being implied by which rows the query returned.
+ *
+ * `kpi` is the binding from `bindKpiFormulas`, or null on a payload that
+ * predates those formulas — in which case both fall back to their previous
+ * behaviour.
  */
-export function computeKpis(items, campaigns) {
+export function computeKpis(items, campaigns, kpi = null) {
   const promoSkus = items;
   const incrementalMargin = sum(promoSkus, "incremental_margin");
-  const activePromoSkus = promoSkus.length;
+  const activePromoSkus = kpi
+    ? promoSkus.reduce((total, item) => total + kpi.isPromo(item), 0)
+    : promoSkus.length;
 
   return {
     active_promo_skus: activePromoSkus,
-    uplift_pct: 0, // overwritten from reference_by_vertical by the caller
+    // 0 when the formula is unavailable; the caller then reads the stored KPI.
+    uplift_pct: kpi ? round(mean(promoSkus.map(kpi.upliftPct)), 2) : 0,
     incremental_margin: round(incrementalMargin),
     roi_x: 0, // overwritten from reference_by_vertical by the caller
     cannib_pct: round(mean(promoSkus.map((i) => i.cannibalisation_pct)), 2),
@@ -175,8 +235,14 @@ export function computeByVertical(items, reference) {
         vertical_id: g.vertical_id,
         label: ref.vertical_label ?? g.vertical_id,
         active_promo_skus: ref.active_promo_skus ?? g.items.length,
-        // Uplift and ROI are stored workbook KPIs (vertical grain), read from
-        // the reference, not derived from per-SKU chain rows.
+        // This block prefers the workbook's stored vertical figures over the
+        // computed ones for every field that has both — count, uplift, cannib
+        // and funding alike. ROI has no choice (nothing derives it). Uplift
+        // now does: fc12 reproduces `ref.uplift_pct` exactly, and the headline
+        // tile computes it. The stored read is kept here so this table stays
+        // internally consistent — all four fields sourced the same way — which
+        // also means, as before, that it does not narrow under the Category
+        // filter the way the tiles do.
         uplift_pct: ref.uplift_pct ?? 0,
         incremental_margin: round(g.incremental_margin),
         roi_x: ref.roi_x ?? 0,
@@ -468,6 +534,19 @@ function engineFor(formulas) {
   return cachedEngine;
 }
 
+// Cached on the same terms as the engine, and for the same reason: a slider
+// drag rebuilds the dashboard, and re-parsing the KPI expressions on every
+// rebuild turns a keystroke into thousands of parses.
+let cachedKpiFormulas = null;
+let cachedKpi = null;
+function kpiFor(formulas) {
+  if (formulas !== cachedKpiFormulas) {
+    cachedKpi = bindKpiFormulas(formulas);
+    cachedKpiFormulas = formulas;
+  }
+  return cachedKpi;
+}
+
 // ---------------------------------------------------------- fixture entrypoint
 
 /**
@@ -510,12 +589,12 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
       ? items.map((i) => applyLevers(i, levers))
       : items;
 
-  // Uplift and ROI are stored workbook KPIs (vertical grain on the A4 sheet),
-  // not derivable from per-SKU chain rows. When one vertical is in scope
+  // ROI is a stored workbook KPI (vertical grain on the A4 sheet), not
+  // derivable from per-SKU chain rows. When one vertical is in scope
   // (directly, or via a store that belongs to one), read that vertical's own
   // reference row instead of averaging across the whole chain — otherwise the
-  // Vertical/Store filters would narrow four of the six KPI tiles and
-  // silently leave Uplift % and ROI showing the unfiltered chain average.
+  // Vertical/Store filters would narrow five of the six KPI tiles and
+  // silently leave ROI showing the unfiltered chain average.
   const activeVertical =
     storeRow?.vertical_id ??
     (scope?.legal_entity_id && scope.legal_entity_id !== ALL ? scope.legal_entity_id : null);
@@ -523,8 +602,14 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     ? reference.filter((r) => r.legal_entity_id === activeVertical)
     : reference;
 
-  const kpis = computeKpis(drivenItems, campaigns);
-  kpis.uplift_pct = round(mean(referenceInScope.map((r) => r.uplift_pct)), 2);
+  const kpi = kpiFor(fixture.formulas ?? {});
+  const kpis = computeKpis(drivenItems, campaigns, kpi);
+  // Uplift is computed from fc12 when the payload carries it. On a payload
+  // that predates the formula, fall back to the stored vertical KPI so an old
+  // fixture still draws a correct board.
+  if (!kpi) {
+    kpis.uplift_pct = round(mean(referenceInScope.map((r) => r.uplift_pct)), 2);
+  }
   kpis.roi_x = round(mean(referenceInScope.map((r) => r.roi_x)), 2);
 
   const byVertical = computeByVertical(drivenItems, reference);

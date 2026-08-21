@@ -258,6 +258,48 @@
                     "default": 1.1125
                 }
             ]
+        },
+        {
+            "id": "fc11-promo-sku-flag",
+            "number": 511,
+            "name": "Active promo SKU (A4)",
+            "logic": "The A4 promo-eligibility test as a per-row predicate, returning 1/0 so the board sums rows rather than filtering them in code. Same shape as fc10-trending-sku, and the same predicate f13-incremental-promotion-margin already guards on, so a SKU cannot count towards the tile and be skipped by the margin rule. The flag lives on SKU_Master!U. Replaces the `promoSkus.length` count in promotion_effectiveness/data/selectors.js.",
+            "sheet": null,
+            "grain": "chain_sku",
+            "result_type": "number",
+            "expression": "IF(promo_eligible = \"Y\", 1, 0)",
+            "parameters": [
+                {
+                    "key": "promo_eligible",
+                    "label": "Promo eligible (Y/N)",
+                    "type": "text",
+                    "default": "N"
+                }
+            ]
+        },
+        {
+            "id": "fc12-promo-net-uplift-pct",
+            "number": 512,
+            "name": "Promo net uplift % (A4)",
+            "logic": "The uplift the A4 Promotion sheet stores per vertical, recovered as a per-SKU rule: the promo revenue factor 0.15 x 2.2, net of cannibalisation, as a percentage. This is the same factor f13-incremental-promotion-margin already applies to promo revenue, so the tile and the margin cannot disagree about how much uplift a promotion buys. Reproduces A4 Promotion!C exactly at vertical grain -- the rule is linear in cannibalisation, so the mean over a vertical's promo SKUs equals the stored figure rather than approximating it. Replaces the stored-KPI read in promotion_effectiveness/data/selectors.js.",
+            "sheet": "A4 Promotion",
+            "grain": "chain_sku",
+            "result_type": "number",
+            "expression": "IF(promo_eligible = \"Y\", 0.15 * 2.2 * (1 - cannibalization) * 100, 0)",
+            "parameters": [
+                {
+                    "key": "promo_eligible",
+                    "label": "Promo eligible (Y/N)",
+                    "type": "text",
+                    "default": "N"
+                },
+                {
+                    "key": "cannibalization",
+                    "label": "Cannibalization",
+                    "type": "number",
+                    "default": 0.1596
+                }
+            ]
         }
     ]
 }

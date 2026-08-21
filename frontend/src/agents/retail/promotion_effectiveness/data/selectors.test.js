@@ -41,6 +41,11 @@ describe("fixture integrity", () => {
     expect(fixture.formulas["f13-incremental-promotion-margin"]).toBeTruthy();
   });
 
+  it("carries the two KPI rules the tiles are reduced from", () => {
+    expect(fixture.formulas["fc11-promo-sku-flag"]).toBeTruthy();
+    expect(fixture.formulas["fc12-promo-net-uplift-pct"]).toBeTruthy();
+  });
+
   it("marks every shipped item promo-eligible", () => {
     for (const item of fixture.items) {
       expect(item.promo_eligible).toBe("Y");
@@ -64,16 +69,45 @@ describe("KPIs reconcile with the workbook", () => {
     expect(dashboard.kpis.pre_buy_uplift_units).toBe(totalPreBuy);
   });
 
-  it("reads uplift and ROI from the reference, not from per-SKU rows", () => {
+  it("reads ROI from the reference, not from per-SKU rows", () => {
     const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
-    const expectedUplift =
-      fixture.reference_by_vertical.reduce((t, r) => t + r.uplift_pct, 0) /
-      fixture.reference_by_vertical.length;
     const expectedRoi =
       fixture.reference_by_vertical.reduce((t, r) => t + r.roi_x, 0) /
       fixture.reference_by_vertical.length;
-    expect(dashboard.kpis.uplift_pct).toBeCloseTo(expectedUplift, 1);
     expect(dashboard.kpis.roi_x).toBeCloseTo(expectedRoi, 1);
+  });
+
+  it("computes uplift from fc12 and still lands on the workbook's figure", () => {
+    // The chain tile is the mean over all 241 promo SKUs; the reference is a
+    // mean of eight per-vertical means over unequal SKU counts. Those differ
+    // by ~0.001pp, which is why this compares at 1 decimal — the per-vertical
+    // check below is the exact one.
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const referenceUplift =
+      fixture.reference_by_vertical.reduce((t, r) => t + r.uplift_pct, 0) /
+      fixture.reference_by_vertical.length;
+    expect(dashboard.kpis.uplift_pct).toBeCloseTo(referenceUplift, 1);
+  });
+
+  it("narrows uplift to the scoped category, which a stored KPI cannot do", () => {
+    // The point of moving uplift onto a per-row rule: a vertical-grain stored
+    // KPI has no category dimension, so this tile used to sit still while the
+    // other five narrowed.
+    const category = fixture.items[0].category_id;
+    const scoped = buildDashboardFromFixture(fixture, scopeOf({ category_group: category }));
+    const scopedItems = fixture.items.filter((i) => i.category_id === category);
+    const expected =
+      scopedItems.reduce((t, i) => t + 0.15 * 2.2 * (1 - i.cannibalisation_pct / 100) * 100, 0) /
+      scopedItems.length;
+    expect(scoped.kpis.uplift_pct).toBeCloseTo(expected, 2);
+  });
+
+  it("counts active promo SKUs by summing fc11, not by row count", () => {
+    // Same number today (every shipped row is promo-eligible), but sourced
+    // from the catalogue predicate rather than implied by the query.
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const byFlag = fixture.items.filter((i) => i.promo_eligible === "Y").length;
+    expect(dashboard.kpis.active_promo_skus).toBe(byFlag);
   });
 
   it("narrows uplift and ROI to the selected vertical, not the chain average", () => {
@@ -86,8 +120,12 @@ describe("KPIs reconcile with the workbook", () => {
     const groceryReference = fixture.reference_by_vertical.find(
       (r) => r.legal_entity_id === "GRC",
     );
-    expect(dashboard.kpis.uplift_pct).toBeCloseTo(groceryReference.uplift_pct, 6);
-    expect(dashboard.kpis.roi_x).toBeCloseTo(groceryReference.roi_x, 6);
+    // Compared at 2 decimals because that is what the selectors round these
+    // KPIs to (`round(value, 2)`, as for cannib and funding). This assertion
+    // used to demand 6 and failed on the rounding alone. It still discriminates
+    // at 2: the chain uplift is 25.60 against Grocery's 25.74.
+    expect(dashboard.kpis.uplift_pct).toBeCloseTo(groceryReference.uplift_pct, 2);
+    expect(dashboard.kpis.roi_x).toBeCloseTo(groceryReference.roi_x, 2);
 
     const chainDashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
     expect(dashboard.kpis.uplift_pct).not.toBeCloseTo(chainDashboard.kpis.uplift_pct, 3);

@@ -167,8 +167,8 @@ export const UPLIFT_NOTE =
 
 /** Per-tile hover labels, sourced from the workbook's own formulas. */
 export const KPI_FORMULAS = Object.freeze({
-  active_promo_skus: "count(dim_item.is_promo_eligible = Y)",
-  uplift_pct: "weighted avg modeled net uplift / promo lever B17",
+  active_promo_skus: "SUM(fc11 promo SKU flag)",
+  uplift_pct: "AVG(fc12 promo net uplift %)",
   incremental_margin: "SUM(f13 incremental promotion margin)",
   roi_x: "stored KPI — no exposed investment column",
   cannib_pct: "avg dim_item.cannibalisation_pct for promo SKUs",
