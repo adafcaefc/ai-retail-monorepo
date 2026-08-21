@@ -2,7 +2,7 @@
  * Decompose one A3 KPI tile into the breakdowns its drawer shows.
  *
  * Same shape and the same rules as the Inventory Risk drilldown: one reducer
- * per metric, because "contribute" is not one operation. `order_value_cost`
+ * per metric, because "contribute" is not one operation. `order_value_retail`
  * sums a column, `skus_to_reorder` counts rows, and `fill_rate_pct` is a
  * proportion that cannot be summed across groups at all.
  *
@@ -23,10 +23,10 @@ const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 
  * `store` names the field a store row contributes to this metric, or null
  * when the per-store grid cannot answer it.
  *
- * Two of the six are null on purpose. The per-store grid prices at selling
- * price and carries no trade price, so cost and the vendor saving simply do
- * not exist per store — and an allocated guess would be exactly the invention
- * this module refuses elsewhere.
+ * One of the five is null for that reason rather than for `fill_rate_pct`'s:
+ * the per-store grid carries no vendor split, so the recoverable saving
+ * simply does not exist per store — and an allocated guess would be exactly
+ * the invention this module refuses elsewhere.
  */
 const METRICS = {
   skus_to_reorder: {
@@ -42,14 +42,6 @@ const METRICS = {
     unit: "units",
     additive: true,
     store: "order_units",
-  },
-  order_value_cost: {
-    label: "Order value at cost",
-    reduce: (rows) => sum(rows, "order_value_cost"),
-    unit: "money",
-    additive: true,
-    // The per-store grid has no trade price. See the note above.
-    store: null,
   },
   order_value_retail: {
     label: "Order value at retail",

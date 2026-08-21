@@ -19,7 +19,6 @@ import {
   BASELINE_LEVERS,
   DEFAULT_SCOPE,
   MAX_SAVED_SCENARIOS,
-  ORDER_VALUE_NOTE,
 } from "./data/contract.js";
 import {
   loadReplenishmentDashboard,
@@ -248,8 +247,6 @@ export default function ReplenishmentDashboard() {
         onClose={() => setDrilldown(null)}
         onSelectSku={(sku) => patchScope({ sku })}
       />
-
-      <p className="po-footnote">{t(ORDER_VALUE_NOTE)}</p>
 
       <RequirementVsInboundPanel
         requirement={dashboard.requirement}

@@ -114,14 +114,15 @@ describe("the fixture reconciles with the A3 sheet", () => {
   });
 });
 
-describe("the two order values", () => {
-  it("prices the same order at cost and at retail, and they differ", () => {
+describe("order value at cost and at retail", () => {
+  it("prices the same order two ways, and they differ", () => {
     const { kpis } = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
 
     expect(kpis.order_value_cost).toBeGreaterThan(0);
     expect(kpis.order_value_retail).toBeGreaterThan(kpis.order_value_cost);
-    // Roughly a fifth apart on this dataset. The board shows both because
-    // approving a PO at retail value would overstate the commitment.
+    // Roughly a fifth apart on this dataset. Cost prices the purchase order
+    // line by line elsewhere on this board (route, vendor and scenario
+    // panels); retail is the one headline figure the KPI grid shows.
     expect(kpis.order_value_cost / kpis.order_value_retail).toBeLessThan(0.95);
   });
 
@@ -183,7 +184,7 @@ describe("the KPI drill-down drawer", () => {
   it("decomposes the tile it was opened from, with no invented history", async () => {
     await renderSettled();
 
-    const tile = screen.getByText("Order value at retail").closest(".po-kpi");
+    const tile = screen.getByText("Order value").closest(".po-kpi");
     fireEvent.click(tile.querySelector(".po-kpi-open"));
 
     const drawer = await screen.findByRole("dialog");
@@ -199,9 +200,9 @@ describe("the KPI drill-down drawer", () => {
   it("says why a measure has no per-store split rather than allocating one", async () => {
     await renderSettled();
 
-    // Cost is priced from trade agreements, which the per-store grid has none
+    // The saving is attributed per vendor, which the per-store grid has none
     // of. Inventing a split here is exactly what the mockup did.
-    const tile = screen.getByText("Order value at cost").closest(".po-kpi");
+    const tile = screen.getByText("Recoverable").closest(".po-kpi");
     fireEvent.click(tile.querySelector(".po-kpi-open"));
 
     const drawer = await screen.findByRole("dialog");
@@ -215,7 +216,7 @@ describe("ReplenishmentDashboard", () => {
   it("renders the KPIs, the route split, sourcing and the order", async () => {
     await renderSettled();
 
-    expect(document.querySelectorAll(".po-kpi")).toHaveLength(6);
+    expect(document.querySelectorAll(".po-kpi")).toHaveLength(5);
     expect(screen.getByText("Order value by route")).toBeInTheDocument();
     expect(screen.getByText("Vendor sourcing")).toBeInTheDocument();
     expect(screen.getByText("Order value by category")).toBeInTheDocument();
@@ -228,15 +229,6 @@ describe("ReplenishmentDashboard", () => {
     // 345 of 800 lines sit below ROP; a buyer opening this board wants those.
     expect(screen.getByLabelText("Only what needs ordering")).toBeChecked();
     expect(within(kpiTile("SKUs to reorder")).getByText("345")).toBeInTheDocument();
-  });
-
-  it("keeps the standing note on which order value is which", async () => {
-    await renderSettled();
-
-    // The two order values are the thing most likely to be misread on this
-    // board, so the footnote naming them stays even though the source banner
-    // has gone.
-    expect(screen.getAllByText(/at selling price/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("scopes to one vertical and reports that vertical's numbers", async () => {

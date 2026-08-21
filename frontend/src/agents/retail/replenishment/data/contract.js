@@ -200,7 +200,6 @@ export const KPI_FORMULAS = Object.freeze({
   skus_to_reorder: "count( Position < ROP )",
   order_units: "Σ max(0, Max − Position), sales units",
   order_value_retail: "Σ order units × selling price",
-  order_value_cost: "Σ buy units × pack × trade-agreement price",
   inbound_open_po: "Σ Open PO units",
   fill_rate_pct: "SKUs at or above ROP ÷ all SKUs",
   avg_cover_days: "mean( Position ÷ ADS )",
@@ -218,19 +217,6 @@ export const LINE_FORMULAS = Object.freeze({
   order_qty_buy: "Buy = CEILING(Order ÷ pack factor)",
   order_value_cost: "Line cost = Buy × pack × trade price",
 });
-
-/**
- * The two order values, and why the board never shows one alone.
- *
- * A buyer approving the PO needs the cost. A merchandiser sizing the
- * commitment needs the retail value. They differ by roughly a fifth on this
- * dataset, so naming either one simply "order value" invites the wrong
- * decision from whichever reader was thinking of the other.
- */
-export const ORDER_VALUE_NOTE =
-  "Order value is shown twice: at selling price, which is what the A3 sheet " +
-  "totals, and at trade-agreement price, which is what the purchase order " +
-  "would actually cost.";
 
 /**
  * Whole cases, not exact requirements.

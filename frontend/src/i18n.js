@@ -283,8 +283,10 @@ const CHROME = {
   Next: "Berikutnya",
   Page: "Halaman",
 
-  // Replenishment (Agent 3). Order value appears twice on purpose — at cost
-  // and at retail — because the workbook states it twice and the two differ.
+  // Replenishment (Agent 3). The KPI grid's headline order value is retail
+  // only; cost still appears elsewhere on the board (route, vendor and
+  // scenario panels), and "Order value at retail" stays a separate string
+  // for the drilldown drawer's label.
   "Replenishment dashboard": "Dasbor pengisian ulang",
   "Replenishment summary": "Ringkasan pengisian ulang",
   "Unable to load Replenishment.": "Gagal memuat Pengisian Ulang.",
@@ -294,10 +296,9 @@ const CHROME = {
   "SKUs to reorder": "SKU perlu dipesan",
   "Order units": "Unit pesanan",
   "sales units": "unit jual",
-  "Order value at cost": "Nilai pesanan (harga beli)",
-  "what the PO pays": "yang dibayar PO",
+  "Order value": "Nilai pesanan",
+  "purchase plan": "rencana pembelian",
   "Order value at retail": "Nilai pesanan (harga jual)",
-  "what it is worth": "nilai jualnya",
   "Fill rate": "Tingkat pemenuhan",
   cover: "cakupan",
   Recoverable: "Bisa dihemat",

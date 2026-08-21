@@ -9,11 +9,15 @@ import {
 } from "../presentation.js";
 
 /**
- * A3 spec section 3, plus the two figures the spec leaves out.
+ * A3 spec section 3, plus the one figure the spec leaves out.
  *
- * `Order value` appears twice because the workbook states it twice and the two
- * differ by roughly a fifth — see `ORDER_VALUE_NOTE`. Reporting one alone would
- * let a buyer approve a commitment sized in selling price.
+ * `Order value` is a single tile, not two: `ENGINE_STORE!Y` (`Order value`),
+ * the A3 tab's own `Order value` column, and its per-vertical reconciliation
+ * all price the shortfall at selling price and hold no trade-agreement price
+ * anywhere in the engine. A cost-basis figure is real and useful — it prices
+ * the purchase order line by line elsewhere on this board — but the workbook
+ * never states a second *headline* order value to stand beside it, so this
+ * grid does not invent one.
  *
  * `Recoverable` is the only tile that proposes something rather than reporting
  * a state: what the same purchase order would cost at each line's cheapest
@@ -42,17 +46,11 @@ export default function ReplenishmentKpiGrid({
       sub: t("sales units"),
     },
     {
-      id: "order_value_cost",
-      label: "Order value at cost",
-      value: formatIdr(kpis.order_value_cost, language),
-      sub: t("what the PO pays"),
-      tone: "warn",
-    },
-    {
       id: "order_value_retail",
-      label: "Order value at retail",
+      label: "Order value",
       value: formatIdr(kpis.order_value_retail, language),
-      sub: t("what it is worth"),
+      sub: t("purchase plan"),
+      tone: "warn",
     },
     {
       id: "fill_rate_pct",
