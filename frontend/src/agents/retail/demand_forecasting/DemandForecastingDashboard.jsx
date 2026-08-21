@@ -233,6 +233,16 @@ export default function DemandForecastingDashboard({ pendingDashboardAction, onD
     legal_entities: [], categories: [], stores: [], grains: ["daily", "weekly", "monthly", "quarterly", "yearly"], horizons_weeks: [4, 8, 12, 16],
   };
 
+  useEffect(() => {
+    if (!dashboard || query.store_id === "ALL") return;
+    if (options.stores.some((store) => store.value === query.store_id)) return;
+
+    // The selected category/legal-entity response is the source of truth for
+    // Store membership. If the old Store is absent, clear only that dependent
+    // filter and let the normal dashboard load run at All stores.
+    patchQuery({ store_id: "ALL" });
+  }, [dashboard, options.stores, patchQuery, query.store_id]);
+
   const scopeLabels = useMemo(() => {
     const labels = [];
     if (query.legal_entity_id !== "ALL") labels.push(optionLabel(options.legal_entities, query.legal_entity_id));
@@ -288,7 +298,6 @@ export default function DemandForecastingDashboard({ pendingDashboardAction, onD
       />
 
       <div className="demand-scope-row">
-        <span className="demand-data-note">{dashboard.is_mock ? t("Synthetic data") : t("Live data")} · {t(dashboard.note)}</span>
         <div className="demand-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? scopeLabels.map((label) => <b key={label}>{label}</b>) : <b>{t("All retail demand")}</b>}

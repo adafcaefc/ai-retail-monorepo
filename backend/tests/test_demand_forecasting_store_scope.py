@@ -25,6 +25,27 @@ def _forecast(payload: dict) -> float:
     return sum(float(row["forecast_7d"]) for row in payload["items"])
 
 
+class _CategoryRows:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+
+    def mappings(self):
+        return self
+
+    def __iter__(self):
+        return iter(self.rows)
+
+
+class _CategoryConnection:
+    def __init__(self, rows: list[dict]) -> None:
+        self.rows = rows
+        self.statement = ""
+
+    def execute(self, statement, _parameters=None):
+        self.statement = str(statement)
+        return _CategoryRows(self.rows)
+
+
 def test_store_scope_uses_store_grain_rows_for_all_downstream_inputs() -> None:
     all_stores = _build_or_skip()
     s001 = _build_or_skip(DashboardScope.from_query(store_id="S001"))
@@ -85,6 +106,57 @@ def test_store_scope_is_not_reported_as_ignored_by_the_descriptor() -> None:
     assert "store_id" in descriptor
     assert DashboardScope(store_id="S001").ignored_by(descriptor) == ()
     assert payload["scope"]["store_id"] == "S001"
+
+
+def test_engine_store_category_ids_reads_the_store_category_relationship() -> None:
+    connection = _CategoryConnection(
+        [
+            {"store_id": "S001", "category_id": "GRC-C01"},
+            {"store_id": "S001", "category_id": "GRC-C02"},
+            {"store_id": "S020", "category_id": "GRC-C01"},
+            {"store_id": "S037", "category_id": "GMR-C01"},
+        ]
+    )
+
+    result = dashboard.engine_store_category_ids(connection)
+
+    assert result == {
+        "S001": ["GRC-C01", "GRC-C02"],
+        "S020": ["GRC-C01"],
+        "S037": ["GMR-C01"],
+    }
+    assert "temp_engine_store" in connection.statement
+    assert "t.[Store]" in connection.statement
+    assert "t.[Cat]" in connection.statement
+
+
+def test_store_filter_options_follow_engine_store_category_membership() -> None:
+    grocery = _build_or_skip(
+        DashboardScope.from_query(legal_entity_id="GRC")
+    )
+    grocery_fruit = _build_or_skip(
+        DashboardScope.from_query(
+            legal_entity_id="GRC",
+            category_group="GRC-C01",
+        )
+    )
+
+    expected_grocery_stores = {f"S{number:03d}" for number in range(1, 21)}
+    grocery_ids = {row["value"] for row in grocery["filter_options"]["stores"]}
+    fruit_ids = {
+        row["value"] for row in grocery_fruit["filter_options"]["stores"]
+    }
+
+    # All categories keeps the legal entity's current Store population.
+    assert grocery_ids == expected_grocery_stores
+    # GRC-C01 is present in ENGINE_STORE only for S001..S020; a GMR store
+    # such as S037 must not leak into the category-scoped dropdown.
+    assert fruit_ids == expected_grocery_stores
+    assert "S037" not in fruit_ids
+    assert all(
+        "GRC-C01" in row["category_ids"]
+        for row in grocery_fruit["filter_options"]["stores"]
+    )
 
 
 def test_store_id_reaches_the_executed_store_grain_sql() -> None:

@@ -135,6 +135,15 @@ describe("DemandForecastingDashboard", () => {
     mocks.runScenario.mockImplementation((query, levers) => board(query, levers));
   });
 
+  it("removes the top data note while preserving the Scope summary", async () => {
+    await renderSettled();
+
+    const scopeRow = screen.getByText("Scope:").closest(".demand-scope-row");
+    expect(scopeRow).not.toBeNull();
+    expect(scopeRow.querySelector(".demand-data-note")).toBeNull();
+    expect(within(scopeRow).getByText("All retail demand")).toBeInTheDocument();
+  });
+
   it("renders six KPIs, both forecast panels, trending, and forecast detail", async () => {
     renderDashboard();
 
@@ -191,6 +200,70 @@ describe("DemandForecastingDashboard", () => {
       }), expect.any(Object), expect.any(Object));
     });
     expect((await screen.findAllByText("GRC · Grocery Retail (Hypermarket)")).length).toBeGreaterThan(0);
+  });
+
+  it("filters Store options by the selected Legal Entity", async () => {
+    renderDashboard();
+    await screen.findAllByText(CHAIN_FORECAST);
+
+    fireEvent.change(screen.getByLabelText("Legal entity"), { target: { value: "GRC" } });
+
+    await waitFor(() => {
+      const storeSelect = screen.getByLabelText("Store");
+      expect(within(storeSelect).getByRole("option", { name: /S001 · Grocery 01/ })).toBeInTheDocument();
+      expect(within(storeSelect).queryByRole("option", { name: /S037 ·/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it("filters Store options by the selected Category", async () => {
+    renderDashboard();
+    await screen.findAllByText(CHAIN_FORECAST);
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "GRC-C01" } });
+
+    await waitFor(() => {
+      const storeSelect = screen.getByLabelText("Store");
+      expect(within(storeSelect).getByRole("option", { name: /S001 · Grocery 01/ })).toBeInTheDocument();
+      expect(within(storeSelect).queryByRole("option", { name: /S037 ·/ })).not.toBeInTheDocument();
+    });
+  });
+
+  it("resets an invalid Store when Category changes", async () => {
+    renderDashboard();
+    await screen.findAllByText(CHAIN_FORECAST);
+
+    fireEvent.change(screen.getByLabelText("Store"), { target: { value: "S037" } });
+    await waitFor(() => expect(screen.getByLabelText("Store")).toHaveValue("S037"));
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "GRC-C01" } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Store")).toHaveValue("ALL");
+      expect(mocks.load).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category_group: "GRC-C01", store_id: "ALL" }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
+  });
+
+  it("keeps a valid Store selected when Category changes", async () => {
+    renderDashboard();
+    await screen.findAllByText(CHAIN_FORECAST);
+
+    fireEvent.change(screen.getByLabelText("Store"), { target: { value: "S001" } });
+    await waitFor(() => expect(screen.getByLabelText("Store")).toHaveValue("S001"));
+
+    fireEvent.change(screen.getByLabelText("Category"), { target: { value: "GRC-C01" } });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Store")).toHaveValue("S001");
+      expect(mocks.load).toHaveBeenLastCalledWith(
+        expect.objectContaining({ category_group: "GRC-C01", store_id: "S001" }),
+        expect.any(Object),
+        expect.any(Object),
+      );
+    });
   });
 
   it("updates grain and horizon independently", async () => {

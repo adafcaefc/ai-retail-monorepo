@@ -312,6 +312,20 @@ def build_stores(
     return sorted(grouped.values(), key=lambda row: row["store_id"])
 
 
+def build_store_category_ids(
+    engine_store: list[dict[str, Any]],
+) -> dict[str, list[str]]:
+    """Keep the ENGINE_STORE category membership for dependent dropdowns."""
+
+    grouped: dict[str, set[str]] = {}
+    for row in engine_store:
+        grouped.setdefault(row["store_id"], set()).add(row["cat_id"])
+    return {
+        store_id: sorted(category_ids)
+        for store_id, category_ids in sorted(grouped.items())
+    }
+
+
 def resolve_vertical_labels(
     verticals: list[dict[str, Any]],
     reference: list[dict[str, Any]],
@@ -439,6 +453,7 @@ def main() -> int:
     store_rows = build_stores(
         tables["engine_store"], stores, constants["dow_sum"]
     )
+    store_category_ids = build_store_category_ids(tables["engine_store"])
 
     failures = reconcile(items, reference, label_of)
     if failures:
@@ -511,6 +526,7 @@ def main() -> int:
                     "label": f"{row['store_id']} · {row['name']}",
                     "legal_entity_id": row["vertical_id"],
                     "cluster": row["cluster"],
+                    "category_ids": store_category_ids[row["store_id"]],
                 }
                 for row in store_rows
             ],

@@ -6636,10 +6636,6 @@ img.ey-logo {
   font-size: var(--text-xs);
 }
 
-.demand-data-note {
-  white-space: nowrap;
-}
-
 .demand-scope-summary {
   display: flex;
   align-items: center;
@@ -7213,7 +7209,6 @@ img.ey-logo {
   }
 
   .demand-scope-summary { justify-content: flex-start; }
-  .demand-data-note { white-space: normal; }
 
   .demand-scenario-applied {
     align-items: stretch;

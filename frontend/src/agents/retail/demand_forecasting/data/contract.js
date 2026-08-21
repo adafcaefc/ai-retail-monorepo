@@ -164,6 +164,9 @@ function normalizeOptions(options) {
     .map((option) => ({
       value: String(option.value),
       label: String(option.label ?? option.value),
+      ...(Array.isArray(option.category_ids)
+        ? { category_ids: option.category_ids.map(String) }
+        : {}),
     }));
 }
 

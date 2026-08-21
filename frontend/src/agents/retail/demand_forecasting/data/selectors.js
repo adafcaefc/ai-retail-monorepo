@@ -625,6 +625,11 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       : fixture.filter_options.stores.filter(
           (store) => store.legal_entity_id === merged.legal_entity_id,
         );
+  const categoryScopedStoreOptions = storeOptions.filter((store) => (
+    merged.category_group === ALL
+      || !Array.isArray(store.category_ids)
+      || store.category_ids.includes(merged.category_group)
+  ));
 
   return {
     schema_version: SCHEMA_VERSION,
@@ -640,7 +645,7 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
     filter_options: {
       legal_entities: fixture.filter_options.legal_entities,
       categories,
-      stores: storeOptions,
+      stores: categoryScopedStoreOptions,
       grains: [...DEMAND_GRAINS],
       horizons_weeks: [...DEMAND_HORIZONS],
     },
