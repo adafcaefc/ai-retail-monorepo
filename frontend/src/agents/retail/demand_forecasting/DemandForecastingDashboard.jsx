@@ -380,7 +380,7 @@ export default function DemandForecastingDashboard({ pendingDashboardAction, onD
         onRemove={(id) => setSavedScenarios((current) => current.filter((scenario) => scenario.id !== id))}
       />
 
-      <DemandSuggestedActions actions={dashboard.suggested_actions} />
+      <DemandSuggestedActions query={query} />
     </section>
   );
 }

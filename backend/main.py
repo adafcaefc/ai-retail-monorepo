@@ -33,6 +33,10 @@ from src.actions.router import (
     router as alerts_actions_router,
 )
 
+from src.agent_handoffs.router import (
+    router as agent_handoffs_router,
+)
+
 from src.excel.router import (
     router as excel_router,
 )
@@ -118,6 +122,10 @@ app.include_router(
 
 app.include_router(
     alerts_actions_router
+)
+
+app.include_router(
+    agent_handoffs_router
 )
 
 app.include_router(

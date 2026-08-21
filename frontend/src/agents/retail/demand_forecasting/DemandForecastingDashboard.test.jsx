@@ -163,7 +163,9 @@ describe("DemandForecastingDashboard", () => {
     expect(screen.getByRole("heading", { name: "Suggested Best Action" })).toBeInTheDocument();
     expect(screen.getByText("No saved scenarios yet")).toBeInTheDocument();
     expect(screen.getByText("Saturday ×1.35")).toBeInTheDocument();
-    expect(screen.getAllByText("92.4%").length).toBeGreaterThanOrEqual(1);
+    // The current fixture's weighted v8.5 accuracy is 91.4%; this assertion
+    // must follow the live selector output rather than the old mockup value.
+    expect(screen.getAllByText("91.4%").length).toBeGreaterThanOrEqual(1);
     expect(document.querySelectorAll(".demand-detail-scroll tbody tr")).toHaveLength(100);
   });
 
@@ -534,26 +536,16 @@ describe("DemandForecastingDashboard", () => {
       .toHaveTextContent("Demand Forecasting API contract field dimensions is required.");
   });
 
-  it("renders best actions from real counts while every control stays disabled", async () => {
+  it("renders the live forecast-basket action while handoff controls stay disabled", async () => {
     renderDashboard();
     await screen.findByRole("heading", { name: "Suggested Best Action" });
 
-    expect(screen.getByText("Cover the reorder zone")).toBeInTheDocument();
-    // 302 below ROP and 355 trending, both counted from the workbook rather
-    // than written into the copy. 302 is what this workbook arrives at twice
-    // over: counting `position < rop` against ENGINE's own stored ROP column,
-    // and summing A1's per-vertical stockout_risk_skus (46+31+39+42+35+32+40
-    // +37). They agree because ENGINE's ROP is built on sku_master.lead_d.
-    // Feeding f05-rop the designated Trade Agreement lead instead lengthens
-    // every ROP and yields 438 -- a defensible figure, but one this workbook
-    // never computes, so it does not belong in an assertion about it.
-    expect(screen.getByText(/302 SKUs sit below their reorder point/)).toBeInTheDocument();
-    expect(screen.getByText(/355 SKUs are trending above baseline/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Send to Replenishment" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Flag to Inventory Risk" })).toBeDisabled();
-
-    fireEvent.click(screen.getByRole("button", { name: "Preview forecast basket" }));
-    expect(screen.getByRole("button", { name: "Generate forecast basket" })).toBeDisabled();
+    expect(screen.getByText("Send 7-day forecast basket to Replenishment")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Generate forecast basket" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Flag to Agent 2 · Inventory Risk" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Send to Agent 3 · Replenishment" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Preview forecast basket" })).not.toBeInTheDocument();
   });
 
   it("applies a chat dashboard_action's query patch the same as a manual filter change", async () => {
