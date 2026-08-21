@@ -39,7 +39,7 @@ import {
  * NO FIXTURE FALLBACK. A failed request renders the error branch below rather
  * than silently swapping in demo data — see `dashboardData.js`.
  */
-export default function ReplenishmentDetailDashboard() {
+export default function ReplenishmentDetailDashboard({ onAskInsight, insightBusy } = {}) {
   const { t } = useLanguage();
 
   const [scope, setScope] = useState(DEFAULT_SCOPE);
@@ -193,6 +193,8 @@ export default function ReplenishmentDetailDashboard() {
         scope={scope}
         asOf={view.as_of}
         currency={view.quote_terms?.currency}
+        onAskInsight={onAskInsight}
+        askBusy={insightBusy}
       />
 
       <UomBreakdownPanel

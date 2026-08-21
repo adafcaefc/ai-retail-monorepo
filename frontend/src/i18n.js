@@ -24,6 +24,7 @@ export const DEFAULT_LANGUAGE = "en";
 
 // Component-authored wording.
 const CHROME = {
+  "Ask AI": "Tanya AI",
   "What-if simulator": "Simulator what-if",
   Presets: "Preset",
   "All levers together": "Semua tuas sekaligus",

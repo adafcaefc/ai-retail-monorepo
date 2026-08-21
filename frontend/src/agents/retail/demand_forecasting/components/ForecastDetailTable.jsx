@@ -54,7 +54,7 @@ function SortHeader({ column, label, numeric, sort, onSort, t }) {
   );
 }
 
-export default function ForecastDetailTable({ details, grain, onSelect }) {
+export default function ForecastDetailTable({ details, grain, onSelect, onAskInsight, askBusy }) {
   const { language, t } = useLanguage();
   const [sort, setSort] = useState(DEFAULT_FORECAST_DETAIL_SORT);
   const rows = useMemo(
@@ -99,6 +99,7 @@ export default function ForecastDetailTable({ details, grain, onSelect }) {
                 <SortHeader column="trend" label={t("Trend")} numeric sort={sort} onSort={handleSort} t={t} />
                 <SortHeader column="signals" label={t("Signals")} sort={sort} onSort={handleSort} t={t} />
                 <SortHeader column="supply_state" label={t("Supply state")} sort={sort} onSort={handleSort} t={t} />
+                <th scope="col">{t("Ask AI")}</th>
               </tr>
             </thead>
             <tbody>
@@ -118,6 +119,16 @@ export default function ForecastDetailTable({ details, grain, onSelect }) {
                   </td>
                   <td><span className="demand-signal-list">{row.signals.length ? row.signals.map((signal) => <i key={signal}>{t(signal)}</i>) : "—"}</span></td>
                   <td><span className={`demand-supply demand-supply--${row.supply_state.toLowerCase()}`}>{t(row.supply_state)}</span></td>
+                  <td>
+                    <button
+                      type="button"
+                      className="row-ask-ai-btn"
+                      disabled={askBusy}
+                      onClick={() => onAskInsight?.({ row: forecastRowInsight(row, grain, t) })}
+                    >
+                      {t("Ask AI")}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -126,4 +137,18 @@ export default function ForecastDetailTable({ details, grain, onSelect }) {
       ) : <p className="workboard-empty">{t("No SKUs match the current scope.")}</p>}
     </section>
   );
+}
+
+function forecastRowInsight(row, grain, t) {
+  return {
+    title: `${row.sku_name} (${row.sku_id})`,
+    fields: [
+      { label: t("Category"), value: row.category_label },
+      { label: "ADS", value: row.ads_units_per_day },
+      { label: `${t(GRAIN_LABELS[grain])} ${t("Forecast")}`, value: row.forecast_units },
+      { label: t("Trend"), value: `${row.trend_pct > 0 ? "+" : ""}${row.trend_pct}%` },
+      { label: t("Signals"), value: row.signals.length ? row.signals.map((signal) => t(signal)).join(", ") : "—" },
+      { label: t("Supply state"), value: t(row.supply_state) },
+    ],
+  };
 }

@@ -79,6 +79,8 @@ export default function ReplenishmentDetailGrid({
   scope,
   asOf,
   currency,
+  onAskInsight,
+  askBusy,
 }) {
   const { t, language } = useLanguage();
   const [page, setPage] = useState(0);
@@ -156,6 +158,7 @@ export default function ReplenishmentDetailGrid({
                   </th>
                 );
               })}
+              <th>{t("Ask AI")}</th>
             </tr>
           </thead>
           <tbody>
@@ -205,11 +208,24 @@ export default function ReplenishmentDetailGrid({
                     )}
                   </td>
                 ))}
+                <td>
+                  <button
+                    type="button"
+                    className="row-ask-ai-btn"
+                    disabled={askBusy}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onAskInsight?.({ row: replenishmentRowInsight(line, language, t) });
+                    }}
+                  >
+                    {t("Ask AI")}
+                  </button>
+                </td>
               </tr>
             ))}
             {visible.length ? null : (
               <tr>
-                <td colSpan={COLUMNS.length} className="rdet-empty">
+                <td colSpan={COLUMNS.length + 1} className="rdet-empty">
                   {t("No lines match these filters.")}
                 </td>
               </tr>
@@ -266,6 +282,28 @@ function cell(column, line, language, t) {
     return <span className="rdet-alt-vendor">{raw}</span>;
   }
   return raw;
+}
+
+/** Plain-text version of `cell()`'s values, for the "Ask AI" prompt. */
+function cellText(column, line, language, t) {
+  const raw = line[column.id];
+
+  if (column.kind === "pill") return line.is_reorder ? t("YES") : "—";
+  if (column.kind === "idr") return formatIdr(raw, language);
+  if (column.kind === "rate") return formatRate(raw, language);
+  if (column.numeric) return formatUnits(raw, language);
+  if (raw === null || raw === undefined || raw === "") return "—";
+  return raw;
+}
+
+function replenishmentRowInsight(line, language, t) {
+  return {
+    title: `${t("Item")} ${line.sku_id} — ${line.name}`,
+    fields: COLUMNS.map((column) => ({
+      label: t(column.label),
+      value: cellText(column, line, language, t),
+    })),
+  };
 }
 
 /** Exact figures on hover, because an abbreviated one cannot be reconciled. */

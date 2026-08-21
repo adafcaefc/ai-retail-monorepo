@@ -54,7 +54,7 @@ function optionLabel(options, value) {
  * the What-If simulator with compare-scenarios. Mirrors the Inventory Risk
  * board's data-load contract, including its client-side Store filter.
  */
-export default function PromotionEffectivenessDashboard() {
+export default function PromotionEffectivenessDashboard({ onAskInsight, insightBusy } = {}) {
   const { t } = useLanguage();
   const [scope, setScope] = useState({ ...DEFAULT_SCOPE });
   const [dashboard, setDashboard] = useState(null);
@@ -299,6 +299,8 @@ export default function PromotionEffectivenessDashboard() {
         allCampaigns={dashboard.campaigns}
         asOf={dashboard.as_of}
         onSelect={(promoId) => patchScope({ sku: promoId })}
+        onAskInsight={onAskInsight}
+        askBusy={insightBusy}
       />
 
       <MarginLeadersTable

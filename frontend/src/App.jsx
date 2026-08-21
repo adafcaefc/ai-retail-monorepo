@@ -749,7 +749,9 @@ export default function App() {
     submitText(
       request?.entry
         ? buildInfoPrompt(request.entry, request.context)
-        : buildKpiInsightPrompt(request),
+        : request?.row
+          ? buildRowInsightPrompt(request.row)
+          : buildKpiInsightPrompt(request),
     );
 
     requestAnimationFrame(() => {
@@ -1293,5 +1295,21 @@ function buildKpiInsightPrompt(kpi) {
     "Why is it at this level, what are the main drivers behind it, " +
     "and what actions should I consider? Keep it concise and " +
     "decision-focused for a CFO."
+  );
+}
+
+// A table row's "Ask AI" button hands over every field it shows, in table
+// order, rather than a single value -- unlike a KPI, a row's meaning comes
+// from the combination (e.g. ROP vs. Qty on hand), not any one cell.
+function buildRowInsightPrompt(row) {
+  const fields = (row.fields || [])
+    .filter(({ value }) => value !== null && value !== undefined && value !== "")
+    .map(({ label, value }) => `- ${label}: ${value}`)
+    .join("\n");
+
+  return (
+    `Explain this ${row.title} row from my dashboard:\n${fields}\n\n` +
+    "What does this data mean, why does it look this way, and what " +
+    "should I do about it? Keep it concise and decision-focused for a CFO."
   );
 }

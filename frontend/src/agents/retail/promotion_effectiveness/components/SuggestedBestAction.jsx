@@ -36,7 +36,7 @@ function download(filename, text) {
  * tab" downloads the active tab's rows, "Export all campaigns" downloads
  * every campaign regardless of tab.
  */
-export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSelect }) {
+export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSelect, onAskInsight, askBusy }) {
   const { t } = useLanguage();
   const [tab, setTab] = useState(BEST_ACTION_TABS[0].id);
   const active = BEST_ACTION_TABS.find((x) => x.id === tab) ?? BEST_ACTION_TABS[0];
@@ -98,6 +98,7 @@ export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSele
                 <th>{t("Pre-buy")}</th>
                 <th>{t("D365 construct")}</th>
                 <th>{t("Recommendation")}</th>
+                <th>{t("Ask AI")}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,6 +112,19 @@ export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSele
                   <td>{formatUnits(c.pre_buy_uplift_units, "en")}</td>
                   <td className="promo-cell-construct">{c.d365_construct}</td>
                   <td className="promo-cell-recommendation">{t(active.recommendation)}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="row-ask-ai-btn"
+                      disabled={askBusy}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAskInsight?.({ row: promoRowInsight(c, active, t) });
+                      }}
+                    >
+                      {t("Ask AI")}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -119,4 +133,18 @@ export default function SuggestedBestAction({ groups, allCampaigns, asOf, onSele
       )}
     </section>
   );
+}
+
+function promoRowInsight(campaign, activeTab, t) {
+  return {
+    title: `${campaign.promo_name} (${campaign.promo_id})`,
+    fields: [
+      { label: t("Vertical"), value: campaign.vertical_label ?? campaign.vertical_id },
+      { label: t("Uplift %"), value: formatPercent(campaign.expected_uplift_pct / 100, "en", { digits: 0 }) },
+      { label: t("Funding %"), value: formatPercent(campaign.supplier_funding_pct / 100, "en", { digits: 0 }) },
+      { label: t("Pre-buy"), value: formatUnits(campaign.pre_buy_uplift_units, "en") },
+      { label: t("D365 construct"), value: campaign.d365_construct },
+      { label: t("Recommendation"), value: t(activeTab.recommendation) },
+    ],
+  };
 }

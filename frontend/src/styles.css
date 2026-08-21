@@ -5069,6 +5069,34 @@ img.ey-logo {
   cursor: not-allowed;
 }
 
+/* Per-row "Ask AI" button, shared by the forecast detail, replenishment
+   lines, and suggested-best-action tables. */
+.row-ask-ai-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.row-ask-ai-btn:hover:not(:disabled) {
+  background: var(--primary);
+  color: #fff;
+}
+
+.row-ask-ai-btn:disabled {
+  border-color: var(--gray-300);
+  color: var(--gray-300);
+  cursor: not-allowed;
+}
+
 @media (max-width: 1040px) {
   .alerts-toolbar {
     justify-content: flex-start;

@@ -43,10 +43,10 @@ const DETAILS = {
   ],
 };
 
-function renderTable() {
+function renderTable({ onAskInsight } = {}) {
   return render(
     <LanguageProvider>
-      <ForecastDetailTable details={DETAILS} grain="weekly" onSelect={vi.fn()} />
+      <ForecastDetailTable details={DETAILS} grain="weekly" onSelect={vi.fn()} onAskInsight={onAskInsight} />
     </LanguageProvider>,
   );
 }
@@ -65,7 +65,7 @@ describe("ForecastDetailTable", () => {
     expect(renderedSkuIds()).toEqual(["SKU-271", "SKU-268", "SKU-265"]);
 
     const headers = screen.getAllByRole("columnheader");
-    expect(headers).toHaveLength(7);
+    expect(headers).toHaveLength(8);
     expect(headers.filter((header) => header.getAttribute("aria-sort") === "none")).toHaveLength(6);
     expect(screen.getByRole("button", { name: "Sort by Weekly Forecast" }).closest("th"))
       .toHaveAttribute("aria-sort", "descending");
@@ -87,6 +87,20 @@ describe("ForecastDetailTable", () => {
     expect(renderedSkuIds()).toEqual(["SKU-271", "SKU-268", "SKU-265"]);
     expect(adsHeader).toHaveAttribute("aria-sort", "descending");
     expect(within(adsHeader).getByText("▼")).toBeInTheDocument();
+  });
+
+  it("asks AI to explain a row using its displayed fields", () => {
+    const onAskInsight = vi.fn();
+    renderTable({ onAskInsight });
+
+    const firstRow = document.querySelectorAll(".demand-detail-scroll tbody tr")[0];
+    fireEvent.click(within(firstRow).getByRole("button", { name: "Ask AI" }));
+
+    expect(onAskInsight).toHaveBeenCalledTimes(1);
+    const { row } = onAskInsight.mock.calls[0][0];
+    expect(row.title).toBe("Item 271 (SKU-271)");
+    expect(row.fields).toContainEqual({ label: "Category", value: "Zebra" });
+    expect(row.fields).toContainEqual({ label: "Supply state", value: "Low" });
   });
 
   it("keeps the header inside the single scroll viewport for sticky scrolling", () => {

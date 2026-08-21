@@ -30,7 +30,12 @@ function optionLabel(options, value) {
   return options.find((option) => option.value === value)?.label || value;
 }
 
-export default function DemandForecastingDashboard({ pendingDashboardAction, onDashboardActionApplied } = {}) {
+export default function DemandForecastingDashboard({
+  pendingDashboardAction,
+  onDashboardActionApplied,
+  onAskInsight,
+  insightBusy,
+} = {}) {
   const { t } = useLanguage();
   const [query, setQuery] = useState({ ...DEFAULT_DEMAND_QUERY });
   const [dashboard, setDashboard] = useState(null);
@@ -338,7 +343,13 @@ export default function DemandForecastingDashboard({ pendingDashboardAction, onD
       </div>
 
       <PredictedTrendPanel items={dashboard.trending_items} onSelect={(sku) => patchQuery({ sku })} />
-      <ForecastDetailTable details={dashboard.details} grain={dashboard.forecast.grain} onSelect={(sku) => patchQuery({ sku })} />
+      <ForecastDetailTable
+        details={dashboard.details}
+        grain={dashboard.forecast.grain}
+        onSelect={(sku) => patchQuery({ sku })}
+        onAskInsight={onAskInsight}
+        askBusy={insightBusy}
+      />
 
       <DemandDimensionPanels
         dimensions={dashboard.dimensions}
