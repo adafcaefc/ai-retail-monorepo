@@ -12,6 +12,7 @@
  */
 
 import { evaluate, parse } from "../../../../formulas/expression.js";
+import replenishmentFixture from "../../replenishment/data/fixture.json";
 import {
   ALL,
   BASELINE_LEVERS,
@@ -22,6 +23,20 @@ import {
   SIMULATION_METRICS,
 } from "./contract.js";
 import { atStore, createEngine, isBaseline } from "./engine.js";
+
+/**
+ * SKU -> Replenishment's own weekly demand line, keyed off the one id both
+ * boards share. Promotion's fixture carries no per-week shape at all — every
+ * SKU here is a flat workbook total — so the Baseline-vs-promo demand chart
+ * reads Replenishment's `synthetic.demand_store_sku_32w` instead of inventing
+ * one: every promo SKU (241/241, checked in `selectors.test.js`) is also a
+ * Replenishment line, carrying the same 16-weeks-back/16-weeks-forward curve
+ * `RequirementVsInboundPanel` plots. Built once at module load — the fixture
+ * is a static import, never refetched — not per render.
+ */
+const REPLENISHMENT_DEMAND_BY_SKU = new Map(
+  (replenishmentFixture.lines ?? []).map((line) => [line.sku_id, line]),
+);
 
 /**
  * The two KPI rules the catalogue states per SKU, bound once per build.
@@ -494,17 +509,17 @@ export function computeSimulation(items, levers, applyLevers, reference) {
 }
 
 /**
- * The Baseline-vs-promo demand chart. Mirrors the shape of Replenishment's
- * `computeRequirement` — flat weekly points either side of a "Today" bridge —
- * but plots two demand curves for one population instead of demand against
- * supply.
+ * The Baseline-vs-promo demand chart. Same shape as Replenishment's
+ * `computeRequirement` — real weekly points either side of a "Today" bridge,
+ * summed from the same per-SKU curve — but plots two demand readings for one
+ * population instead of demand against supply.
  *
- * `baseline` is `items`' own measured daily rate (`ads`, real and
- * formula-reproducible per SKU — see `engine.js`) summed to a weekly figure
- * and held flat, since no table records how a promo campaign's pull on demand
- * varies week to week. Weeks past Today carry `DEMAND_FORWARD_RATIO`'s modest
- * discount rather than the naive flat continuation, the same discipline
- * Replenishment applies via `HISTORY_INBOUND_RATIO`.
+ * `baseline` is this scope's promo SKUs' own real weekly demand, read off
+ * `REPLENISHMENT_DEMAND_BY_SKU` (history) and discounted by
+ * `DEMAND_FORWARD_RATIO` past Today, the same modelled-conservatism factor
+ * `HISTORY_INBOUND_RATIO` applies on the Replenishment board. A SKU absent
+ * from that map (none, currently — see `selectors.test.js`) contributes
+ * nothing rather than throwing.
  *
  * `with_promo` is null before Today — duplicating the identical baseline
  * figure into a second series would draw one line twice — then Today's own
@@ -518,28 +533,43 @@ export function computeDemandUplift(
   weeksBack = DEMAND_WEEKS_BACK,
   weeksForward = DEMAND_WEEKS_FORWARD,
 ) {
-  const weeklyBaseline = sum(items, "ads") * 7;
+  const lines = items
+    .map((item) => REPLENISHMENT_DEMAND_BY_SKU.get(item.sku_id))
+    .filter(Boolean);
   const upliftFraction = (Number(upliftPct) || 0) / 100;
   const points = [];
 
-  for (let weekNumber = weeksBack; weekNumber >= 1; weekNumber -= 1) {
+  const history = [];
+  for (let index = 0; index < weeksBack; index += 1) {
+    history.push(
+      lines.reduce((total, line) => total + (line.demand_history?.[index] ?? 0), 0),
+    );
+  }
+
+  for (let index = 0; index < weeksBack; index += 1) {
+    const weekNumber = weeksBack - index;
     points.push({
       week: -weekNumber,
       label: `W-${weekNumber}`,
-      baseline: weeklyBaseline,
+      baseline: history[index],
       with_promo: null,
     });
   }
 
+  const lastActual = weeksBack ? history[weeksBack - 1] : 0;
   points.push({
     week: 0,
     label: "Today",
-    baseline: weeklyBaseline,
-    with_promo: weeklyBaseline,
+    baseline: lastActual,
+    with_promo: lastActual,
   });
 
   for (let weekNumber = 1; weekNumber <= weeksForward; weekNumber += 1) {
-    const forwardBaseline = weeklyBaseline * DEMAND_FORWARD_RATIO;
+    const forecast = lines.reduce(
+      (total, line) => total + (line.demand_forecast?.[weekNumber - 1] ?? 0),
+      0,
+    );
+    const forwardBaseline = forecast * DEMAND_FORWARD_RATIO;
     points.push({
       week: weekNumber,
       label: `W+${weekNumber}`,
@@ -552,7 +582,7 @@ export function computeDemandUplift(
     weeks_back: weeksBack,
     weeks_forward: weeksForward,
     points,
-    weekly_baseline: round(weeklyBaseline),
+    weekly_baseline: round(lastActual),
     uplift_pct: round(Number(upliftPct) || 0, 2),
   };
 }

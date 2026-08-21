@@ -168,40 +168,37 @@ export const UPLIFT_NOTE =
 /**
  * How many weeks the Baseline-vs-promo demand chart draws each side of Today.
  *
- * Narrower than Replenishment's 16/16 (A3 spec section 4) on purpose: that
- * window exists to carry a SKU through its lead time, and a promo campaign has
- * no lead time to cover — it is read here purely as a before/after comparison,
- * so a shorter window keeps the two flat segments legible instead of stretching
- * them across dozens of identical points.
+ * Matches Replenishment's own 16/16 (A3 spec section 4) because the chart
+ * reads that exact curve — `synthetic.demand_store_sku_32w`, 16 real weeks
+ * each way per SKU — rather than a window sized for this board. See
+ * `REPLENISHMENT_DEMAND_BY_SKU` in `selectors.js`.
  */
-export const DEMAND_WEEKS_BACK = 8;
-export const DEMAND_WEEKS_FORWARD = 8;
+export const DEMAND_WEEKS_BACK = 16;
+export const DEMAND_WEEKS_FORWARD = 16;
 
 /**
- * The forward baseline demand discount — the promo board's own version of
+ * The forward demand discount — the promo board's own version of
  * Replenishment's `HISTORY_INBOUND_RATIO` (0.97): a flat, named ratio applied
- * to a figure this board cannot measure directly, instead of either inventing
- * a week-by-week shape or presenting a flat projection as carrying no
- * uncertainty at all.
+ * to a real figure this board did not itself measure, instead of presenting
+ * a borrowed forecast as carrying no extra uncertainty at all.
  *
- * No table in this workbook records a promo campaign's week-by-week pull on
- * demand, so the chain's measured daily rate (`item.ads`, real and
- * formula-reproducible — see `engine.js`) is held flat across the window and
- * marked down a conservative 4% for the weeks past Today. With-promo demand is
- * then this same discounted baseline times (1 + the scope's own measured
- * uplift %), which is the "promo = baseline × (1 + uplift)" the chart's
- * tooltip states outright.
+ * Weeks past Today are Replenishment's own `demand_forecast` curve — a real,
+ * SKU-level projection, not a flat estimate — marked down a conservative 4%
+ * because it is a chain forecast standing in for a promo-specific one this
+ * workbook never modelled. With-promo demand is that discounted forecast
+ * times (1 + the scope's own measured uplift %), which is the
+ * "promo = baseline × (1 + uplift)" the chart's tooltip states outright.
  */
 export const DEMAND_FORWARD_RATIO = 0.96;
 
 /** Printed under the Baseline-vs-promo demand chart. */
 export const DEMAND_NOTE =
-  "Baseline is this scope's measured daily demand rate (ads × 7), held flat " +
-  "across the window since no table records a promo campaign's week-by-week " +
-  "effect on demand. Weeks past Today are modelled at 96% of that rate — the " +
-  "same discipline Replenishment applies to its own modelled inbound supply. " +
-  "With-promo demand is that modelled baseline times (1 + the scope's " +
-  "measured uplift %).";
+  "Baseline demand is Replenishment's own weekly curve for this scope's promo " +
+  "SKUs (synthetic.demand_store_sku_32w) — Promotion's own tables carry no " +
+  "per-week shape. Weeks past Today are modelled at 96% of that forecast, " +
+  "the same discipline Replenishment applies to its own modelled inbound " +
+  "supply. With-promo demand is that modelled baseline times (1 + the " +
+  "scope's measured uplift %).";
 
 /** Per-tile hover labels, sourced from the workbook's own formulas. */
 export const KPI_FORMULAS = Object.freeze({

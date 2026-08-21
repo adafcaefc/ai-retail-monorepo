@@ -329,11 +329,17 @@ function DemandUpliftTooltip({ active, payload, label }) {
  * What-If levers all reach this chart the same way they reach every other one
  * on this board — no filter wiring of its own.
  *
- * `Baseline` is real and flat (see `DEMAND_FORWARD_RATIO`'s doc in
- * `data/contract.js` for why flat rather than shaped); `With promo` is null
- * before Today, so the two lines read as one shared curve up to the divider
- * instead of drawing an identical line twice, then bridges at Today and runs
- * dashed to the horizon.
+ * `Baseline` is Replenishment's own real weekly curve for these SKUs, not a
+ * flat estimate (see `computeDemandUplift`'s doc for the join). `With promo`
+ * is null before Today, so the two lines read as one shared curve up to the
+ * divider instead of drawing an identical line twice, then bridges at Today
+ * and runs dashed to the horizon.
+ *
+ * The y-axis is framed on the data rather than anchored at zero, exactly as
+ * `RequirementVsInboundPanel` frames its own — both series move within a
+ * narrow band relative to their own size, and a zero-anchored axis would
+ * spend most of its height on empty space below the lines and flatten the
+ * real week-to-week movement into a couple of pixels.
  */
 export function PromoDemandUpliftChart({ demand }) {
   const { t, language } = useLanguage();
@@ -342,14 +348,23 @@ export function PromoDemandUpliftChart({ demand }) {
     return <p className="promo-empty">{t("No promo demand in scope.")}</p>;
   }
 
+  const plotted = demand.points.flatMap((point) =>
+    [point.baseline, point.with_promo].filter((value) => typeof value === "number"),
+  );
+  const low = plotted.length ? Math.min(...plotted) : 0;
+  const high = plotted.length ? Math.max(...plotted) : 0;
+  const padding = (high - low) * 0.2 || high * 0.05 || 1;
+  const domain = [Math.max(0, low - padding), high + padding];
+
   return (
     <section className="promo-chart-block" data-testid="promo-chart-main">
       <h4>{t("Baseline vs promo demand")}</h4>
       <ResponsiveContainer width="100%" height={300}>
         <LineChart data={demand.points} margin={{ top: 8, right: 16, bottom: 8, left: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} />
-          <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={1} />
+          <XAxis dataKey="label" tick={{ fontSize: 11 }} interval={6} />
           <YAxis
+            domain={domain}
             tickFormatter={(v) => formatUnits(v, language)}
             tick={{ fontSize: 11 }}
             width={56}

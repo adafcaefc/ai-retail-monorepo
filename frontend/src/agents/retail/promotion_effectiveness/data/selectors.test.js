@@ -7,9 +7,10 @@
 
 import { describe, expect, it } from "vitest";
 
-import { AGENT_ID, ALL, BASELINE_LEVERS, DEFAULT_SCOPE } from "./contract.js";
+import { AGENT_ID, ALL, BASELINE_LEVERS, DEFAULT_SCOPE, DEMAND_FORWARD_RATIO } from "./contract.js";
 import { loadPromotionDashboard, loadPromotionDrilldown } from "./dashboardData.js";
 import fixture from "./fixture.json";
+import replenishmentFixture from "../../replenishment/data/fixture.json";
 import {
   buildDashboardFromFixture,
   computeByChannel,
@@ -17,6 +18,7 @@ import {
   computeBySeason,
   computeByState,
   computeByStore,
+  computeDemandUplift,
   computeKpis,
   computeLargestMarginSkus,
   scopeCampaigns,
@@ -332,5 +334,58 @@ describe("the data gateway", () => {
     const drilldown = await loadPromotionDrilldown(DEFAULT_SCOPE, "incremental_margin");
     expect(drilldown.by_category.length).toBeGreaterThan(0);
     expect(drilldown.by_vertical.length).toBeGreaterThan(0);
+  });
+});
+
+describe("computeDemandUplift", () => {
+  it("joins every promo SKU to a Replenishment line — the whole chart depends on this", () => {
+    // Regression guard: a miss here silently drops that SKU's demand rather
+    // than throwing, so a real join failure would just read as a smaller
+    // number, never a test failure, unless something asserts the join itself.
+    const bySku = new Map(replenishmentFixture.lines.map((l) => [l.sku_id, l]));
+    const missing = fixture.items.filter((item) => !bySku.has(item.sku_id));
+    expect(missing).toEqual([]);
+  });
+
+  it("draws a real curve, not a flat line — history varies week to week", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const history = dashboard.demand_uplift.points
+      .filter((p) => p.week < 0)
+      .map((p) => p.baseline);
+    const distinctValues = new Set(history.map((v) => Math.round(v)));
+    expect(distinctValues.size).toBeGreaterThan(1);
+  });
+
+  it("bridges at Today: baseline and with_promo carry the same value there", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const today = dashboard.demand_uplift.points.find((p) => p.week === 0);
+    expect(today.with_promo).toBe(today.baseline);
+    expect(dashboard.demand_uplift.points.filter((p) => p.week < 0).every((p) => p.with_promo === null)).toBe(true);
+  });
+
+  it("with_promo is the discounted forward baseline times (1 + uplift), per the tooltip's own formula", () => {
+    const dashboard = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const weekPlus1 = dashboard.demand_uplift.points.find((p) => p.week === 1);
+    const expected = weekPlus1.baseline * (1 + dashboard.kpis.uplift_pct / 100);
+    expect(weekPlus1.with_promo).toBeCloseTo(expected, 6);
+  });
+
+  it("discounts forward baseline weeks by DEMAND_FORWARD_RATIO against Replenishment's own forecast", () => {
+    const items = scopeItems(fixture.items, { legal_entity_id: "GRC" });
+    const demand = computeDemandUplift(items, 0);
+    const bySku = new Map(replenishmentFixture.lines.map((l) => [l.sku_id, l]));
+    const rawForecastWeek1 = items.reduce(
+      (total, item) => total + (bySku.get(item.sku_id)?.demand_forecast?.[0] ?? 0),
+      0,
+    );
+    const weekPlus1 = demand.points.find((p) => p.week === 1);
+    expect(weekPlus1.baseline).toBeCloseTo(rawForecastWeek1 * DEMAND_FORWARD_RATIO, 6);
+  });
+
+  it("narrows with the scope, like every other chart on this board", () => {
+    const chain = buildDashboardFromFixture(fixture, DEFAULT_SCOPE);
+    const grocery = buildDashboardFromFixture(fixture, { ...DEFAULT_SCOPE, legal_entity_id: "GRC" });
+    expect(grocery.demand_uplift.weekly_baseline).not.toBe(chain.demand_uplift.weekly_baseline);
+    expect(grocery.demand_uplift.weekly_baseline).toBeLessThan(chain.demand_uplift.weekly_baseline);
   });
 });
