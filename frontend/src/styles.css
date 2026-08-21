@@ -2046,6 +2046,22 @@ img.ey-logo {
   height: 100% !important;
 }
 
+/*
+ * Recharts portals the legend and the tooltip into the same wrapper div and
+ * gives neither a z-index, so painting order falls to DOM order — and since
+ * <Tooltip> is written before <Legend> in every chart here, the legend wins.
+ * On a board with a legend deep enough to wrap (the A4 campaign mix runs to
+ * eleven discount types) a tooltip opening over it comes out with the legend
+ * labels struck through it. Naming both settles it for every chart at once.
+ */
+.recharts-wrapper .recharts-legend-wrapper {
+  z-index: 1;
+}
+
+.recharts-wrapper .recharts-tooltip-wrapper {
+  z-index: 2;
+}
+
 .chart-card--fill .chart-note {
   flex: 0 0 auto;
   margin-top: 4px;
