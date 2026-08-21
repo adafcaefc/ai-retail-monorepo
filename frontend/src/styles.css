@@ -8962,10 +8962,6 @@ img.ey-logo {
   font-size: 0.62rem;
 }
 
-.po-data-note {
-  color: var(--muted);
-}
-
 .po-scope-summary {
   display: flex;
   align-items: center;
@@ -12538,26 +12534,8 @@ button.assortment-kpi:hover {
   cursor: not-allowed;
 }
 
-/* ---------- Scope and data notes ---------- */
+/* ---------- Data notes ---------- */
 
-.rdet-scope-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px 14px;
-}
-
-.rdet-source {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--accent-info-soft);
-  color: var(--accent-info-strong);
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-}
-
-.rdet-note,
 .rdet-footnote,
 .rdet-grid-note {
   color: var(--muted);
@@ -12618,11 +12596,6 @@ button.assortment-kpi:hover {
   font-size: 1.32rem;
   font-weight: 700;
   line-height: 1.15;
-}
-
-.rdet-kpi-sub {
-  color: var(--muted);
-  font-size: 0.64rem;
 }
 
 /* ---------- Detail grid ---------- */

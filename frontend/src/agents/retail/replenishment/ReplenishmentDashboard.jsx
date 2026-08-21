@@ -204,9 +204,6 @@ export default function ReplenishmentDashboard() {
       />
 
       <div className="po-scope-row">
-        <span className="po-data-note">
-          {dashboard.is_mock ? t("Workbook data") : t("Live data")} · {t(dashboard.note)}
-        </span>
         <div className="po-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? (

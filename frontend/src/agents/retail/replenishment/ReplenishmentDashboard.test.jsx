@@ -230,13 +230,12 @@ describe("ReplenishmentDashboard", () => {
     expect(within(kpiTile("SKUs to reorder")).getByText("345")).toBeInTheDocument();
   });
 
-  it("labels the source rather than presenting workbook figures as live", async () => {
+  it("keeps the standing note on which order value is which", async () => {
     await renderSettled();
 
-    expect(screen.getByText(/Workbook data/)).toBeInTheDocument();
-    // Twice on purpose: the payload's own note and the standing footnote both
-    // say it, because the two order values are the thing most likely to be
-    // misread on this board.
+    // The two order values are the thing most likely to be misread on this
+    // board, so the footnote naming them stays even though the source banner
+    // has gone.
     expect(screen.getAllByText(/at selling price/).length).toBeGreaterThanOrEqual(1);
   });
 
