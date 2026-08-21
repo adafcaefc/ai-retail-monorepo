@@ -7,6 +7,15 @@
  * existing error state instead of being swapped for the bundled fixture —
  * silently substituting demo data for a real backend failure reads as the
  * board working when it is not.
+ *
+ * FETCH AND BUILD ARE SEPARATE ON PURPOSE. `serializeScope` never encodes
+ * levers or `driveWholePage` — the network/fixture read depends only on
+ * `scope`, and every lever's effect happens entirely client-side in
+ * `buildDashboardFromFixture` (pure, synchronous). So the What-If simulator
+ * can be live — every slider move recomputed immediately — without a
+ * network round-trip per tick: fetch `rows` once per scope
+ * (`loadPricingMarkdownRows`), then rebuild the dashboard synchronously off
+ * the same rows as levers change (`buildPricingMarkdownDashboard`).
  */
 
 import { fetchDashboard } from "../../../../api/dashboard.js";
@@ -19,30 +28,44 @@ import { DATA_SOURCE } from "../../common/dataSource.js";
 
 export { DATA_SOURCE };
 
-/** Workbook-derived data, computed locally. Resolves immediately (no latency). */
-async function loadFromFixture(scope, options) {
-  return buildDashboardFromFixture(fixture, scope, options);
-}
-
 /**
- * The canonical dashboard route every agent is served through. The response
- * is the same row shape the fixture holds, so it runs through the identical
- * selectors — the API returns rows, not a finished dashboard, deliberately.
+ * The raw rows a scope resolves to — workbook fixture or live API, whichever
+ * `DATA_SOURCE` selects. No lever/driveWholePage dependency: those apply
+ * afterward, client-side, in `buildPricingMarkdownDashboard`.
+ *
+ * @param {Partial<import("./contract.js").PricingScope>} [scope]
  */
-async function loadFromApi(scope, options) {
-  const rows = await fetchDashboard("retail.pricing_markdown", serializeScope(scope));
-  return buildDashboardFromFixture(rows, scope, options);
+export async function loadPricingMarkdownRows(scope = {}) {
+  return DATA_SOURCE === "api"
+    ? await fetchDashboard("retail.pricing_markdown", serializeScope(scope))
+    : fixture;
 }
 
 /**
- * Load the Pricing & Markdown dashboard for one scope.
+ * Build the normalized dashboard shape from already-fetched rows. Pure and
+ * synchronous, so a caller can re-run it on every lever change with no
+ * latency — this is what makes the What-If simulator live.
+ *
+ * @param {object} rows
+ * @param {Partial<import("./contract.js").PricingScope>} [scope]
+ * @param {{levers?: object, driveWholePage?: boolean}} [options]
+ */
+export function buildPricingMarkdownDashboard(rows, scope = {}, options = {}) {
+  return normalizePricingDashboard(buildDashboardFromFixture(rows, scope, options));
+}
+
+/**
+ * Load the Pricing & Markdown dashboard for one scope in one call — fetch
+ * then build. Components that need to rebuild repeatedly at no latency (the
+ * What-If simulator) should call `loadPricingMarkdownRows` once and
+ * `buildPricingMarkdownDashboard` on every lever change instead.
  *
  * @param {Partial<import("./contract.js").PricingScope>} [scope]
  * @param {{levers?: object, driveWholePage?: boolean}} [options]
  */
 export async function loadPricingMarkdownDashboard(scope = {}, options = {}) {
-  const payload = DATA_SOURCE === "api" ? await loadFromApi(scope, options) : await loadFromFixture(scope, options);
-  return normalizePricingDashboard(payload);
+  const rows = await loadPricingMarkdownRows(scope);
+  return buildPricingMarkdownDashboard(rows, scope, options);
 }
 
 /**
@@ -59,17 +82,27 @@ export async function loadPricingMarkdownDrilldown(scope, metricId, options = {}
   // Same source resolution as the board itself — a drawer that opened
   // against different rows than the tile it came from would be worse than
   // one that does not open.
-  const rows =
-    DATA_SOURCE === "api"
-      ? await fetchDashboard("retail.pricing_markdown", serializeScope(scope))
-      : fixture;
+  const rows = await loadPricingMarkdownRows(scope);
 
   // The drawer needs the scoped, lever-driven candidate rows, not the
   // finished dashboard. `candidates` on the built dashboard is the preview
-  // table's population (capped at 300, comfortably above the ~234-candidate
-  // baseline); reusing it here — rather than exposing a separate uncapped
-  // accessor — is the same tradeoff promotion_effectiveness's drilldown makes
-  // with its own (smaller, 12-row) `largest_margin_skus` population.
+  // table's population, capped at 300 and sorted by at_risk_value -- fine
+  // for a preview table, but grouping a capped, value-sorted slice by
+  // category/store drops most groups entirely and skews every weighted
+  // figure (avg_depth_pct especially). `candidates_full` is the same rows,
+  // uncapped, kept just for this.
   const dashboard = buildDashboardFromFixture(rows, scope, options);
-  return buildDrilldown(metricId, dashboard.candidates);
+  // comp_idx is a per-SKU figure averaged over every SKU in scope, not just
+  // markdown candidates (see computeKpis) — its drawer needs `sku_index`,
+  // not `candidates_full`, or its breakdown would carry the same
+  // candidate-only bias the headline tile itself no longer has.
+  const drilldownRows = metricId === "comp_idx" ? dashboard.sku_index : dashboard.candidates_full;
+  // Same lever the KPI tile itself was driven by, so a non-additive metric's
+  // drawer (avg_depth_pct) shows the same figure the tile does. `stores`
+  // labels the by-store breakdown (filter_options.stores' `{ value, label }`
+  // shape, the same list the store filter dropdown reads).
+  return buildDrilldown(metricId, drilldownRows, {
+    markdownLever: dashboard.markdown_lever,
+    stores: dashboard.filter_options?.stores ?? [],
+  });
 }

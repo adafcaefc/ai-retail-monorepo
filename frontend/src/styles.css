@@ -11074,6 +11074,88 @@ button.po-kpi {
   cursor: not-allowed;
 }
 
+/* The ladder chart's Horizon control, in the filter bar -- mirrors
+   demand_forecasting's .demand-horizon/.demand-segmented exactly (own copy,
+   not a cross-agent import; see pricing_markdown/presentation.js's own
+   docstring on that convention). */
+.pricing-horizon {
+  min-width: max-content;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.pricing-horizon legend {
+  margin-bottom: var(--space-1);
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pricing-segmented {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--gray-50);
+}
+
+.pricing-segmented button {
+  min-width: 34px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.pricing-segmented button[aria-pressed="true"] {
+  background: var(--surface-strong);
+  color: var(--primary-deep);
+  box-shadow: var(--shadow-sm);
+}
+
+.pricing-segmented button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* The ladder chart's AT RISK / RECOVER / WRITE-OFF / DEPTH stat strip --
+   restates the KPI tiles above (a deliberate exception for this chart, see
+   docs/A5_LADDER_CHART_DECISIONS.md). */
+.pricing-ladder-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--line);
+}
+
+.pricing-ladder-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pricing-ladder-stat span {
+  color: var(--muted);
+  font-size: var(--text-2xs);
+  font-weight: 750;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.pricing-ladder-stat strong {
+  font-size: var(--text-md);
+  color: var(--ink);
+}
+
 /* --- scope and data notes ------------------------------------------------ */
 
 .pricing-scope-row {
@@ -11241,6 +11323,63 @@ button.pricing-kpi:hover {
   color: var(--ink);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.pricing-panel-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Chart-click filtering: a chart's own "Back to all X" reset button, and the
+   filter-shortcut pill row beneath it. Mirrors demand_forecasting's
+   .demand-panel-reset / .demand-dimension-drilldowns. */
+.pricing-chart-reset {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--primary);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pricing-chart-reset:hover,
+.pricing-chart-reset:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
+}
+
+.pricing-chart-drilldowns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.pricing-chart-drilldowns button {
+  max-width: 180px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--muted);
+  padding: 3px 8px;
+  cursor: pointer;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pricing-chart-drilldowns button:hover,
+.pricing-chart-drilldowns button:focus-visible {
+  border-color: var(--primary);
+  color: var(--primary-deep);
 }
 
 .pricing-panel-note {

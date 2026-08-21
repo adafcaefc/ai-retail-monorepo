@@ -51,29 +51,35 @@ ROW_DEFAULTS = {
     "is_promo_eligible": False,
     "cannibalisation_pct": 0,
     "safety_days": 0,
+    "lead_time_days": 3,
 }
 
 
-def _row(sku_id: str, store_id: str, name: str, state: str, at_risk: float, recoverable: float) -> dict:
+def _row(
+    sku_id: str, store_id: str, name: str, state: str, at_risk: float, recoverable: float, gross: float = 0.0
+) -> dict:
     return {
         "item_key": sku_id, "store_key": store_id, "name": name, "state": state,
-        "at_risk": at_risk, "recoverable": recoverable,
+        "at_risk": at_risk, "recoverable": recoverable, "gross": gross,
         **ROW_DEFAULTS,
     }
 
 
 # SKU A sits at S1 (Overstock, at-risk 100) and S2 (Healthy, no exposure).
 # SKU B sits only at S2 (Expiry, at-risk 50).
+# `gross` (f23's at-risk-PORTION output, distinct from `at_risk`/f12's full
+# position value) isn't exercised by these store-scoping tests, so it's set
+# arbitrarily below `at_risk` -- only build_items()'s KeyError-free passthrough
+# into `at_risk_gross` matters here, not its actual value.
 STORE_MONEY_ROWS = [
-    _row("A", "S1", "Item A", "Overstock", 100.0, 30.0),
-    _row("A", "S2", "Item A", "Healthy", 0.0, 0.0),
-    _row("B", "S2", "Item B", "Expiry", 50.0, 40.0),
+    _row("A", "S1", "Item A", "Overstock", 100.0, 30.0, gross=20.0),
+    _row("A", "S2", "Item A", "Healthy", 0.0, 0.0, gross=0.0),
+    _row("B", "S2", "Item B", "Expiry", 50.0, 40.0, gross=45.0),
 ]
-LEAD_DAYS: dict = {}
 
 
 def _population(store_money_rows: list[dict]) -> dict[str, dict]:
-    items = d.build_items(store_money_rows, LEAD_DAYS)
+    items = d.build_items(store_money_rows)
     # Keyed by (sku, store): unlike the old SKU rollup, a SKU can legitimately
     # appear more than once (at different stores) in this population.
     return {(item["sku_id"], item["store_id"]): item for item in items}

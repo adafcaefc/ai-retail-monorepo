@@ -98,6 +98,13 @@ export const LEVER_DEFINITIONS = Object.freeze([
     min: 0,
     max: 60,
     step: 1,
+    // Unlike every other lever (rests at 0 = no change), this one mirrors
+    // the workbook's own "A5 Markdown live" B6 cell directly: B6 defaults to
+    // 25, not 0 -- see itemDepth() in selectors.js and engine.js's
+    // `markdown_lever: lever.markdown - 25` conversion at the formula
+    // boundary, which keeps f14's own embedded (25 + markdown_lever) / 25
+    // term unchanged while this UI value reads exactly like B6.
+    baseline: 25,
     cell: "B18",
     effect: "Widens the recovery depth f14 applies to gross exposure -- deeper markdown, more of the gross recovered, up to a 65% cap",
     modelled: true,
@@ -134,9 +141,13 @@ export const LEVER_DEFINITIONS = Object.freeze([
   },
 ]);
 
-/** Every lever at rest -- the setting the workbook was calculated at. */
+/**
+ * Every lever at rest -- the setting the workbook was calculated at. Reads
+ * each lever's own `baseline` (defaulting to 0) rather than assuming every
+ * lever rests at 0 -- `markdown` rests at 25, matching the workbook's B6.
+ */
 export const BASELINE_LEVERS = Object.freeze(
-  Object.fromEntries(LEVER_DEFINITIONS.map(({ id }) => [id, 0])),
+  Object.fromEntries(LEVER_DEFINITIONS.map(({ id, baseline = 0 }) => [id, baseline])),
 );
 
 /**
@@ -159,6 +170,11 @@ export const SIMULATION_METRICS = Object.freeze([
   { id: "at_risk_value", label: "At-risk value", lowerIsBetter: true },
   { id: "recoverable_value", label: "Recoverable", lowerIsBetter: false },
   { id: "write_off_value", label: "Write-off", lowerIsBetter: true },
+  // Lower depth recovers the same value while giving up less margin -- same
+  // "lower is the efficient outcome" framing as write_off_value. Moves with
+  // the `markdown` lever via depthWeightedAvgPct; see summarize() in
+  // selectors.js.
+  { id: "avg_depth_pct", label: "Avg depth %", lowerIsBetter: true },
 ]);
 
 /**
@@ -171,6 +187,7 @@ export const SIMULATION_STRIP_METRICS = Object.freeze([
   { id: "recoverable_value", label: "Recoverable", lowerIsBetter: false },
   { id: "write_off_value", label: "Write-off", lowerIsBetter: true },
   { id: "recovery_rate_pct", label: "Recovery rate", lowerIsBetter: false },
+  { id: "avg_depth_pct", label: "Avg depth %", lowerIsBetter: true },
 ]);
 
 /**
@@ -191,6 +208,18 @@ export const DEFAULT_SCOPE = Object.freeze({
 });
 
 /**
+ * The "at-risk value: ladder vs no action" chart's horizon (weeks per side
+ * of "today"), mirroring `demand_forecasting`'s own `DEMAND_HORIZONS`. Not
+ * part of `scope`/`serializeScope` on purpose -- every week 4..16 covers is
+ * already computed and shipped in `dashboard.ladder_history`
+ * (computeLadderHistory in selectors.js), so narrowing it is a client-side
+ * slice, never a refetch, unlike demand_forecasting's horizon (which does
+ * change what the backend computes).
+ */
+export const LADDER_HORIZONS = Object.freeze([4, 8, 12, 16]);
+export const DEFAULT_LADDER_HORIZON = 16;
+
+/**
  * A5 spec section 11: chain-net headline vs. store-level gross dimension
  * charts. They will not reconcile 1:1 -- that is by design, not a bug.
  */
@@ -207,7 +236,10 @@ export const CANDIDATE_SCOPE_NOTE =
 
 export const KPI_FORMULAS = Object.freeze({
   markdown_candidates: "count(SKUs with >=1 store in {Expiry, Overstock, Slow-mover})",
-  avg_depth_pct: "SUM(depth(state, markdown_lever) x at_risk_value) / SUM(at_risk_value) over candidates in scope",
+  // at_risk_gross, not at_risk_value: f23-markdown-at-risk-gross's own
+  // at-risk-PORTION output, not f12's full position value for any
+  // non-Healthy row -- see depthWeightedAvgPct in selectors.js.
+  avg_depth_pct: "SUM(depth(state, markdown_lever) x at_risk_gross) / SUM(at_risk_gross) over candidates in scope",
   at_risk_value: "SUM(ENGINE_STORE.at_risk) across a SKU's stores",
   recoverable_value:
     "SUM(ENGINE_STORE.markdown_recoverable) across a SKU's candidate-state stores; " +
@@ -287,6 +319,11 @@ export function normalizePricingDashboard(payload) {
       index: payload.simulation?.index ?? [],
     },
     reference_by_vertical: payload.reference_by_vertical ?? [],
+    // 16-week forward projection (not history) -- see computeLadderHistory
+    // in data/selectors.js. Empty on any source that hasn't run migration
+    // 012 / the ladder generator; the chart's own empty-state guard handles
+    // that, same as every other optional block here.
+    ladder_history: payload.ladder_history ?? [],
   };
 }
 
