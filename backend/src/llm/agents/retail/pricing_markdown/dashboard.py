@@ -125,16 +125,18 @@ NOTE = (
 # agent is the one exception, hence the local SUPPORTED_FILTERS override
 # above rather than changing the pair every Retail board shares.
 #
-# The `stores` rollup (by_store/by_cluster/by_channel/by_legal_entity) is a
-# separate concern from `items` above: category_group and state ALSO narrow
-# it server-side, in `build()`, because those two fields have already been
-# summed away across every SKU at a store by the time a per-store row exists
-# -- unlike store_id, which matches an intrinsic field on the pre-aggregated
-# row and so can still be (and is) filtered client-side by scopeStores().
-# This only applies when reading from the live API; the bundled fixture
-# (offline/standalone builds) has no request-time recompute step, so it keeps
-# showing each store's full all-category/all-state total for those four
-# charts -- the same documented gap store_id already has on that path.
+# The `stores` rollup (by_store/by_cluster/by_channel) is a separate concern
+# from `items` above: category_group and state ALSO narrow it server-side, in
+# `build()`, because those two fields have already been summed away across
+# every SKU at a store by the time a per-store row exists -- unlike store_id,
+# which matches an intrinsic field on the pre-aggregated row and so can still
+# be (and is) filtered client-side by scopeStores(). This only applies when
+# reading from the live API; the bundled fixture (offline/standalone builds)
+# has no request-time recompute step, so it keeps showing each store's full
+# all-category/all-state total for those three charts -- the same documented
+# gap store_id already has on that path. `by_legal_entity` doesn't read this
+# `stores` rollup at all -- selectors.js's computeByLegalEntity sums `items`'
+# own at_risk_gross instead, so it always reflects every filter client-side.
 
 # Weeks in `synthetic.markdown_ladder_store_sku_16w` -- see that table's
 # migration (sql/retail/012_...) and generator (scripts/generate_synthetic_

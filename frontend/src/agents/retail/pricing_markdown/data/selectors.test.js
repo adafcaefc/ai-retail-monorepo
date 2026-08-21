@@ -6,6 +6,7 @@ import {
   candidatesOf,
   computeByCategory,
   computeByCluster,
+  computeByLegalEntity,
   computeByState,
   computeByVertical,
   computeBestActions,
@@ -151,6 +152,24 @@ describe("computeByVertical", () => {
   });
 });
 
+describe("computeByLegalEntity", () => {
+  it("sums at_risk_gross (not at_risk_value) per vertical, over every item — at_risk_gross is already 0 off-candidate", () => {
+    const rows = computeByLegalEntity(fixture.items, fixture.filter_options.legal_entities);
+    for (const row of rows) {
+      const expected = fixture.items
+        .filter((i) => i.vertical_id === row.legal_entity_id)
+        .reduce((t, i) => t + (Number(i.at_risk_gross) || 0), 0);
+      expect(row.value).toBeCloseTo(expected, 0);
+    }
+  });
+
+  it("matches summing only markdown candidates, since at_risk_gross is 0 on every other row", () => {
+    const rows = computeByLegalEntity(fixture.items, fixture.filter_options.legal_entities);
+    const candidateRows = computeByLegalEntity(candidatesOf(fixture.items), fixture.filter_options.legal_entities);
+    expect(rows).toEqual(candidateRows);
+  });
+});
+
 describe("computeCandidates", () => {
   it("carries category_id, vertical_id, comp_idx and at_risk_gross — the drilldown drawer's grouping keys and depth weight", () => {
     const rows = computeCandidates(fixture.items);
@@ -276,9 +295,14 @@ describe("computeLadderHistory", () => {
   // CSV is ever written.
   it("the real fixture's projection rises from oldest to newest and stays separated at the edges", () => {
     const candidates = candidatesOf(fixture.items);
+    // at_risk_gross (f23), not at_risk_value (f12) -- same basis computeKpis
+    // sums, and the same basis the ladder generator now anchors its trend
+    // on (see generate_synthetic_markdown_ladder_16w.py's module docstring),
+    // so "today" (injected here) sits continuously between the projected
+    // week -1/+1 points instead of a step change at week 0.
     const kpis = {
-      at_risk_value: candidates.reduce((sum, i) => sum + i.at_risk_value, 0),
-      write_off_value: candidates.reduce((sum, i) => sum + Math.max(0, i.at_risk_value - i.recoverable_value), 0),
+      at_risk_value: candidates.reduce((sum, i) => sum + i.at_risk_gross, 0),
+      write_off_value: candidates.reduce((sum, i) => sum + Math.max(0, i.at_risk_gross - i.recoverable_value), 0),
     };
     const rows = computeLadderHistory(fixture.ladder_by_vertical ?? [], { legal_entity_id: ALL }, kpis);
     if (!rows.length) return; // fixture built before the generator ran; nothing to assert

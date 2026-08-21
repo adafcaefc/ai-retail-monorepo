@@ -40,15 +40,24 @@ TODAY LIVES OUTSIDE THIS TABLE
 --------------------------------
 Offset 0 ("today") is NOT a stored column. It is TODAY's real, already-
 computed snapshot -- `build_pricing_markdown_fixture.build_items()`'s own
-`at_risk_value` and `write_off_value` for that (sku, store) row (the same
-f12/f14 formulas the fixture and the live backend both already run) -- and
-every consumer of this table reads it live from there instead of from a
-column here: the KPI tiles, the Rescue waterfall, and the frontend's
+`at_risk_gross` (f23) and `recoverable_value` (f14) for that (sku, store)
+row -- and every consumer of this table reads it live from there instead of
+from a column here: the KPI tiles, the Rescue waterfall, and the frontend's
 `computeLadderHistory` (which injects it as this chart's week-0 point from
 `dashboard.kpis`, not from `dashboard.ladder_history`'s own arrays). Nothing
 about today is invented, and duplicating it into this table would just be a
 second copy of a number that already exists and already updates correctly
 whenever the underlying formulas do.
+
+Anchored on `at_risk_gross`, NOT each row's own `at_risk_value` (f12, the
+row's full position x price for any non-Healthy state) -- `dashboard.kpis.
+at_risk_value` (the frontend's actual week-0 point, selectors.js's
+`computeKpis`) itself sums `at_risk_gross` over candidates, not f12; anchoring
+this table's trend on f12 instead would land every week around "today" on a
+different total than "today" itself, a visible cliff at offset 0. See
+selectors.js's own `computeKpis`/`computeByVertical` docstrings for the same
+f12-vs-f23 mixup, already fixed there once before this table's own anchor
+needed the matching fix.
 
 `no_action_w1`/`ladder_w1` are offset **+1** (one week ahead of today), NOT
 today -- a prior version of this generator stored today at `w1` and every
@@ -60,13 +69,13 @@ mirrors it exactly (`hist_w1` = -1, `hist_w16` = -16).
 Every stored week (`-16..-1` = `*_hist_w16..*_hist_w1`, oldest first;
 `+1..+16` = `*_w1..*_w16`) is TREND x WIGGLE:
 
-  trend(offset)  = at_risk_value + offset x weekly_inflow                (offset > 0)
-                  = max(0.2 x at_risk_value, at_risk_value + offset x weekly_inflow)  (offset < 0)
+  trend(offset)  = at_risk_gross + offset x weekly_inflow                (offset > 0)
+                  = max(0.2 x at_risk_gross, at_risk_gross + offset x weekly_inflow)  (offset < 0)
   wiggle(offset) = 1 + WIGGLE_AMPLITUDE x sin(2*pi*(offset+phase)/WIGGLE_CYCLE_WEEKS)
   no_action(offset) = trend(offset) x wiggle(offset)
   ladder(offset)    = no_action(offset) x (1 - effective_recovery_rate)
 
-`weekly_inflow` is at_risk_value x INFLOW_RATE_BASE x growth_factor, where
+`weekly_inflow` is at_risk_gross x INFLOW_RATE_BASE x growth_factor, where
 growth_factor is the SKU's own real SKU_Master growth index (0.91-1.39 across
 the whole catalogue, confirmed), clamped to a defensive [0.8, 1.6] band --
 so a faster-growing SKU accumulates exposure faster (and, mirrored
@@ -77,8 +86,10 @@ sit flat there for several weeks, which would read as measured, not
 modelled.
 
 `effective_recovery_rate` is the SKU's own real recovery rate --
-`recoverable_value / at_risk_value`, the same figure f14-recoverable-at-
-risk-value's elasticity-driven output already implies -- floored at
+`recoverable_value / at_risk_gross`, the same figure f14-recoverable-at-
+risk-value's elasticity-driven output already implies (f14 is computed FROM
+f23's `gross` output, so the two are already on one basis -- see
+build_pricing_markdown_fixture.py's build_items()) -- floored at
 MIN_RECOVERY_RATE (0.05) so the ladder line always visibly separates from
 the no-action line even for a SKU whose real recovery is negligible. f14's
 own 0.95 cap already keeps the raw rate under MAX_RECOVERY_RATE for real
@@ -106,7 +117,7 @@ a seam, even though offset 0 itself is never stored or wiggled here (see
 
 Only markdown candidates (Expiry/Overstock/Slow-mover) get a nonzero
 projection -- a non-candidate row carries no at-risk exposure today
-(`write_off_value = 0`), so there is nothing to project. Both lines are
+(`at_risk_gross = 0`), so there is nothing to project. Both lines are
 written as flat zero across every offset, matching `build_pricing_markdown_
 fixture.py`'s own T-04 zero convention.
 
@@ -119,7 +130,7 @@ though it were one). The ripple is one shared, bounded wiggle on a trend,
 not a fabricated calendar of clearance events.
 
 There is no random component anywhere in this generator. Both lines are a
-pure function of each row's own real `at_risk_value`/`write_off_value`/
+pure function of each row's own real `at_risk_gross`/`recoverable_value`/
 `growth`/`state`/`vertical_id`, so a rerun reproduces the file byte for
 byte.
 """
@@ -146,7 +157,7 @@ TARGET_XLSX = REPO / "resources" / "markdown_ladder_store_sku_16w_v1.xlsx"
 
 GENERATION_NAME = "markdown_ladder_store_sku_16w_v1"
 TABLE_NAME = "markdown_ladder_store_sku_16w"
-GENERATOR_VERSION = "markdown-ladder-store-sku-16w-generator-v2.0.0"
+GENERATOR_VERSION = "markdown-ladder-store-sku-16w-generator-v2.1.0"
 
 WEEKS = 16
 # Forward block: w1 = today (offset 0, the calibration anchor) .. w16 = +15
@@ -227,8 +238,14 @@ _OFFSETS = list(range(-WEEKS, 0)) + list(range(1, WEEKS + 1))  # -16..-1, 1..16 
 def build_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for item in items:
-        base_at_risk = float(item["at_risk_value"])
-        base_write_off = float(item["write_off_value"])
+        # at_risk_gross (f23), not at_risk_value (f12) -- see the module
+        # docstring's "TODAY LIVES OUTSIDE THIS TABLE" section: the frontend's
+        # week-0 "today" point is `dashboard.kpis.at_risk_value`, which itself
+        # sums at_risk_gross over candidates (selectors.js's computeKpis), so
+        # the trend anchored here has to be on that same basis or offset 0
+        # and offset +/-1 show two different figures for the same label.
+        base_at_risk = float(item["at_risk_gross"])
+        recoverable = float(item["recoverable_value"])
         by_offset: dict[str, float] = {}
 
         if not item["is_markdown_candidate"] or base_at_risk <= 0:
@@ -240,7 +257,11 @@ def build_rows(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
             growth_factor = _clamp(float(item["growth"]), *GROWTH_CLAMP)
             weekly_inflow = base_at_risk * INFLOW_RATE_BASE * growth_factor
 
-            recovery_rate_raw = 1.0 - (base_write_off / base_at_risk if base_at_risk else 0.0)
+            # recoverable_value is already computed off at_risk_gross (f14's
+            # own `gross` input, see build_pricing_markdown_fixture.py), so
+            # this ratio is on one consistent basis throughout -- no separate
+            # "write-off" figure needed here.
+            recovery_rate_raw = (recoverable / base_at_risk) if base_at_risk else 0.0
             effective_rate = _clamp(recovery_rate_raw, MIN_RECOVERY_RATE, MAX_RECOVERY_RATE)
 
             phase = vertical_phase(item["vertical_id"])
@@ -335,7 +356,7 @@ def main() -> int:
     # calibrate a stored column against. What IS checked, independently of
     # `build_rows()`: every candidate row's stored value at every offset
     # equals trend_value(offset) x wiggle_factor(offset) recomputed fresh
-    # from that row's own real at_risk_value/write_off_value/growth --
+    # from that row's own real at_risk_gross/recoverable_value/growth --
     # exactly what `build_rows()` should have written, not just trusted to
     # have. Non-candidate rows must carry an exact zero across all 64
     # weekly columns.
@@ -346,12 +367,12 @@ def main() -> int:
     wrongly_nonzero = 0
     for row in rows:
         item = by_key[(row["sku_id"], row["store_id"])]
-        base_at_risk = float(item["at_risk_value"])
-        base_write_off = float(item["write_off_value"])
+        base_at_risk = float(item["at_risk_gross"])
+        recoverable = float(item["recoverable_value"])
         if item["is_markdown_candidate"] and base_at_risk > 0:
             growth_factor = _clamp(float(item["growth"]), *GROWTH_CLAMP)
             weekly_inflow = base_at_risk * INFLOW_RATE_BASE * growth_factor
-            recovery_rate_raw = 1.0 - (base_write_off / base_at_risk)
+            recovery_rate_raw = recoverable / base_at_risk
             effective_rate = _clamp(recovery_rate_raw, MIN_RECOVERY_RATE, MAX_RECOVERY_RATE)
             phase = vertical_phase(item["vertical_id"])
             for offset in _OFFSETS:
@@ -382,9 +403,9 @@ def main() -> int:
     negative = 0
     for row in rows:
         item = by_key[(row["sku_id"], row["store_id"])]
-        if item["is_markdown_candidate"] and float(item["at_risk_value"]) > 0:
+        if item["is_markdown_candidate"] and float(item["at_risk_gross"]) > 0:
             growth_factor = _clamp(float(item["growth"]), *GROWTH_CLAMP)
-            weekly_inflow = float(item["at_risk_value"]) * INFLOW_RATE_BASE * growth_factor
+            weekly_inflow = float(item["at_risk_gross"]) * INFLOW_RATE_BASE * growth_factor
             if weekly_inflow < 0:
                 bad_inflow += 1
         if any(float(row[c]) < 0 for c in all_na_columns + all_ld_columns):
@@ -435,7 +456,7 @@ def main() -> int:
 
     # Candidates only, matching what the stored (non-candidate-zeroed) totals
     # below actually represent -- not stored in this table itself, see gate 1.
-    chain_today = sum(float(item["at_risk_value"]) for item in items if item["is_markdown_candidate"])
+    chain_today = sum(float(item["at_risk_gross"]) for item in items if item["is_markdown_candidate"])
     chain_no_action_hist16 = sum(float(r["no_action_hist_w16"]) for r in rows)
     chain_no_action_w16 = sum(float(r["no_action_w16"]) for r in rows)
     print(
@@ -467,8 +488,8 @@ def main() -> int:
         },
         "provenance": {
             "today_offset_0": (
-                "NOT stored in this table. Today's real at_risk_value/write_off_value"
-                " (build_pricing_markdown_fixture.build_items()'s own f12/f14 output) is"
+                "NOT stored in this table. Today's real at_risk_gross/recoverable_value"
+                " (build_pricing_markdown_fixture.build_items()'s own f23/f14 output) is"
                 " read live wherever it is needed (the KPI tiles, the Rescue waterfall, and"
                 " the frontend's computeLadderHistory, which injects it as this chart's"
                 " week-0 point) rather than duplicated into a column here -- see the module"
@@ -476,9 +497,9 @@ def main() -> int:
             ),
             "every_stored_week": (
                 "synthetic: trend(offset) x wiggle(offset), offset in [-16..-1, 1..16] (never"
-                " 0). trend is at_risk_value +/- offset x (at_risk_value x"
+                " 0). trend is at_risk_gross +/- offset x (at_risk_gross x"
                 f" {INFLOW_RATE_BASE} x growth_factor), floored at {HISTORY_FLOOR_FRACTION:.0%}"
-                " of at_risk_value going backward. wiggle is a deterministic sine, amplitude"
+                " of at_risk_gross going backward. wiggle is a deterministic sine, amplitude"
                 f" {WIGGLE_AMPLITUDE:.0%}, cycle {WIGGLE_CYCLE_WEEKS} weeks, phased per"
                 " vertical_id (not sku_id -- see the module docstring's 'THE WIGGLE' section"
                 " for why). No table in this warehouse records a real weekly at-risk"
@@ -487,7 +508,7 @@ def main() -> int:
             "ladder": (
                 "no_action(offset) x (1 - effective_recovery_rate) at every stored offset,"
                 " where effective_recovery_rate is the SKU's own real recoverable_value /"
-                f" at_risk_value, floored at {MIN_RECOVERY_RATE} so every candidate visibly"
+                f" at_risk_gross, floored at {MIN_RECOVERY_RATE} so every candidate visibly"
                 " separates from no-action."
             ),
         },
@@ -495,7 +516,7 @@ def main() -> int:
             "seed": None,
             "note": (
                 "No random component. Both lines are a pure function of each row's own"
-                " real at_risk_value/write_off_value/growth/state/vertical_id, so a rerun"
+                " real at_risk_gross/recoverable_value/growth/state/vertical_id, so a rerun"
                 " is byte-identical."
             ),
         },

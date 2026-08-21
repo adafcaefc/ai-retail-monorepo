@@ -29,7 +29,9 @@ describe("buildDrilldown", () => {
 
   it("total matches the sum of the reduced metric over the given items", () => {
     const built = buildDrilldown("at_risk_value", candidates);
-    const expected = Math.round(candidates.reduce((t, i) => t + i.at_risk_value, 0));
+    // at_risk_gross (f23), not each row's own at_risk_value (f12) -- see
+    // drilldown.js's at_risk_value metric and computeKpis in selectors.js.
+    const expected = Math.round(candidates.reduce((t, i) => t + i.at_risk_gross, 0));
     expect(built.total).toBe(expected);
     expect(built.sku_count).toBe(candidates.length);
   });
@@ -116,7 +118,10 @@ describe("buildDrilldown", () => {
   // through depthWeightedAvgPct directly rather than the capped breakdown.)
   it("on the full candidate population, matches the hand-checked chain total and per-category avg depth", () => {
     const built = buildDrilldown("at_risk_value", candidates);
-    expect(built.total).toBe(300089740200);
+    // Hand-checked against the source workbook's own SUMIFS(ENGINE_STORE!BD)
+    // per vertical (at_risk_gross/f23) -- NOT the ~300B a same-shaped sum
+    // over at_risk_value/f12 lands on. See drilldown.js's at_risk_value metric.
+    expect(built.total).toBe(72986938038);
 
     const grcC13 = candidates.filter((c) => c.category_id === "GRC-C13");
     const grcC11 = candidates.filter((c) => c.category_id === "GRC-C11");

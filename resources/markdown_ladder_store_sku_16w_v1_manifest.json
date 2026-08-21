@@ -1,12 +1,12 @@
 {
   "generation_name": "markdown_ladder_store_sku_16w_v1",
-  "generator_version": "markdown-ladder-store-sku-16w-generator-v2.0.0",
-  "generated_at": "2026-08-21T05:10:07.444127+00:00",
+  "generator_version": "markdown-ladder-store-sku-16w-generator-v2.1.0",
+  "generated_at": "2026-08-21T08:40:34.064389+00:00",
   "business_timezone": "Asia/Jakarta",
   "output_row_count": 16000,
   "quantity_precision": 6,
   "input_fingerprint": "fc2a7e33d4bd3bf3a7a89ca1077b03e7f5c154aac0ac8e9de4f7aa16301f09e0",
-  "output_fingerprint": "debf51cbfff4518e24adf9a44a025522b973124a636b0f9df93a6c0f7d89951f",
+  "output_fingerprint": "19f80800a73b28244247ca8fe58b24d955bba4f6e793e4e5dbc92a3d207dbffa",
   "column_contract": {
     "columns": [
       "sku_id",
@@ -155,13 +155,13 @@
     "numeric_precision": 6
   },
   "provenance": {
-    "today_offset_0": "NOT stored in this table. Today's real at_risk_value/write_off_value (build_pricing_markdown_fixture.build_items()'s own f12/f14 output) is read live wherever it is needed (the KPI tiles, the Rescue waterfall, and the frontend's computeLadderHistory, which injects it as this chart's week-0 point) rather than duplicated into a column here -- see the module docstring's 'TODAY LIVES OUTSIDE THIS TABLE' section.",
-    "every_stored_week": "synthetic: trend(offset) x wiggle(offset), offset in [-16..-1, 1..16] (never 0). trend is at_risk_value +/- offset x (at_risk_value x 0.025 x growth_factor), floored at 20% of at_risk_value going backward. wiggle is a deterministic sine, amplitude 14%, cycle 4 weeks, phased per vertical_id (not sku_id -- see the module docstring's 'THE WIGGLE' section for why). No table in this warehouse records a real weekly at-risk trajectory, past or future; this projects one.",
-    "ladder": "no_action(offset) x (1 - effective_recovery_rate) at every stored offset, where effective_recovery_rate is the SKU's own real recoverable_value / at_risk_value, floored at 0.05 so every candidate visibly separates from no-action."
+    "today_offset_0": "NOT stored in this table. Today's real at_risk_gross/recoverable_value (build_pricing_markdown_fixture.build_items()'s own f23/f14 output) is read live wherever it is needed (the KPI tiles, the Rescue waterfall, and the frontend's computeLadderHistory, which injects it as this chart's week-0 point) rather than duplicated into a column here -- see the module docstring's 'TODAY LIVES OUTSIDE THIS TABLE' section.",
+    "every_stored_week": "synthetic: trend(offset) x wiggle(offset), offset in [-16..-1, 1..16] (never 0). trend is at_risk_gross +/- offset x (at_risk_gross x 0.025 x growth_factor), floored at 20% of at_risk_gross going backward. wiggle is a deterministic sine, amplitude 14%, cycle 4 weeks, phased per vertical_id (not sku_id -- see the module docstring's 'THE WIGGLE' section for why). No table in this warehouse records a real weekly at-risk trajectory, past or future; this projects one.",
+    "ladder": "no_action(offset) x (1 - effective_recovery_rate) at every stored offset, where effective_recovery_rate is the SKU's own real recoverable_value / at_risk_gross, floored at 0.05 so every candidate visibly separates from no-action."
   },
   "determinism": {
     "seed": null,
-    "note": "No random component. Both lines are a pure function of each row's own real at_risk_value/write_off_value/growth/state/vertical_id, so a rerun is byte-identical."
+    "note": "No random component. Both lines are a pure function of each row's own real at_risk_gross/recoverable_value/growth/state/vertical_id, so a rerun is byte-identical."
   },
   "plausibility": {
     "inflow_rate_base": 0.025,
@@ -176,14 +176,14 @@
     "wiggle_cycle_weeks": 4,
     "separation_floor": 0.03,
     "min_separation_gap_by_vertical": {
-      "GRC": 0.11577686530248674,
-      "GMR": 0.15001819576455783,
-      "FSH": 0.1200225441273086,
-      "HNB": 0.10660568399914692,
-      "ELC": 0.15735048210664865,
-      "HNL": 0.1476273074518377,
-      "DGT": 0.13123762642234152,
-      "OMN": 0.1304023687411644
+      "GRC": 0.49451345542992364,
+      "GMR": 0.5794625814174348,
+      "FSH": 0.5549051533196308,
+      "HNB": 0.5356297352587659,
+      "ELC": 0.5861079415575876,
+      "HNL": 0.6027506622984747,
+      "DGT": 0.5505207875694699,
+      "OMN": 0.6050678949608601
     }
   }
 }

@@ -66,10 +66,16 @@ export function candidatesOf(items) {
  * not an at-risk metric, so it's averaged over every distinct SKU in scope
  * (matching SKU_Master's own AVERAGEIFS) rather than just markdown
  * candidates — see `distinctBySku`.
+ *
+ * `at_risk_value` sums `at_risk_gross` (f23), not each candidate's own
+ * `at_risk_value` (f12) — see `computeByVertical`'s docstring for why. Must
+ * stay on the same basis `computeByVertical` sums to, or this headline tile
+ * and the by-vertical chart directly below it on the page show two
+ * different totals for the same label.
  */
 export function computeKpis(items, markdownLever = BASELINE_LEVERS.markdown) {
   const candidates = candidatesOf(items);
-  const atRisk = sum(candidates, "at_risk_value");
+  const atRisk = sum(candidates, "at_risk_gross");
   const recoverable = sum(candidates, "recoverable_value");
   return {
     markdown_candidates: candidates.length,
@@ -84,7 +90,11 @@ export function computeKpis(items, markdownLever = BASELINE_LEVERS.markdown) {
   };
 }
 
-/** Per-tile sparkline payloads (one bucket per vertical, candidates only). */
+/**
+ * Per-tile sparkline payloads (one bucket per vertical, candidates only).
+ * `at_risk_value`/`write_off_value` sum `at_risk_gross`, matching
+ * `computeKpis`'s own field above.
+ */
 export function computeKpiSparklines(items) {
   const candidates = candidatesOf(items);
   return {
@@ -94,7 +104,7 @@ export function computeKpiSparklines(items) {
     },
     at_risk_value: {
       kind: "distribution",
-      values: topGroups(candidates, "vertical_id", (rows) => round(sum(rows, "at_risk_value"))).map((g) => g.value),
+      values: topGroups(candidates, "vertical_id", (rows) => round(sum(rows, "at_risk_gross"))).map((g) => g.value),
     },
     recoverable_value: {
       kind: "distribution",
@@ -103,13 +113,28 @@ export function computeKpiSparklines(items) {
     write_off_value: {
       kind: "distribution",
       values: topGroups(candidates, "vertical_id", (rows) =>
-        round(sum(rows, "at_risk_value") - sum(rows, "recoverable_value")),
+        round(sum(rows, "at_risk_gross") - sum(rows, "recoverable_value")),
       ).map((g) => g.value),
     },
   };
 }
 
-/** At-risk/recoverable/write-off rolled up by vertical — the by-vertical chart + table. */
+/**
+ * At-risk/recoverable/write-off rolled up by vertical — the by-vertical
+ * chart + table (AtRiskByVerticalChart/AtRiskVsRecoverableChart).
+ *
+ * `at_risk_value` here sums `at_risk_gross` (f23-markdown-at-risk-gross),
+ * NOT each item's own `at_risk_value` (f12's full position value for any
+ * non-Healthy row) — same at_risk_value-vs-at_risk_gross mixup already fixed
+ * for avg_depth_pct's weight (build_reference() in dashboard.py) and for
+ * computeByLegalEntity above; f12 overstates a candidate row 3x-20x and, per
+ * a hand-checked recompute against the source workbook, sums to ~300B chain-
+ * wide where f23 (the workbook's own ENGINE_STORE!BD column) sums to ~73B.
+ * `recoverable_value` is already f14, itself computed off f23's `gross` (see
+ * `_store_money` in dashboard.py) — so this also makes `write_off_value`
+ * below net two figures on the same basis instead of a small gross-based
+ * recoverable against a much larger f12-based at-risk.
+ */
 export function computeByVertical(items, reference, markdownLever = BASELINE_LEVERS.markdown) {
   const candidates = candidatesOf(items);
   const groups = new Map();
@@ -120,7 +145,7 @@ export function computeByVertical(items, reference, markdownLever = BASELINE_LEV
     }
     const g = groups.get(key);
     g.items.push(item);
-    g.at_risk_value += Number(item.at_risk_value) || 0;
+    g.at_risk_value += Number(item.at_risk_gross) || 0;
     g.recoverable_value += Number(item.recoverable_value) || 0;
   }
   // Comp idx per vertical, over every distinct SKU in that vertical — not
@@ -156,10 +181,15 @@ export function computeByVertical(items, reference, markdownLever = BASELINE_LEV
     .sort((a, b) => b.at_risk_value - a.at_risk_value);
 }
 
-/** At-risk value by category — the by-category dimension chart. */
+/**
+ * At-risk value by category — the by-category dimension chart, shown right
+ * alongside the by-vertical chart. Sums `at_risk_gross`, same basis as
+ * `computeByVertical`/`computeKpis` above, so the two charts (and the
+ * headline tile) don't show conflicting totals for "at-risk value".
+ */
 export function computeByCategory(items, limit = 8) {
   const candidates = candidatesOf(items);
-  return topGroups(candidates, "category_id", (rows) => round(sum(rows, "at_risk_value")), limit).map((g) => ({
+  return topGroups(candidates, "category_id", (rows) => round(sum(rows, "at_risk_gross")), limit).map((g) => ({
     category_id: g.key,
     label: labelFor(candidates, g.key, "category_id", "category_label"),
     value: g.value,
@@ -209,23 +239,41 @@ function groupStores(stores, key) {
   return [...grouped.values()].sort((a, b) => b.value - a.value);
 }
 
-/** Roll store -> legal entity (A5 spec section 6, #ch-dim-le). */
-export function computeByLegalEntity(stores, legalEntities) {
+/**
+ * Roll items -> legal entity by markdown-candidate at-risk value (A5 spec
+ * section 6, #ch-dim-le). Sums `at_risk_gross` (f23-markdown-at-risk-gross),
+ * NOT `at_risk_value` (f12's full position value for any non-Healthy row) --
+ * the latter pulls in Stockout/Low rows that aren't markdown candidates at
+ * all, and overstates a candidate row's own contribution 3x-20x on top of
+ * that. See build_reference()'s docstring in dashboard.py for the same
+ * at_risk_value-vs-at_risk_gross mixup already fixed once for avg_depth_pct's
+ * weight. `at_risk_gross` is already 0 on every non-candidate row, so this
+ * doesn't need its own candidatesOf() filter -- matching the source
+ * workbook's own SUMIFS(ENGINE_STORE!BD, ENGINE_STORE!vertical_code), which
+ * has no state criterion either. Reads `items` (not the store-grain `stores`
+ * rollup by_store/by_cluster/by_channel use), so -- unlike those three --
+ * this reconciles with `by_vertical` and always respects category/state
+ * scope client-side, even off the bundled fixture.
+ */
+export function computeByLegalEntity(items, legalEntities) {
   const labelOf = new Map((legalEntities ?? []).map((e) => [e.value, e.label]));
   const grouped = new Map();
-  for (const store of stores) {
-    const row = grouped.get(store.vertical_id);
+  for (const item of items) {
+    const gross = Number(item.at_risk_gross) || 0;
+    const row = grouped.get(item.vertical_id);
     if (row) {
-      row.value += store.at_risk_value;
+      row.value += gross;
     } else {
-      grouped.set(store.vertical_id, {
-        legal_entity_id: store.vertical_id,
-        label: labelOf.get(store.vertical_id) ?? store.vertical_id,
-        value: store.at_risk_value,
+      grouped.set(item.vertical_id, {
+        legal_entity_id: item.vertical_id,
+        label: labelOf.get(item.vertical_id) ?? item.vertical_id,
+        value: gross,
       });
     }
   }
-  return [...grouped.values()].sort((a, b) => b.value - a.value);
+  return [...grouped.values()]
+    .map((row) => ({ ...row, value: round(row.value) }))
+    .sort((a, b) => b.value - a.value);
 }
 
 /**
@@ -400,7 +448,10 @@ export function computeSimulation(items, levers, applyLevers) {
 }
 
 function summarize(items, markdownLever = BASELINE_LEVERS.markdown) {
-  const atRisk = sum(items, "at_risk_value");
+  // at_risk_gross, not at_risk_value -- same basis as computeKpis above, so
+  // the What-If simulator's baseline reads the same "at-risk" total the
+  // headline tile does before any lever is touched.
+  const atRisk = sum(items, "at_risk_gross");
   const recoverable = sum(items, "recoverable_value");
   return {
     markdown_candidates: items.length,
@@ -569,7 +620,7 @@ export function buildDashboardFromFixture(fixture, scope = {}, options = {}) {
     by_cluster: computeByCluster(stores),
     by_channel: computeByChannel(stores),
     by_state: computeByState(drivenItems),
-    by_legal_entity: computeByLegalEntity(stores, legalEntities),
+    by_legal_entity: computeByLegalEntity(drivenItems, legalEntities),
     candidates: computeCandidates(drivenItems, 300, markdownLever),
     best_actions: computeBestActions(drivenItems),
     // `candidates_full`: every markdown candidate, not the preview table's

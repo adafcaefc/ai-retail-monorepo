@@ -290,8 +290,7 @@ export default function DimensionCharts({
       <article className="pricing-panel">
         <PanelHead
           title="At-risk value by legal entity"
-          note={t("Gross")}
-          noteTitle={GRAIN_NOTE}
+          note={t("Markdown candidates")}
           selected={scope?.legal_entity_id}
           resetLabel="Back to all legal entities"
           onSelect={onSelectLegalEntity}

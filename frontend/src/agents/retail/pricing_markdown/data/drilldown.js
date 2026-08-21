@@ -124,7 +124,10 @@ const METRICS = {
     unit: "IDR",
     additive: true,
     store: true,
-    reduce: (rows) => sum(rows, "at_risk_value"),
+    // at_risk_gross, not each row's own at_risk_value (f12) -- same basis
+    // as computeKpis in selectors.js, so opening this drawer from the
+    // headline tile totals to the number the tile itself just showed.
+    reduce: (rows) => sum(rows, "at_risk_gross"),
   },
   recoverable_value: {
     label: "Recoverable value",
@@ -138,7 +141,7 @@ const METRICS = {
     unit: "IDR",
     additive: true,
     store: true,
-    reduce: (rows) => sum(rows, "at_risk_value") - sum(rows, "recoverable_value"),
+    reduce: (rows) => sum(rows, "at_risk_gross") - sum(rows, "recoverable_value"),
   },
   // A mean cannot be split across categories/verticals and added back up —
   // each breakdown row below is that group's own average, not a share of the
