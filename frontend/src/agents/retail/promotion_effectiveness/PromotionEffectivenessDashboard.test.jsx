@@ -159,13 +159,6 @@ describe("PromotionEffectivenessDashboard", () => {
     expect(new Set(bars.map((rect) => rect.getAttribute("y"))).size).toBeGreaterThan(1);
   });
 
-  it("labels the source rather than presenting workbook figures as live", async () => {
-    renderDashboard();
-
-    expect(await screen.findByText(/Workbook data/)).toBeInTheDocument();
-    expect(screen.getByText(/not a live ERP or D365 Commerce position/)).toBeInTheDocument();
-  });
-
   it("carries the store-grain reconciliation caveat, distinct from the chain-net one", async () => {
     renderDashboard();
 

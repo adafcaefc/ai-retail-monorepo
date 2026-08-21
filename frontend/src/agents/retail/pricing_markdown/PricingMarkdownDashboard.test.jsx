@@ -72,12 +72,6 @@ describe("PricingMarkdownDashboard", () => {
     expect(within(tile).getByText(expected.toLocaleString("en-US"))).toBeInTheDocument();
   });
 
-  it("labels the source rather than presenting workbook figures as live", async () => {
-    await renderSettled();
-
-    expect(screen.getByText(/Workbook demonstration data/)).toBeInTheDocument();
-  });
-
   it("scopes to one vertical and narrows the candidate table", async () => {
     await renderSettled();
     const beforeRows = document.querySelectorAll(".pricing-candidate-row").length;

@@ -207,9 +207,6 @@ export default function PromotionEffectivenessDashboard({ onAskInsight, insightB
       />
 
       <div className="promo-scope-row">
-        <span className="promo-data-note">
-          {dashboard.is_mock ? t("Workbook data") : t("Live data")} · {t(dashboard.note)}
-        </span>
         <div className="promo-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? (

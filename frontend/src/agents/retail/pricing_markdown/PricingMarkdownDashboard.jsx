@@ -238,9 +238,6 @@ export default function PricingMarkdownDashboard() {
       />
 
       <div className="pricing-scope-row">
-        <span className="pricing-data-note">
-          {dashboard.is_mock ? t("Workbook data") : t("Live data")} · {t(dashboard.note)}
-        </span>
         <div className="pricing-scope-summary">
           <span>{t("Scope")}:</span>
           {scopeLabels.length ? (

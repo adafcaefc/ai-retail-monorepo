@@ -10917,14 +10917,6 @@ button.po-kpi {
   color: var(--muted);
 }
 
-.promo-data-note {
-  padding: 3px 9px;
-  border: 1px solid var(--accent-warning-border);
-  border-radius: var(--radius-pill);
-  background: var(--accent-warning-soft);
-  color: var(--accent-warning-strong);
-}
-
 .promo-scope-summary {
   display: flex;
   align-items: center;
@@ -11655,12 +11647,6 @@ button.po-kpi {
   justify-content: space-between;
   gap: var(--space-2);
   font-size: var(--text-2xs);
-}
-
-.pricing-data-note {
-  flex: 1 1 320px;
-  color: var(--muted);
-  line-height: 1.45;
 }
 
 .pricing-scope-summary {
