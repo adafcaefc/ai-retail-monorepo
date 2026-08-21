@@ -28,6 +28,31 @@ function numeric(value, fallback = 0) {
   return Number.isFinite(result) ? result : fallback;
 }
 
+function getDemandYAxisDomainFromValues(values) {
+  if (!values.length) return [0, 1];
+
+  const rawMin = Math.min(...values);
+  const rawMax = Math.max(...values);
+  const rawRange = rawMax - rawMin;
+  const minimumRange = Math.max(
+    CHART_AXIS_MIN_RANGE,
+    Math.abs((rawMin + rawMax) / 2) * 0.10,
+  );
+  const dataRange = Math.max(rawRange, minimumRange);
+  const center = (rawMin + rawMax) / 2;
+  const expandedMin = rawRange < minimumRange
+    ? center - dataRange / 2
+    : rawMin;
+  const expandedMax = rawRange < minimumRange
+    ? center + dataRange / 2
+    : rawMax;
+  const padding = dataRange * CHART_AXIS_PADDING;
+  const lower = Math.max(0, expandedMin - padding);
+  const upper = expandedMax + padding;
+
+  return [lower, upper > lower ? upper : lower + Math.max(1, padding)];
+}
+
 /**
  * Calculate a visible-data Y-axis domain for the demand line charts.
  *
@@ -53,28 +78,27 @@ export function getDemandChartYAxisDomain(
     }
   });
 
-  if (!values.length) return [0, 1];
+  return getDemandYAxisDomainFromValues(values);
+}
 
-  const rawMin = Math.min(...values);
-  const rawMax = Math.max(...values);
-  const rawRange = rawMax - rawMin;
-  const minimumRange = Math.max(
-    CHART_AXIS_MIN_RANGE,
-    Math.abs((rawMin + rawMax) / 2) * 0.10,
-  );
-  const dataRange = Math.max(rawRange, minimumRange);
-  const center = (rawMin + rawMax) / 2;
-  const expandedMin = rawRange < minimumRange
-    ? center - dataRange / 2
-    : rawMin;
-  const expandedMax = rawRange < minimumRange
-    ? center + dataRange / 2
-    : rawMax;
-  const padding = dataRange * CHART_AXIS_PADDING;
-  const lower = Math.max(0, expandedMin - padding);
-  const upper = expandedMax + padding;
+/**
+ * Calculate the comparison chart domain from every visible series value.
+ *
+ * Comparison rows contain one label followed by the baseline and any saved
+ * scenario series. Keeping this helper row-oriented makes it harder for a
+ * newly added scenario line to be omitted from the axis calculation.
+ */
+export function getDemandScenarioYAxisDomain(rows = []) {
+  const values = [];
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    Object.entries(row || {}).forEach(([key, value]) => {
+      if (key === "label" || key === "key" || value == null || value === "") return;
+      const parsed = Number(value);
+      if (Number.isFinite(parsed)) values.push(parsed);
+    });
+  });
 
-  return [lower, upper > lower ? upper : lower + Math.max(1, padding)];
+  return getDemandYAxisDomainFromValues(values);
 }
 
 /**

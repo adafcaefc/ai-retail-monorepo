@@ -27,7 +27,11 @@ import {
   loadDemandForecastingDashboard,
   loadDemandForecastingScenario,
 } from "./dashboardData.js";
-import { buildDashboardFromFixture, computeTrending } from "./selectors.js";
+import {
+  buildDashboardFromFixture,
+  buildForecastAccuracySparkline,
+  computeTrending,
+} from "./selectors.js";
 import fixture from "./fixture.json";
 
 const apiChartSeries = {
@@ -152,6 +156,36 @@ describe("the Demand Forecasting gateway", () => {
     expect(kpi("forecast_accuracy").comparison_label).toBe("Calculated");
     expect(kpi("forecast_next_7d").comparison_label).toBe("Calculated");
     expect(kpi("seasonality_index").comparison_label).toBe("Calculated");
+  });
+
+  it("adds a deterministic Legal Entity accuracy sparkline that ignores Store", async () => {
+    const allStores = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+      store_id: "ALL",
+    });
+    const oneStore = await loadDemandForecastingDashboard({
+      legal_entity_id: "GRC",
+      store_id: "S001",
+    });
+    const allStoresKpi = allStores.kpis.find((kpi) => kpi.id === "forecast_accuracy");
+    const oneStoreKpi = oneStore.kpis.find((kpi) => kpi.id === "forecast_accuracy");
+
+    expect(oneStoreKpi.value).toBe(allStoresKpi.value);
+    expect(oneStoreKpi.sparkline).toEqual(allStoresKpi.sparkline);
+    expect(allStoresKpi.sparkline).toHaveLength(10);
+    expect(new Set(allStoresKpi.sparkline).size).toBeGreaterThan(1);
+    expect(allStoresKpi.sparkline.every((value) => value >= 0 && value <= 100)).toBe(true);
+    expect(allStoresKpi.sparkline.every((value) =>
+      Math.abs(value - allStoresKpi.value) <= 1.5,
+    )).toBe(true);
+    expect(allStoresKpi.sparkline.reduce((sum, value) => sum + value, 0) / 10)
+      .toBeCloseTo(allStoresKpi.value, 10);
+    expect(buildForecastAccuracySparkline(92.4, "GRC"))
+      .toEqual(buildForecastAccuracySparkline(92.4, "GRC"));
+    expect(buildForecastAccuracySparkline(92.4, "GRC"))
+      .not.toEqual(buildForecastAccuracySparkline(92.4, "ELC"));
+    expect(buildForecastAccuracySparkline(0, "GRC").every((value) => value >= 0)).toBe(true);
+    expect(buildForecastAccuracySparkline(100, "GRC").every((value) => value <= 100)).toBe(true);
   });
 
   it("consumes the backend-calculated Trend and keeps it out of workbook blending", () => {

@@ -6,6 +6,7 @@ import {
   buildDemandTransitionData,
   chartSourceColumns,
   getDemandChartYAxisDomain,
+  getDemandScenarioYAxisDomain,
   isDemandGrainEnabled,
 } from "./chartSeries.js";
 
@@ -207,5 +208,31 @@ describe("104W Demand Forecasting chart series", () => {
       .toBe(source().forecast_w1);
     expect(transition.data.filter((point) => point.forecast_transition != null))
       .toHaveLength(2);
+  });
+});
+
+describe("Compare Scenarios Y-axis domain", () => {
+  it("uses baseline and every visible saved scenario point", () => {
+    expect(getDemandScenarioYAxisDomain([
+      { label: "W+1", baseline: 370000, scenario_a: 500000, scenario_b: 520000 },
+      { label: "W+2", baseline: 400000, scenario_a: 450000, scenario_b: 480000 },
+    ])).toEqual([355000, 535000]);
+  });
+
+  it("ignores labels and invalid values while keeping the domain non-negative", () => {
+    expect(getDemandScenarioYAxisDomain([
+      { label: "W+1", baseline: -40, scenario_a: 100, scenario_b: Number.NaN },
+      { label: "W+2", baseline: null, scenario_a: Number.POSITIVE_INFINITY },
+    ])).toEqual([0, 114]);
+  });
+
+  it("gives nearly-flat series a useful minimum range", () => {
+    const [minimum, maximum] = getDemandScenarioYAxisDomain([
+      { label: "W+1", baseline: 400000, scenario_a: 400000 },
+      { label: "W+2", baseline: 400100, scenario_a: 400050 },
+    ]);
+
+    expect(minimum).toBeGreaterThanOrEqual(0);
+    expect(maximum - minimum).toBeGreaterThan(1000);
   });
 });

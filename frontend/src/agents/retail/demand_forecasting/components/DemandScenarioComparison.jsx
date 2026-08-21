@@ -11,6 +11,7 @@ import {
 
 import { formatNumber } from "../../../../format.js";
 import { useLanguage } from "../../../../LanguageProvider.jsx";
+import { getDemandScenarioYAxisDomain } from "../data/chartSeries.js";
 
 const SERIES_COLORS = [
   "var(--blue-500)",
@@ -42,6 +43,7 @@ export default function DemandScenarioComparison({ baselineForecast, scenarios, 
     });
     return row;
   });
+  const axisDomain = getDemandScenarioYAxisDomain(data);
 
   return (
     <section className="demand-panel demand-scenario-compare" aria-labelledby="demand-compare-title">
@@ -64,7 +66,7 @@ export default function DemandScenarioComparison({ baselineForecast, scenarios, 
               <LineChart data={data} margin={{ top: 12, right: 16, bottom: 4, left: 4 }}>
                 <CartesianGrid stroke="var(--gray-100)" strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={{ stroke: "var(--line)" }} />
-                <YAxis tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={false} width={58} tickFormatter={(value) => formatNumber(value, language, { maximumFractionDigits: 0 })} />
+                <YAxis domain={axisDomain} tick={{ fontSize: 9, fill: "var(--muted)" }} tickLine={false} axisLine={false} width={58} tickFormatter={(value) => formatNumber(value, language, { maximumFractionDigits: 0 })} />
                 <Tooltip formatter={(value) => formatNumber(value, language, { maximumFractionDigits: 0 })} />
                 <Legend wrapperStyle={{ fontSize: 10 }} />
                 <Line type="monotone" dataKey="baseline" name={t("Baseline")} stroke="var(--gray-400)" strokeDasharray="4 3" strokeWidth={2} dot={false} isAnimationActive={false} />

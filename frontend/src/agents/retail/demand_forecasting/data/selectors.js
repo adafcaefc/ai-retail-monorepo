@@ -112,6 +112,40 @@ function scopeStores(stores, query) {
 
 const sum = (rows, key) => rows.reduce((total, row) => total + (row[key] ?? 0), 0);
 
+// There is no period-by-period accuracy history in the current data source.
+// Keep this presentation-only shape deterministic and centered on the value
+// shown by the card until a real accuracy series is available. The offsets
+// sum to zero and stay within +/- 1.5 percentage points.
+const ACCURACY_SPARKLINE_OFFSETS = [
+  -1.2, -0.4, 0.6, 1.3, 0.8, 0, -0.9, -1.4, -0.3, 1.5,
+];
+
+function stableSparklineSeed(value) {
+  let hash = 2166136261;
+  for (const character of String(value || ALL)) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+export function buildForecastAccuracySparkline(accuracy, legalEntityId = ALL) {
+  const center = Number.isFinite(Number(accuracy)) ? Number(accuracy) : 0;
+  const boundedCenter = Math.min(100, Math.max(0, center));
+  const seed = stableSparklineSeed(legalEntityId);
+  const mixedSeed = (seed ^ (seed >>> 16)) >>> 0;
+  const start = mixedSeed % ACCURACY_SPARKLINE_OFFSETS.length;
+  const reversed = (mixedSeed & 1) === 1;
+
+  return ACCURACY_SPARKLINE_OFFSETS.map((_offset, index) => {
+    const offsetIndex = reversed
+      ? (start - index + ACCURACY_SPARKLINE_OFFSETS.length) % ACCURACY_SPARKLINE_OFFSETS.length
+      : (start + index) % ACCURACY_SPARKLINE_OFFSETS.length;
+    const value = boundedCenter + ACCURACY_SPARKLINE_OFFSETS[offsetIndex];
+    return Math.min(100, Math.max(0, value));
+  });
+}
+
 // -- KPIs --------------------------------------------------------------
 
 /**
@@ -654,8 +688,8 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
       curve,
       fixture.derivation,
       items,
-      forecast,
       calculatedDemandTrend,
+      merged.legal_entity_id,
     ),
     forecast,
     // Same SQL-backed weekly source, always weekly, so the confidence panel is
@@ -690,42 +724,20 @@ export function buildDashboardFromFixture(fixture, query = {}, options = {}) {
 /**
  * The six tiles.
  *
- * A sparkline is only drawn where a real series exists. The live Demand Trend
- * supplies its filtered SQL aggregate series; the remaining typed constants
- * have no history behind them, so inventing a wiggle for them would be
- * decorating a number with a shape that means nothing.
+ * The live Demand Trend supplies its filtered SQL aggregate series. Forecast
+ * Accuracy is currently Legal Entity-level only and has no period history, so
+ * its card receives a clearly illustrative, deterministic shape; the other
+ * tiles use their existing series or distributions.
  */
 function buildKpiCards(
   kpis,
   curve,
   derivation,
   items = [],
-  forecast = null,
   calculatedDemandTrend = null,
+  legalEntityId = ALL,
 ) {
   const seasonalSpark = curve.slice(0, 7);
-
-  /*
-   * The four tiles that used to sit bare.
-   *
-   * The note above was right that a TREND could not be drawn for them — three
-   * are typed constants and none has a dated source. But two of them do have a
-   * real series behind them, and the other two have a real distribution:
-   *
-   *   accuracy   the prediction band widens as sqrt(horizon), and that width
-   *              is computed FROM the accuracy figure — so the band is the
-   *              honest picture of what 92.4% buys you further out.
-   *   trend      the trend compounds into the forecast curve itself, which is
-   *              a real derived series rather than a wiggle.
-   *   stockout   cover = position / ADS, bucketed. Says whether the at-risk
-   *              SKUs are barely under or already empty.
-   *   trending   the growth index those SKUs were ranked on, bucketed.
-   *
-   * Nothing here is generated; `kind` names which of the two shapes each is.
-   */
-  const bandSpark = (forecast?.points ?? [])
-    .map((point) => (point.confidence_high ?? 0) - (point.confidence_low ?? 0))
-    .filter((width) => Number.isFinite(width));
   const cover = (item) => (item.ads > 0 ? item.position / item.ads : 0);
   const coverHistogram = (rows) => {
     const edges = [0.5, 2, 5, 8, 12, 15, 21, 30, Infinity];
@@ -766,9 +778,9 @@ function buildKpiCards(
       comparison_label: source("forecast_accuracy"),
       direction: "flat",
       status: kpis.forecast_accuracy >= 90 ? "good" : "warn",
-      sparkline: bandSpark,
+      sparkline: buildForecastAccuracySparkline(kpis.forecast_accuracy, legalEntityId),
       sparkline_kind: "series",
-      sparkline_caption: "Prediction band width over the horizon",
+      sparkline_caption: "Illustrative accuracy variation at Legal Entity level",
     },
     {
       id: "demand_trend",
