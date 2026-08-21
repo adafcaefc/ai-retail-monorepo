@@ -6441,6 +6441,17 @@ img.ey-logo {
   container-name: demand-board;
 }
 
+/*
+ * Keep every dashboard section at its content height. The workboard gives
+ * this column a bounded height and its own scrollbar; allowing its panel
+ * children to shrink makes the late sections (including Suggested Best
+ * Action) collapse behind the preceding panels because `.demand-panel` uses
+ * `overflow: hidden`.
+ */
+.demand-forecasting-dashboard > * {
+  flex-shrink: 0;
+}
+
 .demand-dashboard-skeleton {
   display: flex;
   flex-direction: column;
@@ -6655,10 +6666,6 @@ img.ey-logo {
   min-height: 24px;
   color: var(--muted);
   font-size: var(--text-xs);
-}
-
-.demand-data-note {
-  white-space: nowrap;
 }
 
 .demand-scope-summary {
@@ -7234,7 +7241,6 @@ img.ey-logo {
   }
 
   .demand-scope-summary { justify-content: flex-start; }
-  .demand-data-note { white-space: normal; }
 
   .demand-scenario-applied {
     align-items: stretch;
@@ -8818,6 +8824,453 @@ img.ey-logo {
   margin: var(--space-3);
 }
 
+/* Forecast basket and persisted cross-agent workflow. */
+.demand-action-card--primary .demand-button:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--gray-0);
+  cursor: pointer;
+}
+
+.demand-action-card--primary .demand-button:not(:disabled):hover,
+.demand-action-card--primary .demand-button:not(:disabled):focus-visible {
+  border-color: var(--primary-deep);
+  background: var(--primary-deep);
+}
+
+.demand-workflow-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-workflow-status > div:first-child {
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demand-workflow-status span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.demand-workflow-status strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.demand-workflow-status small {
+  color: var(--muted);
+  font-size: 0.65rem;
+}
+
+.demand-workflow-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.demand-workflow-buttons button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--gray-100);
+  color: var(--gray-500);
+  padding: 6px 9px;
+  cursor: not-allowed;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.demand-action-card .demand-button:not(:disabled),
+.demand-workflow-buttons .demand-workflow-button:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--gray-0);
+  cursor: pointer;
+}
+
+.demand-action-card .demand-button:not(:disabled):hover,
+.demand-action-card .demand-button:not(:disabled):focus-visible,
+.demand-workflow-buttons .demand-workflow-button:not(:disabled):hover,
+.demand-workflow-buttons .demand-workflow-button:not(:disabled):focus-visible {
+  border-color: var(--primary-deep);
+  background: var(--primary-deep);
+}
+
+.demand-forecast-basket {
+  border-top: 1px solid var(--line);
+}
+
+.demand-basket-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-basket-summary > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--space-2) var(--space-3);
+}
+
+.demand-basket-summary span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.demand-basket-summary strong {
+  color: var(--ink);
+  font-size: var(--text-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.demand-basket-reconciliation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-top: 1px solid var(--line);
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.demand-basket-reconciliation strong {
+  font-weight: 850;
+}
+
+.demand-basket-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-basket-toolbar > div:first-child {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.demand-basket-toolbar strong {
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.demand-basket-toolbar span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.demand-basket-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.demand-basket-table-note {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--text-xs);
+}
+
+.demand-forecast-basket-scroll {
+  max-height: 620px;
+  overflow: auto;
+  border-top: 1px solid var(--line);
+  scrollbar-gutter: stable;
+}
+
+.demand-forecast-basket-table {
+  width: 100%;
+  min-width: 1220px;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.demand-forecast-basket-table th,
+.demand-forecast-basket-table td {
+  border-bottom: 1px solid var(--gray-50);
+  padding: 8px var(--space-3);
+  color: var(--ink);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.demand-forecast-basket-table th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.demand-forecast-basket-table th.num,
+.demand-forecast-basket-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.demand-forecast-basket-table td strong,
+.demand-forecast-basket-table td small {
+  display: block;
+}
+
+.demand-forecast-basket-table td small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+.demand-forecast-basket-row--actionable td {
+  background: var(--accent-warning-soft);
+}
+
+.demand-forecast-basket-row--actionable .demand-basket-suggestion {
+  color: var(--accent-danger-strong);
+  font-weight: 850;
+}
+
+.demand-basket-route,
+.demand-signal-list i {
+  white-space: nowrap;
+}
+
+.demand-basket-route {
+  display: inline-block;
+  border-radius: var(--radius-pill);
+  padding: 2px 7px;
+  font-size: 0.62rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.demand-basket-route--direct {
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+}
+
+.demand-basket-route--flow {
+  background: var(--accent-info-soft);
+  color: var(--accent-info-strong);
+}
+
+.demand-basket-route--cross {
+  background: var(--accent-warning-soft);
+  color: var(--accent-warning-strong);
+}
+
+.demand-basket-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  border-top: 1px solid var(--line);
+  padding: var(--space-3) var(--space-4);
+}
+
+.demand-basket-pagination span {
+  color: var(--muted);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Small received-handoff panels shared by Agent 2 and Agent 3.  Details load
+   the persisted snapshot on demand so a 16,000-row basket never becomes a
+   second full dashboard render. */
+.agent-handoff-inbox {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-3);
+}
+
+.agent-handoff-inbox-head,
+.agent-handoff-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.agent-handoff-inbox-head p {
+  margin: 0 0 2px;
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-handoff-inbox-head h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--text-md);
+}
+
+.agent-handoff-inbox-status,
+.agent-handoff-inbox-empty,
+.agent-handoff-inbox-error,
+.agent-handoff-card-meta,
+.agent-handoff-detail,
+.agent-handoff-detail small {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+
+.agent-handoff-inbox-empty,
+.agent-handoff-inbox-error {
+  margin: var(--space-3) 0 0;
+}
+
+.agent-handoff-inbox-error {
+  color: var(--accent-danger-strong);
+}
+
+.agent-handoff-inbox-list {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.agent-handoff-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+
+.agent-handoff-card-head span {
+  color: var(--primary);
+  font-size: var(--text-xs);
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.agent-handoff-card-head h3 {
+  margin: 2px 0 0;
+  color: var(--ink);
+  font-size: var(--text-sm);
+}
+
+.agent-handoff-card-head strong {
+  border-radius: var(--radius-pill);
+  background: var(--accent-success-soft);
+  color: var(--accent-success-strong);
+  padding: 3px 8px;
+  font-size: var(--text-xs);
+}
+
+.agent-handoff-card-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+}
+
+.agent-handoff-card-metrics div {
+  min-width: 0;
+}
+
+.agent-handoff-card-metrics dt {
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.agent-handoff-card-metrics dd {
+  margin: 2px 0 0;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-handoff-card-meta {
+  margin: var(--space-2) 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-handoff-detail-button {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+  color: var(--primary-deep);
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+}
+
+.agent-handoff-detail {
+  border-top: 1px solid var(--line);
+  margin-top: var(--space-3);
+  padding-top: var(--space-2);
+}
+
+.agent-handoff-detail p {
+  margin: 0 0 var(--space-2);
+}
+
+.agent-handoff-detail-scroll {
+  max-height: 260px;
+  overflow: auto;
+}
+
+.agent-handoff-detail table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.agent-handoff-detail th,
+.agent-handoff-detail td {
+  border-bottom: 1px solid var(--gray-50);
+  padding: 5px 6px;
+  text-align: left;
+}
+
+.agent-handoff-detail th {
+  color: var(--muted);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+}
+
+.agent-handoff-detail small {
+  display: block;
+  margin-top: var(--space-2);
+}
+
 @container demand-board (max-width: 940px) {
   .demand-dimension-row,
   .demand-simulator-results {
@@ -8842,13 +9295,30 @@ img.ey-logo {
   }
 
   .demand-simulator-actions,
-  .demand-plan-preview {
+  .demand-plan-preview,
+  .demand-workflow-status,
+  .demand-basket-toolbar {
     align-items: stretch;
     flex-direction: column;
   }
 
+  .demand-basket-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .demand-workflow-buttons,
+  .demand-basket-controls {
+    justify-content: flex-start;
+  }
+
   .demand-simulator-actions .demand-button {
     flex: 1;
+  }
+}
+
+@media (max-width: 720px) {
+  .agent-handoff-card-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

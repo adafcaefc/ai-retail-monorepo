@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useLanguage } from "../../../LanguageProvider.jsx";
+import AgentHandoffInbox from "../../../components/AgentHandoffInbox.jsx";
 import AtRiskByStatePanel from "./components/AtRiskByStatePanel.jsx";
 import CategoryValueDonut from "./components/CategoryValueDonut.jsx";
 import DimensionCharts from "./components/DimensionCharts.jsx";
@@ -23,6 +24,7 @@ import {
   PROJECTION_HORIZONS_WEEKS,
 } from "./data/contract.js";
 import {
+  DATA_SOURCE,
   loadInventoryRiskDashboard,
   loadInventoryRiskDrilldown,
   loadInventoryRiskRows,
@@ -305,6 +307,12 @@ export default function InventoryRiskDashboard() {
           </button>
         </div>
       ) : null}
+
+      <AgentHandoffInbox
+        agentId="retail.inventory_risk"
+        title={t("Demand Forecasting flags")}
+        enabled={DATA_SOURCE === "api"}
+      />
 
       {/*
         Above the KPIs on purpose. Every tile below is a simulated figure once

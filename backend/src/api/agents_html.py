@@ -71,6 +71,11 @@ from src.llm.agents.finance.leakage.dashboard import simulate_leakage_scenario
 from src.llm.agents.finance.collection.tools.collection_data import (
     calculate_collection_scenario,
 )
+from src.llm.agents.retail.demand_forecasting.forecast_basket import (
+    BASKET_QUERY_PARAMS,
+    ForecastBasketError,
+    build_forecast_basket,
+)
 from src.llm.agents.finance.treasury.tools.treasury_data import (
     simulate_cashflow,
 )
@@ -625,6 +630,58 @@ async def get_agent_dashboard(
     if ignored:
         payload = {**payload, "ignored_filters": list(ignored)}
     return payload
+
+
+@router.get("/dashboard/retail.demand_forecasting/forecast-basket")
+async def get_demand_forecast_basket(
+    request: Request,
+    legal_entity_id: str | None = Query(
+        default=None,
+        description="Narrow the basket to one legal entity; omitted or 'ALL' means all.",
+    ),
+    category_group: str | None = Query(
+        default=None,
+        description="Narrow the basket to one dim_item.category_id.",
+    ),
+    store_id: str | None = Query(
+        default=None,
+        description="Narrow the basket to one Store; omitted or 'ALL' means all.",
+    ),
+    sku: str | None = Query(
+        default=None,
+        description="Case-insensitive substring search over SKU ID or item name.",
+    ),
+) -> dict[str, Any]:
+    """Return the complete baseline Demand Forecasting Store x SKU basket."""
+
+    unknown = sorted(set(request.query_params) - BASKET_QUERY_PARAMS)
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unknown forecast basket filter(s): {', '.join(unknown)}. "
+                f"Known filters: {', '.join(sorted(BASKET_QUERY_PARAMS))}."
+            ),
+        )
+
+    try:
+        scope = DashboardScope.from_query(
+            legal_entity_id=legal_entity_id,
+            category_group=category_group,
+            store_id=store_id,
+            sku=sku,
+        )
+        return build_forecast_basket(scope)
+    except ForecastBasketError as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Forecast basket unavailable: {error}",
+        ) from error
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Forecast basket unavailable: {error}",
+        ) from error
 
 
 @router.post(

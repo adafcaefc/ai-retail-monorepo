@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useLanguage } from "../../../LanguageProvider.jsx";
+import AgentHandoffInbox from "../../../components/AgentHandoffInbox.jsx";
 import OrderDimensionCharts from "./components/OrderDimensionCharts.jsx";
 import PurchaseOrderTable from "./components/PurchaseOrderTable.jsx";
 import ReplenishmentAppliedScenarioBanner from "./components/ReplenishmentAppliedScenarioBanner.jsx";
@@ -21,6 +22,7 @@ import {
   MAX_SAVED_SCENARIOS,
 } from "./data/contract.js";
 import {
+  DATA_SOURCE,
   loadReplenishmentDashboard,
   loadReplenishmentDrilldown,
 } from "./data/dashboardData.js";
@@ -234,6 +236,12 @@ export default function ReplenishmentDashboard() {
           </button>
         </div>
       ) : null}
+
+      <AgentHandoffInbox
+        agentId="retail.replenishment"
+        title={t("Received forecast baskets")}
+        enabled={DATA_SOURCE === "api"}
+      />
 
       <ReplenishmentKpiGrid
         kpis={dashboard.kpis}

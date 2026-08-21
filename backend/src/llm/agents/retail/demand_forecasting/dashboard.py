@@ -203,6 +203,35 @@ def engine_store_seasonality_index(
     }
 
 
+def engine_store_category_ids(connection: Any) -> dict[str, list[str]]:
+    """Return the actual categories present for each ENGINE_STORE store.
+
+    Store dropdown membership must follow the workbook's SKU × Store ×
+    Vertical × Cat grain rather than assuming every store in a dimension has
+    every category.  The result is presentation metadata only; the existing
+    KPI and chart queries continue to use their current sources and scope.
+    """
+
+    rows = _rows(
+        connection,
+        f"""
+        SELECT t.[Store] AS store_id,
+               t.[Cat] AS category_id
+        FROM {SCHEMA}.temp_engine_store AS t
+        WHERE t.[Store] IS NOT NULL
+          AND t.[Cat] IS NOT NULL
+        GROUP BY t.[Store], t.[Cat]
+        ORDER BY t.[Store], t.[Cat]
+        """,
+    )
+    categories: dict[str, list[str]] = {}
+    for row in rows:
+        categories.setdefault(str(row["store_id"]), []).append(
+            str(row["category_id"])
+        )
+    return categories
+
+
 def _sku_scope_clause(
     scope: DashboardScope,
     sku_column: str,
@@ -647,6 +676,19 @@ def build(scope: DashboardScope | None = None) -> dict[str, Any]:
         reference = agent_reference(connection, AGENT_ID)
 
         options = filter_options(connection)
+        category_ids_by_store = engine_store_category_ids(connection)
+        options["stores"] = [
+            {
+                **option,
+                "category_ids": category_ids_by_store.get(option["value"], []),
+            }
+            for option in options["stores"]
+            if (not scope.legal_entity_id
+                or option["legal_entity_id"] == scope.legal_entity_id)
+            and (not scope.category_group
+                 or scope.category_group in category_ids_by_store.get(
+                     option["value"], []))
+        ]
         store_size = chain_store_size(connection)
 
     catalogue = formulas(ENGINE_FORMULAS)
@@ -702,5 +744,6 @@ __all__ = [
     "_demand_forecast_series",
     "build",
     "calculate_demand_trend_pct",
+    "engine_store_category_ids",
     "engine_store_seasonality_index",
 ]

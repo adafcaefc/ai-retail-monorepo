@@ -37,6 +37,19 @@ export default function DemandForecastFilters({
     onSearch(search);
   }
 
+  function changeCategory(category_group) {
+    const selectedStore = options.stores.find((option) => option.value === query.store_id);
+    const storeRemainsValid = query.store_id === "ALL"
+      || category_group === "ALL"
+      || !Array.isArray(selectedStore?.category_ids)
+      || selectedStore.category_ids.includes(category_group);
+
+    onPatch({
+      category_group,
+      ...(storeRemainsValid ? {} : { store_id: "ALL" }),
+    });
+  }
+
   return (
     <section className="demand-filter-bar" aria-label={t("Demand forecast filters")}>
       <div className="demand-filter-selects">
@@ -56,7 +69,7 @@ export default function DemandForecastFilters({
           value={query.category_group}
           options={options.categories}
           allLabel={t("All categories")}
-          onChange={(value) => onPatch({ category_group: value })}
+          onChange={changeCategory}
         />
         <SelectField
           label={t("Store")}
