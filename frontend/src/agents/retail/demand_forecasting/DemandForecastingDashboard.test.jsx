@@ -109,6 +109,21 @@ describe("the KPI drill-down drawer", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("describes the live Demand Trend source in its detail drawer, not the old typed-constant note", async () => {
+    await renderSettled();
+
+    fireEvent.click(screen.getByText("Demand trend").closest(".demand-kpi"));
+
+    const drawer = await screen.findByRole("dialog");
+    expect(
+      within(drawer).getByText(/calculated from the synthetic SKU × Store demand table/),
+    ).toBeInTheDocument();
+    expect(
+      within(drawer).queryByText(/constant typed into the A1 sheet/i),
+    ).not.toBeInTheDocument();
+    expect(within(drawer).queryByText("This metric by category")).not.toBeInTheDocument();
+  });
+
   it("explains Forecast Accuracy is only available at Legal Entity level", async () => {
     await renderSettled();
 

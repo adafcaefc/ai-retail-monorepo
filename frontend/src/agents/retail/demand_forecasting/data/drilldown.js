@@ -58,7 +58,8 @@ const METRICS = {
     label: "Demand trend",
     unit: "percent",
     splittable: false,
-    typed: true,
+    description:
+      "Demand Trend is calculated from the synthetic SKU × Store demand table for the selected scope. It is a single aggregate for that scope, not summed from the rows in view, so it has no per-category or per-store breakdown here.",
   },
   seasonality_index: {
     label: "Seasonality index",
@@ -74,11 +75,6 @@ const METRICS = {
 export function drilldownMetric(id) {
   return METRICS[id] ?? null;
 }
-
-const TYPED_NOTE =
-  "This figure is a constant typed into the A1 sheet, one value per vertical. " +
-  "It has no per-SKU basis, so splitting it by category or store would be " +
-  "inventing detail the source does not contain.";
 
 /**
  * @param {string} metricId  A key of METRICS.
@@ -104,7 +100,7 @@ export function buildDrilldown(metricId, items, stores, total) {
   if (!metric.splittable) {
     return {
       ...base,
-      typed_note: metric.description ?? TYPED_NOTE,
+      typed_note: metric.description,
       history_note: metric.history_note ?? null,
       by_category: [],
       by_store: [],
